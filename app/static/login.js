@@ -9,7 +9,10 @@ function startLoginScene() {
   const cv = document.getElementById("login-sky");
   const card = document.querySelector(".login-card");
   if (!cv || !card) return;
-  loginScene.stop = startSkyScene(cv, { avoid: card }).stop;
+  const scene = startSkyScene(cv, { avoid: card });
+  // No controls here, but holidays, scheduled shows and game events still play.
+  const bar = startShowBar(scene, { controls: false });
+  loginScene.stop = () => { scene.stop(); bar.remove(); };
 }
 
 function stopLoginScene() { if (loginScene.stop) { loginScene.stop(); loginScene.stop = null; } }

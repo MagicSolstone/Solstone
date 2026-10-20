@@ -13,7 +13,9 @@ const FWE_DEFAULT = {
   duration: 4, rate: 0.5, power: 0.8, angle: 0.3, wheel_spin: 0.6,
   sparkle: 0, trail: 0, glitter: 0, flash: 0.4, blink: 0, strobe: 0, breathe: 0, piece: 1, grow: 0, wobble: 0, fizzle: 0,
   second: 0, second_delay: 0.5, second_size: 0.6, in_show: true,
+  sound_launch: "whoosh", sound_burst: "boom", sound_crackle: true, sound_fizzle: false,
 };
+const FWE_TABS = [["launch", "Launch"], ["shape", "Shape"], ["colours", "Colours"], ["then", "Then…"], ["motion", "Motion"], ["effects", "Effects"], ["sound", "Sound"]];
 const FWE_LAUNCHES = [["rocket", "Sky rocket", "🚀"], ["fountain", "Fountain", "⛲"], ["wheel", "Spinning wheel", "🎡"]];
 const FWE_STYLES = [["normal", "Normal"], ["sparkly", "Sparkly"], ["corkscrew", "Corkscrew"], ["colored", "Coloured"], ["invisible", "Invisible"]];
 const FWE_PATTERNS = [
@@ -109,7 +111,7 @@ const FWE_STAMPS = {
   Pickaxe: tpl("pickaxe"),
 };
 
-const ed = { d: null, id: null, list: [], scene: null, loop: true, debounce: 0, brush: "0", mirror: true, painting: false, frame: 1, grids: {} };
+const ed = { d: null, id: null, list: [], scene: null, loop: true, debounce: 0, brush: "0", mirror: true, painting: false, frame: 1, grids: {}, tab: "launch" };
 
 function fweCopy(d) { return JSON.parse(JSON.stringify(d)); }
 // The painter works on a full 25×25 grid per frame; the saved picture is trimmed to what's painted.
@@ -146,14 +148,16 @@ async function viewFireworkEditor(editId) {
   ed.d = found ? { ...fweCopy(FWE_DEFAULT), ...fweCopy(found) } : ed.d && !editId ? ed.d : fweCopy(FWE_DEFAULT);
   ed.id = found ? found.id : editId ? null : ed.id;
   ed.grids = {}; ed.frame = 1;
-  setView(`<div class="fwe-head"><h1>Firework editor</h1>
+  setView(`<div class="fwe-head"><h1>Fireworks</h1>
+      <nav class="tabs" aria-label="Fireworks"><a href="#/fireworks" aria-current="page">Editor</a>${isAdmin() ? '<a href="#/fireworks/settings">Show settings</a>' : ""}</nav>
       <p class="muted">Design a firework, watch it go off, and save it. Fireworks marked <b>In the show</b> join the sky on every page of Solstone, including the sign-in and status pages.</p></div>
     <div class="fwe">
       <div class="fwe-left">
         <div class="fwe-preview glass"><canvas id="fwe-sky" aria-label="Preview sky"></canvas>
           <div class="fwe-bar"><button class="btn primary" id="fwe-launch" type="button">🎆 Launch</button>
             <label class="check fwe-loopck"><input type="checkbox" id="fwe-loop" ${ed.loop ? "checked" : ""}> Keep launching</label>
-            <button class="btn" id="fwe-surprise" type="button">🎲 Surprise me</button></div></div>
+            <button class="btn" id="fwe-surprise" type="button">🎲 Surprise me</button>
+            <button class="btn" id="fwe-sound" type="button" aria-pressed="${FWAudio.on}" title="Hear the fireworks">${FWAudio.on ? "🔊" : "🔇"}</button></div></div>
         <form class="panel fwe-save" id="fwe-save" autocomplete="off">
           <label>Name<input class="input" name="name" maxlength="40" placeholder="My firework" value="${esc(ed.d.name || "")}"></label>
           <label class="check"><input type="checkbox" name="in_show" ${ed.d.in_show !== false ? "checked" : ""}> In the show</label>
@@ -167,13 +171,18 @@ async function viewFireworkEditor(editId) {
       <div class="fwe-controls" id="fwe-controls"></div>
     </div>`);
   ed.scene?.stop();
-  ed.scene = startSkyScene($("#fwe-sky"), { fit: true, auto: false });
+  ed.scene = startSkyScene($("#fwe-sky"), { fit: true, auto: false, sound: (t, i) => FWAudio.play(t, i) });
   document.body.classList.add("on-editor");
   state.cleanups.push(() => { ed.scene?.stop(); ed.scene = null; document.body.classList.remove("on-editor"); });
   renderControls();
   renderGallery();
   $("#fwe-launch").addEventListener("click", () => fweLaunch());
   $("#fwe-loop").addEventListener("change", (e) => { ed.loop = e.target.checked; });
+  $("#fwe-sound").addEventListener("click", (e) => {
+    FWAudio.setOn(!FWAudio.on); e.currentTarget.textContent = FWAudio.on ? "🔊" : "🔇"; e.currentTarget.setAttribute("aria-pressed", String(FWAudio.on));
+    const bar = $(".sky-sound"); if (bar) { bar.textContent = FWAudio.on ? "🔊" : "🔇"; bar.setAttribute("aria-pressed", String(FWAudio.on)); }
+    fweLaunch();
+  });
   $("#fwe-surprise").addEventListener("click", () => { ed.d = { ...fweSurprise(), name: ed.d.name, in_show: ed.d.in_show }; ed.grids = {}; ed.frame = 1; renderControls(); fweLaunch(); });
   $("#fwe-new").addEventListener("click", () => { ed.d = fweCopy(FWE_DEFAULT); ed.id = null; ed.grids = {}; ed.frame = 1; location.hash = "#/fireworks"; viewFireworkEditor(); });
   $("#fwe-saveas")?.addEventListener("click", () => fweSave(true));
@@ -220,25 +229,39 @@ function renderControls() {
   const d = ed.d, el = $("#fwe-controls");
   const sec = (title, inner, cls = "") => inner.trim() ? `<section class="panel fwe-sec ${cls}"><h3>${title}</h3>${inner}</section>` : "";
   const sliders = (name) => { const html = FWE_SLIDERS[name].map((sl) => sliderHtml(sl, d)).join(""); return html ? `<div class="fwe-sliders">${html}</div>` : ""; };
-  el.innerHTML = `
-    ${sec("Launch", `<div class="fwe-patterns fwe-launches">${FWE_LAUNCHES.map(([k, l, ic]) => `<button type="button" data-launch="${k}" aria-pressed="${(d.launch || "rocket") === k}"><span>${ic}</span>${l}</button>`).join("")}</div>
+  if (!isRocket(d) && (ed.tab === "shape" || ed.tab === "then")) ed.tab = "launch";
+  const panels = {
+    launch: sec("Launch", `<div class="fwe-patterns fwe-launches">${FWE_LAUNCHES.map(([k, l, ic]) => `<button type="button" data-launch="${k}" aria-pressed="${(d.launch || "rocket") === k}"><span>${ic}</span>${l}</button>`).join("")}</div>
       ${isRocket(d) ? `<div class="seg fwe-styles" role="group" aria-label="Rocket style">${FWE_STYLES.map(([k, l]) => `<button type="button" data-style="${k}" aria-pressed="${(d.rocket_style || "normal") === k}">${l}</button>`).join("")}</div>` : ""}
       <label class="check"><input type="checkbox" id="fwe-mirror-pair" ${d.mirror ? "checked" : ""}> Mirror pair: a matching one from the other side</label>
-      ${sliders("Launch")}`)}
-    ${isRocket(d) ? sec("Pattern", `<div class="fwe-patterns">${FWE_PATTERNS.map(([k, l, ic]) => `<button type="button" data-pattern="${k}" aria-pressed="${d.pattern === k}"><span>${ic}</span>${l}</button>`).join("")}</div>
-      ${d.pattern === "picture" ? painterHtml() : ""}${sliders("Shape")}${d.pattern === "picture" ? sliders("Picture") : ""}`) : ""}
-    ${sec("Colours", `${colorsHtml(d.colors, "ci")}
+      ${sliders("Launch")}`),
+    shape: isRocket(d) ? sec("Pattern", `<div class="fwe-patterns">${FWE_PATTERNS.map(([k, l, ic]) => `<button type="button" data-pattern="${k}" aria-pressed="${d.pattern === k}"><span>${ic}</span>${l}</button>`).join("")}</div>
+      ${d.pattern === "picture" ? painterHtml() : ""}${sliders("Shape")}${d.pattern === "picture" ? sliders("Picture") : ""}`) : "",
+    colours: sec("Colours", `${colorsHtml(d.colors, "ci")}
       <div class="fwe-dyes">${FW_COLORS.map((c) => `<button type="button" class="fw-swatch sm" data-dye="${c}" style="--c:${c}" aria-pressed="true" aria-label="Use ${c}"></button>`).join("")}</div>
       <div class="seg fwe-modes" role="group" aria-label="Colour style">${FWE_MODES.map(([k, l]) => `<button type="button" data-mode="${k}" aria-pressed="${d.color_mode === k}">${l}</button>`).join("")}</div>
-      <p class="muted small">${{ mix: "Each piece picks one of your colours.", alternate: "Pieces go through your colours in order.", change: "Every piece changes from the first colour to the last as it fades.", rainbow: "Every colour of the rainbow, cycling as it falls." }[d.color_mode]}</p>`)}
-    ${isRocket(d) ? sec("Then…", stagesHtml(d), "fwe-stages") : ""}
-    ${sec("Motion", sliders("Motion"))}
-    ${sec("Effects", sliders("Effects"))}`;
+      <p class="muted small">${{ mix: "Each piece picks one of your colours.", alternate: "Pieces go through your colours in order.", change: "Every piece changes from the first colour to the last as it fades.", rainbow: "Every colour of the rainbow, cycling as it falls." }[d.color_mode]}</p>`),
+    then: isRocket(d) ? sec("Then…", stagesHtml(d), "fwe-stages") : "",
+    motion: sec("Motion", sliders("Motion")),
+    effects: sec("Effects", sliders("Effects")),
+    sound: sec("Sound", `<div class="fwe-row"><span>Going up</span><div class="seg" role="group">${[["whoosh", "Whoosh"], ["whistle", "Whistle"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_launch" data-v="${k}" aria-pressed="${(d.sound_launch || "whoosh") === k}">${l}</button>`).join("")}</div></div>
+      <div class="fwe-row"><span>The burst</span><div class="seg" role="group">${[["boom", "Boom"], ["pop", "Pop"], ["thud", "Thud"], ["crack", "Crack"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_burst" data-v="${k}" aria-pressed="${(d.sound_burst || "boom") === k}">${l}</button>`).join("")}</div></div>
+      <label class="check"><input type="checkbox" data-sndck="sound_crackle" ${d.sound_crackle !== false ? "checked" : ""}> Crackling (when it has crackle, glitter, strobe or bursts again)</label>
+      <label class="check"><input type="checkbox" data-sndck="sound_fizzle" ${d.sound_fizzle ? "checked" : ""}> Fizzle as it fades</label>
+      <p class="muted small">Sounds play for people who turn them on with 🔊 (here, or in the corner of any page).</p>`),
+  };
+  const tabs = FWE_TABS.filter(([k]) => panels[k]);
+  if (!panels[ed.tab]) ed.tab = tabs[0][0];
+  el.innerHTML = `<nav class="fwe-tabs" role="tablist" aria-label="Firework settings">${tabs.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${ed.tab === k}">${l}</button>`).join("")}</nav>
+    <div class="fwe-panel" role="tabpanel">${panels[ed.tab]}</div>`;
+  el.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => { ed.tab = b.dataset.tab; renderControls(); }));
+  el.querySelectorAll("[data-snd]").forEach((b) => b.addEventListener("click", () => { d[b.dataset.snd] = b.dataset.v; renderControls(); if (!FWAudio.on) showToast("Turn on 🔊 to hear it", 2000); fweLaunch(); }));
+  el.querySelectorAll("[data-sndck]").forEach((c) => c.addEventListener("change", () => { d[c.dataset.sndck] = c.checked; fweLaunch(); }));
   if (isRocket(d) && d.pattern === "picture") wirePainter();
   const rerender = (launchNow = true) => { renderControls(); if (launchNow) fweLaunch(); };
   el.querySelectorAll("[data-launch]").forEach((b) => b.addEventListener("click", () => { d.launch = b.dataset.launch; rerender(); }));
   el.querySelectorAll("[data-style]").forEach((b) => b.addEventListener("click", () => { d.rocket_style = b.dataset.style; rerender(); }));
-  $("#fwe-mirror-pair", el).addEventListener("change", (e) => { d.mirror = e.target.checked; fweLaunch(); });
+  $("#fwe-mirror-pair", el)?.addEventListener("change", (e) => { d.mirror = e.target.checked; fweLaunch(); });
   el.querySelectorAll("[data-pattern]").forEach((b) => b.addEventListener("click", () => {
     d.pattern = b.dataset.pattern;
     if (d.pattern === "picture" && !d.picture?.length) { ed.frame = 1; stampPicture("Heart"); }

@@ -18,6 +18,8 @@ COLOR_MODES = ("mix", "alternate", "change", "rainbow")
 LAUNCHES = ("rocket", "fountain", "wheel")           # from the sky, or set up on the hill
 ROCKET_STYLES = ("normal", "sparkly", "corkscrew", "colored", "invisible")
 STAGE_ACTIONS = ("burst", "pieces", "shatter", "implode")
+LAUNCH_SOUNDS = ("whoosh", "whistle", "none")
+BURST_SOUNDS = ("boom", "pop", "thud", "crack", "none")
 MAX_STAGES = 3
 
 # name: (min, max, default)
@@ -89,6 +91,10 @@ def sanitize(d: dict) -> dict:
     out["launch"] = d.get("launch") if d.get("launch") in LAUNCHES else "rocket"
     out["rocket_style"] = d.get("rocket_style") if d.get("rocket_style") in ROCKET_STYLES else "normal"
     out["mirror"] = bool(d.get("mirror"))
+    out["sound_launch"] = d.get("sound_launch") if d.get("sound_launch") in LAUNCH_SOUNDS else "whoosh"
+    out["sound_burst"] = d.get("sound_burst") if d.get("sound_burst") in BURST_SOUNDS else "boom"
+    out["sound_crackle"] = d.get("sound_crackle", True) is not False
+    out["sound_fizzle"] = bool(d.get("sound_fizzle", False))
     out["picture"] = _picture(d.get("picture"))
     out["picture2"] = _picture(d.get("picture2"))
     out["stages"] = [_stage(st) for st in (d.get("stages") or [])[:MAX_STAGES] if isinstance(st, dict)]

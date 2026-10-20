@@ -358,7 +358,11 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden && (!
 
 document.addEventListener("DOMContentLoaded", async () => {
   const sky = $("#status-sky");
-  if (sky) { st.scene = startSkyScene(sky, { auto: false }); skyControls(st.scene, "solstone-sky-status", true); }
+  if (sky) {
+    st.scene = startSkyScene(sky, { auto: false, sound: (t, i) => FWAudio.play(t, i) });
+    startShowBar(st.scene, { key: "solstone-sky-status", defaultOn: true, hide: true,
+      onEvent: (item) => { if (item.text && item.server_id === st.sid) toast(esc(item.text)); } });
+  }
   keepAwake();
   await loadServers();
   poll();

@@ -16,10 +16,9 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import db
+from . import backups, db, fwshow, guard, notify
 from . import servers as S
 from .logparse import parse_line
-from . import backups, guard, notify
 from .notify import maybe_notify
 from .rcon import RconError
 
@@ -84,6 +83,8 @@ class Recorder:
         self.last_poll: float | None = None
         self.errors: dict[str, str] = {}   # server id -> last recorder error (cleared on success)
         self.started: float | None = None
+        self._levels: dict[tuple[str, str], int] = {}  # (server, player) -> last seen level
+        self._night: dict[str, bool] = {}
 
     def start(self) -> None:
         self.started = time.time()
@@ -210,13 +211,46 @@ class Recorder:
             for n in left:
                 self._event(srv, now, "leave", f"{n} left the game", n, name_to_uuid.get(n.lower()))
 
+        if running and names and srv.is_java and srv.rcon_conf():
+            await self._watch_game(srv, names)
+
         prev = self._running_state.get(srv.id)
         if prev is not None and prev != running:
             if running:
                 self._event(srv, now, "server", "Server started")
+                fwshow.push(srv.id, srv.display_name, "start", None, f"{srv.display_name} started")
             else:
                 self._event(srv, now, "server", "Server crashed" if stats.get("crashed") else "Server stopped")
         self._running_state[srv.id] = running
+
+    async def _watch_game(self, srv: S.Server, names: list[str]) -> None:
+        """Level milestones and nightfall, for fireworks (levels also go in the activity feed)."""
+        every = fwshow.events_cfg()["level"]["every"]
+        try:
+            lives = await asyncio.gather(*(S.live_player(srv, n) for n in names), return_exceptions=True)
+        except Exception:
+            lives = []
+        for n, live in zip(names, lives, strict=False):
+            if not isinstance(live, dict):
+                continue
+            key, lvl = (srv.id, n.lower()), int(live.get("xp_level") or 0)
+            before = self._levels.get(key)
+            self._levels[key] = lvl
+            if before is not None and lvl > before and lvl // every > before // every:
+                msg = f"{n} reached level {lvl // every * every}"
+                self._event(srv, time.time(), "level", msg, n, None, notify=False)
+                fwshow.push(srv.id, srv.display_name, "level", n, msg)
+        try:
+            w = await S.live_world(srv)
+        except Exception:
+            return
+        t = w.get("time_of_day")
+        if t is None:
+            return
+        night = 13000 <= t < 23000
+        if self._night.get(srv.id) is False and night:
+            fwshow.push(srv.id, srv.display_name, "night", None, f"Night falls on {srv.display_name}")
+        self._night[srv.id] = night
 
     def _event(self, srv: S.Server, ts: float, etype: str, message: str, player: str | None = None,
                uuid: str | None = None, notify: bool = True) -> None:
@@ -300,6 +334,13 @@ class Recorder:
             db.add_event(srv.id, ts, ev.type, ev.message, ev.player, uuid)
             if fresh and ev.type != "chat":
                 pending.append((ev.type, ev.message))
+            if fresh and time.time() - ts < 90:            # fireworks only for things happening now
+                if ev.type == "join":
+                    fwshow.push(srv.id, srv.display_name, "join", ev.player, ev.message)
+                elif ev.type == "advancement":
+                    fwshow.push(srv.id, srv.display_name, fwshow.advancement_kind(ev.message), ev.player, ev.message)
+                elif ev.type == "death":
+                    fwshow.push(srv.id, srv.display_name, "death", ev.player, ev.message)
         db.set_log_state(srv.id, st.st_ino, new_offset, head)
         return pending
 

@@ -26,14 +26,14 @@ const post = (path, body = {}, method = "POST") => api(path, { method, body: JSO
 
 // ================================================================ accounts
 const me = { user: null };
-const appSky = { scene: null, ctl: null };  // the night sky behind the signed-in app
+const appSky = { scene: null, bar: null };  // the night sky behind the signed-in app
 const isAdmin = () => me.user?.role === "admin";
 
 function showLogin(message = "") {
   clearTimers?.();
   me.user = null;
   document.body.classList.add("logged-out");
-  if (appSky.scene) { appSky.scene.stop(); appSky.ctl?.remove(); appSky.scene = appSky.ctl = null; }
+  if (appSky.scene) { appSky.scene.stop(); appSky.bar?.remove(); FWMusic.stop(); appSky.scene = appSky.bar = null; }
   const root = $("#login-root");
   root.hidden = false;
   root.innerHTML = `<canvas id="login-sky" aria-hidden="true"></canvas>
@@ -72,8 +72,9 @@ async function signedIn(user) {
   stopLoginScene();
   clearInterval(state.loginRefresh);
   if (!appSky.scene && $("#app-sky")) {
-    appSky.scene = startSkyScene($("#app-sky"), { auto: false });
-    appSky.ctl = skyControls(appSky.scene, "solstone-sky-app", false);
+    appSky.scene = startSkyScene($("#app-sky"), { auto: false, sound: (t, i) => FWAudio.play(t, i) });
+    appSky.bar = startShowBar(appSky.scene, { key: "solstone-sky-app", defaultOn: false, hide: true,
+      onEvent: (item) => { if (item.text) showToast(`🎆 ${esc(item.text)}${item.server && item.server !== "Test" ? ` <span class="muted">· ${esc(item.server)}</span>` : ""}`, 4000); } });
   }
   const root = $("#login-root"); root.hidden = true; root.innerHTML = "";
   $("#account-name").textContent = user.username;
@@ -881,6 +882,7 @@ async function route() {
   try {
     if (!me.user) return;
     if (parts[0] === "admin") { await viewAdmin(); return; }
+    if (parts[0] === "fireworks" && parts[1] === "settings") { await viewFireworkSettings(); return; }
     if (parts[0] === "fireworks") { await viewFireworkEditor(parts[1]); return; }
     if (parts[0] === "s" && parts[1]) {
       const sid = parts[1];

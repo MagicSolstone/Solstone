@@ -24,8 +24,13 @@ function applyFireworkSettings(c) {
   FW.pace = FW_PACE[c.pace] ? c.pace : "normal";
   FW.showpieces = FW_SPECIAL_CHANCE[c.showpieces] != null ? c.showpieces : "sometimes";
   FW.custom = Array.isArray(c.custom) ? c.custom : [];
+  FW.theme = c.theme || null;
+  FW.finales = Array.isArray(c.finales) ? c.finales : [];
+  FW.music = !!c.music;
 }
 const fwOn = (k) => !FW.kinds || FW.kinds[k] !== false;
+// On a holiday the calendar's colours replace the usual ones and its favourite kinds come up more.
+const fwPalette = () => (FW.theme?.colors?.length ? FW.theme.colors : FW.colors);
 // Pixel templates for shaped bursts: each "#" becomes a spark that flies out to its spot.
 const FW_TEMPLATES = {
   cube: [
@@ -155,6 +160,10 @@ function startSkyScene(cv, opts = {}) {
   let W = 0, H = 0, raf = 0, timer = 0, running = false, frame = 0, stopped = false;
   let stars = [], land = null, groundY = 0, cardBox = null, hill = [], watcher = { x: 0, y: 0 };
   const rockets = [], sparks = [], figures = [], trees = [];
+  // Sound: the page passes opts.sound(type, info); pan is -1 (left) to 1 (right).
+  const snd = (type, info = {}) => { try { opts.sound?.(type, { ...info, pan: info.x != null && W ? Math.max(-1, Math.min(1, (info.x / W) * 2 - 1)) : 0 }); } catch { /* sound is optional */ } };
+  let boostUntil = 0;                                // a scheduled show or event: lively for a while
+  const boosting = () => performance.now() < boostUntil;
 
   // ---- static layer: blocky hill with two small silhouettes
   function buildLand() {
@@ -206,7 +215,9 @@ function startSkyScene(cv, opts = {}) {
     else if (sides.length && Math.random() < 0.8) { const [a, b] = pick(sides); x = rand(a, b); } else x = rand(W * 0.1, W * 0.9);
     if (!shape) {
       const busy = figures.length || trees.length || rockets.some((r) => FW_SPECIALS.includes(r.shape));
-      const regular = [...FW_SHAPES.filter(fwOn), ...FW.custom.map((d) => d)], special = FW_SPECIALS.filter(fwOn);
+      const themed = (FW.theme?.kinds || []).flatMap((k) => k.startsWith("custom:") ? FW.custom.filter((d) => `custom:${d.id}` === k) : [k, k]);
+      const regular = [...FW_SHAPES.filter(fwOn), ...FW.custom.map((d) => d), ...themed.filter((k) => typeof k !== "string" || !FW_SPECIALS.includes(k))];
+      const special = [...FW_SPECIALS.filter(fwOn), ...themed.filter((k) => FW_SPECIALS.includes(k))];
       const wantSpecial = special.length && !busy && (Math.random() < FW_SPECIAL_CHANCE[FW.showpieces] || !regular.length);
       if (wantSpecial) shape = pick(special);
       else if (regular.length) shape = pick(regular);
@@ -237,12 +248,14 @@ function startSkyScene(cv, opts = {}) {
     const apex = at ? at.y : shape === "tree" ? surface - 2 : rand(H * 0.1, Math.min(H * 0.45, groundY - 40));
     const startY = shape === "tree" ? H + 2 : groundY + 4;
     const vy = -Math.sqrt(2 * G * Math.max(1, startY - apex));
-    const colors = [pick(FW.colors)];
-    if (Math.random() < 0.45 || shape === "crossette") colors.push(pick(FW.colors));
+    const colors = [pick(fwPalette())];
+    if (Math.random() < 0.45 || shape === "crossette") colors.push(pick(fwPalette()));
     if (shape === "willow" && Math.random() < 0.6) colors[0] = pick(["#ffcf5a", "#ffe9a8", "#ffb347"]);   // classic gold
     const r = { x, y: startY, vx: at ? 0 : rand(-0.12, 0.12), vy, shape, colors, target: at?.target || null,
-      fade: Math.random() < 0.35 ? pick(FW.colors) : null, trail: Math.random() < 0.4, twinkle: Math.random() < 0.35 };
+      fade: Math.random() < 0.35 ? pick(fwPalette()) : null, trail: Math.random() < 0.4, twinkle: Math.random() < 0.35 };
+    if (shape === "dud") { r.vy *= 0.55; r.dud = true; r.colors = ["#8a8f98"]; }
     if (shape === "creeper") r.colors = ["#7dff5c", "#5fe04a"];
+    if (!at?.quiet) snd("launch", { x, style: shape === "dud" ? "whoosh" : Math.random() < 0.18 ? "whistle" : "whoosh" });
     if (shape === "heart") r.colors = [pick(["#ff5a7a", "#ff8fc0", "#ff4f4f"])];
     rockets.push(r);
     return r;
@@ -286,6 +299,7 @@ function startSkyScene(cv, opts = {}) {
     const r = { x, y: groundY + 4, vx: Math.sin(lean) * v, vy: -Math.cos(lean) * v, shape: "custom", design: d, colors: d.colors,
       style: d.rocket_style || "normal", hang: Math.round(dv(d, "hang", 0) * 60), t: 0, mirrored };
     rockets.push(r);
+    if (d.sound_launch !== "none") snd("launch", { x, style: d.sound_launch || "whoosh" });
     return r;
   }
 
@@ -299,6 +313,9 @@ function startSkyScene(cv, opts = {}) {
   function explodeCustom(r) {
     const d = r.design, g = newGroup(d, r.x, r.y);
     if (d.flash > 0) flashBurst(r.x, r.y, d.flash);
+    if ((d.sound_burst || "boom") !== "none") snd("burst", { x: r.x, kind: d.sound_burst || "boom", size: d.size || 1.2 });
+    if (d.sound_crackle !== false && (d.sparkle > 0 || d.strobe > 0 || d.glitter > 0 || d.second > 0)) snd("crackle", { x: r.x, delay: d.second > 0 ? dv(d, "second_delay", 0.5) : 0.5, dur: Math.min(3, (d.life || 1.4) * 0.8) });
+    if (d.sound_fizzle) snd("fizzle", { x: r.x, delay: (d.life || 1.4) * 0.75 });
     burst(g, r.x, r.y, { pattern: d.pattern, size: d.size || 1.2, sparks: d.sparks || 48, colors: colorsOf(d), mirrored: r.mirrored });
     let t = 0;
     for (const st of d.stages || []) { t += st.delay * 60; later(t, () => runStage(g, st)); }
@@ -433,6 +450,7 @@ function startSkyScene(cv, opts = {}) {
     const d = g.d, cols = colorsOf(d, st.colors);
     const list = piecesOf(g);
     const c = centreOf(g, list);
+    if (d.sound_burst !== "none") snd("burst", { x: c.x, kind: st.action === "pieces" ? "crack" : st.action === "shatter" ? "pop" : d.sound_burst || "boom", size: st.size });
     if (st.action === "burst") {
       if (d.flash > 0) flashBurst(c.x, c.y, d.flash * 0.7);
       release(g);
@@ -469,6 +487,7 @@ function startSkyScene(cv, opts = {}) {
     const y = kind === "comet" ? 0 : surfaceAt(x);
     const e = { kind, d, x, y, t: 0, dur: Math.round(dv(d, "duration", 4) * 60), acc: 0, ang: 0, g: newGroup(d, x, y), ...extra };
     emitters.push(e);
+    if (kind !== "comet") snd("hiss", { x: kind === "sparkler" ? watcher.x : x, dur: e.dur / 60, soft: kind === "sparkler" });
     return e;
   }
   function updateEmitters() {
@@ -592,7 +611,7 @@ function startSkyScene(cv, opts = {}) {
 
   // Built-in kinds made from designs, so they share all the machinery above.
   function builtinDesign(kind) {
-    const two = () => [pick(FW.colors), pick(FW.colors)];
+    const two = () => [pick(fwPalette()), pick(fwPalette())];
     const base = { colors: two(), color_mode: "mix", size: 1.2, sparks: 48, life: 1.4, gravity: 1, drag: 0.4, flash: 0.3 };
     switch (kind) {
       case "candle": return { ...base, rockets: Math.round(rand(5, 8)), interval: rand(0.35, 0.55), spot: 0, fan: rand(0.1, 0.3), lean: rand(-0.35, 0.35),
@@ -740,6 +759,14 @@ function startSkyScene(cv, opts = {}) {
 
   function explode(r) {
     if (r.design) { explodeCustom(r); return; }
+    if (r.dud) {                                     // a sad little fizzle (someone died)
+      for (let i = 0; i < 7; i++) sparks.push({ x: r.x, y: r.y, px: r.x, py: r.y, vx: rand(-0.25, 0.25), vy: rand(-0.3, 0.1), life: 0, max: rand(30, 60), color: pick(["#8a8f98", "#5f646d", "#b0703a"]), twinkle: true });
+      snd("fizzle", { x: r.x });
+      return;
+    }
+    snd("burst", { x: r.x, kind: ["large", "saturn", "dragon", "tree", "willow"].includes(r.shape) ? "boom" : r.shape === "pop" ? "pop" : Math.random() < 0.5 ? "boom" : "pop",
+      size: r.shape === "large" ? 1.6 : 1 });
+    if (r.twinkle || r.shape === "crossette" || r.shape === "willow") snd("crackle", { x: r.x, delay: r.shape === "crossette" ? 0.45 : 0.6, dur: r.shape === "willow" ? 2.4 : 1.2 });
     const add = (vx, vy, i, extra = {}) => sparks.push({ x: r.x, y: r.y, px: r.x, py: r.y, vx, vy, life: 0, max: rand(55, 85) * (r.shape === "large" ? 1.3 : 1),
       color: r.colors[i % r.colors.length], fade: r.fade, trail: r.trail, twinkle: r.twinkle, ...extra });
     if (r.shape === "dragon") {
@@ -784,7 +811,7 @@ function startSkyScene(cv, opts = {}) {
       const n = Math.round(rand(5, 7)), off = rand(0, Math.PI);
       for (let i = 0; i < n; i++) {
         const a = off + (i / n) * Math.PI * 2;
-        add(Math.cos(a) * 1.15, Math.sin(a) * 1.15 - 0.2, 0, { sub: true, fuse: rand(24, 34), max: 60, trail: true, twinkle: false, fade: null, color2: r.colors[1] || pick(FW.colors) });
+        add(Math.cos(a) * 1.15, Math.sin(a) * 1.15 - 0.2, 0, { sub: true, fuse: rand(24, 34), max: 60, trail: true, twinkle: false, fade: null, color2: r.colors[1] || pick(fwPalette()) });
       }
       return;
     }
@@ -939,7 +966,7 @@ function startSkyScene(cv, opts = {}) {
   function loop() {
     if (!running) return;
     step();
-    if (!auto && !rockets.length && !sparks.length && !figures.length && !trees.length && !emitters.length && !events.length) { running = false; frame = 0; step(); return; }
+    if (!auto && !boosting() && !rockets.length && !sparks.length && !figures.length && !trees.length && !emitters.length && !events.length) { running = false; frame = 0; step(); return; }
     raf = requestAnimationFrame(loop);
   }
   function wake() {
@@ -948,7 +975,7 @@ function startSkyScene(cv, opts = {}) {
   }
   function schedule() {
     clearTimeout(timer);
-    if (!auto) return;
+    if (!auto && !boosting()) return;
     timer = setTimeout(() => {
       if (!document.hidden && rockets.length < 6 && sparks.length < 1400) {
         launch();
@@ -957,7 +984,7 @@ function startSkyScene(cv, opts = {}) {
         wake();
       }
       schedule();
-    }, rand(every()[0], every()[1]));
+    }, boosting() ? rand(FW_PACE.lively[0], FW_PACE.lively[1]) : rand(every()[0], every()[1]));
   }
   const onVis = () => {
     if (document.hidden) { running = false; cancelAnimationFrame(raf); }
@@ -993,6 +1020,15 @@ function startSkyScene(cv, opts = {}) {
     // One rocket on request (the launch button). Works even with reduced motion,
     // because someone asked for it.
     launch(shape) { if (rockets.length < 12) { launch(shape); wake(); } },
+    // A lively show for a while (scheduled finales, the "show" event), even with Show off.
+    boost(seconds) {
+      if (reduced) return;
+      boostUntil = Math.max(boostUntil, performance.now() + seconds * 1000);
+      launch(); wake(); schedule();
+    },
+    get boosting() { return boosting(); },
+    // One of the big show-pieces (dragon, bow, tree), for challenge advancements.
+    showpiece() { const k = FW_SPECIALS.filter(fwOn); launch(k.length ? pick(k) : "large"); wake(); },
     // Launch a design straight from the Firework editor.
     launchDesign(d) { launchDesign(d); wake(); },
     get auto() { return auto; },
@@ -1002,24 +1038,4 @@ function startSkyScene(cv, opts = {}) {
       schedule();
     },
   };
-}
-
-// A small floating control: launch a firework, and turn the automatic show on or off.
-// The choice is remembered per page in this browser.
-function skyControls(scene, key, defaultOn) {
-  let on = defaultOn && !matchMedia("(prefers-reduced-motion: reduce)").matches;
-  try { const v = localStorage.getItem(key); if (v != null) on = v === "1"; } catch { /* storage is optional */ }
-  scene.setAuto(on);
-  const box = document.createElement("div");
-  box.className = "sky-ctl glass";
-  box.innerHTML = `<button type="button" class="sky-launch" title="Launch a firework" aria-label="Launch a firework">🎆</button>
-    <button type="button" class="sky-auto" aria-pressed="${on}" title="Keep launching fireworks"><span class="sky-sw"></span><span>Show</span></button>`;
-  document.body.append(box);
-  const autoBtn = box.querySelector(".sky-auto");
-  box.querySelector(".sky-launch").addEventListener("click", () => scene.launch());
-  autoBtn.addEventListener("click", () => {
-    on = !on; scene.setAuto(on); autoBtn.setAttribute("aria-pressed", String(on));
-    try { localStorage.setItem(key, on ? "1" : "0"); } catch { /* storage is optional */ }
-  });
-  return box;
 }

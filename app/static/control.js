@@ -340,7 +340,6 @@ async function viewAdmin() {
   document.title = "Users & activity · Solstone";
   $("#rail-servers").innerHTML = railHtml(null);
   const [users, audit, lp] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/status")]);
-  const fw = await api("/api/public/fireworks");
   const fmtWhen = (ts) => ts ? fmtAgo(ts) : "never";
   setView(`<h1 style="margin-bottom:20px">Users &amp; activity</h1>
     <section class="section"><div class="section-head"><h2>Users</h2><span class="muted">Viewers can see everything but can't change anything. Admins can also control servers.</span></div>
@@ -365,8 +364,8 @@ async function viewAdmin() {
         <label class="switch-row"><span>Embed the web map (BlueMap, squaremap) <br><small class="muted">Only works if visitors can reach the map's address too. A plain http:// map won't load on an https:// page.</small></span><input type="checkbox" role="switch" data-sp="show_web_map" ${lp.show_web_map ? "checked" : ""}></label>
         <p class="muted small" style="margin-top:8px">Anyone with the address can see this page. Hidden servers are never shown.</p>
       </div></section>
-    <section class="section"><div class="section-head"><h2>Fireworks</h2><span class="muted">For the sign-in page, the status page and the sky behind the app. Press ▶ to try one.</span></div>
-      <div class="panel fw-settings" id="fw-settings">${fireworksSettingsHtml(fw)}</div></section>
+    <section class="section"><div class="section-head"><h2>Fireworks</h2></div>
+      <div class="panel"><p>Fireworks settings, game events, the holiday calendar and music now have their own page. <a href="#/fireworks/settings">Open firework settings</a></p></div></section>
     <section class="section"><div class="section-head"><h2>Admin activity</h2><span class="muted">Commands, changes and sign-in failures across all servers</span></div>
       <div class="panel">${auditHtml(audit, true)}</div></section>`);
 
@@ -376,7 +375,6 @@ async function viewAdmin() {
     try { await post("/api/settings/status", body, "PUT"); showToast(body.enabled ? 'Status page updated. <a href="/status" target="_blank" rel="noopener">Open it</a>' : "Status page turned off", 3500); }
     catch (err) { showToast(esc(err.message), 5000); }
   });
-  wireFireworksSettings($("#fw-settings"), fw);
   $("#add-user").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);

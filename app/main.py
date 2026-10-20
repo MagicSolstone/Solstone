@@ -7,16 +7,17 @@ import json
 import logging
 import os
 import re
+import secrets
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, backups, control, db, fireworks, guard, notify, skins
+from . import auth, backups, control, db, fireworks, fwshow, guard, music, notify, skins
 from . import servers as S
 from . import settings_store
 from .recorder import recorder
@@ -44,7 +45,18 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Solstone", version=VERSION, lifespan=lifespan)
-app.add_middleware(GZipMiddleware, minimum_size=1024)
+class _GZipExceptMusic(GZipMiddleware):
+    """Compress API and page responses, but stream music as-is (it's already compressed,
+    and the browser needs byte ranges to seek)."""
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].startswith("/api/public/music/"):
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+
+app.add_middleware(_GZipExceptMusic, minimum_size=1024)
 
 PUBLIC_API = {"/api/health", "/api/auth/login"}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
@@ -351,8 +363,127 @@ def _fireworks_cfg() -> dict:
 
 
 @app.get("/api/public/fireworks")
-async def public_fireworks():
-    return JSONResponse({**_fireworks_cfg(), "custom": fireworks.in_show()}, headers={"Cache-Control": "no-cache"})
+async def public_fireworks(request: Request):
+    signed_in = request.state.user is not None
+    return JSONResponse({**_fireworks_cfg(), "custom": fireworks.in_show(), **fwshow.today_state(),
+                         "music": signed_in or (music.public() and _status_cfg()["enabled"])},
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/public/fireworks/feed")
+async def firework_feed(request: Request, since: int = -1):
+    """Fireworks set off by things happening in the game. Player names only for people
+    signed in, or when the public status page (which shows them anyway) is on."""
+    names = request.state.user is not None or _status_cfg()["enabled"]
+    return JSONResponse(fwshow.feed_since(since, names), headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/fireworks/show")
+async def get_firework_show(request: Request):
+    auth.require_admin(request)
+    await S.registry.refresh()
+    players: dict[str, str] = {}
+    for srv in S.registry.servers.values():
+        for p in S.known_players(srv).values():
+            players.setdefault(p["name"].lower(), p["name"])
+    return {"events": fwshow.events_cfg(), "signatures": fwshow.signatures(), "calendar": fwshow.calendar(),
+            "players": sorted(players.values(), key=str.lower), "today": fwshow.today_state(),
+            "calendar_defaults": [fwshow._clean_entry(e) for e in fwshow.DEFAULT_CALENDAR],
+            "music": {"tracks": music.tracks(), "public": music.public()}}
+
+
+@app.put("/api/fireworks/show")
+async def put_firework_show(request: Request):
+    user = auth.require_admin(request)
+    body = await _body(request)
+    if isinstance(body.get("events"), dict):
+        fwshow.save_events(body["events"])
+    if isinstance(body.get("signatures"), dict):
+        fwshow.save_signatures(body["signatures"])
+    if isinstance(body.get("calendar"), list):
+        fwshow.save_calendar(body["calendar"])
+    auth.audit(user, None, "fireworks_show", ", ".join(sorted(k for k in body if k in ("events", "signatures", "calendar"))))
+    return await get_firework_show(request)
+
+
+@app.post("/api/fireworks/test-event")
+async def test_firework_event(request: Request):
+    """Pretend an event happened, to see what it sets off."""
+    auth.require_admin(request)
+    body = await _body(request)
+    ev = body.get("event")
+    if ev not in fwshow.EVENT_DEFAULTS:
+        raise HTTPException(400, "Unknown event")
+    player = str(body.get("player") or "") or None
+    fwshow.push("test", "Test", ev, player, f"Test: {ev}" + (f" for {player}" if player else ""))
+    return {"ok": True}
+
+
+# ---- music for the show
+def _music_allowed(request: Request) -> None:
+    if request.state.user is None and not (music.public() and _status_cfg()["enabled"]):
+        raise HTTPException(404)
+
+
+@app.get("/api/public/music")
+async def music_list(request: Request):
+    _music_allowed(request)
+    return music.tracks()
+
+
+@app.get("/api/public/music/{tid}")
+async def music_file(tid: str, request: Request):
+    _music_allowed(request)
+    found = music.path_of(tid)
+    if not found:
+        raise HTTPException(404)
+    path, media = found
+    return FileResponse(path, media_type=media, headers={"Cache-Control": "private, max-age=86400"})
+
+
+@app.post("/api/music")
+async def music_upload(request: Request, title: str = "", filename: str = ""):
+    user = auth.require_admin(request)
+    ext = music.ext_for(request.headers.get("content-type", ""), filename)
+    if not ext:
+        raise HTTPException(415, "That doesn't look like an audio file (MP3, OGG, M4A, WAV, FLAC or Opus).")
+    music.DIR.mkdir(parents=True, exist_ok=True)
+    tmp = music.DIR / f".upload-{secrets.token_hex(6)}"
+    size = 0
+    try:
+        with tmp.open("wb") as fh:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > music.MAX_BYTES:
+                    raise HTTPException(413, f"Files can be up to {music.MAX_BYTES // 1024 // 1024} MB.")
+                fh.write(chunk)
+        if size == 0:
+            raise HTTPException(400, "The file was empty")
+        t = await asyncio.to_thread(music.add, tmp, ext, title or re.sub(r"\.[^.]+$", "", filename), size)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    finally:
+        tmp.unlink(missing_ok=True)
+    auth.audit(user, None, "music_upload", t["title"])
+    return t
+
+
+@app.put("/api/music")
+async def music_update(request: Request):
+    auth.require_admin(request)
+    body = await _body(request)
+    return music.update(body.get("order") if isinstance(body.get("order"), list) else None,
+                        body.get("titles") if isinstance(body.get("titles"), dict) else None,
+                        body.get("public") if isinstance(body.get("public"), bool) else None)
+
+
+@app.delete("/api/music/{tid}")
+async def music_delete(tid: str, request: Request):
+    user = auth.require_admin(request)
+    if not music.delete(tid):
+        raise HTTPException(404)
+    auth.audit(user, None, "music_delete", tid)
+    return {"ok": True}
 
 
 # ---- the Firework editor: anyone signed in can make fireworks; people can change their
@@ -893,7 +1024,7 @@ async def spa(full_path: str):
     return HTMLResponse(_page("index.html"), headers={"Cache-Control": "no-cache"})
 
 
-ASSET_NAMES = ("app.css", "sky.js", "hud.js", "login.js", "app.js", "history.js", "control.js", "editor.js", "status.js")
+ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "login.js", "app.js", "history.js", "control.js", "editor.js", "fwsettings.js", "status.js")
 
 
 def _page(name: str) -> str:
