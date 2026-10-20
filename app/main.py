@@ -16,7 +16,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, backups, control, db, guard, notify
+from . import auth, backups, control, db, guard, notify, skins
 from . import servers as S
 from . import settings_store
 from .recorder import recorder
@@ -309,6 +309,72 @@ async def public_item_icon(sid: str, ns: str, name: str):
     if not data:
         raise HTTPException(404)
     return Response(data, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/api/public/skin/{sid}/{uuid}.png")
+async def public_skin(sid: str, uuid: str):
+    """Skins for the status page: only players who have joined a visible server."""
+    _require_status()
+    srv = await _public_server(sid)
+    if S.norm_uuid(uuid) not in S.known_players(srv):
+        raise HTTPException(404)
+    return await _skin_response(uuid, "public, max-age=3600")
+
+
+async def _skin_response(uuid: str, cache: str) -> Response:
+    data = await skins.skin(uuid)
+    if not data:
+        raise HTTPException(404)
+    return Response(data, media_type="image/png", headers={"Cache-Control": cache})
+
+
+# Fireworks: which kinds go off, their colours and pace. Public so the sign-in and
+# status pages can use them; only admins can change them.
+FIREWORK_KINDS = ["ball", "large", "star", "burst", "ring", "crossette", "spiral", "willow", "cube", "pickaxe",
+                  "axe", "creeper", "heart", "dragon", "bow", "tree"]
+FIREWORK_COLORS = ["#ff5a4f", "#ffa13d", "#ffe45c", "#9be34a", "#4fd7e6", "#5d8bff", "#c46cf0", "#ff8fc0", "#ffffff", "#3fd1b0"]
+FIREWORK_PACE = ("calm", "normal", "lively")
+FIREWORK_SPECIALS = ("rare", "sometimes", "often")
+
+
+def _fireworks_cfg() -> dict:
+    saved = settings_store.load().get("fireworks", {})
+    kinds = saved.get("kinds") if isinstance(saved.get("kinds"), dict) else {}
+    colors = [c for c in saved.get("colors", []) if c in FIREWORK_COLORS] if isinstance(saved.get("colors"), list) else []
+    return {
+        "kinds": {k: bool(kinds.get(k, True)) for k in FIREWORK_KINDS},
+        "colors": colors or list(FIREWORK_COLORS),
+        "pace": saved.get("pace") if saved.get("pace") in FIREWORK_PACE else "normal",
+        "showpieces": saved.get("showpieces") if saved.get("showpieces") in FIREWORK_SPECIALS else "sometimes",
+    }
+
+
+@app.get("/api/public/fireworks")
+async def public_fireworks():
+    return JSONResponse(_fireworks_cfg(), headers={"Cache-Control": "no-cache"})
+
+
+@app.put("/api/settings/fireworks")
+async def put_fireworks(request: Request):
+    user = auth.require_admin(request)
+    body = await _body(request)
+    cur = _fireworks_cfg()
+    if isinstance(body.get("kinds"), dict):
+        cur["kinds"].update({k: bool(v) for k, v in body["kinds"].items() if k in FIREWORK_KINDS})
+    if isinstance(body.get("colors"), list):
+        picked = [c for c in FIREWORK_COLORS if c in body["colors"]]
+        if not picked:
+            raise HTTPException(400, "Pick at least one colour")
+        cur["colors"] = picked
+    if body.get("pace") in FIREWORK_PACE:
+        cur["pace"] = body["pace"]
+    if body.get("showpieces") in FIREWORK_SPECIALS:
+        cur["showpieces"] = body["showpieces"]
+    if not any(cur["kinds"].values()):
+        raise HTTPException(400, "Leave at least one kind of firework on")
+    settings_store.save_section("fireworks", cur)
+    auth.audit(user, None, "fireworks_settings", f"{sum(cur['kinds'].values())} kinds, {len(cur['colors'])} colours, {cur['pace']}")
+    return cur
 
 
 @app.get("/api/settings/status")
@@ -654,6 +720,11 @@ async def item_icon(sid: str, ns: str, name: str):
     if not data:
         raise HTTPException(404)
     return Response(data, media_type="image/png", headers={"Cache-Control": "private, max-age=604800"})
+
+
+@app.get("/api/skins/{uuid}.png")
+async def player_skin(uuid: str):
+    return await _skin_response(uuid, "private, max-age=3600")
 
 
 @app.get("/api/servers/{sid}/assets/texture/{path:path}")

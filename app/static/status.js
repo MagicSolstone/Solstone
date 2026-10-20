@@ -5,6 +5,8 @@
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const POLL_MS = 5000;
+// Skins on this page come through the public route, which only serves players of visible servers.
+skinSource = (p) => p.uuid && st.sid ? `/api/public/skin/${encodeURIComponent(st.sid)}/${String(p.uuid).replace(/-/g, "")}.png` : null;
 const st = { servers: [], sid: null, board: null, prevOnline: null, prevEventTs: 0, fetchedAt: 0, tod: null, todAt: 0, scene: null, map: null };
 
 // ------------------------------------------------------------------ formatting
@@ -262,7 +264,13 @@ function mountMap(el, b, prev) {
   map.anim = performance.now();
   $("#sp-map-dim").textContent = order.length === 1 ? dimName(dims[dim].id) : "";
   for (const p of map.players) {
-    if (!map.heads[p.name]) { const img = new Image(); img.src = skinUrl(p); img.onload = () => draw(); map.heads[p.name] = img; }
+    if (!map.heads[p.name]) {
+      const img = new Image();
+      img.onload = () => draw();
+      img.onerror = () => { if (img.src !== backupSkin(p)) img.src = backupSkin(p); };
+      img.src = skinSource(p) || backupSkin(p);
+      map.heads[p.name] = img;
+    }
     if (!map.shown[p.name]) map.shown[p.name] = { ...p.position };
   }
   const ctx = cv.getContext("2d");

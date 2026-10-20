@@ -72,13 +72,13 @@ function motdHtml(text) {
 
 
 // ================================================================ player heads
-// Heads are cut from the player's skin file, the same file the full-body picture uses.
-// (mc-heads' ready-made head images can stay on an old or default skin for a long time.)
-// The face and the hat layer are two layers of the same image; the initial underneath
-// shows if the skin can't be loaded.
-const skinId = (p) => p.uuid ? String(p.uuid).replace(/-/g, "") : encodeURIComponent(p.name || "");
-const skinUrl = (p) => `https://mc-heads.net/skin/${skinId(p)}`;
+// Heads are cut from the player's skin file: Solstone's own copy straight from Mojang
+// first, with mc-heads (looked up by name) underneath as a backup. The face and the hat
+// layer are separate layers of the same image; the initial shows if neither loads.
+let skinSource = (p) => p.uuid ? `/api/skins/${String(p.uuid).replace(/-/g, "")}.png` : null;
+const backupSkin = (p) => `https://mc-heads.net/skin/${p.name ? encodeURIComponent(p.name) : String(p.uuid || "").replace(/-/g, "")}`;
 function faceHtml(p, size, cls = "") {
   const initial = esc((p.name || "?")[0].toUpperCase());
-  return `<span class="face ${cls}" style="--s:${size}px;--skin:url('${skinUrl(p)}')" aria-hidden="true"><span class="face-init">${initial}</span></span>`;
+  const main = skinSource(p);
+  return `<span class="face ${cls}" style="--s:${size}px;--skin:${main ? `url('${main}')` : "none"};--skin2:url('${backupSkin(p)}')" aria-hidden="true"><span class="face-init">${initial}</span></span>`;
 }

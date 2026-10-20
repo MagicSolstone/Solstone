@@ -62,3 +62,55 @@ def test_mod_advancements_grouped_under_their_root(tmp_path):
     assert all(m["category"] == "farmersdelight:main/root" for m in mods)
     assert all(m["category_title"] == {"translate": "farmersdelight.advancement.root"} for m in mods)
     assert a.lang()["item.farmersdelight.tomato"] == "Tomato"
+
+
+def test_fireworks_settings(client, viewer, anon):
+    cfg = anon.get("/api/public/fireworks").json()
+    assert cfg["pace"] == "normal" and all(cfg["kinds"].values()) and len(cfg["colors"]) == 10
+    assert viewer.put("/api/settings/fireworks", json={"pace": "calm"}).status_code == 403
+    r = client.put("/api/settings/fireworks", json={"kinds": {"dragon": False, "nope": True}, "colors": ["#ffe45c", "#bad"], "pace": "lively"})
+    assert r.status_code == 200
+    cfg = anon.get("/api/public/fireworks").json()
+    assert cfg["kinds"]["dragon"] is False and "nope" not in cfg["kinds"]
+    assert cfg["colors"] == ["#ffe45c"] and cfg["pace"] == "lively"
+    assert client.put("/api/settings/fireworks", json={"colors": []}).status_code == 400
+    assert client.put("/api/settings/fireworks", json={"kinds": {k: False for k in cfg["kinds"]}}).status_code == 400
+    client.put("/api/settings/fireworks", json={"kinds": {"dragon": True}, "colors": list(dict.fromkeys(
+        ["#ff5a4f", "#ffa13d", "#ffe45c", "#9be34a", "#4fd7e6", "#5d8bff", "#c46cf0", "#ff8fc0", "#ffffff", "#3fd1b0"])), "pace": "normal"})
+
+
+def test_skins_from_mojang(client, anon, monkeypatch):
+    from app import skins
+    png = b"\x89PNG fake skin"
+    calls = []
+
+    async def fake_fetch(uuid):
+        calls.append(uuid)
+        return png if uuid.startswith("069a") else None
+    monkeypatch.setattr(skins, "_fetch", fake_fetch)
+    u = "069a79f4-44e9-4726-a5be-fca90e38aaf5"
+    r = client.get(f"/api/skins/{u}.png")
+    assert r.status_code == 200 and r.content == png
+    assert client.get(f"/api/skins/{u}.png").content == png and len(calls) == 1      # cached on disk
+    assert client.get("/api/skins/00000000000000000000000000000001.png").status_code == 404
+    assert client.get("/api/skins/not-a-uuid.png").status_code == 404
+    assert anon.get(f"/api/skins/{u}.png").status_code == 401
+
+
+def test_skin_profile_parsing(monkeypatch):
+    import asyncio
+    import base64
+
+    import httpx
+
+    from app import skins
+    tex = base64.b64encode(json.dumps({"textures": {"SKIN": {"url": "http://textures.minecraft.net/texture/abc"}}}).encode()).decode()
+
+    def handler(req):
+        if req.url.host == "sessionserver.mojang.com":
+            return httpx.Response(200, json={"id": "x", "properties": [{"name": "textures", "value": tex}]})
+        assert str(req.url) == "https://textures.minecraft.net/texture/abc"
+        return httpx.Response(200, content=b"\x89PNGskin")
+    real = httpx.AsyncClient
+    monkeypatch.setattr(skins.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    assert asyncio.run(skins._fetch("069a79f444e94726a5befca90e38aaf5")) == b"\x89PNGskin"

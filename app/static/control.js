@@ -340,6 +340,7 @@ async function viewAdmin() {
   document.title = "Users & activity · Solstone";
   $("#rail-servers").innerHTML = railHtml(null);
   const [users, audit, lp] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/status")]);
+  const fw = await api("/api/public/fireworks");
   const fmtWhen = (ts) => ts ? fmtAgo(ts) : "never";
   setView(`<h1 style="margin-bottom:20px">Users &amp; activity</h1>
     <section class="section"><div class="section-head"><h2>Users</h2><span class="muted">Viewers can see everything but can't change anything. Admins can also control servers.</span></div>
@@ -364,6 +365,8 @@ async function viewAdmin() {
         <label class="switch-row"><span>Embed the web map (BlueMap, squaremap) <br><small class="muted">Only works if visitors can reach the map's address too. A plain http:// map won't load on an https:// page.</small></span><input type="checkbox" role="switch" data-sp="show_web_map" ${lp.show_web_map ? "checked" : ""}></label>
         <p class="muted small" style="margin-top:8px">Anyone with the address can see this page. Hidden servers are never shown.</p>
       </div></section>
+    <section class="section"><div class="section-head"><h2>Fireworks</h2><span class="muted">For the sign-in page, the status page and the sky behind the app. Press ▶ to try one.</span></div>
+      <div class="panel fw-settings" id="fw-settings">${fireworksSettingsHtml(fw)}</div></section>
     <section class="section"><div class="section-head"><h2>Admin activity</h2><span class="muted">Commands, changes and sign-in failures across all servers</span></div>
       <div class="panel">${auditHtml(audit, true)}</div></section>`);
 
@@ -373,6 +376,7 @@ async function viewAdmin() {
     try { await post("/api/settings/status", body, "PUT"); showToast(body.enabled ? 'Status page updated. <a href="/status" target="_blank" rel="noopener">Open it</a>' : "Status page turned off", 3500); }
     catch (err) { showToast(esc(err.message), 5000); }
   });
+  wireFireworksSettings($("#fw-settings"), fw);
   $("#add-user").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
@@ -402,4 +406,53 @@ async function viewAdmin() {
     try { await api(`/api/users/${tr.dataset.uid}`, { method: "DELETE" }); showToast(`Removed ${esc(name)}`, 2500); viewAdmin(); }
     catch (err) { showToast(esc(err.message), 5000); }
   }));
+}
+
+// ---------------------------------------------------------------- fireworks settings
+const FW_LABELS = [
+  ["ball", "Small ball"], ["large", "Large ball"], ["star", "Star"], ["burst", "Burst"], ["ring", "Ring"],
+  ["crossette", "Crossette", "bursts twice"], ["spiral", "Spiral"], ["willow", "Willow", "falling glitter"],
+  ["cube", "Block"], ["pickaxe", "Pickaxe"], ["axe", "Axe"], ["creeper", "Creeper"], ["heart", "Heart"],
+  ["dragon", "Ender dragon", "show-piece"], ["bow", "Bow and arrow", "show-piece"], ["tree", "Tree", "show-piece"],
+];
+function fireworksSettingsHtml(fw) {
+  const seg = (name, opts, cur) => `<div class="seg" role="group" data-fw-seg="${name}">${opts.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${v === cur}">${l}</button>`).join("")}</div>`;
+  return `<div class="fw-kinds">${FW_LABELS.map(([k, l, note]) => `<div class="fw-kind">
+      <label class="check"><input type="checkbox" data-fw-kind="${k}" ${fw.kinds[k] ? "checked" : ""}> <span>${esc(l)}${note ? ` <small class="muted">${esc(note)}</small>` : ""}</span></label>
+      <button type="button" class="icon-btn fw-try" data-try="${k}" title="Launch one now" aria-label="Try ${esc(l)}">▶</button></div>`).join("")}</div>
+    <div class="fw-row"><span>Colours</span><div class="fw-colors">${FW_COLORS.map((c) => `<button type="button" class="fw-swatch" data-color="${c}" aria-pressed="${fw.colors.includes(c)}" style="--c:${c}" aria-label="Colour ${c}"></button>`).join("")}</div></div>
+    <div class="fw-row"><span>How often</span>${seg("pace", [["calm", "Calm"], ["normal", "Normal"], ["lively", "Lively"]], fw.pace)}</div>
+    <div class="fw-row"><span>Show-pieces</span>${seg("showpieces", [["rare", "Rare"], ["sometimes", "Sometimes"], ["often", "Often"]], fw.showpieces)}</div>
+    <p class="muted small">Creeper, heart and tree keep their own colours, and willows are often classic gold. The ▶ buttons are easiest to watch with the Show switch (bottom right) turned off.</p>`;
+}
+function wireFireworksSettings(el, fw) {
+  const save = async (body) => {
+    try {
+      const cfg = await post("/api/settings/fireworks", body, "PUT");
+      applyFireworkSettings(cfg); Object.assign(fw, cfg);
+      showToast("Fireworks updated", 1800);
+    } catch (err) { showToast(esc(err.message), 4000); el.innerHTML = fireworksSettingsHtml(fw); wireFireworksSettings(el, fw); }
+  };
+  el.addEventListener("change", (e) => {
+    const k = e.target.dataset.fwKind;
+    if (k) save({ kinds: { [k]: e.target.checked } });
+  });
+  el.addEventListener("click", (e) => {
+    const t = e.target.closest("button");
+    if (!t) return;
+    if (t.dataset.try) { appSky.scene?.launch(t.dataset.try); return; }
+    if (t.dataset.color) {
+      const on = t.getAttribute("aria-pressed") !== "true";
+      const colors = $$(".fw-swatch", el).filter((b) => (b === t ? on : b.getAttribute("aria-pressed") === "true")).map((b) => b.dataset.color);
+      if (!colors.length) { showToast("Keep at least one colour", 2500); return; }
+      t.setAttribute("aria-pressed", String(on));
+      save({ colors });
+      return;
+    }
+    const seg = t.closest("[data-fw-seg]");
+    if (seg) {
+      seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === t)));
+      save({ [seg.dataset.fwSeg]: t.dataset.v });
+    }
+  });
 }

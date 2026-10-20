@@ -749,8 +749,9 @@ body.status-page { min-height: 100vh; }
 .face { position: relative; display: inline-block; flex: none; width: var(--s); height: var(--s); border-radius: 3px; overflow: hidden;
   background: var(--basalt); vertical-align: middle; }
 .face::after { content: ""; position: absolute; inset: 0; image-rendering: pixelated; background-repeat: no-repeat;
-  background-image: var(--skin), var(--skin); background-size: calc(var(--s) * 8) auto;
-  background-position: calc(var(--s) * -5) calc(var(--s) * -1), calc(var(--s) * -1) calc(var(--s) * -1); }
+  background-image: var(--skin), var(--skin), var(--skin2), var(--skin2); background-size: calc(var(--s) * 8) auto;
+  background-position: calc(var(--s) * -5) calc(var(--s) * -1), calc(var(--s) * -1) calc(var(--s) * -1),
+    calc(var(--s) * -5) calc(var(--s) * -1), calc(var(--s) * -1) calc(var(--s) * -1); }
 .face-init { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--font-display);
   font-size: calc(var(--s) * .5); color: var(--muted); }
 .who .face { margin-right: 2px; }
@@ -769,3 +770,14 @@ body.status-page { min-height: 100vh; }
 body.logged-out .sky-ctl { display: none; }
 @media (prefers-reduced-motion: reduce) { .sky-sw, .sky-sw::after { transition: none; } }
 @media (max-width: 640px) { .sky-ctl { right: 10px; bottom: 10px; } .sky-auto span:last-child { display: none; } }
+
+/* ------------------------------------------------------------ fireworks settings */
+.fw-kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 18px; margin-bottom: 14px; }
+.fw-kind { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.fw-kind .check { font-weight: 400; font-size: .92rem; }
+.fw-try { padding: 2px 9px; font-size: .75rem; }
+.fw-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 12px; }
+.fw-row > span { min-width: 110px; font-weight: 700; font-size: .92rem; }
+.fw-colors { display: flex; flex-wrap: wrap; gap: 8px; }
+.fw-swatch { width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(255,255,255,.15); background: var(--c); cursor: pointer; opacity: .3; }
+.fw-swatch[aria-pressed="true"] { opacity: 1; border-color: #fff; box-shadow: 0 0 10px var(--c); }
