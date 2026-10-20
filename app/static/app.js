@@ -1,4 +1,4 @@
-/* Lodestone frontend — vanilla JS, hash routing. */
+/* Solstone frontend — vanilla JS, hash routing. */
 "use strict";
 
 // Replaced at image build time with "beta" (push to main) or "stable" (version tag).
@@ -12,7 +12,7 @@ const nf = new Intl.NumberFormat();
 const fmtNum = (n) => nf.format(Math.round(n || 0));
 
 async function api(path, opts = {}) {
-  const headers = { "X-Lodestone": "1", ...(opts.headers || {}) };
+  const headers = { "X-Solstone": "1", ...(opts.headers || {}) };
   if (opts.body && typeof opts.body === "string" && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
   const r = await fetch(path, { ...opts, headers, credentials: "same-origin" });
   if (!r.ok) {
@@ -37,8 +37,8 @@ function showLogin(message = "") {
   root.hidden = false;
   root.innerHTML = `<canvas id="login-sky" aria-hidden="true"></canvas>
     <div class="login-wrap"><form class="login-card" id="login-form" autocomplete="on">
-      <img src="/static/lodestone.svg" alt="" width="56" height="56">
-      <div class="login-title"><h1>Lodestone</h1><p class="tagline">Server explorer for Minecraft</p></div>
+      <img src="/static/solstone.svg" alt="" width="56" height="56">
+      <div class="login-title"><h1>Solstone</h1><p class="tagline">Server explorer for Minecraft</p></div>
       <label>Username<input class="input" name="username" autocomplete="username" autocapitalize="off" required></label>
       <label>Password<input class="input" type="password" name="password" autocomplete="current-password" required></label>
       <p class="login-error" role="alert">${esc(message)}</p>
@@ -454,7 +454,7 @@ function setView(html) { state.items.clear(); hideTip(); view().innerHTML = html
 
 async function viewHome() {
   curSid = null;
-  document.title = "Lodestone";
+  document.title = "Solstone";
   await loadServers();
   if (state.servers.length === 1) { location.replace(`#/s/${encodeURIComponent(state.servers[0].id)}`); return; }
   if (!state.servers.length) {
@@ -473,10 +473,10 @@ async function viewHome() {
 
 function setupHelp(st) {
   const lines = [];
-  if (!st.crafty?.configured) lines.push(`Set <code>CRAFTY_URL</code> and <code>CRAFTY_TOKEN</code> so Lodestone can list your Crafty servers.`);
+  if (!st.crafty?.configured) lines.push(`Set <code>CRAFTY_URL</code> and <code>CRAFTY_TOKEN</code> so Solstone can list your Crafty servers.`);
   else if (st.crafty?.error) lines.push(`Crafty answered with an error: <code>${esc(st.crafty.error)}</code>. Check the URL and API token.`);
   if (!st.servers_dir_found) lines.push(`Mount Crafty's <code>servers</code> folder at <code>${esc(st.servers_dir)}</code> (read-only is fine).`);
-  return `<div class="empty"><h3>Connect Lodestone to Crafty</h3>${lines.map((l) => `<p style="margin-top:6px">${l}</p>`).join("") || "<p>Start a server in Crafty and it will appear here.</p>"}</div>`;
+  return `<div class="empty"><h3>Connect Solstone to Crafty</h3>${lines.map((l) => `<p style="margin-top:6px">${l}</p>`).join("") || "<p>Start a server in Crafty and it will appear here.</p>"}</div>`;
 }
 
 function serverHeader(s, tab) {
@@ -505,8 +505,8 @@ function serverHeader(s, tab) {
       <div><h1>${esc(s.name)}</h1><div class="motd">${motdHtml(s.motd)}</div><div class="facts">${facts}</div></div>
       <div class="head-actions">${statePill}${isAdmin() ? '<button class="icon-btn" id="btn-settings" title="Server settings" aria-label="Server settings">⚙</button>' : ""}</div>
     </header>
-    ${!java ? `<div class="notice">${esc(s.game_label)} server: Lodestone shows its status, who's online, play time and performance. Inventories, stats and world details are Minecraft Java only for now.</div>` : ""}
-    ${java && !s.folder_found ? `<div class="notice">Lodestone can't find this server's files at <code>${esc(s.folder)}</code>. Mount Crafty's servers folder so player data can be read.</div>` : ""}
+    ${!java ? `<div class="notice">${esc(s.game_label)} server: Solstone shows its status, who's online, play time and performance. Inventories, stats and world details are Minecraft Java only for now.</div>` : ""}
+    ${java && !s.folder_found ? `<div class="notice">Solstone can't find this server's files at <code>${esc(s.folder)}</code>. Mount Crafty's servers folder so player data can be read.</div>` : ""}
     ${s.rcon?.error && s.running ? `<div class="notice">Live data is unavailable: ${esc(s.rcon.error)}. Showing the last saved data instead.</div>` : ""}
     ${s.backup?.found && s.backup.stale ? `<div class="notice">The last backup was ${esc(fmtAgo(s.backup.latest.ts))}. Check the backup schedule in Crafty.</div>` : ""}
     ${s.backup?.configured && !s.backup.found ? `<div class="notice">No backups found for this server in Crafty's backups folder.</div>` : ""}
@@ -520,7 +520,7 @@ async function serverFrame(sid, tab) {
   const s = await api(`/api/servers/${encodeURIComponent(sid)}`);
   const idx = state.servers.findIndex((x) => x.id === sid);
   if (idx >= 0) state.servers[idx] = s;
-  document.title = `${s.name} · Lodestone`;
+  document.title = `${s.name} · Solstone`;
   if (!s.game || s.game === "minecraft-java") ensureServerAssets(sid);
   if (!state.lang[sid]) await api(`/api/servers/${sid}/assets/lang`).then((l) => (state.lang[sid] = l)).catch(() => {});
   return s;
@@ -802,7 +802,7 @@ function skyHtml(w) {
     const replies = w.debug?.rcon_replies || {};
     const asked = Object.keys(replies).length > 0 && !replies.error;
     const msg = asked
-      ? "Lodestone asked the server but couldn't understand its reply. This Minecraft version may word it differently. The details below show exactly what came back."
+      ? "Solstone asked the server but couldn't understand its reply. This Minecraft version may word it differently. The details below show exactly what came back."
       : "Not available yet. Turn on RCON for this server and the current day and time will show here.";
     const details = w.debug ? `<details class="debug"><summary>Details for troubleshooting</summary><pre>${esc(
       [...Object.entries(replies).map(([k, v]) => `> ${k}\n${v || "(empty reply)"}`), "", "Time-related save data:", ...(w.debug.time_related_keys.length ? w.debug.time_related_keys : ["(none found)"]),
@@ -888,7 +888,7 @@ async function openSettings(s) {
       <label>RCON host <small>Used for live inventories. Leave blank to use ${esc(s.rcon?.host || "the Crafty host")}.</small><input class="input" name="rcon_host" value="${esc(cur.rcon_host || "")}"></label>
       <label>RCON port <small>Leave blank to use rcon.port from server.properties</small><input class="input" name="rcon_port" inputmode="numeric" value="${esc(cur.rcon_port || "")}"></label>
       <label>RCON password <small>${cur.rcon_password_set ? "Saved. Type a new one to replace it." : "Leave blank to use rcon.password from server.properties"}</small><input class="input" type="password" name="rcon_password" autocomplete="off"></label>
-      <label class="check"><input type="checkbox" name="hidden" ${cur.hidden ? "checked" : ""}> Hide this server from Lodestone</label>
+      <label class="check"><input type="checkbox" name="hidden" ${cur.hidden ? "checked" : ""}> Hide this server from Solstone</label>
       <div class="actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" type="submit">Save settings</button></div>
     </form>`, (m) => {
     $("#settings-form", m).addEventListener("submit", async (e) => {

@@ -18,7 +18,7 @@ from .crafty import crafty, parse_player_list
 from .nbtutil import load_dat, norm_player, parse_entity_snbt
 from .rcon import Rcon, RconError
 
-log = logging.getLogger("lodestone.servers")
+log = logging.getLogger("solstone.servers")
 
 
 # ---------------------------------------------------------------- small helpers
@@ -621,7 +621,7 @@ async def live_world(srv: Server) -> dict:
 
 
 def world_debug(srv: Server) -> dict:
-    """What Lodestone saw while looking for the world time, to paste into a bug report."""
+    """What Solstone saw while looking for the world time, to paste into a bug report."""
     sources = {"level.dat": srv.level(), **{f"data/{k}.dat": v for k, v in _world_extras(srv).items()}}
     keys = []
     for name, src in sources.items():

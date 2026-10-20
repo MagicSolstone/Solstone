@@ -1,4 +1,4 @@
-"""Lodestone — a family-friendly dashboard for Minecraft servers run by Crafty Controller."""
+"""Solstone — a family-friendly dashboard for Minecraft servers run by Crafty Controller."""
 from __future__ import annotations
 
 import asyncio
@@ -23,7 +23,7 @@ from .config import config
 from .crafty import crafty
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-log = logging.getLogger("lodestone")
+log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
 VERSION = "1.0.0"
 
@@ -31,7 +31,7 @@ VERSION = "1.0.0"
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await S.registry.refresh(force=True)
-    log.info("Lodestone %s — %d server(s) found", VERSION, len(S.registry.servers))
+    log.info("Solstone %s — %d server(s) found", VERSION, len(S.registry.servers))
     db.conn()
     auth.bootstrap()
     if os.getenv("RECORDER_ENABLED", "true").lower() not in ("0", "false", "no"):
@@ -41,7 +41,7 @@ async def lifespan(_app: FastAPI):
     await crafty.close()
 
 
-app = FastAPI(title="Lodestone", version=VERSION, lifespan=lifespan)
+app = FastAPI(title="Solstone", version=VERSION, lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 PUBLIC_API = {"/api/health", "/api/auth/login"}
@@ -51,11 +51,11 @@ SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 @app.middleware("http")
 async def require_login(request: Request, call_next):
     """Every /api route needs a signed-in user except health and login. Changes also need
-    the X-Lodestone header, which cross-site pages can't send (CSRF protection)."""
+    the X-Solstone header, which cross-site pages can't send (CSRF protection)."""
     path = request.url.path
     if path.startswith("/api/"):
-        if request.method not in SAFE_METHODS and request.headers.get("x-lodestone") != "1":
-            return JSONResponse({"detail": "Missing X-Lodestone header"}, status_code=403)
+        if request.method not in SAFE_METHODS and request.headers.get("x-solstone") != "1":
+            return JSONResponse({"detail": "Missing X-Solstone header"}, status_code=403)
         request.state.user = await asyncio.to_thread(auth.user_from_request, request)
         if request.state.user is None and path not in PUBLIC_API and not path.startswith("/api/public/"):
             return JSONResponse({"detail": "Sign in to continue"}, status_code=401)
@@ -449,7 +449,7 @@ async def digest_preview(request: Request, send: bool = False):
     text = recorder.digest(list(S.registry.servers.values()))
     result = {"text": text}
     if send:
-        errors = await notify.send("Lodestone weekly digest", text, notify.TAGS["digest"], force=True)
+        errors = await notify.send("Solstone weekly digest", text, notify.TAGS["digest"], force=True)
         result.update(ok=not errors, errors=errors)
     return result
 
@@ -473,7 +473,7 @@ async def server_backups(sid: str):
 @app.post("/api/settings/notifications/test")
 async def test_notifications(request: Request):
     auth.require_admin(request)
-    errors = await notify.send("Lodestone", "Test notification. Join alerts will look like this.", force=True)
+    errors = await notify.send("Solstone", "Test notification. Join alerts will look like this.", force=True)
     return {"ok": not errors, "errors": errors}
 
 

@@ -1,4 +1,4 @@
-/* Lodestone — admin Control tab (console, quick actions, players, bedtime) and Users & activity page.
+/* Solstone — admin Control tab (console, quick actions, players, bedtime) and Users & activity page.
    Loaded after app.js and history.js and uses their helpers. */
 "use strict";
 
@@ -171,7 +171,7 @@ async function viewControl(sid) {
   };
 
   let history = [];
-  try { history = JSON.parse(localStorage.getItem("lodestone-cmd-history") || "[]"); } catch {}
+  try { history = JSON.parse(localStorage.getItem("solstone-cmd-history") || localStorage.getItem("lodestone-cmd-history") || "[]"); } catch {}
   let hIdx = history.length;
   const input = $("#cmd-input");
   input.addEventListener("keydown", (e) => {
@@ -183,7 +183,7 @@ async function viewControl(sid) {
     if (!cmd) return;
     if (DANGEROUS.test(cmd) && !(await confirmBox("Run this command?", `<code>/${esc(cmd)}</code> can't easily be undone.`, "Run it"))) return;
     history = [...history.filter((h) => h !== cmd), cmd].slice(-50); hIdx = history.length;
-    try { localStorage.setItem("lodestone-cmd-history", JSON.stringify(history)); } catch {}
+    try { localStorage.setItem("solstone-cmd-history", JSON.stringify(history)); } catch {}
     appendConsole([`> /${cmd}`], "cmd");
     try {
       const r = await post(`${base}/control/command`, { command: cmd });
@@ -337,7 +337,7 @@ function rulesHtml(rules, canRcon) {
 async function viewAdmin() {
   if (!isAdmin()) { location.replace("#/"); return; }
   curSid = null;
-  document.title = "Users & activity · Lodestone";
+  document.title = "Users & activity · Solstone";
   $("#rail-servers").innerHTML = railHtml(null);
   const [users, audit, lp] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/login")]);
   const fmtWhen = (ts) => ts ? fmtAgo(ts) : "never";
@@ -359,7 +359,7 @@ async function viewAdmin() {
       <div class="panel rules-ctl" id="login-page-settings" style="max-width:640px">
         <label class="switch-row"><span>Show servers, how many people are playing, and the in-game day and weather</span><input type="checkbox" role="switch" data-lp="show_servers" ${lp.show_servers ? "checked" : ""}></label>
         <label class="switch-row"><span>Also show who's playing (their Minecraft names)</span><input type="checkbox" role="switch" data-lp="show_names" ${lp.show_names ? "checked" : ""}></label>
-        <p class="muted small" style="margin-top:8px">Anyone with the address can see the sign-in page. Leave names off if Lodestone is reachable from outside your home.</p>
+        <p class="muted small" style="margin-top:8px">Anyone with the address can see the sign-in page. Leave names off if Solstone is reachable from outside your home.</p>
       </div></section>
     <section class="section"><div class="section-head"><h2>Admin activity</h2><span class="muted">Commands, changes and sign-in failures across all servers</span></div>
       <div class="panel">${auditHtml(audit, true)}</div></section>`);

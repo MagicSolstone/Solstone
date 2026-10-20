@@ -122,12 +122,12 @@ def test_change_password(client):
 
     from app.main import app
     client.post("/api/users", json={"username": "pwtest", "password": "first-pass-1", "role": "viewer"})
-    c = TestClient(app, headers={"X-Lodestone": "1"})
+    c = TestClient(app, headers={"X-Solstone": "1"})
     c.post("/api/auth/login", json={"username": "pwtest", "password": "first-pass-1"})
     assert c.post("/api/auth/password", json={"current": "wrong", "new": "second-pass-2"}).status_code == 400
     assert c.post("/api/auth/password", json={"current": "first-pass-1", "new": "second-pass-2"}).status_code == 200
     assert c.get("/api/auth/me").status_code == 200  # still signed in with the new session
-    c2 = TestClient(app, headers={"X-Lodestone": "1"})
+    c2 = TestClient(app, headers={"X-Solstone": "1"})
     assert c2.post("/api/auth/login", json={"username": "pwtest", "password": "second-pass-2"}).status_code == 200
 
 

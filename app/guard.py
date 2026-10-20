@@ -19,7 +19,7 @@ from . import servers as S
 from .control import component
 from .rcon import RconError
 
-log = logging.getLogger("lodestone.guard")
+log = logging.getLogger("solstone.guard")
 DEFAULT_BEDTIME = {"enabled": False, "start": "21:00", "end": "07:00", "days": list(range(7)),
                    "warn_minutes": [15, 5, 1], "exempt": [], "message": ""}
 

@@ -4,7 +4,7 @@
 # The Coop Ledger).
 #
 # PUID/PGID (default 1000:1000) control which host uid/gid owns the data
-# files. On Unraid use 99:100 (nobody:users). Lodestone only ever reads the
+# files. On Unraid use 99:100 (nobody:users). Solstone only ever reads the
 # Crafty servers folder, so that mount can stay read-only.
 set -e
 
@@ -16,18 +16,18 @@ if [ "$(id -u)" != "0" ]; then
     exec uvicorn app.main:app --host 0.0.0.0 --port 8080 --proxy-headers "$@"
 fi
 
-if ! getent group lodestone >/dev/null 2>&1; then
-    groupadd -o -g "$PGID" lodestone 2>/dev/null || groupadd lodestone
+if ! getent group solstone >/dev/null 2>&1; then
+    groupadd -o -g "$PGID" solstone 2>/dev/null || groupadd solstone
 fi
-if ! id lodestone >/dev/null 2>&1; then
-    useradd -o -u "$PUID" -g lodestone -M -s /usr/sbin/nologin lodestone 2>/dev/null || useradd -g lodestone -M -s /usr/sbin/nologin lodestone
+if ! id solstone >/dev/null 2>&1; then
+    useradd -o -u "$PUID" -g solstone -M -s /usr/sbin/nologin solstone 2>/dev/null || useradd -g solstone -M -s /usr/sbin/nologin solstone
 fi
 
 mkdir -p /data
-chown -R lodestone:lodestone /data
+chown -R solstone:solstone /data
 
 if command -v setpriv >/dev/null 2>&1; then
-    exec setpriv --reuid lodestone --regid lodestone --clear-groups \
+    exec setpriv --reuid solstone --regid solstone --clear-groups \
         uvicorn app.main:app --host 0.0.0.0 --port 8080 --proxy-headers "$@"
 else
     echo "WARNING: setpriv not found -- running as root. This still works, but isn't ideal."

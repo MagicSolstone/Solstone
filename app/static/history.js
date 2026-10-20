@@ -1,4 +1,4 @@
-/* Lodestone — play history, performance charts, activity feed, notification settings.
+/* Solstone — play history, performance charts, activity feed, notification settings.
    Loaded after app.js and uses its helpers ($, esc, api, fmt*, serverFrame, ...). */
 "use strict";
 
@@ -325,7 +325,7 @@ async function viewActivity(sid) {
       : `<span class="muted">Nobody has played today yet.</span>`;
     if (!order.length) {
       $("#legend").innerHTML = "";
-      $("#daily-chart").innerHTML = `<div class="empty"><h3>No play time recorded yet</h3><p>Lodestone checks who's online every 30 seconds. Daily totals build up from today onward.</p></div>`;
+      $("#daily-chart").innerHTML = `<div class="empty"><h3>No play time recorded yet</h3><p>Solstone checks who's online every 30 seconds. Daily totals build up from today onward.</p></div>`;
     } else {
       $("#legend").innerHTML = order.length > 1 ? legendHtml(order) : "";
       renderDailyBars($("#daily-chart"), a.daily, order);
@@ -381,7 +381,7 @@ async function viewPerformance(sid) {
     else if (!rec.running) notes.push(`<div class="notice">The background recorder isn't running, so no new measurements are being saved.</div>`);
     else if (rec.last_poll && until - rec.last_poll > rec.interval * 4) notes.push(`<div class="notice">The last measurement was ${esc(fmtAgo(rec.last_poll))}. The recorder may be stuck; check the container logs.</div>`);
     if (!pts.length) {
-      $("#perf-body").innerHTML = notes.join("") + `<div class="empty"><h3>No measurements yet</h3><p>Lodestone records performance every ${Math.round(rec.interval || 30)} seconds while it's running. Check back in a few minutes.</p></div>`;
+      $("#perf-body").innerHTML = notes.join("") + `<div class="empty"><h3>No measurements yet</h3><p>Solstone records performance every ${Math.round(rec.interval || 30)} seconds while it's running. Check back in a few minutes.</p></div>`;
       return;
     }
     if (mt.first_ts && until - mt.first_ts < 3600) {
@@ -429,7 +429,7 @@ async function renderPlayerHistory(el, sid, p) {
   const total = h.daily.reduce((a, d) => a + d.seconds, 0);
   const week = h.daily.slice(-7).reduce((a, d) => a + d.seconds, 0);
   $("#h-total").textContent = `${fmtSeconds(week)} this week · ${fmtSeconds(total)} in 30 days`;
-  if (!total) $("#p-daily").innerHTML = `<div class="empty"><p>No play time recorded yet. Daily totals build up from when Lodestone started recording.</p></div>`;
+  if (!total) $("#p-daily").innerHTML = `<div class="empty"><p>No play time recorded yet. Daily totals build up from when Solstone started recording.</p></div>`;
   else renderDailyBars($("#p-daily"), h.daily.map((d) => ({ date: d.date, players: { [p.name]: d.seconds } })), [p.name], { color: playerColor(p.name), label: `${p.name}'s time played per day` });
   mountTimeline($("#p-feed"), sid, p.name);
 }
@@ -444,7 +444,7 @@ async function openNotifications() {
   const hourLabel = (h) => new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: "numeric" });
   openModal(`<h2>Notifications</h2>
     <form id="notify-form">
-      <label>ntfy topic URL <small>For example https://ntfy.sh/your-secret-topic or your own ntfy server</small><input class="input" name="ntfy_url" value="${esc(c.ntfy_url || "")}" placeholder="https://ntfy.sh/lodestone-abc123"></label>
+      <label>ntfy topic URL <small>For example https://ntfy.sh/your-secret-topic or your own ntfy server</small><input class="input" name="ntfy_url" value="${esc(c.ntfy_url || "")}" placeholder="https://ntfy.sh/solstone-abc123"></label>
       <label>ntfy access token <small>${c.ntfy_token_set ? "Saved. Type a new one to replace it." : "Only needed if your topic is protected"}</small><input class="input" type="password" name="ntfy_token" autocomplete="off"></label>
       <label>Discord webhook URL <small>${c.discord_webhook_set ? "Saved. Paste a new one to replace it." : "Server Settings → Integrations → Webhooks in Discord"}</small><input class="input" type="password" name="discord_webhook" autocomplete="off"></label>
       <fieldset class="checks"><legend>Send a notification when</legend>

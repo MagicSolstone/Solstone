@@ -26,7 +26,7 @@ from PIL import Image, ImageDraw
 
 from .config import config
 
-log = logging.getLogger("lodestone.assets")
+log = logging.getLogger("solstone.assets")
 
 MANIFEST = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 KEEP_PREFIXES = (

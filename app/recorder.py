@@ -23,7 +23,7 @@ from . import backups, guard, notify
 from .notify import maybe_notify
 from .rcon import RconError
 
-log = logging.getLogger("lodestone.recorder")
+log = logging.getLogger("solstone.recorder")
 
 POLL_INTERVAL = float(os.getenv("POLL_INTERVAL", "30"))
 LOG_INTERVAL = float(os.getenv("LOG_INTERVAL", "5"))
@@ -157,7 +157,7 @@ class Recorder:
         if c["digest_enabled"] and channels and now.weekday() == c["digest_day"] and now.hour >= c["digest_hour"]:
             week = now.isocalendar()
             if db.alert_once(f"digest:{week.year}-{week.week}"):
-                await notify.send("Lodestone weekly digest", self.digest(servers), notify.TAGS["digest"])
+                await notify.send("Solstone weekly digest", self.digest(servers), notify.TAGS["digest"])
 
         if "backup" in c["events"] and channels:
             for srv in servers:

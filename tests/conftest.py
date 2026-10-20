@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(tempfile.mkdtemp(prefix="lodestone-test-"))
+ROOT = Path(tempfile.mkdtemp(prefix="solstone-test-"))
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -35,7 +35,7 @@ os.environ.update({
 })
 
 
-HDR = {"X-Lodestone": "1"}
+HDR = {"X-Solstone": "1"}
 
 
 @pytest.fixture(scope="session")

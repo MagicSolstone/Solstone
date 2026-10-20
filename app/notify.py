@@ -9,7 +9,7 @@ import httpx
 
 from . import settings_store
 
-log = logging.getLogger("lodestone.notify")
+log = logging.getLogger("solstone.notify")
 
 EVENT_TYPES = ["join", "leave", "death", "advancement", "server", "backup"]
 DEFAULT_EVENTS = ["join"]
@@ -124,7 +124,7 @@ async def send(title: str, message: str, tag: str = "video_game", force: bool = 
                 headers["Authorization"] = f"Bearer {c['ntfy_token']}"
             jobs.append(("ntfy", client.post(c["ntfy_url"], content=message.encode("utf-8"), headers=headers)))
         if c["discord_webhook"]:
-            jobs.append(("Discord", client.post(c["discord_webhook"], json={"username": "Lodestone",
+            jobs.append(("Discord", client.post(c["discord_webhook"], json={"username": "Solstone",
                                                                              "content": f"**{title}**\n{message}"})))
         if not jobs:
             return ["No notification channel is set up"]

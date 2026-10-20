@@ -126,5 +126,18 @@ def test_settings_require_admin(client, viewer, sid):
 
 def test_spa_fallback(client):
     r = client.get("/s/whatever")
-    assert r.status_code == 200 and "<title>Lodestone</title>" in r.text
+    assert r.status_code == 200 and "<title>Solstone</title>" in r.text
     assert client.get("/api/does-not-exist").status_code == 404
+
+
+def test_adopts_old_lodestone_db(tmp_path):
+    from app.db import _adopt_old_db
+
+    (tmp_path / "lodestone.db").write_text("x")
+    (tmp_path / "lodestone.db-wal").write_text("w")
+    _adopt_old_db(tmp_path / "solstone.db")
+    assert (tmp_path / "solstone.db").read_text() == "x"
+    assert (tmp_path / "solstone.db-wal").exists() and not (tmp_path / "lodestone.db").exists()
+    (tmp_path / "lodestone.db").write_text("y")  # never overwrites an existing database
+    _adopt_old_db(tmp_path / "solstone.db")
+    assert (tmp_path / "solstone.db").read_text() == "x"

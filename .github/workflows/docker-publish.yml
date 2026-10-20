@@ -9,10 +9,10 @@ name: Build and publish Docker image
 #   -> published as `1.2.3`, `stable` AND `latest`. `latest` tracks
 #   `stable`, so anyone who doesn't pick a tag lands on the safe default.
 #
-# Image: ghcr.io/tjusczak/lodestone
+# Image: ghcr.io/tjusczak/solstone
 #
 # First-time setup: after this runs once, open the package page on GitHub
-# (your profile -> Packages -> lodestone -> Package settings) and set its
+# (your profile -> Packages -> solstone -> Package settings) and set its
 # visibility to Public, otherwise `docker pull` gets a 401 -- GHCR packages
 # start out private.
 
@@ -57,7 +57,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Compute lowercase image name
-        # Registries require lowercase paths; the repo is TJusczak/Lodestone.
+        # Registries require lowercase paths; the repo is TJusczak/Solstone.
         run: echo "IMAGE_NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
       - name: Stamp the build channel into app.js

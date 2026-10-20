@@ -1,5 +1,5 @@
-/* Lodestone — deepslate, lapis and gold. */
-/* Fonts are bundled so Lodestone works without internet (SIL OFL, see fonts/). */
+/* Solstone — deepslate, lapis and gold. */
+/* Fonts are bundled so Solstone works without internet (SIL OFL, see fonts/). */
 @font-face { font-family: "Pixelify Sans"; src: url("fonts/pixelify-sans-latin-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: "Pixelify Sans"; src: url("fonts/pixelify-sans-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
 @font-face { font-family: "Pixelify Sans"; src: url("fonts/pixelify-sans-latin-600-normal.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }

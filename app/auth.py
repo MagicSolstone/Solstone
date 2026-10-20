@@ -7,8 +7,8 @@
 - On first start with no users, an admin account is created from
   ADMIN_USERNAME / ADMIN_PASSWORD, or with a generated password written to
   DATA_DIR/admin_credentials.txt and the container log.
-- State-changing requests must carry an `X-Lodestone: 1` header. Browsers won't
-  send custom headers cross-site without CORS (which Lodestone never allows), so
+- State-changing requests must carry an `X-Solstone: 1` header. Browsers won't
+  send custom headers cross-site without CORS (which Solstone never allows), so
   together with SameSite=Lax cookies this blocks cross-site request forgery.
 """
 from __future__ import annotations
@@ -28,10 +28,10 @@ from fastapi import HTTPException, Request
 from . import db
 from .config import config
 
-log = logging.getLogger("lodestone.auth")
+log = logging.getLogger("solstone.auth")
 
 ROLES = ("viewer", "admin")
-COOKIE = "lodestone_session"
+COOKIE = "solstone_session"
 SESSION_DAYS = int(os.getenv("SESSION_DAYS", "30"))
 TRUST_PROXY = os.getenv("TRUST_PROXY_HEADERS", "").lower() in ("1", "true", "yes")
 MAX_FAILS = int(os.getenv("LOGIN_MAX_ATTEMPTS", "8"))
@@ -169,7 +169,7 @@ def update_user(uid: int, role: str | None = None, password: str | None = None) 
     validate_new(None, password, role)
     if role and role != u.role:
         if u.role == "admin" and count_admins() <= 1:
-            raise HTTPException(400, "Lodestone needs at least one admin")
+            raise HTTPException(400, "Solstone needs at least one admin")
         db.x("UPDATE users SET role=? WHERE id=?", (role, uid))
     if password:
         db.x("UPDATE users SET password_hash=? WHERE id=?", (hash_password(password), uid))
@@ -183,7 +183,7 @@ def delete_user(uid: int) -> None:
     if not u:
         raise HTTPException(404, "User not found")
     if u.role == "admin" and count_admins() <= 1:
-        raise HTTPException(400, "Lodestone needs at least one admin")
+        raise HTTPException(400, "Solstone needs at least one admin")
     db.x("DELETE FROM sessions_auth WHERE user_id=?", (uid,))
     db.x("DELETE FROM users WHERE id=?", (uid,))
 
@@ -200,7 +200,7 @@ def bootstrap() -> None:
     create_user(username, password, "admin", check=False)  # a short ADMIN_PASSWORD is the operator's call
     if generated:
         path = config.data_dir / "admin_credentials.txt"
-        path.write_text(f"Lodestone first admin account\nusername: {username}\npassword: {password}\n"
+        path.write_text(f"Solstone first admin account\nusername: {username}\npassword: {password}\n"
                         "Change this password after signing in (account menu), then delete this file.\n")
         try:
             path.chmod(0o600)

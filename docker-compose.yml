@@ -1,11 +1,11 @@
 services:
-  lodestone:
-    image: ghcr.io/tjusczak/lodestone:latest
+  solstone:
+    image: ghcr.io/tjusczak/solstone:latest
     # :latest = :stable, only updates when a version is tagged (v1.2.3).
     # Swap in :beta for builds of every push to main.
     # To build from local source instead, comment image: and uncomment:
     # build: .
-    container_name: lodestone
+    container_name: solstone
     restart: unless-stopped
     ports:
       - "8085:8080"
@@ -27,8 +27,8 @@ services:
       - /mnt/user/appdata/crafty-4/servers:/servers:ro
       # Optional: Crafty's backups folder, read-only, for backup status
       - /mnt/user/appdata/crafty-4/backups:/backups:ro
-      # Lodestone settings + downloaded item icons
-      - /mnt/user/appdata/lodestone:/data
+      # Solstone settings + downloaded item icons
+      - /mnt/user/appdata/solstone:/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=4).status == 200 else 1)"]
       interval: 30s

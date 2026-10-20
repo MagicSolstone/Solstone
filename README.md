@@ -1,4 +1,4 @@
-# Lodestone
+# Solstone
 
 A family-friendly web dashboard for Minecraft Java servers run by **Crafty Controller 4**.
 
@@ -22,7 +22,7 @@ A family-friendly web dashboard for Minecraft Java servers run by **Crafty Contr
 - **Control (admins):** a live console with command history, one-click time, weather and difficulty, game-rule switches, and a message to everyone (optionally shown big on screen). Player actions: heal, send to spawn or bed, teleport, game mode, give items, private message and kick. Also whitelist and operator management, and start, stop, restart and back up through Crafty.
 - **Bedtime mode:** in-game warnings, then save and disconnect at a set time, with joins blocked until wake-up. Daily screen-time limits can also warn then disconnect a player.
 
-It's read-only. Lodestone never writes to your servers, and the servers folder can be mounted `:ro`.
+It's read-only. Solstone never writes to your servers, and the servers folder can be mounted `:ro`.
 
 ## How it gets the data
 
@@ -34,7 +34,7 @@ It's read-only. Lodestone never writes to your servers, and the servers folder c
 | Inventory, XP, health, position (online) | RCON `data get entity <name>` |
 | Who's online | RCON `list`, falling back to Crafty |
 | Names | `usercache.json` |
-| Sessions, metrics, TPS | Recorded by Lodestone every 30 s (who's online, Crafty stats, RCON `tick query`) into `/data/lodestone.db` |
+| Sessions, metrics, TPS | Recorded by Solstone every 30 s (who's online, Crafty stats, RCON `tick query`) into `/data/solstone.db` |
 | Activity feed | New lines in each server's `logs/latest.log` |
 | Item icons, item/stat/mob names, advancements | Minecraft client jar for the server's version, downloaded once from Mojang (~30 MB, ~10 MB kept) |
 
@@ -54,14 +54,14 @@ rcon.port=25575
 rcon.password=pick-a-long-random-password
 ```
 
-Restart the server. Lodestone reads the port and password from `server.properties` automatically. Make sure the RCON port is published from the Crafty container. The official Crafty compose file publishes `25500-25600`, which covers the default. Don't forward RCON through your router.
+Restart the server. Solstone reads the port and password from `server.properties` automatically. Make sure the RCON port is published from the Crafty container. The official Crafty compose file publishes `25500-25600`, which covers the default. Don't forward RCON through your router.
 
 ### 3. Run it
 
 ```yaml
 services:
-  lodestone:
-    image: ghcr.io/tjusczak/lodestone:latest   # or :beta, or build: .
+  solstone:
+    image: ghcr.io/tjusczak/solstone:latest   # or :beta, or build: .
     restart: unless-stopped
     ports: ["8085:8080"]
     environment:
@@ -72,21 +72,23 @@ services:
       PGID: "100"
     volumes:
       - /mnt/user/appdata/crafty-4/servers:/servers:ro
-      - /mnt/user/appdata/lodestone:/data
+      - /mnt/user/appdata/solstone:/data
 ```
 
-Open `http://<host>:8085`. If you only have one server, Lodestone opens straight to it.
+Open `http://<host>:8085`. If you only have one server, Solstone opens straight to it.
 
-**Unraid:** add a container from `ghcr.io/tjusczak/lodestone:latest` with those two paths and env vars. `PUID`/`PGID` decide who owns `/data`; `99`/`100` is nobody:users.
+**Unraid:** add a container from `ghcr.io/tjusczak/solstone:latest` with those two paths and env vars. `PUID`/`PGID` decide who owns `/data`; `99`/`100` is nobody:users.
+
+**Coming from Lodestone** (this project's old name): change the image to `ghcr.io/tjusczak/solstone` and keep your existing `/data` mapping, or rename the folder to `appdata/solstone` first. On first start Solstone picks up `lodestone.db`, so history, users and settings carry over. Everyone has to sign in once more because the session cookie was renamed.
 
 ### 4. Sign in
 
-On first start Lodestone creates an admin account. If you didn't set `ADMIN_PASSWORD`, the password is in the container log (Unraid: the Lodestone icon → Logs) and in `/data/admin_credentials.txt`. Sign in, change it from the account menu, and delete that file. Add family and friends under **Users & activity**.
+On first start Solstone creates an admin account. If you didn't set `ADMIN_PASSWORD`, the password is in the container log (Unraid: the Solstone icon → Logs) and in `/data/admin_credentials.txt`. Sign in, change it from the account menu, and delete that file. Add family and friends under **Users & activity**.
 
 For start, stop, restart and backup buttons, the Crafty API key needs command permission on the servers. A full-access key already has it.
 
 ### 5. Optional: a live map
-Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web map on port 8100. Then in Lodestone open **⚙ Server settings** and paste the map address (e.g. `http://192.168.150.10:8100`). It appears on the World tab.
+Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web map on port 8100. Then in Solstone open **⚙ Server settings** and paste the map address (e.g. `http://192.168.150.10:8100`). It appears on the World tab.
 
 ## Environment variables
 
@@ -116,14 +118,14 @@ Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web ma
 | `BACKUP_STALE_HOURS` | `48` | A backup older than this shows a warning and can send a notification |
 | `PUID` / `PGID` | `1000` | Host user/group that owns `/data` |
 
-Without Crafty configured, Lodestone still works by scanning `SERVERS_DIR` for folders containing `server.properties`.
+Without Crafty configured, Solstone still works by scanning `SERVERS_DIR` for folders containing `server.properties`.
 
 ## Notes and limits
 
-- **Unraid storage:** the history database works on `/mnt/user/appdata`. Lodestone switches SQLite out of WAL mode when the filesystem can't support it. Pointing `/data` at a pool path (e.g. `/mnt/safestorage/appdata/lodestone`) is a little faster.
-- **History starts when Lodestone does.** Play time per day, sessions and performance graphs build up from the moment it first runs. Minecraft's own statistics only keep lifetime totals.
+- **Unraid storage:** the history database works on `/mnt/user/appdata`. Solstone switches SQLite out of WAL mode when the filesystem can't support it. Pointing `/data` at a pool path (e.g. `/mnt/safestorage/appdata/solstone`) is a little faster.
+- **History starts when Solstone does.** Play time per day, sessions and performance graphs build up from the moment it first runs. Minecraft's own statistics only keep lifetime totals.
 - **TPS and tick time** need RCON and Minecraft 1.20.3 or newer, which added `/tick query`.
-- **Chat** is stored in Lodestone's database and shown on the Activity tab. It's never sent in notifications.
+- **Chat** is stored in Solstone's database and shown on the Activity tab. It's never sent in notifications.
 
 - **Player skins** come from mc-heads.net in the visitor's browser. Offline-mode servers fall back to initials.
 - **Block-entity items** (chests, beds, heads, banners) are drawn as a cube of their particle texture. Everything else renders like the game's own icons.
@@ -144,7 +146,7 @@ Every build runs lint and tests first; a failing build is never published. Image
 
 To release: `git tag v1.0.0 && git push origin v1.0.0`, or create a release on GitHub with a new `v1.0.0` tag.
 
-The first time the workflow publishes, set the package to **Public** under your GitHub profile → Packages → lodestone → Package settings. Otherwise pulls get a 401.
+The first time the workflow publishes, set the package to **Public** under your GitHub profile → Packages → solstone → Package settings. Otherwise pulls get a 401.
 
 ## Development
 

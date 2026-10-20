@@ -11,7 +11,7 @@ import httpx
 
 from .config import config
 
-log = logging.getLogger("lodestone.crafty")
+log = logging.getLogger("solstone.crafty")
 
 
 class CraftyClient:

@@ -1,4 +1,4 @@
-/* Lodestone — sign-in page: public server status and a pixel fireworks night.
+/* Solstone — sign-in page: public server status and a pixel fireworks night.
    Rockets launch from behind a dark blocky hill (with a small figure and their dog
    watching), burst into Minecraft-style shapes and colours, then fall and fade. */
 "use strict";
