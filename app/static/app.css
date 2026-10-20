@@ -489,7 +489,8 @@ body.logged-out .shell { display: none; }
 .admin-only { display: none !important; }
 body.is-admin .admin-only { display: block !important; }
 .account { position: relative; width: 100%; }
-.account-menu { position: absolute; bottom: calc(100% + 6px); left: 0; min-width: 200px; background: #15181c; border: 1px solid var(--basalt); border-radius: var(--radius-m); padding: 6px; z-index: 40; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.account-menu { position: fixed; min-width: 200px; background: #15181c; border: 1px solid var(--basalt); border-radius: var(--radius-m); padding: 6px; z-index: 200; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+body.logged-out .account-menu { display: none; }
 .account-menu button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
 .account-menu button:hover { background: var(--tuff-2); }
 .account-role { padding: 6px 10px 8px; color: var(--muted); font-size: .82rem; border-bottom: 1px solid var(--basalt); margin-bottom: 4px; }
@@ -583,7 +584,6 @@ body.is-admin .admin-only { display: block !important; }
   .ctl-top, .ctl-main, .lists { grid-template-columns: 1fr; }
   .add-grid { grid-template-columns: 1fr; }
   .audit li { grid-template-columns: 1fr; gap: 2px; }
-  .account-menu { bottom: auto; top: calc(100% + 6px); left: auto; right: 0; }
   .account { width: auto; }
   .rail-foot { flex-direction: row; align-items: center; }
   .rail-btn span { display: none; }

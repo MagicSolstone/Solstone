@@ -80,9 +80,22 @@ async function signedIn(user) {
 
 function wireAccountMenu() {
   const btn = $("#btn-account"), menu = $("#account-menu");
+  // The sidebar scrolls, which clips anything that pops out of it, so the menu lives on
+  // <body> and is positioned next to the button whenever it opens.
+  document.body.append(menu);
+  const place = () => {
+    const r = btn.getBoundingClientRect(), mh = menu.offsetHeight, mw = menu.offsetWidth;
+    const below = innerHeight - r.bottom, above = r.top;
+    menu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - mw - 8))}px`;
+    menu.style.top = below >= mh + 12 || below >= above ? `${r.bottom + 6}px` : `${Math.max(8, r.top - mh - 6)}px`;
+  };
   const close = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
-  btn.addEventListener("click", (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; btn.setAttribute("aria-expanded", String(!menu.hidden)); });
+  const open = () => { menu.hidden = false; place(); btn.setAttribute("aria-expanded", "true"); menu.querySelector("button")?.focus(); };
+  btn.addEventListener("click", (e) => { e.stopPropagation(); menu.hidden ? open() : close(); });
   document.addEventListener("click", (e) => { if (!menu.contains(e.target)) close(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) { close(); btn.focus(); } });
+  addEventListener("resize", close);
+  addEventListener("scroll", close, { passive: true });
   $("#btn-logout").addEventListener("click", async () => { close(); await post("/api/auth/logout").catch(() => {}); showLogin(); });
   $("#btn-password").addEventListener("click", () => { close(); openPasswordChange(); });
 }
