@@ -48,6 +48,7 @@ const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 const roman = (n) => ROMAN[n] || String(n);
 const humanize = (s) => String(s).replace(/^.*[:/]/, "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 const splitId = (id) => { const [a, b] = String(id).includes(":") ? String(id).split(":") : ["minecraft", id]; return [a, b]; };
+function fmtSeconds(sec) { return fmtDuration((sec || 0) * 20); }
 function hashColor(str) {
   let h = 0; for (const c of str) h = (h * 31 + c.charCodeAt(0)) | 0;
   return `hsl(${Math.abs(h) % 360} 32% 42%)`;
@@ -396,10 +397,12 @@ function serverHeader(s, tab) {
     s.cpu != null && s.running && `<span>CPU <b>${esc(Number(s.cpu).toFixed(1))}%</b></span>`,
     s.mem && s.running && `<span>RAM <b>${esc(s.mem)}</b></span>`,
     s.world_size && `<span>World <b>${esc(s.world_size)}</b></span>`,
+    s.perf && s.running && `<span>TPS <b>${esc(s.perf.tps.toFixed(1))}</b></span>`,
     s.port && `<span>Port <b>${esc(s.port)}</b></span>`,
   ].filter(Boolean).join("");
   const base = `#/s/${encodeURIComponent(s.id)}`;
-  const tabs = [["players", "Players", base], ["world", "World", `${base}/world`], ["leaderboards", "Leaderboards", `${base}/leaderboards`], ["mods", "Mods", `${base}/mods`]];
+  const tabs = [["players", "Players", base], ["activity", "Activity", `${base}/activity`], ["performance", "Performance", `${base}/performance`],
+    ["world", "World", `${base}/world`], ["leaderboards", "Leaderboards", `${base}/leaderboards`], ["mods", "Mods", `${base}/mods`]];
   return `<header class="server-head">
       <div class="big-icon">${s.has_icon ? `<img src="/api/servers/${encodeURIComponent(s.id)}/icon.png" alt="">` : esc((s.name || "?")[0])}</div>
       <div><h1>${esc(s.name)}</h1><div class="motd">${motdHtml(s.motd)}</div><div class="facts">${facts}</div></div>
@@ -437,7 +440,7 @@ function playerCard(p) {
   const inner = `${headHtml(p)}
     <div><div class="pname">${esc(p.name)} ${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""} ${p.op ? '<span class="op-badge">OP</span>' : ""}</div>
       <div class="meta">${presence}${where}</div>
-      <div class="line"><span title="Time played">⏱ ${fmtDuration(h.play_time)}</span><span title="Advancements">★ ${p.advancements ?? 0}</span>${p.health != null ? `<span title="Health">❤ ${p.health}</span>` : ""}</div>
+      <div class="line"><span title="Time played in total">⏱ ${fmtDuration(h.play_time)}</span>${p.today_seconds ? `<span title="Played today">Today ${fmtSeconds(p.today_seconds)}</span>` : ""}<span title="Advancements">★ ${p.advancements ?? 0}</span>${p.health != null ? `<span title="Health">❤ ${p.health}</span>` : ""}</div>
     </div>`;
   return href ? `<a class="player-card ${p.online ? "is-online" : ""}" href="${href}">${inner}</a>` : `<div class="player-card is-online">${inner}</div>`;
 }
@@ -465,7 +468,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
   try { p = await api(`/api/servers/${sid}/players/${uuid}`); }
   catch (e) { setView(serverHeader(s, "players") + `<div class="empty"><h3>Player not found</h3><p>${esc(e.message)}</p></div>`); wireHeader(s); return; }
   const base = `#/s/${encodeURIComponent(sid)}/p/${uuid}`;
-  const tabs = [["inventory", "Inventory"], ["stats", "Statistics"], ["advancements", "Advancements"]];
+  const tabs = [["inventory", "Inventory"], ["history", "Play history"], ["stats", "Statistics"], ["advancements", "Advancements"]];
   setView(`<a class="back" href="#/s/${encodeURIComponent(sid)}">← ${esc(s.name)}</a>
     <div id="hero">${playerHero(p)}</div>
     <div id="strip">${statStrip(p)}</div>
@@ -479,6 +482,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
     if (tab === "inventory") el.innerHTML = inventoryHtml(p);
     else if (tab === "stats") renderStats(el, p);
     else if (tab === "advancements") el.innerHTML = advancementsHtml(p);
+    else if (tab === "history") renderPlayerHistory(el, sid, p);
   };
   renderTab();
   if (p.online) {
@@ -806,6 +810,8 @@ async function route() {
       const sid = parts[1];
       if (parts[2] === "p" && parts[3]) await viewPlayer(sid, parts[3], parts[4] || "inventory");
       else if (parts[2] === "world") await viewWorld(sid);
+      else if (parts[2] === "activity") await viewActivity(sid);
+      else if (parts[2] === "performance") await viewPerformance(sid);
       else if (parts[2] === "leaderboards") await viewLeaderboards(sid);
       else if (parts[2] === "mods") await viewMods(sid);
       else await viewPlayers(sid);
@@ -817,6 +823,7 @@ async function route() {
 }
 addEventListener("hashchange", () => { route(); view().focus({ preventScroll: true }); scrollTo(0, 0); });
 document.addEventListener("DOMContentLoaded", async () => {
+  $("#btn-notify")?.addEventListener("click", openNotifications);
   const ch = $("#build-channel");
   if (ch && BUILD_CHANNEL === "beta") { ch.textContent = "Beta build"; ch.hidden = false; }
   await loadServers(); route();

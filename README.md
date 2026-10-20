@@ -11,6 +11,9 @@ A family-friendly web dashboard for Minecraft Java servers run by **Crafty Contr
   - Every tracked statistic (general, items, mobs) and advancement progress.
 - **Live data:** for online players this comes from RCON (refreshes every few seconds). Offline players are read from their last save.
 - **World:** day and time, weather, seed, spawn, where everyone is, chunks explored per dimension, game rules, data packs, plus an embedded BlueMap or squaremap.
+- **Activity:** time played per player per day, recent sessions, and a feed of joins, chat, deaths and advancements read from the server log.
+- **Performance:** TPS, tick time, CPU, memory, players online and uptime, graphed over 6 hours to 30 days.
+- **Notifications** to ntfy or Discord when someone joins, leaves, dies or earns an advancement, or a server stops. Quiet hours are supported.
 - **Leaderboards** across the family.
 - **Mods:** the Fabric or Quilt mods installed, with modded item icons and names read from the mod jars.
 
@@ -26,6 +29,8 @@ It's read-only. Lodestone never writes to your servers, and the servers folder c
 | Inventory, XP, health, position (online) | RCON `data get entity <name>` |
 | Who's online | RCON `list`, falling back to Crafty |
 | Names | `usercache.json` |
+| Sessions, metrics, TPS | Recorded by Lodestone every 30 s (who's online, Crafty stats, RCON `tick query`) into `/data/lodestone.db` |
+| Activity feed | New lines in each server's `logs/latest.log` |
 | Item icons, item/stat/mob names, advancements | Minecraft client jar for the server's version, downloaded once from Mojang (~30 MB, ~10 MB kept) |
 
 Minecraft only writes `playerdata` on autosave (every 5 minutes) or logout. That's why RCON matters for live inventories.
@@ -85,12 +90,22 @@ Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web ma
 | `LIVE_TTL` | `3` | Seconds to cache live RCON data |
 | `DOWNLOAD_ASSETS` | `true` | Download the Minecraft client jar for icons and names. If `false`, you can drop a `client.jar` into `/data/assets/<version>/` yourself |
 | `ADMIN_TOKEN` | – | If set, changing settings in the UI requires this token |
+| `TZ` | `UTC` | Your time zone (e.g. `America/Chicago`). Decides where "today" starts in play time |
+| `POLL_INTERVAL` | `30` | Seconds between recordings of who's online and performance |
+| `METRICS_RETENTION_DAYS` | `30` | How long performance history is kept |
+| `EVENTS_RETENTION_DAYS` | `180` | How long the activity feed is kept. Sessions are kept forever |
+| `NTFY_URL` / `NTFY_TOKEN` | – | Default ntfy topic and token (can also be set in the UI) |
+| `DISCORD_WEBHOOK_URL` | – | Default Discord webhook (can also be set in the UI) |
 | `DATA_DIR` | `/data` | Settings and cached assets |
 | `PUID` / `PGID` | `1000` | Host user/group that owns `/data` |
 
 Without Crafty configured, Lodestone still works by scanning `SERVERS_DIR` for folders containing `server.properties`.
 
 ## Notes and limits
+
+- **History starts when Lodestone does.** Play time per day, sessions and performance graphs build up from the moment it first runs. Minecraft's own statistics only keep lifetime totals.
+- **TPS and tick time** need RCON and Minecraft 1.20.3 or newer, which added `/tick query`.
+- **Chat** is stored in Lodestone's database and shown on the Activity tab. It's never sent in notifications.
 
 - **Player skins** come from mc-heads.net in the visitor's browser. Offline-mode servers fall back to initials.
 - **Block-entity items** (chests, beds, heads, banners) are drawn as a cube of their particle texture. Everything else renders like the game's own icons.

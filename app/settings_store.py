@@ -22,6 +22,19 @@ def server(sid: str) -> dict:
     return load().get("servers", {}).get(sid, {})
 
 
+def _write(data: dict) -> None:
+    tmp = _PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2))
+    tmp.replace(_PATH)
+
+
+def save_section(name: str, value: dict) -> None:
+    with _lock:
+        data = load()
+        data[name] = value
+        _write(data)
+
+
 def update_server(sid: str, values: dict) -> dict:
     with _lock:
         data = load()
@@ -33,7 +46,5 @@ def update_server(sid: str, values: dict) -> dict:
                 cur.pop(k, None)
             else:
                 cur[k] = v
-        tmp = _PATH.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2))
-        tmp.replace(_PATH)
+        _write(data)
         return cur

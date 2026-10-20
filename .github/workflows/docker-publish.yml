@@ -43,7 +43,7 @@ jobs:
       - name: Run tests
         run: pytest -q
       - name: Frontend syntax check
-        run: node --check app/static/app.js
+        run: for f in app/static/*.js; do node --check "$f"; done
 
   build-and-push:
     needs: test

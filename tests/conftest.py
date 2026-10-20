@@ -28,6 +28,8 @@ os.environ.update({
     "RCON_HOST": "127.0.0.1",
     "RCON_TIMEOUT": "1",
     "ADMIN_TOKEN": "letmein",
+    "RECORDER_ENABLED": "false",
+    "TZ": "America/Chicago",
 })
 
 

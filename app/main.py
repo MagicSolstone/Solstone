@@ -12,8 +12,10 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from . import db, notify
 from . import servers as S
 from . import settings_store
+from .recorder import recorder
 from .assets import assets_for, safe_texture_path, store
 from .config import config
 from .crafty import crafty
@@ -28,7 +30,11 @@ VERSION = "1.0.0"
 async def lifespan(_app: FastAPI):
     await S.registry.refresh(force=True)
     log.info("Lodestone %s — %d server(s) found", VERSION, len(S.registry.servers))
+    db.conn()
+    if os.getenv("RECORDER_ENABLED", "true").lower() not in ("0", "false", "no"):
+        recorder.start()
     yield
+    await recorder.stop()
     await crafty.close()
 
 
@@ -129,8 +135,7 @@ async def server_icon(sid: str):
 
 @app.put("/api/servers/{sid}/settings")
 async def put_settings(sid: str, request: Request, x_admin_token: str | None = Header(default=None)):
-    if config.admin_token and x_admin_token != config.admin_token:
-        raise HTTPException(403, "Admin token required to change settings")
+    _require_admin(x_admin_token)
     srv = await _server(sid)
     body = await request.json()
     if not isinstance(body, dict):
@@ -148,6 +153,73 @@ async def get_settings(sid: str):
     s["rcon_password_set"] = "rcon_password" in s
     s.pop("rcon_password", None)
     return s
+
+
+# ------------------------------------------------------------------ history
+@app.get("/api/servers/{sid}/activity")
+async def activity(sid: str, days: int = 14):
+    srv = await _server(sid)
+    days = max(1, min(days, 90))
+    return {
+        "daily": db.daily_playtime(srv.id, days),
+        "sessions": db.sessions(srv.id, limit=40),
+        "recorder_since": (db.q("SELECT MIN(ts) AS t FROM metrics WHERE server_id=?", (srv.id,))[0]["t"]),
+    }
+
+
+@app.get("/api/servers/{sid}/events")
+async def events(sid: str, types: str = "", player: str = "", limit: int = 100, before: float | None = None):
+    srv = await _server(sid)
+    tlist = [t for t in types.split(",") if t] or None
+    return db.events(srv.id, tlist, player or None, limit, before)
+
+
+@app.get("/api/servers/{sid}/metrics")
+async def server_metrics(sid: str, range: str = "24h"):  # noqa: A002 - query param name
+    srv = await _server(sid)
+    return db.metrics(srv.id, range)
+
+
+@app.get("/api/servers/{sid}/players/{uuid}/history")
+async def player_history(sid: str, uuid: str, days: int = 30):
+    srv = await _server(sid)
+    p = S.known_players(srv).get(S.norm_uuid(uuid))
+    if not p:
+        raise HTTPException(404, "Player not found")
+    days = max(1, min(days, 90))
+    daily = db.daily_playtime(srv.id, days, p["name"])
+    return {
+        "daily": [{"date": d["date"], "seconds": sum(d["players"].values())} for d in daily],
+        "sessions": db.sessions(srv.id, p["name"], limit=30),
+        "events": db.events(srv.id, None, p["name"], 60),
+    }
+
+
+# ------------------------------------------------------------------ notifications
+def _require_admin(token: str | None) -> None:
+    if config.admin_token and token != config.admin_token:
+        raise HTTPException(403, "Admin token required to change settings")
+
+
+@app.get("/api/settings/notifications")
+async def get_notifications():
+    return notify.public_config()
+
+
+@app.put("/api/settings/notifications")
+async def put_notifications(request: Request, x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Expected a JSON object")
+    return notify.save_config(body)
+
+
+@app.post("/api/settings/notifications/test")
+async def test_notifications(x_admin_token: str | None = Header(default=None)):
+    _require_admin(x_admin_token)
+    errors = await notify.send("Lodestone", "Test notification. Join alerts will look like this.", force=True)
+    return {"ok": not errors, "errors": errors}
 
 
 # ------------------------------------------------------------------ assets

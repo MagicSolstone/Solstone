@@ -30,7 +30,7 @@ def build(root: Path) -> Path:
     motd=Jusczak Family Realm
     level-name=world
     enable-rcon=true
-    rcon.port=25599
+    rcon.port=25998
     rcon.password=hunter2
     max-players=10
     difficulty=normal

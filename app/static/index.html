@@ -16,7 +16,10 @@
         <span>Lodestone</span>
       </a>
       <div class="rail-servers" id="rail-servers"></div>
-      <div class="rail-foot"><span id="build-channel" class="channel" hidden></span></div>
+      <div class="rail-foot">
+        <button class="rail-btn" id="btn-notify" type="button">🔔 <span>Notifications</span></button>
+        <span id="build-channel" class="channel" hidden></span>
+      </div>
     </nav>
     <main id="view" tabindex="-1"></main>
   </div>
@@ -24,5 +27,6 @@
   <div id="modal-root"></div>
   <div id="toast" class="toast" hidden></div>
   <script src="/static/app.js" defer></script>
+  <script src="/static/history.js" defer></script>
 </body>
 </html>

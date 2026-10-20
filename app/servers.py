@@ -270,7 +270,16 @@ async def server_summary(srv: Server) -> dict:
                  "port": rcon[1] if rcon else None, "error": srv.rcon_error},
         "map_url": srv.settings.get("map_url"),
         "loader": detect_loader(srv),
+        "perf": _latest_perf(srv),
     }
+
+
+def _latest_perf(srv: Server) -> dict | None:
+    from . import db
+    rows = db.q("SELECT tps, mspt, ts FROM metrics WHERE server_id=? AND tps IS NOT NULL ORDER BY ts DESC LIMIT 1", (srv.id,))
+    if not rows or time.time() - rows[0]["ts"] > 180:
+        return None
+    return {"tps": rows[0]["tps"], "mspt": rows[0]["mspt"]}
 
 
 def _int(v: Any) -> int | None:
@@ -614,6 +623,10 @@ async def players_overview(srv: Server) -> dict:
                 r.update(xp_level=live["xp_level"], health=live["health"], max_health=live["max_health"],
                          food=live["food"], gamemode=live["gamemode"], dimension=live["position"]["dimension"],
                          position=live["position"], live=True)
+    from . import db  # local import: db imports config only, avoids a cycle at startup
+    today = db.today_seconds(srv.id)
+    for r in rows:
+        r["today_seconds"] = today.get(r["name"].lower(), 0)
     rows.sort(key=lambda r: (not r["online"], -(r.get("last_seen") or 0)))
     return {"players": rows, "online_source": source}
 

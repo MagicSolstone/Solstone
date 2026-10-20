@@ -19,6 +19,7 @@ services:
       TZ: America/Chicago
       # RCON_HOST: 192.168.150.10       # where Minecraft RCON ports are published (defaults to the Crafty host)
       # ADMIN_TOKEN: pick-something     # require a token to change settings in the web UI
+      # NTFY_URL: https://ntfy.sh/your-secret-topic   # or set notifications up in the UI
     volumes:
       # Crafty's servers folder, read-only. With the Unraid Crafty template
       # this is usually /mnt/user/appdata/crafty-4/servers
