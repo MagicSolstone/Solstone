@@ -744,3 +744,28 @@ body.status-page { min-height: 100vh; }
   .sp-feed li { grid-template-columns: 20px 70px 1fr; }
   .sp-updated { display: none; }
 }
+
+/* ------------------------------------------------------------ player heads (cut from the skin) */
+.face { position: relative; display: inline-block; flex: none; width: var(--s); height: var(--s); border-radius: 3px; overflow: hidden;
+  background: var(--basalt); vertical-align: middle; }
+.face::after { content: ""; position: absolute; inset: 0; image-rendering: pixelated; background-repeat: no-repeat;
+  background-image: var(--skin), var(--skin); background-size: calc(var(--s) * 8) auto;
+  background-position: calc(var(--s) * -5) calc(var(--s) * -1), calc(var(--s) * -1) calc(var(--s) * -1); }
+.face-init { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--font-display);
+  font-size: calc(var(--s) * .5); color: var(--muted); }
+.who .face { margin-right: 2px; }
+
+/* ------------------------------------------------------------ fireworks control */
+.sky-ctl { position: fixed; right: 16px; bottom: 16px; z-index: 40; display: flex; gap: 4px; padding: 4px; border-radius: 999px; background-color: rgba(16, 20, 32, .55); }
+.sky-ctl button { border: 0; background: none; cursor: pointer; border-radius: 999px; padding: 6px 10px; font-weight: 700; font-size: .85rem; color: var(--muted);
+  display: inline-flex; align-items: center; gap: 8px; }
+.sky-ctl button:hover { background: rgba(255,255,255,.08); color: var(--bone); }
+.sky-launch { font-size: 1.05rem !important; padding: 4px 10px !important; }
+.sky-sw { width: 28px; height: 16px; border-radius: 8px; background: var(--basalt); position: relative; transition: background .15s; }
+.sky-sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--bone); transition: transform .15s; }
+.sky-auto[aria-pressed="true"] { color: var(--bone); }
+.sky-auto[aria-pressed="true"] .sky-sw { background: var(--copper); }
+.sky-auto[aria-pressed="true"] .sky-sw::after { transform: translateX(12px); }
+body.logged-out .sky-ctl { display: none; }
+@media (prefers-reduced-motion: reduce) { .sky-sw, .sky-sw::after { transition: none; } }
+@media (max-width: 640px) { .sky-ctl { right: 10px; bottom: 10px; } .sky-auto span:last-child { display: none; } }

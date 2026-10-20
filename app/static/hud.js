@@ -70,3 +70,15 @@ function motdHtml(text) {
   return out;
 }
 
+
+// ================================================================ player heads
+// Heads are cut from the player's skin file, the same file the full-body picture uses.
+// (mc-heads' ready-made head images can stay on an old or default skin for a long time.)
+// The face and the hat layer are two layers of the same image; the initial underneath
+// shows if the skin can't be loaded.
+const skinId = (p) => p.uuid ? String(p.uuid).replace(/-/g, "") : encodeURIComponent(p.name || "");
+const skinUrl = (p) => `https://mc-heads.net/skin/${skinId(p)}`;
+function faceHtml(p, size, cls = "") {
+  const initial = esc((p.name || "?")[0].toUpperCase());
+  return `<span class="face ${cls}" style="--s:${size}px;--skin:url('${skinUrl(p)}')" aria-hidden="true"><span class="face-init">${initial}</span></span>`;
+}

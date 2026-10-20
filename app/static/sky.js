@@ -53,7 +53,7 @@ const FW_TEMPLATES = {
 
 function startSkyScene(cv, opts = {}) {
   // opts.avoid: element to launch beside; opts.every: [min, max] ms between launches;
-  // opts.still: draw one quiet frame (stars and hill only) and never animate.
+  // opts.auto: false starts with the automatic show off (launch() and setAuto() still work).
   const card = opts.avoid || null;
   const every = opts.every || [700, 1900];
   const ctx = cv.getContext("2d");
@@ -62,7 +62,7 @@ function startSkyScene(cv, opts = {}) {
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const pick = (a) => a[Math.floor(Math.random() * a.length)];
   const rand = (a, b) => a + Math.random() * (b - a);
-  let W = 0, H = 0, raf = 0, timer = 0, running = true, frame = 0;
+  let W = 0, H = 0, raf = 0, timer = 0, running = false, frame = 0;
   let stars = [], land = null, groundY = 0, cardBox = null;
   const rockets = [], sparks = [];
 
@@ -208,45 +208,52 @@ function startSkyScene(cv, opts = {}) {
     ctx.drawImage(land, 0, 0);                        // hill and watchers in front of everything
   }
 
+  // The loop only runs while something is moving: the automatic show is on, or rockets
+  // and sparks are still in the air. Otherwise one quiet frame is drawn and it sleeps, so
+  // the frosted panels on top don't have to re-blur every frame.
+  let auto = opts.auto !== false;
   function loop() {
     if (!running) return;
     step();
+    if (!auto && !rockets.length && !sparks.length) { running = false; frame = 0; step(); return; }
     raf = requestAnimationFrame(loop);
   }
+  function wake() {
+    if (running || document.hidden) return;
+    running = true; loop();
+  }
   function schedule() {
+    clearTimeout(timer);
+    if (!auto) return;
     timer = setTimeout(() => {
       if (!document.hidden && rockets.length < 6 && sparks.length < 1400) {
         launch();
         if (Math.random() < 0.25) setTimeout(launch, rand(150, 400));      // the occasional salvo
         if (Math.random() < 0.1) setTimeout(launch, rand(450, 700));
+        wake();
       }
       schedule();
     }, rand(every[0], every[1]));
   }
   const onVis = () => {
     if (document.hidden) { running = false; cancelAnimationFrame(raf); }
-    else if (!reduced && !running) { running = true; loop(); }
+    else if (auto && !reduced) wake();
   };
-  const onResize = () => { resize(); if (reduced) still(); };
+  const onResize = () => { resize(); if (!running) { if (reduced && auto) still(); else { frame = 0; step(); } } };
   function still() {
     // One quiet frame: two bursts frozen mid-air, no motion.
     rockets.length = 0; sparks.length = 0;
     for (let k = 0; k < 2; k++) { launch(); const r = rockets.pop(); r.y = rand(H * 0.15, H * 0.35); explode(r); }
     for (let i = 0; i < 18; i++) step();
+    rockets.length = 0; sparks.length = 0;
   }
 
-  const quiet = () => { ctx.clearRect(0, 0, W, H); rockets.length = 0; sparks.length = 0; frame = 0; step(); };
   resize();
-  if (opts.still) {
-    const onStill = () => { resize(); quiet(); };
-    quiet();
-    addEventListener("resize", onStill);
-    return { stop: () => removeEventListener("resize", onStill), celebrate() {} };
-  }
   addEventListener("resize", onResize);
   document.addEventListener("visibilitychange", onVis);
-  if (reduced) { running = false; still(); }
-  else { launch(); setTimeout(launch, 500); loop(); schedule(); }
+  if (reduced) { if (auto) still(); else step(); auto = false; }
+  else if (auto) { launch(); setTimeout(launch, 500); wake(); schedule(); }
+  else step();
   return {
     stop() {
       running = false; cancelAnimationFrame(raf); clearTimeout(timer);
@@ -255,8 +262,36 @@ function startSkyScene(cv, opts = {}) {
     // A salvo, e.g. when someone joins. Skipped for reduced motion and hidden tabs.
     celebrate(n = 3) {
       if (reduced || document.hidden) return;
-      for (let i = 0; i < n; i++) setTimeout(launch, i * rand(180, 420));
+      for (let i = 0; i < n; i++) setTimeout(() => { launch(); wake(); }, i * rand(180, 420));
+    },
+    // One rocket on request (the launch button). Works even with reduced motion,
+    // because someone asked for it.
+    launch() { if (rockets.length < 12) { launch(); wake(); } },
+    get auto() { return auto; },
+    setAuto(on) {
+      auto = !!on;
+      if (auto) { launch(); wake(); }
+      schedule();
     },
   };
 }
 
+// A small floating control: launch a firework, and turn the automatic show on or off.
+// The choice is remembered per page in this browser.
+function skyControls(scene, key, defaultOn) {
+  let on = defaultOn && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  try { const v = localStorage.getItem(key); if (v != null) on = v === "1"; } catch { /* storage is optional */ }
+  scene.setAuto(on);
+  const box = document.createElement("div");
+  box.className = "sky-ctl glass";
+  box.innerHTML = `<button type="button" class="sky-launch" title="Launch a firework" aria-label="Launch a firework">🎆</button>
+    <button type="button" class="sky-auto" aria-pressed="${on}" title="Keep launching fireworks"><span class="sky-sw"></span><span>Show</span></button>`;
+  document.body.append(box);
+  const autoBtn = box.querySelector(".sky-auto");
+  box.querySelector(".sky-launch").addEventListener("click", () => scene.launch());
+  autoBtn.addEventListener("click", () => {
+    on = !on; scene.setAuto(on); autoBtn.setAttribute("aria-pressed", String(on));
+    try { localStorage.setItem(key, on ? "1" : "0"); } catch { /* storage is optional */ }
+  });
+  return box;
+}

@@ -217,7 +217,7 @@ function groupBlockHtml(b) {
     const sess = b.sessions.filter((x) => x.player === n);
     const secs = sess.reduce((a, x) => a + x.seconds, 0);
     const uuid = sess[0]?.uuid;
-    return `<a class="tl-who" href="#/s/${encodeURIComponent(curSid)}/p/${uuid || ""}" title="${esc(n)} played ${esc(fmtSeconds(secs))}">${miniHead({ uuid, name: n })}<b style="color:${nameInk(n)}">${esc(n)}</b><span class="muted tl-each">${secs >= 60 ? fmtSeconds(secs) : "<1m"}</span></a>`;
+    return `<a class="tl-who" href="#/s/${encodeURIComponent(curSid)}/p/${uuid || ""}" title="${esc(n)} played ${esc(fmtSeconds(secs))}">${miniHead({ uuid, name: n }, 26)}<b style="color:${nameInk(n)}">${esc(n)}</b><span class="muted tl-each">${secs >= 60 ? fmtSeconds(secs) : "<1m"}</span></a>`;
   }).join("");
   const summary = Object.entries(COUNT_LABELS).filter(([k]) => b.counts[k])
     .map(([k, [one, many]]) => `<span class="cnt ev-${k}"><span aria-hidden="true">${EVENT_ICON[k]}</span> ${b.counts[k]} ${b.counts[k] === 1 ? one : many}</span>`).join("");
@@ -247,7 +247,7 @@ function sessionBlockHtml(b, showPlayer) {
        ${hidden ? `<button class="link-btn show-all" type="button">Show ${hidden} more</button>` : ""}`
     : "";
   const head = showPlayer
-    ? `<a class="tl-who" href="#/s/${encodeURIComponent(curSid)}/p/${b.uuid || ""}">${miniHead(b)}<b>${esc(b.player)}</b></a>`
+    ? `<a class="tl-who" href="#/s/${encodeURIComponent(curSid)}/p/${b.uuid || ""}">${miniHead({ uuid: b.uuid, name: b.player }, 26)}<b>${esc(b.player)}</b></a>`
     : "";
   return `<li class="tl-session" style="--pc:${color}">
     <div class="tl-head">${head}<span class="tl-range">${range}</span><span class="tl-dur">${b.seconds >= 60 ? fmtSeconds(b.seconds) : "under a minute"}</span></div>

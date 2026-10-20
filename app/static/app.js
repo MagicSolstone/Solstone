@@ -26,14 +26,14 @@ const post = (path, body = {}, method = "POST") => api(path, { method, body: JSO
 
 // ================================================================ accounts
 const me = { user: null };
-const appSky = { stop: null };  // the still night sky behind the signed-in app
+const appSky = { scene: null, ctl: null };  // the night sky behind the signed-in app
 const isAdmin = () => me.user?.role === "admin";
 
 function showLogin(message = "") {
   clearTimers?.();
   me.user = null;
   document.body.classList.add("logged-out");
-  appSky.stop?.(); appSky.stop = null;
+  if (appSky.scene) { appSky.scene.stop(); appSky.ctl?.remove(); appSky.scene = appSky.ctl = null; }
   const root = $("#login-root");
   root.hidden = false;
   root.innerHTML = `<canvas id="login-sky" aria-hidden="true"></canvas>
@@ -71,7 +71,10 @@ async function signedIn(user) {
   document.body.classList.toggle("is-admin", user.role === "admin");
   stopLoginScene();
   clearInterval(state.loginRefresh);
-  if (!appSky.stop && $("#app-sky")) appSky.stop = startSkyScene($("#app-sky"), { still: true }).stop;
+  if (!appSky.scene && $("#app-sky")) {
+    appSky.scene = startSkyScene($("#app-sky"), { auto: false });
+    appSky.ctl = skyControls(appSky.scene, "solstone-sky-app", false);
+  }
   const root = $("#login-root"); root.hidden = true; root.innerHTML = "";
   $("#account-name").textContent = user.username;
   $("#account-role").textContent = user.role === "admin" ? "Admin" : "Viewer (read-only)";
@@ -242,14 +245,8 @@ async function ensureServerAssets(sid) {
 }
 
 // ================================================================ heads
-function headHtml(p, size = 56, cls = "head") {
-  const initial = esc((p.name || "?")[0].toUpperCase());
-  if (!p.uuid) return `<div class="${cls}">${initial}</div>`;
-  return `<div class="${cls}"><img src="https://mc-heads.net/avatar/${p.uuid.replace(/-/g, "")}/${size * 2}" alt="" loading="lazy" onerror="this.replaceWith(document.createTextNode('${initial}'))"></div>`;
-}
-const miniHead = (p) => p.uuid
-  ? `<img src="https://mc-heads.net/avatar/${p.uuid.replace(/-/g, "")}/56" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
-  : `<span class="mini-head"></span>`;
+function headHtml(p, size = 56) { return faceHtml(p, size); }
+const miniHead = (p, size = 28) => faceHtml(p, size);
 
 // ================================================================ slots + tooltip
 function slotHtml(item, opts = {}) {
@@ -421,7 +418,7 @@ async function viewHome() {
     <a class="server-card" href="#/s/${encodeURIComponent(s.id)}">${serverIconHtml(s)}
       <div><h2>${esc(s.name)}</h2>
         <div class="muted" style="font-size:.9rem">${s.running === false ? "Offline" : `${s.online?.length || 0} of ${s.max_players ?? "?"} playing`} · ${esc(s.version || "unknown version")} ${esc(s.loader || "")}</div>
-        <div class="who">${(s.online || []).map((n) => `<img src="https://mc-heads.net/avatar/${encodeURIComponent(n)}/48" alt="${esc(n)}" title="${esc(n)}">`).join("")}</div>
+        <div class="who">${(s.online || []).map((n) => `<span title="${esc(n)}">${faceHtml({ name: n }, 24)}</span>`).join("")}</div>
       </div></a>`).join("")}</div>`);
   every(15000, async () => { await loadServers(); });
 }
@@ -497,7 +494,7 @@ function playerRow(p) {
     : "";
   const right = p.online && p.today_seconds ? `<span class="pr-val" title="Played today">${fmtSeconds(p.today_seconds)}<small>today</small></span>`
     : `<span class="pr-val" title="Time played in total">${fmtDuration(h.play_time)}<small>total</small></span>`;
-  const inner = `${headHtml(p, 40, "head sm")}
+  const inner = `${headHtml(p, 40)}
     <div class="pr-main"><div class="pr-name">${esc(p.name)}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}${p.op ? '<span class="op-badge">OP</span>' : ""}</div>
       <div class="pr-sub">${sub}${vitals}</div></div>${right}`;
   const cls = `pl-row ${p.online ? "is-online" : ""}`;
@@ -815,7 +812,7 @@ async function viewWorld(sid) {
       </dl></div></div>
     <section class="section"><div class="section-head"><h2>Map</h2></div>${map}</section>
     <section class="section"><div class="section-head"><h2>Where everyone is</h2><span class="muted">Live for players online with RCON, otherwise from their last save</span></div>
-      ${located.length ? `<div class="where">${located.map((p) => `<a class="where-row" href="#/s/${encodeURIComponent(sid)}/p/${p.uuid}">${miniHead(p)}
+      ${located.length ? `<div class="where">${located.map((p) => `<a class="where-row" href="#/s/${encodeURIComponent(sid)}/p/${p.uuid}">${miniHead(p, 32)}
         <div><b>${esc(p.name)}</b> ${p.online ? '<span class="live-tag" style="font-size:.85rem"><span class="status-dot on"></span>online</span>' : `<span class="faint" style="font-size:.85rem">${esc(fmtAgo(p.last_seen))}</span>`}
           <div class="coords">${Math.round(p.position.x)}, ${Math.round(p.position.y)}, ${Math.round(p.position.z)}</div></div>
         <span class="dim-tag ${dimClass(p.position.dimension)}">${esc(dimName(p.position.dimension))}</span></a>`).join("")}</div>` : `<div class="empty"><p>No player positions saved yet.</p></div>`}

@@ -43,7 +43,6 @@ function tpsInfo(tps) {
   if (tps >= 15) return { label: "A little laggy", cls: "warn" };
   return { label: "Very laggy", cls: "bad" };
 }
-const headUrl = (p, size) => p.uuid ? `https://mc-heads.net/avatar/${p.uuid.replace(/-/g, "")}/${size}` : `https://mc-heads.net/avatar/${encodeURIComponent(p.name)}/${size}`;
 const bodyUrl = (p) => `https://mc-heads.net/body/${p.uuid ? p.uuid.replace(/-/g, "") : encodeURIComponent(p.name)}/220`;
 function itemImg(it, cls = "") {
   if (!it) return "";
@@ -192,7 +191,7 @@ function playersHtml(b) {
 }
 function recentlyHtml(b) {
   if (!b.recently.length) return "";
-  return `<div class="sp-recently"><h3>Played recently</h3><ul>${b.recently.map((p) => `<li><img src="${headUrl(p, 48)}" alt="" onerror="this.style.visibility='hidden'"><span><b>${esc(p.name)}</b><small>${esc(fmtAgo(p.last_seen))}</small></span></li>`).join("")}</ul></div>`;
+  return `<div class="sp-recently"><h3>Played recently</h3><ul>${b.recently.map((p) => `<li>${faceHtml(p, 32)}<span><b>${esc(p.name)}</b><small>${esc(fmtAgo(p.last_seen))}</small></span></li>`).join("")}</ul></div>`;
 }
 function playerCardHtml(p) {
   const vitals = p.health != null
@@ -208,7 +207,7 @@ function playerCardHtml(p) {
        ${p.armor?.some(Boolean) ? `<span class="sp-armor" aria-label="Armour">${p.armor.map((a) => a ? itemImg(a) : `<span class="sp-item empty"></span>`).join("")}</span>` : ""}</div>` : "";
   const effects = p.effects?.length ? `<div class="chips sp-effects">${p.effects.map((e) => `<span class="chip">${esc(e.name)}${e.amplifier ? ` ${ROMAN[e.amplifier + 1] || e.amplifier + 1}` : ""}</span>`).join("")}</div>` : "";
   return `<article class="sp-player glass">
-    <div class="sp-body"><img src="${bodyUrl(p)}" alt="" onerror="this.outerHTML='<img class=&quot;fallback&quot; src=&quot;${headUrl(p, 96)}&quot; alt=&quot;&quot;>'"></div>
+    <div class="sp-body"><img src="${bodyUrl(p)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'), { innerHTML: this.dataset.face }).firstChild)" data-face="${esc(faceHtml(p, 88))}"></div>
     <div class="sp-info">
       <h2>${esc(p.name)}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}</h2>
       <div class="sp-meta"><span class="live-tag"><span class="status-dot on"></span>${since}</span>${p.today_seconds > 60 ? `<span>${esc(fmtSpan(p.today_seconds))} today</span>` : ""}</div>
@@ -263,7 +262,7 @@ function mountMap(el, b, prev) {
   map.anim = performance.now();
   $("#sp-map-dim").textContent = order.length === 1 ? dimName(dims[dim].id) : "";
   for (const p of map.players) {
-    if (!map.heads[p.name]) { const img = new Image(); img.crossOrigin = "anonymous"; img.src = headUrl(p, 32); img.onload = () => draw(); map.heads[p.name] = img; }
+    if (!map.heads[p.name]) { const img = new Image(); img.src = skinUrl(p); img.onload = () => draw(); map.heads[p.name] = img; }
     if (!map.shown[p.name]) map.shown[p.name] = { ...p.position };
   }
   const ctx = cv.getContext("2d");
@@ -318,7 +317,10 @@ function mountMap(el, b, prev) {
       ctx.fillStyle = "#fff"; ctx.fillRect(x - s / 2 - 2, y - s / 2 - 2, s + 4, s + 4);
       const img = map.heads[p.name];
       ctx.imageSmoothingEnabled = false;
-      if (img?.complete && img.naturalWidth) ctx.drawImage(img, x - s / 2, y - s / 2, s, s);
+      if (img?.complete && img.naturalWidth >= 64) {        // face, then the hat layer over it
+        ctx.drawImage(img, 8, 8, 8, 8, x - s / 2, y - s / 2, s, s);
+        ctx.drawImage(img, 40, 8, 8, 8, x - s / 2, y - s / 2, s, s);
+      }
       else { ctx.fillStyle = "#4d74d6"; ctx.fillRect(x - s / 2, y - s / 2, s, s); }
       const label = p.name;
       const tw = ctx.measureText(label).width + 10;
@@ -348,7 +350,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden && (!
 
 document.addEventListener("DOMContentLoaded", async () => {
   const sky = $("#status-sky");
-  if (sky) st.scene = startSkyScene(sky, { every: [6000, 15000] });
+  if (sky) { st.scene = startSkyScene(sky, { auto: false }); skyControls(st.scene, "solstone-sky-status", true); }
   keepAwake();
   await loadServers();
   poll();

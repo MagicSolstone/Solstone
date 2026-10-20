@@ -217,7 +217,7 @@ async function viewControl(sid) {
     const others = (n) => info.online.filter((o) => o !== n);
     el.innerHTML = `<div class="ctl-players">${info.online.map((n) => `
       <div class="ctl-player panel" data-player="${esc(n)}">
-        <div class="cp-head"><img src="https://mc-heads.net/avatar/${encodeURIComponent(n)}/64" alt="" onerror="this.style.visibility='hidden'"><b>${esc(n)}</b></div>
+        <div class="cp-head">${faceHtml({ name: n }, 32)}<b>${esc(n)}</b></div>
         <div class="btn-row">
           <button class="btn sm" data-pa="heal">Heal &amp; feed</button>
           <button class="btn sm" data-pa="tp_spawn">Send to spawn</button>
