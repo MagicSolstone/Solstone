@@ -705,7 +705,15 @@ async function viewLeaderboards(sid) {
 // ---------------------------------------------------------------- world
 function skyHtml(w) {
   if (w.time_of_day == null) {
-    return `<div class="sky" style="background:linear-gradient(#3b4252,#4c566a)"><h2>World time</h2><div class="sub">Not available yet. Turn on RCON for this server and the current day and time will show here.</div></div>`;
+    const replies = w.debug?.rcon_replies || {};
+    const asked = Object.keys(replies).length > 0 && !replies.error;
+    const msg = asked
+      ? "Lodestone asked the server but couldn't understand its reply. This Minecraft version may word it differently. The details below show exactly what came back."
+      : "Not available yet. Turn on RCON for this server and the current day and time will show here.";
+    const details = w.debug ? `<details class="debug"><summary>Details for troubleshooting</summary><pre>${esc(
+      [...Object.entries(replies).map(([k, v]) => `> ${k}\n${v || "(empty reply)"}`), "", "Time-related save data:", ...(w.debug.time_related_keys.length ? w.debug.time_related_keys : ["(none found)"]),
+       "", `Files read: ${w.debug.data_files.join(", ")}`].join("\n"))}</pre></details>` : "";
+    return `<div class="sky" style="background:linear-gradient(#3b4252,#4c566a)"><h2>World time</h2><div class="sub">${esc(msg)}</div>${details}</div>`;
   }
   const t = w.time_of_day;
   const hour = Math.floor((t / 1000 + 6) % 24), min = Math.floor(((t % 1000) / 1000) * 60);

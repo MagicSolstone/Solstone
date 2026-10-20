@@ -426,9 +426,15 @@ def _world_extras(srv: Server) -> dict[str, dict]:
 
 
 def _walk(obj: Any, path: tuple = ()):
+    """Yield (path, value) for every leaf. Lists are walked too; a list entry with an
+    "id" (e.g. {id: "minecraft:overworld", ticks: ...}) contributes that id to the path."""
     if isinstance(obj, dict):
         for k, v in obj.items():
             yield from _walk(v, path + (str(k),))
+    elif isinstance(obj, list) and obj and all(isinstance(x, dict) for x in obj):
+        for i, item in enumerate(obj):
+            tag = str(item.get("id") or item.get("clock") or item.get("name") or i)
+            yield from _walk(item, path + (tag,))
     else:
         yield path, obj
 
@@ -543,45 +549,88 @@ def world_info(srv: Server) -> dict:
     }
 
 
-_TIME_IS = re.compile(r"time is\s+(-?\d+)", re.I)
+_ERROR_HINTS = ("unknown or incomplete", "incorrect argument", "expected", "<--[here]", "unknown command",
+                "invalid", "error", "no such", "can't", "cannot")
+_INT = re.compile(r"-?\d+")
 _SEED = re.compile(r"Seed:\s*\[?(-?\d+)\]?")
 _live_world_cache: dict[str, tuple[float, dict]] = {}
+_live_world_raw: dict[str, dict[str, str]] = {}
 
 
-def _first_int(out: str | None) -> int | None:
+def _reply_int(out: str | None) -> int | None:
+    """The number in a command reply such as "The time is 6000", or None for errors.
+    Lenient on wording, because messages change between Minecraft versions."""
     if not out:
         return None
-    m = _TIME_IS.search(out)
-    return int(m.group(1)) if m else None
+    low = out.lower()
+    if any(h in low for h in _ERROR_HINTS):
+        return None
+    nums = _INT.findall(out.replace(",", ""))
+    return int(nums[-1]) if nums else None
 
 
 async def live_world(srv: Server) -> dict:
-    """Ask the running server for the time and seed (works across format changes)."""
+    """Ask the running server for the time and seed (works across format changes).
+
+    Pre-26.1: `time query daytime` (ticks since world creation, wraps per day) and
+    `time query day`. 26.1+ keeps time in world clocks: `time query time` is the
+    overworld clock's elapsed ticks; `time query day` / `... repetitions` report
+    the position in, and count of, the day timeline.
+    """
     hit = _live_world_cache.get(srv.id)
     if hit and time.monotonic() - hit[0] < 20:
         return hit[1]
+    raw: dict[str, str] = {}
+
+    async def ask(cmd: str) -> int | None:
+        reply = await srv.rcon(cmd)
+        raw[cmd] = (reply or "")[:300]
+        return _reply_int(reply)
+
     out: dict = {}
     try:
-        day_time = _first_int(await srv.rcon("time query daytime"))
+        day_time = await ask("time query daytime")
         if day_time is not None:
-            days = _first_int(await srv.rcon("time query day"))
+            days = await ask("time query day")
             out.update(day_time=day_time, day=(days if days is not None else day_time // 24000) + 1,
                        time_of_day=day_time % 24000, time_source="live")
         else:
-            # 26.1+: time is kept by world clocks; `time query time` is the overworld clock's elapsed ticks.
-            ticks = _first_int(await srv.rcon("time query time"))
+            ticks = await ask("time query time")
             if ticks is not None:
                 out.update(day_time=ticks, day=ticks // 24000 + 1, time_of_day=ticks % 24000, time_source="live")
-        game_time = _first_int(await srv.rcon("time query gametime"))
+            else:
+                pos = await ask("time query day")
+                reps = await ask("time query day repetitions")
+                if pos is not None:
+                    out.update(day_time=None, day=(reps or 0) + 1, time_of_day=pos % 24000, time_source="live")
+        game_time = await ask("time query gametime")
         if game_time is not None:
             out["game_time"] = game_time
-        m = _SEED.search(await srv.rcon("seed") or "")
+        seed_reply = await srv.rcon("seed")
+        raw["seed"] = (seed_reply or "")[:120]
+        m = _SEED.search(seed_reply or "")
         if m:
             out["seed"] = m.group(1)
-    except RconError:
+    except RconError as e:
+        raw["error"] = str(e)
+        _live_world_raw[srv.id] = raw
         return {}
+    _live_world_raw[srv.id] = raw
     _live_world_cache[srv.id] = (time.monotonic(), out)
     return out
+
+
+def world_debug(srv: Server) -> dict:
+    """What Lodestone saw while looking for the world time, to paste into a bug report."""
+    sources = {"level.dat": srv.level(), **{f"data/{k}.dat": v for k, v in _world_extras(srv).items()}}
+    keys = []
+    for name, src in sources.items():
+        for path, v in _walk(src):
+            joined = "/".join(path)
+            if any(w in joined.lower() for w in ("time", "clock", "day", "rain", "thunder", "weather", "seed")):
+                keys.append(f"{name}: {joined} = {str(v)[:40]}")
+    return {"rcon_replies": _live_world_raw.get(srv.id, {}), "time_related_keys": keys[:60],
+            "data_files": sorted(sources)}
 
 
 # ---------------------------------------------------------------- mods

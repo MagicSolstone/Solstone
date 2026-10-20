@@ -107,6 +107,8 @@ async def get_world(sid: str):
     info = await asyncio.to_thread(S.world_info, srv)
     if srv.rcon_conf():
         info.update(await S.live_world(srv))
+    if info.get("time_source") == "unknown":
+        info["debug"] = await asyncio.to_thread(S.world_debug, srv)
     return info
 
 

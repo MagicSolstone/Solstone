@@ -74,3 +74,27 @@ def test_hytale_server_is_basic(tmp_path):
     assert srv.game == "hytale" and not srv.is_java and srv.rcon_conf() is None
     srv2 = S.Server(id="hy2", name="Hytale", dir=tmp_path, type="")
     assert srv2.game == "hytale"  # detected from files when Crafty gives no type
+
+
+def test_live_time_unfamiliar_wording(tmp_path):
+    # Reply wording differs between versions; any number in a non-error reply counts.
+    out = _live(tmp_path, {"time query time": "Clock minecraft:overworld has run for 222,000 ticks"})
+    assert (out["day"], out["time_of_day"]) == (10, 6000)
+
+
+def test_live_time_day_timeline_only(tmp_path):
+    out = _live(tmp_path, {"time query day": "The day timeline is at 13000", "time query day repetitions": "It has repeated 41 times"})
+    assert (out["day"], out["time_of_day"]) == (42, 13000)
+
+
+def test_clock_stored_as_list(tmp_path):
+    from nbtlib import List
+    clocks = {"data": Compound({"clocks": List[Compound]([Compound({"id": String("minecraft:overworld"), "ticks": Long(48000 + 500)})])})}
+    w = S.world_info(_server(tmp_path, {}, {"world_clocks": clocks}))
+    assert (w["day"], w["time_of_day"]) == (3, 500)
+
+
+def test_world_debug_lists_time_keys(tmp_path):
+    srv = _server(tmp_path, {"DayTime": Long(5)})
+    d = S.world_debug(srv)
+    assert any("DayTime" in k for k in d["time_related_keys"])
