@@ -963,15 +963,24 @@ function startSkyScene(cv, opts = {}) {
   // and sparks are still in the air. Otherwise one quiet frame is drawn and it sleeps, so
   // the frosted panels on top don't have to re-blur every frame.
   let auto = opts.auto !== false;
-  function loop() {
+  // Everything moves in fixed 1/60 s steps, so fireworks run at the same speed on a
+  // 60 Hz phone and a 144 Hz monitor. A slow frame catches up (up to a few steps); a long
+  // gap (tab hidden, computer asleep) doesn't fast-forward.
+  const STEP_MS = 1000 / 60;
+  let lastT = 0, acc = 0;
+  function loop(now = performance.now()) {
     if (!running) return;
-    step();
+    if (!lastT || now - lastT > 250) { lastT = now - STEP_MS; acc = 0; }
+    acc += now - lastT; lastT = now;
+    let n = 0;
+    while (acc >= STEP_MS && n < 4) { step(); acc -= STEP_MS; n++; }
+    if (n === 4) acc = 0;
     if (!auto && !boosting() && !rockets.length && !sparks.length && !figures.length && !trees.length && !emitters.length && !events.length) { running = false; frame = 0; step(); return; }
     raf = requestAnimationFrame(loop);
   }
   function wake() {
     if (running || stopped || document.hidden) return;
-    running = true; loop();
+    running = true; lastT = 0; loop();
   }
   function schedule() {
     clearTimeout(timer);
