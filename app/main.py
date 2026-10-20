@@ -350,22 +350,55 @@ FIREWORK_PACE = ("calm", "normal", "lively")
 FIREWORK_SPECIALS = ("rare", "sometimes", "often")
 
 
+# How often each kind comes up relative to the others: 0 off, 0.5 rare, 1 normal, 2 often, 4 lots.
+FIREWORK_WEIGHTS = (0, 0.5, 1, 2, 4)
+FIREWORK_DEFAULT_WEIGHTS = {k: 2 if k in ("ball", "crossette", "spiral", "willow") else 1 for k in FIREWORK_KINDS}
+
+
+def _weight(v, default: float = 1) -> float:
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return default
+    return min(FIREWORK_WEIGHTS, key=lambda w: abs(w - v))
+
+
 def _fireworks_cfg() -> dict:
     saved = settings_store.load().get("fireworks", {})
     kinds = saved.get("kinds") if isinstance(saved.get("kinds"), dict) else {}
+    weights = saved.get("weights") if isinstance(saved.get("weights"), dict) else {}
     colors = [c for c in saved.get("colors", []) if c in FIREWORK_COLORS] if isinstance(saved.get("colors"), list) else []
+    w = {k: _weight(weights[k]) if k in weights else (0 if kinds.get(k) is False else FIREWORK_DEFAULT_WEIGHTS[k]) for k in FIREWORK_KINDS}
     return {
-        "kinds": {k: bool(kinds.get(k, True)) for k in FIREWORK_KINDS},
+        "weights": w,
+        "kinds": {k: v > 0 for k, v in w.items()},   # older pages read this
         "colors": colors or list(FIREWORK_COLORS),
         "pace": saved.get("pace") if saved.get("pace") in FIREWORK_PACE else "normal",
         "showpieces": saved.get("showpieces") if saved.get("showpieces") in FIREWORK_SPECIALS else "sometimes",
     }
 
 
+def _creator_weights() -> dict[str, float]:
+    saved = settings_store.load().get("fw_creators") or {}
+    return {str(k): _weight(v) for k, v in saved.items()}
+
+
+def _show_designs() -> list[dict]:
+    """Editor fireworks in the show, each with how often it comes up (its own frequency
+    times its maker's). Anything at 0 is left out."""
+    creators = _creator_weights()
+    out = []
+    for d in fireworks.in_show():
+        w = _weight(d.get("weight", 1)) * creators.get(d.get("author", ""), 1)
+        if w > 0:
+            out.append({**d, "weight": w})
+    return out
+
+
 @app.get("/api/public/fireworks")
 async def public_fireworks(request: Request):
     signed_in = request.state.user is not None
-    return JSONResponse({**_fireworks_cfg(), "custom": fireworks.in_show(), **fwshow.today_state(),
+    return JSONResponse({**_fireworks_cfg(), "custom": _show_designs(), **fwshow.today_state(),
                          "music": signed_in or (music.public() and _status_cfg()["enabled"])},
                         headers={"Cache-Control": "no-cache"})
 
@@ -389,6 +422,7 @@ async def get_firework_show(request: Request):
     return {"events": fwshow.events_cfg(), "signatures": fwshow.signatures(), "calendar": fwshow.calendar(),
             "players": sorted(players.values(), key=str.lower), "today": fwshow.today_state(),
             "calendar_defaults": [fwshow._clean_entry(e) for e in fwshow.DEFAULT_CALENDAR],
+            "creators": _creators_summary(),
             "music": {"tracks": music.tracks(), "public": music.public()}}
 
 
@@ -402,8 +436,20 @@ async def put_firework_show(request: Request):
         fwshow.save_signatures(body["signatures"])
     if isinstance(body.get("calendar"), list):
         fwshow.save_calendar(body["calendar"])
-    auth.audit(user, None, "fireworks_show", ", ".join(sorted(k for k in body if k in ("events", "signatures", "calendar"))))
+    if isinstance(body.get("creators"), dict):
+        cw = _creator_weights()
+        cw.update({str(k)[:32]: _weight(v) for k, v in body["creators"].items()})
+        settings_store.save_section("fw_creators", cw)
+    auth.audit(user, None, "fireworks_show", ", ".join(sorted(k for k in body if k in ("events", "signatures", "calendar", "creators"))))
     return await get_firework_show(request)
+
+
+def _creators_summary() -> list[dict]:
+    cw = _creator_weights()
+    by: dict[str, int] = {}
+    for d in fireworks.all_designs():
+        by[d.get("author", "")] = by.get(d.get("author", ""), 0) + 1
+    return [{"name": n, "designs": c, "weight": cw.get(n, 1)} for n, c in sorted(by.items(), key=lambda x: x[0].lower())]
 
 
 @app.post("/api/fireworks/test-event")
@@ -517,7 +563,12 @@ async def update_firework(fid: str, request: Request):
         raise HTTPException(404, "Firework not found")
     if not _can_edit(user, d):
         raise HTTPException(403, "Only its maker or an admin can change this firework")
-    return fireworks.update(fid, await _body(request))
+    body = await _body(request)
+    if user.role != "admin":
+        body.pop("weight", None)                  # how often it shows is the admins' call
+    elif "weight" in body:
+        body["weight"] = _weight(body["weight"])
+    return fireworks.update(fid, body)
 
 
 @app.delete("/api/fireworks/{fid}")
@@ -538,8 +589,11 @@ async def put_fireworks(request: Request):
     user = auth.require_admin(request)
     body = await _body(request)
     cur = _fireworks_cfg()
-    if isinstance(body.get("kinds"), dict):
-        cur["kinds"].update({k: bool(v) for k, v in body["kinds"].items() if k in FIREWORK_KINDS})
+    if isinstance(body.get("kinds"), dict):        # on/off from older pages
+        cur["weights"].update({k: (FIREWORK_DEFAULT_WEIGHTS[k] if v else 0) for k, v in body["kinds"].items() if k in FIREWORK_KINDS})
+    if isinstance(body.get("weights"), dict):
+        cur["weights"].update({k: _weight(v) for k, v in body["weights"].items() if k in FIREWORK_KINDS})
+    cur["kinds"] = {k: v > 0 for k, v in cur["weights"].items()}
     if isinstance(body.get("colors"), list):
         picked = [c for c in FIREWORK_COLORS if c in body["colors"]]
         if not picked:
@@ -552,7 +606,7 @@ async def put_fireworks(request: Request):
     if not any(cur["kinds"].values()):
         raise HTTPException(400, "Leave at least one kind of firework on")
     settings_store.save_section("fireworks", cur)
-    auth.audit(user, None, "fireworks_settings", f"{sum(cur['kinds'].values())} kinds, {len(cur['colors'])} colours, {cur['pace']}")
+    auth.audit(user, None, "fireworks_settings", f"{sum(cur['kinds'].values())} kinds on, {len(cur['colors'])} colours, {cur['pace']}")
     return cur
 
 

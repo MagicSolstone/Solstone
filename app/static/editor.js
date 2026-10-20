@@ -191,11 +191,24 @@ async function viewFireworkEditor(editId) {
     if (e.target.name === "name") ed.d.name = e.target.value;
     if (e.target.name === "in_show") ed.d.in_show = e.target.checked;
   });
-  every(2800, () => { if (ed.loop && !document.hidden) fweLaunch(); });
+  // Keep launching: the next one goes up only once the last has completely finished
+  // (stages, fades and all), plus a short pause.
+  let idleSince = 0;
+  every(250, () => {
+    if (!ed.loop || document.hidden || !ed.scene) return;
+    if (ed.scene.busy) { idleSince = 0; return; }
+    idleSince ||= performance.now();
+    if (performance.now() - idleSince > 700) { idleSince = 0; fweLaunch(); }
+  });
   setTimeout(() => fweLaunch(), 400);
 }
 
-function fweLaunch(d = ed.d) { ed.scene?.launchDesign(fweCopy(d)); }
+// Every preview starts on a clear sky, so previews never pile up and slow things down.
+function fweLaunch(d = ed.d) {
+  if (!ed.scene) return;
+  ed.scene.clear();
+  ed.scene.launchDesign(fweCopy(d));
+}
 function fweChanged() {
   clearTimeout(ed.debounce);
   ed.debounce = setTimeout(() => fweLaunch(), 450);

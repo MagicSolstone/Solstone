@@ -145,11 +145,11 @@ def _save(items: list[dict]) -> None:
 
 def all_designs() -> list[dict]:
     # Re-clean on the way out so designs saved by older versions get the newer fields.
-    return [{**d, **sanitize(d)} for d in _load()]
+    return [{**d, **sanitize(d), "weight": d.get("weight", 1)} for d in _load()]
 
 
 def in_show() -> list[dict]:
-    return [{"id": d["id"], **sanitize(d)} for d in _load() if d.get("in_show")]
+    return [{"id": d["id"], "author": d.get("author", ""), "weight": d.get("weight", 1), **sanitize(d)} for d in _load() if d.get("in_show")]
 
 
 def create(design: dict, author: str) -> dict:
@@ -178,6 +178,8 @@ def update(fid: str, design: dict) -> dict | None:
                 merged = {**d, **sanitize({**d, **design}), "updated": time.time()}
                 if "in_show" in design:
                     merged["in_show"] = bool(design["in_show"])
+                if "weight" in design:
+                    merged["weight"] = design["weight"]
                 items[i] = merged
                 _save(items)
                 return merged

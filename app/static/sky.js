@@ -20,6 +20,7 @@ function loadFireworkSettings() {
 }
 function applyFireworkSettings(c) {
   FW.kinds = c.kinds || null;
+  FW.weights = c.weights || null;
   FW.colors = c.colors?.length ? c.colors : FW_COLORS;
   FW.pace = FW_PACE[c.pace] ? c.pace : "normal";
   FW.showpieces = FW_SPECIAL_CHANCE[c.showpieces] != null ? c.showpieces : "sometimes";
@@ -28,7 +29,15 @@ function applyFireworkSettings(c) {
   FW.finales = Array.isArray(c.finales) ? c.finales : [];
   FW.music = !!c.music;
 }
-const fwOn = (k) => !FW.kinds || FW.kinds[k] !== false;
+// How often each kind comes up (admin settings): 0 off, 0.5 rare, 1 normal, 2 often, 4 lots.
+const fwWeight = (k) => FW.weights ? (FW.weights[k] ?? 1) : FW.kinds && FW.kinds[k] === false ? 0 : 1;
+const fwOn = (k) => fwWeight(k) > 0;
+function pickWeighted(list) {
+  const total = list.reduce((a, [, w]) => a + w, 0);
+  let r = Math.random() * total;
+  for (const [item, w] of list) { r -= w; if (r <= 0) return item; }
+  return list.length ? list[list.length - 1][0] : null;
+}
 // On a holiday the calendar's colours replace the usual ones and its favourite kinds come up more.
 const fwPalette = () => (FW.theme?.colors?.length ? FW.theme.colors : FW.colors);
 // Pixel templates for shaped bursts: each "#" becomes a spark that flies out to its spot.
@@ -160,6 +169,7 @@ function startSkyScene(cv, opts = {}) {
   let W = 0, H = 0, raf = 0, timer = 0, running = false, frame = 0, stopped = false;
   let stars = [], land = null, groundY = 0, cardBox = null, hill = [], watcher = { x: 0, y: 0 };
   const rockets = [], sparks = [], figures = [], trees = [];
+  const SPARK_SOFT = 2200, SPARK_HARD = 3600;        // effects thin out past these
   // Sound: the page passes opts.sound(type, info); pan is -1 (left) to 1 (right).
   const snd = (type, info = {}) => { try { opts.sound?.(type, { ...info, pan: info.x != null && W ? Math.max(-1, Math.min(1, (info.x / W) * 2 - 1)) : 0 }); } catch { /* sound is optional */ } };
   let boostUntil = 0;                                // a scheduled show or event: lively for a while
@@ -215,12 +225,14 @@ function startSkyScene(cv, opts = {}) {
     else if (sides.length && Math.random() < 0.8) { const [a, b] = pick(sides); x = rand(a, b); } else x = rand(W * 0.1, W * 0.9);
     if (!shape) {
       const busy = figures.length || trees.length || rockets.some((r) => FW_SPECIALS.includes(r.shape));
-      const themed = (FW.theme?.kinds || []).flatMap((k) => k.startsWith("custom:") ? FW.custom.filter((d) => `custom:${d.id}` === k) : [k, k]);
-      const regular = [...FW_SHAPES.filter(fwOn), ...FW.custom.map((d) => d), ...themed.filter((k) => typeof k !== "string" || !FW_SPECIALS.includes(k))];
-      const special = [...FW_SPECIALS.filter(fwOn), ...themed.filter((k) => FW_SPECIALS.includes(k))];
+      // Holiday favourites count extra; editor fireworks carry their own weight.
+      const themed = (FW.theme?.kinds || []).flatMap((k) => k.startsWith("custom:") ? FW.custom.filter((d) => `custom:${d.id}` === k).map((d) => [d, 2]) : [[k, 2]]);
+      const regular = [...[...new Set(FW_SHAPES)].map((k) => [k, fwWeight(k)]), ...FW.custom.map((d) => [d, d.weight ?? 1]),
+        ...themed.filter(([k]) => typeof k !== "string" || !FW_SPECIALS.includes(k))].filter(([, w]) => w > 0);
+      const special = [...FW_SPECIALS.map((k) => [k, fwWeight(k)]), ...themed.filter(([k]) => FW_SPECIALS.includes(k))].filter(([, w]) => w > 0);
       const wantSpecial = special.length && !busy && (Math.random() < FW_SPECIAL_CHANCE[FW.showpieces] || !regular.length);
-      if (wantSpecial) shape = pick(special);
-      else if (regular.length) shape = pick(regular);
+      if (wantSpecial) shape = pickWeighted(special);
+      else if (regular.length) shape = pickWeighted(regular);
       else return null;                            // only show-pieces are on, and one is already up
     }
     if (shape && typeof shape === "object") return launchDesign(shape, at?.x);
@@ -333,7 +345,9 @@ function startSkyScene(cv, opts = {}) {
   }
   // One burst of a pattern at (x, y), added to the group's pieces.
   function burst(g, x, y, o) {
-    const d = g.d, S = o.size, cols = o.colors, n = Math.max(6, Math.min(160, Math.round(o.sparks)));
+    // When the sky is already very full, new bursts get fewer pieces so nothing bogs down.
+    const room = sparks.length > SPARK_HARD ? 0.25 : sparks.length > SPARK_SOFT ? 0.5 : 1;
+    const d = g.d, S = o.size, cols = o.colors, n = Math.max(6, Math.min(160, Math.round(o.sparks * room)));
     const rot = rand(-1, 1) * dv(d, "tilt", 0) * 1.2, cos = Math.cos(rot), sin = Math.sin(rot);
     const jitter = () => 1 - dv(d, "spread", 0) * Math.random();
     const colorFor = (i) => d.color_mode === "alternate" ? cols[i % cols.length] : d.color_mode === "mix" ? pick(cols) : cols[0];
@@ -584,10 +598,11 @@ function startSkyScene(cv, opts = {}) {
     if (p.hidden) { p.px = p.x; p.py = p.y; return; }
     const t = p.pin ? Math.min(0.2, age / 600) : p.life / p.max;
     const color = colorOverride && d.color_mode !== "rainbow" && d.color_mode !== "change" ? colorOverride : customColor(p, t);
-    if (!p.pin && (d.trail > 0 || p.palm) && p.life % 2 === 0 && t < 0.85 && Math.random() < (p.palm ? 0.9 : d.trail)) {
+    const crowded = sparks.length > SPARK_SOFT;
+    if (!crowded && !p.pin && (d.trail > 0 || p.palm) && p.life % 2 === 0 && t < 0.85 && Math.random() < (p.palm ? 0.9 : d.trail)) {
       sparks.push({ x: p.x, y: p.y, px: p.x, py: p.y, vx: rand(-0.03, 0.03), vy: 0.05, life: 0, max: p.palm ? 22 : 14, color, ember: true });
     }
-    if (!p.pin && d.glitter > 0 && t < 0.85 && Math.random() < d.glitter * 0.45) {
+    if (!crowded && !p.pin && d.glitter > 0 && t < 0.85 && Math.random() < d.glitter * 0.45) {
       sparks.push({ x: p.x, y: p.y, px: p.x, py: p.y, vx: rand(-0.03, 0.03), vy: rand(0.02, 0.09), life: 0, max: rand(40, 75),
         color: Math.random() < 0.45 ? "#fff3c4" : color, glitter: true, twinkle: true });
     }
@@ -905,6 +920,10 @@ function startSkyScene(cv, opts = {}) {
       }
     }
 
+    if (sparks.length > SPARK_HARD * 1.4) {           // way too many: let the faintest go
+      const keep = sparks.filter((p) => !p.ember && !p.glitter);
+      sparks.length = 0; sparks.push(...keep.slice(-SPARK_HARD));
+    }
     for (let i = sparks.length - 1; i >= 0; i--) {
       const p = sparks[i];
       p.life++;
@@ -922,7 +941,7 @@ function startSkyScene(cv, opts = {}) {
       }
       if (p.willow) {
         p.vx *= 0.965; p.vy = p.vy * 0.965 + G * 0.45;
-        if (p.life < p.max * 0.85 && Math.random() < 0.42) {      // glitter left hanging behind: the drooping strands
+        if (sparks.length < SPARK_SOFT && p.life < p.max * 0.85 && Math.random() < 0.42) {      // glitter left hanging behind: the drooping strands
           sparks.push({ x: p.x, y: p.y, px: p.x, py: p.y, vx: rand(-0.03, 0.03), vy: rand(0.02, 0.09), life: 0, max: rand(45, 85),
             color: Math.random() < 0.45 ? "#fff3c4" : p.color, glitter: true, twinkle: true });
         }
@@ -945,7 +964,7 @@ function startSkyScene(cv, opts = {}) {
       ctx.fillStyle = p.fade && t > 0.4 ? mix(p.color, p.fade, Math.min(1, (t - 0.4) / 0.4)) : p.color;
       line(p.px, p.py, p.x, p.y);
       if (p.sub) { ctx.fillStyle = "#fff6d8"; ctx.fillRect(Math.round(p.x), Math.round(p.y), 1, 1); }
-      if (p.trail && !p.ember && p.life % (p.sub ? 2 : 3) === 0 && t < 0.8) {
+      if (p.trail && !p.ember && sparks.length < SPARK_SOFT && p.life % (p.sub ? 2 : 3) === 0 && t < 0.8) {
         sparks.push({ x: p.x, y: p.y, px: p.x, py: p.y, vx: 0, vy: 0.05, life: 0, max: 14, color: p.fade || p.color, ember: true });
       }
     }
@@ -1037,7 +1056,14 @@ function startSkyScene(cv, opts = {}) {
     },
     get boosting() { return boosting(); },
     // One of the big show-pieces (dragon, bow, tree), for challenge advancements.
-    showpiece() { const k = FW_SPECIALS.filter(fwOn); launch(k.length ? pick(k) : "large"); wake(); },
+    showpiece() { const k = FW_SPECIALS.map((x) => [x, fwWeight(x)]).filter(([, w]) => w > 0); launch(k.length ? pickWeighted(k) : "large"); wake(); },
+    // Is anything still in the air (including stages and fountains still to come)?
+    get busy() { return !!(rockets.length || sparks.length || figures.length || trees.length || emitters.length || events.length); },
+    // Empty the sky at once (the editor uses this so previews never pile up).
+    clear() {
+      rockets.length = 0; sparks.length = 0; figures.length = 0; trees.length = 0; emitters.length = 0; events.length = 0; groups.length = 0;
+      if (!running) { frame = 0; step(); }
+    },
     // Launch a design straight from the Firework editor.
     launchDesign(d) { launchDesign(d); wake(); },
     get auto() { return auto; },

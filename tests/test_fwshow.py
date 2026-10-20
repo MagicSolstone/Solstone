@@ -80,3 +80,28 @@ def test_music_playlist(client, viewer, anon):
     assert client.delete(f"/api/music/{t1['id']}").json() == {"ok": True}
     assert client.delete(f"/api/music/{t2['id']}").status_code == 200
     assert client.get("/api/public/music").json() == []
+
+
+def test_frequencies_for_kinds_people_and_designs(client, viewer, anon):
+    cfg = anon.get("/api/public/fireworks").json()
+    assert cfg["weights"]["ball"] == 2 and cfg["weights"]["star"] == 1
+    r = client.put("/api/settings/fireworks", json={"weights": {"star": 4, "ring": 0, "heart": 0.7, "nope": 3}}).json()
+    assert r["weights"]["star"] == 4 and r["weights"]["ring"] == 0 and r["weights"]["heart"] == 0.5
+    assert r["kinds"]["ring"] is False and "nope" not in r["weights"]
+    client.put("/api/settings/fireworks", json={"weights": {"star": 1, "ring": 1, "heart": 1}})
+
+    kid = viewer.post("/api/fireworks", json={"name": "Kid one", "in_show": True}).json()
+    mine = client.post("/api/fireworks", json={"name": "Admin one", "in_show": True}).json()
+    # Makers can't set how often their own firework shows; admins can.
+    assert viewer.put(f"/api/fireworks/{kid['id']}", json={"weight": 4}).json().get("weight", 1) == 1
+    assert client.put(f"/api/fireworks/{kid['id']}", json={"weight": 2}).json()["weight"] == 2
+    show = {d["id"]: d for d in anon.get("/api/public/fireworks").json()["custom"]}
+    assert show[kid["id"]]["weight"] == 2 and show[mine["id"]]["weight"] == 1
+    # A maker set to Off takes all of theirs out; Often doubles them.
+    client.put("/api/fireworks/show", json={"creators": {"kiddo": 0, "admin": 2}})
+    show = {d["id"]: d for d in anon.get("/api/public/fireworks").json()["custom"]}
+    assert kid["id"] not in show and show[mine["id"]]["weight"] == 2
+    creators = {c["name"]: c for c in client.get("/api/fireworks/show").json()["creators"]}
+    assert creators["kiddo"]["weight"] == 0 and creators["kiddo"]["designs"] >= 1
+    client.put("/api/fireworks/show", json={"creators": {"kiddo": 1, "admin": 1}})
+    client.delete(f"/api/fireworks/{kid['id']}"); client.delete(f"/api/fireworks/{mine['id']}")

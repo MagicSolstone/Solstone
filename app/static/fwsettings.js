@@ -68,12 +68,58 @@ async function fwsSave(body, msg = "Saved") {
 function renderFws() {
   const el = $("#fws-body");
   if (fws.tab === "show") {
-    el.innerHTML = `<section class="panel fw-settings" id="fw-settings">${fireworksSettingsHtml(fws.fw)}</section>`;
+    el.innerHTML = `<section class="panel fw-settings" id="fw-settings">${fireworksSettingsHtml(fws.fw)}</section>
+      <section class="panel fws-community" id="fws-community"></section>`;
     wireFireworksSettings($("#fw-settings"), fws.fw);
+    renderCommunity($("#fws-community"));
   } else if (fws.tab === "events") renderEvents(el);
   else if (fws.tab === "join") renderJoin(el);
   else if (fws.tab === "calendar") renderCalendar(el);
   else renderMusic(el);
+}
+
+// ---------------------------------------------------------------- fireworks people made
+// Each maker has a frequency (Off leaves out everything they made), and each of their
+// fireworks has its own, on top of whether its maker put it in the show.
+function renderCommunity(el) {
+  const creators = fws.data.creators || [];
+  if (!creators.length) { el.innerHTML = `<h3 class="fw-sub">From the editor</h3><p class="muted">Nobody has saved a firework yet. Make one in the <a href="#/fireworks">editor</a>.</p>`; return; }
+  const open = fws.openCreators ||= new Set();
+  el.innerHTML = `<h3 class="fw-sub">From the editor <span class="muted small">how often each person's fireworks come up, and each firework</span></h3>
+    <div class="fws-creators">${creators.map((c) => {
+      const mine = fws.designs.filter((d) => d.author === c.name);
+      const inShow = mine.filter((d) => d.in_show).length;
+      return `<div class="fws-creator ${c.weight ? "" : "off"}" data-creator="${esc(c.name)}">
+        <div class="fws-creator-head"><button type="button" class="link-btn" data-toggle aria-expanded="${open.has(c.name)}">${open.has(c.name) ? "▾" : "▸"} <b>${esc(c.name)}</b></button>
+          <span class="muted small">${mine.length} made · ${inShow} in the show</span>${freqSeg(`data-creator-weight="${esc(c.name)}"`, c.weight)}</div>
+        ${open.has(c.name) ? `<div class="fws-designs">${mine.map((d) => `<div class="fws-design ${d.in_show && d.weight ? "" : "off"}" data-id="${d.id}">
+            <span class="fwe-dots">${d.colors.map((x) => `<i style="background:${x}"></i>`).join("")}</span><span class="fws-dname">${esc(d.name)}</span>
+            <label class="check small"><input type="checkbox" data-inshow ${d.in_show ? "checked" : ""}> In the show</label>
+            ${freqSeg(`data-design-weight="${d.id}"`, d.weight ?? 1)}
+            <button type="button" class="icon-btn" data-play title="Launch it" aria-label="Launch ${esc(d.name)}">▶</button></div>`).join("")}</div>` : ""}
+      </div>`;
+    }).join("")}</div>`;
+  el.querySelectorAll("[data-toggle]").forEach((b) => b.addEventListener("click", () => {
+    const n = b.closest("[data-creator]").dataset.creator;
+    open.has(n) ? open.delete(n) : open.add(n);
+    renderCommunity(el);
+  }));
+  el.querySelectorAll("[data-creator-weight] button").forEach((b) => b.addEventListener("click", async () => {
+    const n = b.closest("[data-creator]").dataset.creator;
+    await fwsSave({ creators: { [n]: +b.dataset.freq } }, +b.dataset.freq ? `${n}'s fireworks: ${FREQS.find(([v]) => v === +b.dataset.freq)[1]}` : `${n}'s fireworks are out of the show`);
+    renderCommunity(el);
+  }));
+  const updateDesign = async (id, body) => {
+    try { await post(`/api/fireworks/${id}`, body, "PUT"); fws.designs = await api("/api/fireworks"); fwLoaded = null; loadFireworkSettings(); showToast("Saved", 1200); }
+    catch (err) { showToast(esc(err.message), 3000); }
+    fws.data = await api("/api/fireworks/show"); renderCommunity(el);
+  };
+  el.querySelectorAll("[data-design-weight] button").forEach((b) => b.addEventListener("click", () => updateDesign(b.closest("[data-id]").dataset.id, { weight: +b.dataset.freq })));
+  el.querySelectorAll("[data-inshow]").forEach((c) => c.addEventListener("change", () => updateDesign(c.closest("[data-id]").dataset.id, { in_show: c.checked })));
+  el.querySelectorAll("[data-play]").forEach((b) => b.addEventListener("click", () => {
+    const d = fws.designs.find((x) => x.id === b.closest("[data-id]").dataset.id);
+    if (d) appSky.scene?.launch({ ...d });
+  }));
 }
 
 // ---------------------------------------------------------------- game events

@@ -419,13 +419,22 @@ const FW_LABELS = [
 ];
 function fireworksSettingsHtml(fw) {
   const seg = (name, opts, cur) => `<div class="seg" role="group" data-fw-seg="${name}">${opts.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${v === cur}">${l}</button>`).join("")}</div>`;
-  return `<div class="fw-kinds">${FW_LABELS.map(([k, l, note]) => `<div class="fw-kind">
-      <label class="check"><input type="checkbox" data-fw-kind="${k}" ${fw.kinds[k] ? "checked" : ""}> <span>${esc(l)}${note ? ` <small class="muted">${esc(note)}</small>` : ""}</span></label>
+  const weights = fw.weights || Object.fromEntries(Object.entries(fw.kinds || {}).map(([k, v]) => [k, v ? 1 : 0]));
+  return `<h3 class="fw-sub">Built-in fireworks <span class="muted small">how often each one comes up</span></h3>
+    <div class="fw-kinds">${FW_LABELS.map(([k, l, note]) => `<div class="fw-kind ${weights[k] ? "" : "off"}">
+      <span class="fw-kname">${esc(l)}${note ? ` <small class="muted">${esc(note)}</small>` : ""}</span>
+      ${freqSeg(`data-fw-weight="${k}"`, weights[k] ?? 1)}
       <button type="button" class="icon-btn fw-try" data-try="${k}" title="Launch one now" aria-label="Try ${esc(l)}">▶</button></div>`).join("")}</div>
+    <p class="muted small" style="margin:-4px 0 14px">Dragon, bow and arrow, and tree are show-pieces: their frequencies are compared with each other, and “Show-pieces” below sets how often any of them appears.</p>
     <div class="fw-row"><span>Colours</span><div class="fw-colors">${FW_COLORS.map((c) => `<button type="button" class="fw-swatch" data-color="${c}" aria-pressed="${fw.colors.includes(c)}" style="--c:${c}" aria-label="Colour ${c}"></button>`).join("")}</div></div>
     <div class="fw-row"><span>How often</span>${seg("pace", [["calm", "Calm"], ["normal", "Normal"], ["lively", "Lively"]], fw.pace)}</div>
     <div class="fw-row"><span>Show-pieces</span>${seg("showpieces", [["rare", "Rare"], ["sometimes", "Sometimes"], ["often", "Often"]], fw.showpieces)}</div>
     <p class="muted small">Creeper, heart and tree keep their own colours, and willows are often classic gold. The ▶ buttons are easiest to watch with the Show switch (bottom right) turned off.</p>`;
+}
+// Off · Rare · Normal · Often · Lots, used for kinds, designs and people.
+const FREQS = [[0, "Off"], [0.5, "Rare"], [1, "Normal"], [2, "Often"], [4, "Lots"]];
+function freqSeg(attr, cur) {
+  return `<div class="seg freq" role="group" ${attr}>${FREQS.map(([v, l]) => `<button type="button" data-freq="${v}" aria-pressed="${+cur === v}">${l}</button>`).join("")}</div>`;
 }
 function wireFireworksSettings(el, fw) {
   const save = async (body) => {
@@ -435,13 +444,19 @@ function wireFireworksSettings(el, fw) {
       showToast("Fireworks updated", 1800);
     } catch (err) { showToast(esc(err.message), 4000); el.innerHTML = fireworksSettingsHtml(fw); wireFireworksSettings(el, fw); }
   };
-  el.addEventListener("change", (e) => {
-    const k = e.target.dataset.fwKind;
-    if (k) save({ kinds: { [k]: e.target.checked } });
-  });
   el.addEventListener("click", (e) => {
     const t = e.target.closest("button");
     if (!t) return;
+    const wseg = t.closest("[data-fw-weight]");
+    if (wseg) {
+      const k = wseg.dataset.fwWeight, v = +t.dataset.freq;
+      const others = Object.entries(fw.weights || {}).some(([x, w]) => x !== k && w > 0);
+      if (v === 0 && !others) { showToast("Leave at least one kind of firework on", 2500); return; }
+      wseg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === t)));
+      wseg.closest(".fw-kind").classList.toggle("off", v === 0);
+      save({ weights: { [k]: v } });
+      return;
+    }
     if (t.dataset.try) { appSky.scene?.launch(t.dataset.try); return; }
     if (t.dataset.color) {
       const on = t.getAttribute("aria-pressed") !== "true";
