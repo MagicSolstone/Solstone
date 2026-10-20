@@ -1,9 +1,9 @@
 """Minimal async Source RCON client that handles multi-packet responses.
 
 Minecraft splits long responses (e.g. `data get entity`) across several
-packets of ~4096 bytes. After each command we send a harmless sentinel
-packet; the server answers it only after the full command response, so we
-read until the sentinel's id comes back.
+packets of up to 4096 characters. When a reply fills a whole packet we send
+a harmless sentinel packet; the server answers it only after the rest of the
+reply, so we read until the sentinel's id comes back.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import struct
 AUTH = 3
 COMMAND = 2
 SENTINEL_TYPE = 0  # unknown type: vanilla replies "Unknown request ..."
+MAX_CHUNK = 4000  # vanilla splits replies into 4096-character packets; anything near that may continue
 
 
 class RconError(Exception):
@@ -75,9 +76,22 @@ class Rcon:
                 raise RconError(f"RCON command failed: {e}") from e
 
     async def _command(self, cmd: str) -> str:
+        # Vanilla's RCON server parses exactly one packet per socket read and drops
+        # the connection if two arrive together, so never send packets back to back:
+        # send the command, wait for its first reply packet, and only then (if the
+        # reply might continue) send the sentinel.
         cid = await self._send(COMMAND, cmd)
-        sid = await self._send(SENTINEL_TYPE, "")
         chunks: list[bytes] = []
+        while True:
+            got_id, _ptype, body = await self._recv()
+            if got_id == cid:
+                chunks.append(body)
+                break
+        if len(chunks[0]) < MAX_CHUNK:
+            return chunks[0].decode("utf-8", errors="replace")
+        # A full-size packet means more may follow. The server finishes writing the whole
+        # reply before it reads our next packet, so the sentinel's answer marks the end.
+        sid = await self._send(SENTINEL_TYPE, "")
         while True:
             got_id, _ptype, body = await self._recv()
             if got_id == sid:

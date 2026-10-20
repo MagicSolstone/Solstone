@@ -17,12 +17,18 @@ def _pkt(rid, t, body: bytes):
 
 
 async def _fake_rcon(reader, writer):
+    """Behaves like vanilla's RconClient: each socket read must contain exactly one
+    packet (length == bytes read - 4) or the server closes the connection."""
     try:
         while True:
-            (ln,) = struct.unpack("<i", await reader.readexactly(4))
-            data = await reader.readexactly(ln)
-            rid, t = struct.unpack("<ii", data[:8])
-            body = data[8:-2].decode()
+            data = await reader.read(1460)
+            if len(data) < 10:
+                break
+            (ln,) = struct.unpack("<i", data[:4])
+            if ln != len(data) - 4:
+                break  # two packets in one read: vanilla gives up on the client
+            rid, t = struct.unpack("<ii", data[4:12])
+            body = data[12:-2].decode()
             if t == 3:
                 writer.write(_pkt(rid if body == "pw" else -1, 2, b""))
             elif t == 2:
@@ -30,10 +36,10 @@ async def _fake_rcon(reader, writer):
                 for i in range(0, len(out), 4096):
                     writer.write(_pkt(rid, 0, out[i:i + 4096]))
             else:
-                writer.write(_pkt(rid, 0, b"Unknown request"))
+                writer.write(_pkt(rid, 0, f"Unknown request {t:x}".encode()))
             await writer.drain()
-    except asyncio.IncompleteReadError:
-        pass
+    finally:
+        writer.close()
 
 
 def test_rcon_multipacket_and_auth():
@@ -44,6 +50,7 @@ def test_rcon_multipacket_and_auth():
             r = Rcon("127.0.0.1", port, "pw", timeout=2)
             assert await r.command("list") == "echo list"
             assert await r.command("big") == BIG
+            assert await r.command("list") == "echo list"  # connection still usable afterwards
             await r.close()
             with pytest.raises(RconError, match="password"):
                 await Rcon("127.0.0.1", port, "wrong", timeout=2).command("list")
