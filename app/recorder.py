@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from . import db
 from . import servers as S
 from .logparse import parse_line
+from . import backups, notify
 from .notify import maybe_notify
 from .rcon import RconError
 
@@ -73,8 +74,11 @@ class Recorder:
         self._running_state: dict[str, bool] = {}
         self._tick_ok: dict[str, bool] = {}
         self.last_poll: float | None = None
+        self.errors: dict[str, str] = {}   # server id -> last recorder error (cleared on success)
+        self.started: float | None = None
 
     def start(self) -> None:
+        self.started = time.time()
         db.close_stale_sessions(POLL_INTERVAL * 3)
         self._tasks = [asyncio.create_task(self._loop(self.poll_all, POLL_INTERVAL)),
                        asyncio.create_task(self._loop(self.tail_all, LOG_INTERVAL)),
@@ -101,8 +105,61 @@ class Recorder:
     # ------------------------------------------------------------ polling
     async def poll_all(self) -> None:
         await S.registry.refresh()
-        await asyncio.gather(*(self.poll_server(s) for s in list(S.registry.servers.values())), return_exceptions=True)
+        servers = list(S.registry.servers.values())
+        results = await asyncio.gather(*(self.poll_server(s) for s in servers), return_exceptions=True)
+        for srv, r in zip(servers, results, strict=True):
+            if isinstance(r, Exception):
+                self.errors[srv.id] = f"{type(r).__name__}: {r}"
+                log.warning("Recording %s failed: %s", srv.id, self.errors[srv.id], exc_info=r)
+            else:
+                self.errors.pop(srv.id, None)
         self.last_poll = time.time()
+        try:
+            await self.check_alerts(servers)
+        except Exception:
+            log.exception("alert checks failed")
+
+    async def check_alerts(self, servers: list) -> None:
+        """Screen-time limits, the weekly digest and overdue backups."""
+        c = notify.get_config()
+        channels = bool(c["ntfy_url"] or c["discord_webhook"])
+        zone = db.tz()
+        now = datetime.now(zone)
+        today = now.date().isoformat()
+
+        if c["limits"] and channels:
+            totals: dict[str, int] = {}
+            display: dict[str, str] = {}
+            for srv in servers:
+                for row in db.daily_playtime(srv.id, 1)[0]["players"].items():
+                    name, secs = row
+                    totals[name.lower()] = totals.get(name.lower(), 0) + secs
+                    display.setdefault(name.lower(), name)
+            for key, secs, limit in notify.screen_time_due(totals, c["limits"]):
+                if db.alert_once(f"limit:{key}:{today}"):
+                    name = display.get(key, key)
+                    await notify.send("Screen time", f"{name} has played {notify._fmt(secs)} today "
+                                      f"(daily limit {notify._fmt(limit * 60)})", notify.TAGS["screen_time"])
+
+        if c["digest_enabled"] and channels and now.weekday() == c["digest_day"] and now.hour >= c["digest_hour"]:
+            week = now.isocalendar()
+            if db.alert_once(f"digest:{week.year}-{week.week}"):
+                await notify.send("Lodestone weekly digest", self.digest(servers), notify.TAGS["digest"])
+
+        if "backup" in c["events"] and channels:
+            for srv in servers:
+                b = backups.status(srv)
+                if b.get("found") and b.get("stale") and db.alert_once(f"backup:{srv.id}:{today}"):
+                    await notify.send(srv.display_name, f"No new backup for {int(b['age_hours'])} hours "
+                                      f"(last: {b['latest']['name']})", notify.TAGS["backup"])
+
+    @staticmethod
+    def digest(servers: list) -> str:
+        return notify.digest_text([(s.display_name, db.week_stats(s.id)) for s in servers if not s.settings.get("hidden")])
+
+    def status(self, server_id: str) -> dict:
+        return {"running": bool(self._tasks), "started": self.started, "last_poll": self.last_poll,
+                "interval": POLL_INTERVAL, "error": self.errors.get(server_id)}
 
     async def poll_server(self, srv: S.Server) -> None:
         now = time.time()

@@ -24,6 +24,8 @@ services:
       # Crafty's servers folder, read-only. With the Unraid Crafty template
       # this is usually /mnt/user/appdata/crafty-4/servers
       - /mnt/user/appdata/crafty-4/servers:/servers:ro
+      # Optional: Crafty's backups folder, read-only, for backup status
+      - /mnt/user/appdata/crafty-4/backups:/backups:ro
       # Lodestone settings + downloaded item icons
       - /mnt/user/appdata/lodestone:/data
     healthcheck:

@@ -75,17 +75,21 @@ function renderLine(el, spec) {
     // Downtime bands
     let bands = "";
     for (const p of spec.points) if (p.running === 0) bands += `<rect x="${X(p.t)}" y="${m.t}" width="${Math.max(1, (spec.bucket / span) * iw)}" height="${ih}" class="down"/>`;
-    // Path with gaps
-    let d = "", prev = null;
-    for (const p of spec.points) {
-      if (p.v == null) { prev = null; continue; }
+    // Path with gaps; a point with no neighbour on either side is drawn as a dot,
+    // otherwise a fresh install's first measurements would be invisible.
+    let d = "", prev = null, dots = "";
+    const pv = spec.points;
+    const joined = (a, b) => a && b && a.v != null && b.v != null && Math.abs(b.t - a.t) <= spec.bucket * 2.5;
+    pv.forEach((p, i) => {
+      if (p.v == null) { prev = null; return; }
       const gap = prev && p.t - prev.t > spec.bucket * 2.5;
       d += `${!prev || gap ? "M" : "L"}${X(p.t).toFixed(1)},${Y(Math.min(p.v, maxV)).toFixed(1)} `;
+      if (!joined(pv[i - 1], p) && !joined(p, pv[i + 1])) dots += `<circle cx="${X(p.t).toFixed(1)}" cy="${Y(Math.min(p.v, maxV)).toFixed(1)}" r="3" style="fill:${spec.color || SERIES[0]}"/>`;
       prev = p;
-    }
+    });
     const target = spec.target ? `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(spec.target.v)}" y2="${Y(spec.target.v)}" class="target"/><text x="${W - m.r}" y="${Y(spec.target.v) - 5}" class="axis" text-anchor="end">${esc(spec.target.label)}</text>` : "";
     el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(spec.label || "")}">
-      ${bands}${grid}${target}<path d="${d}" class="line" style="stroke:${spec.color || SERIES[0]}"/>
+      ${bands}${grid}${target}<path d="${d}" class="line" style="stroke:${spec.color || SERIES[0]}"/>${dots}
       <line class="cross" y1="${m.t}" y2="${m.t + ih}" visibility="hidden"/><circle class="dot" r="4" visibility="hidden" style="fill:${spec.color || SERIES[0]}"/>
       <rect class="hit" x="${m.l}" y="${m.t}" width="${iw}" height="${ih}"/></svg>`;
     const svg = el.querySelector("svg"), cross = svg.querySelector(".cross"), dot = svg.querySelector(".dot");
@@ -184,16 +188,49 @@ const COUNT_LABELS = { death: ["death", "deaths"], advancement: ["advancement", 
 const hm = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 const NEST_SHOWN = 6;
 
-function eventLineHtml(e, withName) {
+function eventLineHtml(e, withName, colorNames = false) {
   let msg;
-  if (e.type === "chat") msg = withName ? `<b>${esc(e.player)}</b> ${esc(e.message)}` : esc(e.message);
+  const name = () => `<b${colorNames ? ` class="pname-c" style="color:${nameInk(e.player)}"` : ""}>${esc(e.player)}</b>`;
+  if (e.type === "chat") msg = withName ? `${name()} ${esc(e.message)}` : esc(e.message);
   else {
     msg = esc(e.message);
-    if (e.player) msg = withName ? msg.replace(esc(e.player), `<b>${esc(e.player)}</b>`) : msg.replace(`${esc(e.player)} `, "");
+    if (e.player) msg = withName ? msg.replace(esc(e.player), name()) : msg.replace(`${esc(e.player)} `, "");
     if (e.type === "advancement") msg = msg.replace(/\[(.+)\]$/, '<span class="adv-name">$1</span>');
     if (!withName) msg = msg.charAt(0).toUpperCase() + msg.slice(1);
   }
   return `<li class="feed-item ev-${esc(e.type)}"><span class="ev-icon" aria-hidden="true">${EVENT_ICON[e.type] || "•"}</span><span class="ev-time">${esc(hm(e.ts))}</span><span class="ev-msg">${msg}</span></li>`;
+}
+
+// Player names inside group blocks use a lighter tint of their series colour so the
+// text stays readable on the dark panel (the colour bar carries the identity).
+function nameInk(player) {
+  const hex = playerColor(player).slice(1);
+  const n = parseInt(hex, 16), mix = (c) => Math.round(c + (255 - c) * 0.45);
+  return `rgb(${mix((n >> 16) & 255)} ${mix((n >> 8) & 255)} ${mix(n & 255)})`;
+}
+
+function groupBlockHtml(b) {
+  const range = b.open
+    ? `${hm(b.start)} – now <span class="live-tag"><span class="status-dot on"></span>playing</span>`
+    : `${hm(b.start)} – ${hm(b.end)}`;
+  const people = b.players.map((n) => {
+    const sess = b.sessions.filter((x) => x.player === n);
+    const secs = sess.reduce((a, x) => a + x.seconds, 0);
+    const uuid = sess[0]?.uuid;
+    return `<a class="tl-who" href="#/s/${encodeURIComponent(curSid)}/p/${uuid || ""}" title="${esc(n)} played ${esc(fmtSeconds(secs))}">${miniHead({ uuid, name: n })}<b style="color:${nameInk(n)}">${esc(n)}</b><span class="muted tl-each">${secs >= 60 ? fmtSeconds(secs) : "<1m"}</span></a>`;
+  }).join("");
+  const summary = Object.entries(COUNT_LABELS).filter(([k]) => b.counts[k])
+    .map(([k, [one, many]]) => `<span class="cnt ev-${k}"><span aria-hidden="true">${EVENT_ICON[k]}</span> ${b.counts[k]} ${b.counts[k] === 1 ? one : many}</span>`).join("");
+  const evs = b.events;
+  const hidden = Math.max(0, evs.length - NEST_SHOWN * 2);
+  const stripes = b.players.map((n, i, a) => `${playerColor(n)} ${(i / a.length) * 100}% ${((i + 1) / a.length) * 100}%`).join(", ");
+  return `<li class="tl-session tl-group" style="--stripe:linear-gradient(${stripes})">
+    <div class="tl-head"><span class="tl-together">Played together</span><span class="tl-range">${range}</span><span class="tl-dur">${b.seconds >= 60 ? fmtSeconds(b.seconds) : "under a minute"}</span></div>
+    <div class="tl-people">${people}</div>
+    ${summary ? `<div class="tl-sum">${summary}</div>` : ""}
+    ${evs.length ? `<ul class="nested">${evs.map((e, i) => eventLineHtml(e, true, true).replace('<li class="', `<li ${i >= NEST_SHOWN * 2 ? "hidden " : ""}class="`)).join("")}</ul>
+      ${hidden ? `<button class="link-btn show-all" type="button">Show ${hidden} more</button>` : ""}` : ""}
+  </li>`;
 }
 
 function sessionBlockHtml(b, showPlayer) {
@@ -220,10 +257,12 @@ function sessionBlockHtml(b, showPlayer) {
 function timelineItemsHtml(items, state, showPlayer) {
   let out = "";
   for (const it of items) {
-    const ts = it.kind === "session" ? it.start : it.ts;
+    const ts = it.kind === "event" ? it.ts : it.start;
     const day = dayLabel(ts);
     if (day !== state.lastDay) { out += `<li class="feed-day">${esc(day)}</li>`; state.lastDay = day; }
-    out += it.kind === "session" ? sessionBlockHtml(it, showPlayer) : `<li class="tl-loose"><ul class="nested">${eventLineHtml(it, true)}</ul></li>`;
+    out += it.kind === "group" ? groupBlockHtml(it)
+      : it.kind === "session" ? sessionBlockHtml(it, showPlayer)
+      : `<li class="tl-loose"><ul class="nested">${eventLineHtml(it, true)}</ul></li>`;
   }
   return out;
 }
@@ -271,7 +310,7 @@ async function viewActivity(sid) {
       <div class="seg" role="group" aria-label="Days shown" id="days-seg">${[7, 14, 30].map((d) => `<button data-d="${d}" aria-pressed="${d === days}">${d} days</button>`).join("")}</div></div>
       <div class="panel"><div id="today-row" class="today-row"></div><div id="legend"></div><div class="chart" id="daily-chart"></div></div>
     </section>
-    <section class="section"><div class="section-head"><h2>Activity</h2><span class="muted">Each block is one play session, with what happened while that player was on</span></div>
+    <section class="section"><div class="section-head"><h2>Activity</h2><span class="muted">One block per play session. Players online at the same time share a block</span></div>
       <div id="feed"></div></section>`);
   wireHeader(s);
   const refreshFeed = mountTimeline($("#feed"), sid);
@@ -315,8 +354,15 @@ async function viewPerformance(sid) {
     <div id="perf-tiles"></div><div id="perf-body"></div>`);
   wireHeader(s);
   const load = async () => {
-    const mt = await api(`/api/servers/${sid}/metrics?range=${range}`);
+    let mt;
+    try { mt = await api(`/api/servers/${sid}/metrics?range=${range}`); }
+    catch (err) {
+      $("#perf-tiles").innerHTML = "";
+      $("#perf-body").innerHTML = `<div class="notice">Couldn't load performance history: ${esc(err.message)}</div>`;
+      return;
+    }
     const pts = mt.points, until = Date.now() / 1000;
+    const rec = mt.recorder || {};
     const l = mt.latest;
     const fresh = l && until - l.ts < 180;
     const st = fresh && l.running ? tpsStatus(l.tps) : null;
@@ -330,28 +376,40 @@ async function viewPerformance(sid) {
       [String(peak), `Most players at once, last ${range}`],
     ];
     $("#perf-tiles").innerHTML = `<div class="stat-strip">${tiles.map(([v, k, status]) => `<div><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div>${status ? `<div class="status ${status.cls}"><span aria-hidden="true">${status.icon}</span> ${esc(status.label)}</div>` : ""}</div>`).join("")}</div>`;
+    const notes = [];
+    if (rec.error) notes.push(`<div class="notice">Recording this server is failing: <code>${esc(rec.error)}</code></div>`);
+    else if (!rec.running) notes.push(`<div class="notice">The background recorder isn't running, so no new measurements are being saved.</div>`);
+    else if (rec.last_poll && until - rec.last_poll > rec.interval * 4) notes.push(`<div class="notice">The last measurement was ${esc(fmtAgo(rec.last_poll))}. The recorder may be stuck; check the container logs.</div>`);
     if (!pts.length) {
-      $("#perf-body").innerHTML = `<div class="empty"><h3>No measurements yet</h3><p>Lodestone records performance every 30 seconds while it's running. Check back in a few minutes.</p></div>`;
+      $("#perf-body").innerHTML = notes.join("") + `<div class="empty"><h3>No measurements yet</h3><p>Lodestone records performance every ${Math.round(rec.interval || 30)} seconds while it's running. Check back in a few minutes.</p></div>`;
       return;
     }
+    if (mt.first_ts && until - mt.first_ts < 3600) {
+      notes.push(`<p class="muted" style="margin-bottom:14px">Recording started ${esc(fmtAgo(mt.first_ts))}. The charts fill in over the next hour; until then each measurement shows as a dot.</p>`);
+    }
     const hasTps = pts.some((p) => p.tps != null);
-    $("#perf-body").innerHTML = `<div class="charts">
+    $("#perf-body").innerHTML = notes.join("") + `<div class="charts">
       <div class="panel"><h3>TPS</h3>${hasTps ? '<div class="chart" id="c-tps"></div>' : `<p class="muted">TPS needs RCON on Minecraft 1.20.3 or newer.</p>`}</div>
       <div class="panel"><h3>Tick time</h3>${hasTps ? '<div class="chart" id="c-mspt"></div>' : `<p class="muted">Tick time needs RCON on Minecraft 1.20.3 or newer.</p>`}</div>
       <div class="panel"><h3>Players online</h3><div class="chart" id="c-players"></div></div>
-      <div class="panel"><h3>CPU</h3><div class="chart" id="c-cpu"></div></div>
-      <div class="panel"><h3>Memory</h3><div class="chart" id="c-mem"></div></div>
+      <div class="panel"><h3>CPU</h3>${pts.some((p) => p.cpu != null) ? '<div class="chart" id="c-cpu"></div>' : '<p class="muted">CPU comes from Crafty. Set CRAFTY_URL and CRAFTY_TOKEN to record it.</p>'}</div>
+      <div class="panel"><h3>Memory</h3>${pts.some((p) => p.mem_mb != null) ? '<div class="chart" id="c-mem"></div>' : '<p class="muted">Memory comes from Crafty. Set CRAFTY_URL and CRAFTY_TOKEN to record it.</p>'}</div>
     </div><p class="muted" style="margin-top:12px;font-size:.88rem">Shaded areas are times the server was offline.</p>`;
     const base = { bucket: mt.bucket, since: mt.since, until };
+    const safe = (id, spec) => {
+      const el = $(id);
+      if (!el) return;
+      try { renderLine(el, spec); } catch (err) { el.innerHTML = `<p class="muted">This chart couldn't be drawn: ${esc(err.message)}</p>`; console.error(err); }
+    };
     const series = (k) => pts.map((p) => ({ t: p.t, v: p[k], running: p.running }));
     if (hasTps) {
-      renderLine($("#c-tps"), { ...base, points: pts.map((p) => ({ t: p.t, v: p.tps_min ?? p.tps, running: p.running })), max: 20, fmt: (v) => v == null ? "–" : v.toFixed(1), label: "TPS over time" });
-      renderLine($("#c-mspt"), { ...base, points: series("mspt"), fmt: (v, axis) => v == null ? "–" : `${axis ? Math.round(v) : v.toFixed(1)} ms`, target: { v: 50, label: "50 ms limit" }, label: "Tick time over time" });
+      safe("#c-tps", { ...base, points: pts.map((p) => ({ t: p.t, v: p.tps_min ?? p.tps, running: p.running })), max: 20, fmt: (v) => v == null ? "–" : v.toFixed(1), label: "TPS over time" });
+      safe("#c-mspt", { ...base, points: series("mspt"), fmt: (v, axis) => v == null ? "–" : `${axis ? Math.round(v) : v.toFixed(1)} ms`, target: { v: 50, label: "50 ms limit" }, label: "Tick time over time" });
     }
-    renderLine($("#c-players"), { ...base, points: series("players"), max: Math.max(4, niceMax(peak)), fmt: (v, axis) => v == null ? "–" : axis ? String(Math.round(v)) : `${v} online`, label: "Players online over time" });
-    renderLine($("#c-cpu"), { ...base, points: series("cpu"), fmt: (v, axis) => v == null ? "–" : `${axis ? Math.round(v) : v.toFixed(1)}%`, label: "CPU over time" });
+    safe("#c-players", { ...base, points: series("players"), max: Math.max(4, niceMax(peak)), fmt: (v, axis) => v == null ? "–" : axis ? String(Math.round(v)) : `${v} online`, label: "Players online over time" });
+    safe("#c-cpu", { ...base, points: series("cpu"), fmt: (v, axis) => v == null ? "–" : `${axis ? Math.round(v) : v.toFixed(1)}%`, label: "CPU over time" });
     const memGb = pts.map((p) => ({ t: p.t, v: p.mem_mb == null ? null : p.mem_mb / 1024, running: p.running }));
-    renderLine($("#c-mem"), { ...base, points: memGb, fmt: (v, axis) => v == null ? "–" : axis ? `${+v.toFixed(2)} GB` : `${v.toFixed(2)} GB`, label: "Memory over time" });
+    safe("#c-mem", { ...base, points: memGb, fmt: (v, axis) => v == null ? "–" : axis ? `${+v.toFixed(2)} GB` : `${v.toFixed(2)} GB`, label: "Memory over time" });
   };
   $$("#range-seg button").forEach((b) => b.addEventListener("click", () => {
     range = b.dataset.r; $$("#range-seg button").forEach((x) => x.setAttribute("aria-pressed", x === b)); load();
@@ -378,9 +436,12 @@ async function renderPlayerHistory(el, sid, p) {
 
 // ================================================================ notification settings
 async function openNotifications() {
-  const c = await api("/api/settings/notifications").catch(() => null);
+  const [c, everyone] = await Promise.all([api("/api/settings/notifications").catch(() => null), api("/api/players/all").catch(() => [])]);
   if (!c) return showToast("Couldn't load notification settings", 4000);
-  const labels = { join: "Someone joins", leave: "Someone leaves", death: "Someone dies", advancement: "Advancements", server: "Server starts, stops or crashes" };
+  const labels = { join: "Someone joins", leave: "Someone leaves", death: "Someone dies", advancement: "Advancements",
+    server: "Server starts, stops or crashes", backup: "Backups are overdue" };
+  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  const hourLabel = (h) => new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: "numeric" });
   openModal(`<h2>Notifications</h2>
     <form id="notify-form">
       <label>ntfy topic URL <small>For example https://ntfy.sh/your-secret-topic or your own ntfy server</small><input class="input" name="ntfy_url" value="${esc(c.ntfy_url || "")}" placeholder="https://ntfy.sh/lodestone-abc123"></label>
@@ -388,6 +449,19 @@ async function openNotifications() {
       <label>Discord webhook URL <small>${c.discord_webhook_set ? "Saved. Paste a new one to replace it." : "Server Settings → Integrations → Webhooks in Discord"}</small><input class="input" type="password" name="discord_webhook" autocomplete="off"></label>
       <fieldset class="checks"><legend>Send a notification when</legend>
         ${c.event_types.map((t) => `<label class="check"><input type="checkbox" name="ev" value="${t}" ${c.events.includes(t) ? "checked" : ""}> ${esc(labels[t] || t)}</label>`).join("")}
+      </fieldset>
+      <fieldset class="checks"><legend>Daily screen-time limits</legend>
+        <p class="muted" style="font-size:.85rem;margin:0 0 8px">Get one notification a day when someone passes their limit, counting all servers. Leave blank for no limit.</p>
+        ${everyone.length ? `<div class="limits">${everyone.map((n) => `<label class="limit-row"><span>${esc(n)}</span><input class="input" type="number" min="0" max="1440" step="15" name="limit" data-player="${esc(n)}" value="${esc(c.limits[n.toLowerCase()] || "")}" placeholder="No limit"><span class="muted">min</span></label>`).join("")}</div>` : '<p class="muted">Players appear here once they have joined a server.</p>'}
+      </fieldset>
+      <fieldset class="checks"><legend>Weekly digest</legend>
+        <label class="check"><input type="checkbox" name="digest_enabled" ${c.digest_enabled ? "checked" : ""}> Send a weekly summary of who played, deaths and advancements</label>
+        <div class="row2">
+          <label>Day<select class="input" name="digest_day">${days.map((d, i) => `<option value="${i}" ${i === c.digest_day ? "selected" : ""}>${d}</option>`).join("")}</select></label>
+          <label>Time<select class="input" name="digest_hour">${Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === c.digest_hour ? "selected" : ""}>${hourLabel(h)}</option>`).join("")}</select></label>
+        </div>
+        <button type="button" class="link-btn" id="btn-digest">Preview this week's digest</button>
+        <pre class="digest-preview" id="digest-preview" hidden></pre>
       </fieldset>
       <div class="row2">
         <label>Quiet from <small>No notifications during these hours</small><input class="input" type="time" name="quiet_start" value="${esc(c.quiet_start || "")}"></label>
@@ -399,7 +473,10 @@ async function openNotifications() {
     const form = $("#notify-form", m);
     const body = () => {
       const f = new FormData(form);
-      const b = { ntfy_url: f.get("ntfy_url"), events: f.getAll("ev"), quiet_start: f.get("quiet_start"), quiet_end: f.get("quiet_end") };
+      const limits = {};
+      $$('input[name="limit"]', form).forEach((i) => { if (i.value) limits[i.dataset.player] = Number(i.value); });
+      const b = { ntfy_url: f.get("ntfy_url"), events: f.getAll("ev"), quiet_start: f.get("quiet_start"), quiet_end: f.get("quiet_end"),
+        limits, digest_enabled: !!f.get("digest_enabled"), digest_day: Number(f.get("digest_day")), digest_hour: Number(f.get("digest_hour")) };
       if (f.get("ntfy_token")) b.ntfy_token = f.get("ntfy_token");
       if (f.get("discord_webhook")) b.discord_webhook = f.get("discord_webhook");
       return b;
@@ -418,6 +495,12 @@ async function openNotifications() {
       e.preventDefault();
       try { await adminFetch("/api/settings/notifications", { method: "PUT", body: JSON.stringify(body()) }); closeModal(); showToast("Notifications saved", 2500); }
       catch (err) { showToast(`Couldn't save notifications: ${esc(err.message)}`, 5000); }
+    });
+    $("#btn-digest", m).addEventListener("click", async () => {
+      const pre = $("#digest-preview", m);
+      pre.hidden = false; pre.textContent = "Building…";
+      try { pre.textContent = (await api("/api/settings/notifications/digest", { method: "POST" })).text; }
+      catch (err) { pre.textContent = `Couldn't build the digest: ${err.message}`; }
     });
     $("#btn-test", m).addEventListener("click", async () => {
       try {

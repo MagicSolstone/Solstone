@@ -29,6 +29,7 @@ os.environ.update({
     "RCON_TIMEOUT": "1",
     "ADMIN_TOKEN": "letmein",
     "RECORDER_ENABLED": "false",
+    "BACKUPS_DIR": str(ROOT / "backups"),
     "TZ": "America/Chicago",
 })
 

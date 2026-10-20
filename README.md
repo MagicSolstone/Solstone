@@ -11,9 +11,10 @@ A family-friendly web dashboard for Minecraft Java servers run by **Crafty Contr
   - Every tracked statistic (general, items, mobs) and advancement progress.
 - **Live data:** for online players this comes from RCON (refreshes every few seconds). Offline players are read from their last save.
 - **World:** day and time, weather, seed, spawn, where everyone is, chunks explored per dimension, game rules, data packs, plus an embedded BlueMap or squaremap.
-- **Activity:** time played per player per day, recent sessions, and a feed of joins, chat, deaths and advancements read from the server log.
+- **Activity:** time played per player per day, and a timeline of play sessions. Players who were on at the same time share one block, so their chat reads as a conversation, along with deaths and advancements.
 - **Performance:** TPS, tick time, CPU, memory, players online and uptime, graphed over 6 hours to 30 days.
-- **Notifications** to ntfy or Discord when someone joins, leaves, dies or earns an advancement, or a server stops. Quiet hours are supported.
+- **Notifications** to ntfy or Discord when someone joins, leaves, dies or earns an advancement, a server stops, or backups are overdue. Also included: daily screen-time limits per player, a weekly digest, and quiet hours.
+- **Backup status:** when the last Crafty backup ran, with a warning when it's overdue.
 - **Leaderboards** across the family.
 - **Mods:** the Fabric or Quilt mods installed, with modded item icons and names read from the mod jars.
 
@@ -96,13 +97,16 @@ Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web ma
 | `EVENTS_RETENTION_DAYS` | `180` | How long the activity feed is kept. Sessions are kept forever |
 | `NTFY_URL` / `NTFY_TOKEN` | – | Default ntfy topic and token (can also be set in the UI) |
 | `DISCORD_WEBHOOK_URL` | – | Default Discord webhook (can also be set in the UI) |
-| `DATA_DIR` | `/data` | Settings and cached assets |
+| `DATA_DIR` | `/data` | Settings, history database and cached assets |
+| `BACKUPS_DIR` | `/backups` | Where Crafty's backups folder is mounted (optional, read-only) |
+| `BACKUP_STALE_HOURS` | `48` | A backup older than this shows a warning and can send a notification |
 | `PUID` / `PGID` | `1000` | Host user/group that owns `/data` |
 
 Without Crafty configured, Lodestone still works by scanning `SERVERS_DIR` for folders containing `server.properties`.
 
 ## Notes and limits
 
+- **Unraid storage:** the history database works on `/mnt/user/appdata`. Lodestone switches SQLite out of WAL mode when the filesystem can't support it. Pointing `/data` at a pool path (e.g. `/mnt/safestorage/appdata/lodestone`) is a little faster.
 - **History starts when Lodestone does.** Play time per day, sessions and performance graphs build up from the moment it first runs. Minecraft's own statistics only keep lifetime totals.
 - **TPS and tick time** need RCON and Minecraft 1.20.3 or newer, which added `/tick query`.
 - **Chat** is stored in Lodestone's database and shown on the Activity tab. It's never sent in notifications.

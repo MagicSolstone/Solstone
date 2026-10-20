@@ -425,6 +425,12 @@ table.data tr:hover td { background: #2a2f37; }
 .nested { list-style: none; margin: 8px 0 0; padding: 0; border-top: 1px solid #383e48; padding-top: 4px; }
 .nested .feed-item { padding: 4px 0; grid-template-columns: 22px 66px 1fr; }
 .nested .feed-item:hover { background: none; }
+.tl-group { box-shadow: none; position: relative; }
+.tl-group::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: var(--radius-m) 0 0 var(--radius-m); background: var(--stripe); }
+.tl-together { font-family: var(--font-display); font-size: 1.02rem; }
+.tl-people { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 8px; }
+.tl-each { font-size: .85rem; font-weight: 400; }
+.tl-group .ev-join .ev-msg, .tl-group .ev-leave .ev-msg { color: var(--muted); }
 .tl-loose { padding: 2px 16px; }
 .tl-loose .nested { border-top: 0; margin: 0; padding: 0; }
 .tl-loose .feed-item { color: var(--muted); }
@@ -439,6 +445,11 @@ fieldset.checks { border: 1px solid var(--basalt); border-radius: var(--radius-m
 fieldset.checks legend { font-weight: 700; font-size: .92rem; padding: 0 4px; }
 fieldset.checks .check { font-weight: 400; margin-bottom: 8px; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.limits { display: grid; gap: 6px; margin-bottom: 8px; }
+.limit-row { display: grid !important; grid-template-columns: 1fr 110px auto; align-items: center; gap: 10px; margin: 0 !important; font-weight: 700; }
+.limit-row .input { padding: 6px 10px; }
+.digest-preview { white-space: pre-wrap; background: #1c1f25; border-radius: var(--radius-m); padding: 10px 12px; font: .88rem/1.5 var(--font-body); margin: 6px 0 10px; }
+.warn-fact, .warn-fact b { color: var(--gold) !important; }
 .modal .actions { align-items: center; }
 
 /* ------------------------------------------------------------ responsive */

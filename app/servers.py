@@ -271,7 +271,16 @@ async def server_summary(srv: Server) -> dict:
         "map_url": srv.settings.get("map_url"),
         "loader": detect_loader(srv),
         "perf": _latest_perf(srv),
+        "backup": _backup(srv),
     }
+
+
+def _backup(srv: Server) -> dict:
+    from . import backups
+    try:
+        return backups.status(srv)
+    except Exception as e:
+        return {"configured": False, "error": str(e)}
 
 
 def _latest_perf(srv: Server) -> dict | None:

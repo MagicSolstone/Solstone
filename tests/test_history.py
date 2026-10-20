@@ -169,42 +169,46 @@ def _seed_timeline(sid: str, base: float) -> None:
         db.add_event(sid, ts, typ, msg, p)
 
 
-def test_timeline_groups_events_into_sessions():
+def test_timeline_merges_overlapping_sessions():
     sid, base = "tl-test", 1_700_000_000.0
     _seed_timeline(sid, base)
     t = db.timeline(sid, before=base + 20000)
-    kinds = [(i["kind"], i.get("player"), i.get("message")) for i in t["items"]]
-    assert kinds == [("session", "Tyler", None), ("event", None, "Server stopped"),
-                     ("session", "Gimli_Jr", None), ("session", "Tyler", None)]
-    newest, _, gimli, oldest = t["items"]
-    assert [e["type"] for e in newest["events"]] == ["advancement"]  # leave line folded into the block
-    assert [e["message"] for e in gimli["events"]] == ["hi dad"]
-    assert [e["type"] for e in oldest["events"]] == ["death"]
-    assert oldest["counts"] == {"death": 1}
+    kinds = [(i["kind"], i.get("players"), i.get("message")) for i in t["items"]]
+    assert kinds == [("session", ["Tyler"], None), ("event", None, "Server stopped"),
+                     ("group", ["Tyler", "Gimli_Jr"], None)]
+    solo, _, group = t["items"]
+    assert [e["type"] for e in solo["events"]] == ["advancement"]  # its leave line is the block edge
+    # The group reads in time order across both players, joins included
+    assert [(e["type"], e["player"]) for e in group["events"]] == [("join", "Tyler"), ("death", "Tyler"), ("chat", "Gimli_Jr")]
+    assert group["start"] == base and group["end"] == base + 3600 and group["seconds"] == 3600
+    assert group["counts"] == {"join": 1, "death": 1, "chat": 1}
     assert t["next_before"] is None
 
 
 def test_timeline_paging_keeps_every_event_once():
     sid, base = "tl-page", 1_700_000_000.0
     _seed_timeline(sid, base)
-    seen, before = [], base + 20000
-    while True:
+    seen, blocks, before = [], 0, base + 20000
+    for _ in range(10):
         t = db.timeline(sid, before=before, sessions_limit=1)
         for it in t["items"]:
+            blocks += it["kind"] != "event"
             seen += [e["id"] for e in it.get("events", [])] + ([it["id"]] if it["kind"] == "event" else [])
         if not t["next_before"]:
             break
         before = t["next_before"]
-    assert len(seen) == len(set(seen)) == 4  # death, chat, server, advancement (join/leave folded)
+    assert blocks == 2  # the solo session and the group, each shown once
+    assert len(seen) == len(set(seen)) == 5  # advancement, join, death, chat, server stop
 
 
-def test_timeline_player_filter_and_chat_toggle():
+def test_timeline_player_filter_keeps_group_context():
     sid, base = "tl-filter", 1_700_000_000.0
     _seed_timeline(sid, base)
     t = db.timeline(sid, player="Gimli_Jr", before=base + 20000, include_chat=False)
-    sessions = [i for i in t["items"] if i["kind"] == "session"]
-    assert [s["player"] for s in sessions] == ["Gimli_Jr"]
-    assert sessions[0]["events"] == []
+    blocks = [i for i in t["items"] if i["kind"] != "event"]
+    assert [b["players"] for b in blocks] == [["Tyler", "Gimli_Jr"]]  # Gimli played with Tyler
+    assert all(e["type"] != "chat" for e in blocks[0]["events"])
+    assert not any(i.get("message") == "Server stopped" and i["ts"] > base + 9000 for i in t["items"])
 
 
 def test_duplicate_log_lines_stored_once():

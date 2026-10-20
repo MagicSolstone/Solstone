@@ -9,10 +9,10 @@ from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import db, notify
+from . import backups, db, notify
 from . import servers as S
 from . import settings_store
 from .recorder import recorder
@@ -183,7 +183,13 @@ async def timeline(sid: str, player: str = "", before: float | None = None, sess
 @app.get("/api/servers/{sid}/metrics")
 async def server_metrics(sid: str, range: str = "24h"):  # noqa: A002 - query param name
     srv = await _server(sid)
-    return db.metrics(srv.id, range)
+    try:
+        data = db.metrics(srv.id, range)
+    except Exception as e:  # surface storage problems on the page instead of a blank chart
+        log.exception("metrics query failed")
+        raise HTTPException(500, f"Couldn't read performance history: {type(e).__name__}: {e}") from e
+    data["recorder"] = recorder.status(srv.id)
+    return data
 
 
 @app.get("/api/servers/{sid}/players/{uuid}/history")
@@ -219,6 +225,34 @@ async def put_notifications(request: Request, x_admin_token: str | None = Header
     if not isinstance(body, dict):
         raise HTTPException(400, "Expected a JSON object")
     return notify.save_config(body)
+
+
+@app.post("/api/settings/notifications/digest")
+async def digest_preview(send: bool = False, x_admin_token: str | None = Header(default=None)):
+    await S.registry.refresh()
+    text = recorder.digest(list(S.registry.servers.values()))
+    result = {"text": text}
+    if send:
+        _require_admin(x_admin_token)
+        errors = await notify.send("Lodestone weekly digest", text, notify.TAGS["digest"], force=True)
+        result.update(ok=not errors, errors=errors)
+    return result
+
+
+@app.get("/api/players/all")
+async def all_players():
+    """Everyone who has joined any server (for per-player settings like screen-time limits)."""
+    await S.registry.refresh()
+    names: dict[str, str] = {}
+    for srv in S.registry.servers.values():
+        for p in S.known_players(srv).values():
+            names.setdefault(p["name"].lower(), p["name"])
+    return sorted(names.values(), key=str.lower)
+
+
+@app.get("/api/servers/{sid}/backups")
+async def server_backups(sid: str):
+    return await asyncio.to_thread(backups.status, await _server(sid))
 
 
 @app.post("/api/settings/notifications/test")
@@ -288,4 +322,14 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 async def spa(full_path: str):
     if full_path.startswith("api/"):
         raise HTTPException(404)
-    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(_index_html(), headers={"Cache-Control": "no-cache"})
+
+
+def _index_html() -> str:
+    """index.html with ?v= on the CSS/JS links so browsers pick up new versions after an update."""
+    files = [STATIC / n for n in ("app.css", "app.js", "history.js")]
+    stamp = format(int(max(f.stat().st_mtime for f in files if f.exists())), "x")
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    for n in ("app.css", "app.js", "history.js"):
+        html = html.replace(f"/static/{n}\"", f"/static/{n}?v={stamp}\"")
+    return html

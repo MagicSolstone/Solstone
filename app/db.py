@@ -58,6 +58,11 @@ CREATE INDEX IF NOT EXISTS ix_events_player ON events(server_id, player, ts);
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_events ON events(server_id, ts, type, COALESCE(player, ''), message);
 
+CREATE TABLE IF NOT EXISTS alerts (
+    key TEXT PRIMARY KEY,
+    ts REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS log_state (
     server_id TEXT PRIMARY KEY,
     inode INTEGER,
@@ -81,7 +86,14 @@ def conn() -> sqlite3.Connection:
             path = config.data_dir / "lodestone.db"
             _conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
             _conn.row_factory = sqlite3.Row
-            _conn.execute("PRAGMA journal_mode=WAL")
+            # WAL needs shared-memory mmap, which FUSE filesystems such as Unraid's
+            # /mnt/user can't provide. Fall back to a classic rollback journal there.
+            try:
+                mode = _conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+            except sqlite3.OperationalError:
+                mode = None
+            if mode != "wal":
+                _conn.execute("PRAGMA journal_mode=DELETE")
             _conn.execute("PRAGMA synchronous=NORMAL")
             try:
                 _conn.executescript(SCHEMA)
@@ -209,6 +221,7 @@ def metrics(server_id: str, rng: str = "24h") -> dict:
         "uptime": (up["r"] or 0) / up["n"] if up["n"] else None,
         "samples": up["n"],
         "latest": dict(latest[0]) if latest else None,
+        "first_ts": (q("SELECT MIN(ts) AS t FROM metrics WHERE server_id=?", (server_id,))[0]["t"]),
     }
 
 
@@ -241,16 +254,25 @@ def events(server_id: str, types: list[str] | None = None, player: str | None = 
 MATCH_SLACK = 90  # seconds; sessions come from a 30 s poll, log lines are exact
 
 
+def _session_until(r, now: float) -> float:
+    return now + 60 if r["end_ts"] is None else (r["end_ts"] or r["last_seen_ts"])
+
+
 def timeline(server_id: str, player: str | None = None, before: float | None = None,
              sessions_limit: int = 20, include_chat: bool = True) -> dict:
-    """Group activity into play-session blocks, newest first.
+    """Activity grouped into play-session blocks, newest first.
 
-    Each session holds that player's events (chat, deaths, advancements) that
-    happened while they were online; the join/leave lines it replaces are
-    dropped. Events that don't fall inside a session -- server start/stop, or
-    log lines from before Lodestone was recording -- stay as standalone items.
+    Sessions that overlap in time are merged into one "played together" block
+    so a conversation between players reads in order. Each block holds the
+    events (chat, deaths, advancements, and for groups joins/leaves) that
+    happened while its players were online. Server start/stop and anything
+    outside a session stay as standalone items.
+
+    Paging is by the requested player's (or anyone's) sessions. A block is
+    shown on the page that holds its newest session, so it never repeats.
     """
-    before = before or time.time() + 60
+    now = time.time()
+    before = before or now + 60
     sql = "SELECT * FROM sessions WHERE server_id=? AND start_ts < ?"
     args: list = [server_id, before]
     if player:
@@ -258,76 +280,117 @@ def timeline(server_id: str, player: str | None = None, before: float | None = N
         args.append(player)
     sql += " ORDER BY start_ts DESC LIMIT ?"
     args.append(sessions_limit)
-    sess = q(sql, tuple(args))
-    more = len(sess) == sessions_limit
-    cutoff = min(r["start_ts"] for r in sess) if more else 0.0
-    now = time.time()
+    page = q(sql, tuple(args))
+    more = len(page) == sessions_limit
+    cutoff = min(r["start_ts"] for r in page) if more else 0.0
 
-    def until(r) -> float:
-        return now + 60 if r["end_ts"] is None else (r["end_ts"] or r["last_seen_ts"])
+    # Pull in every session that overlaps (transitively) with this page's sessions.
+    members: dict[int, sqlite3.Row] = {r["id"]: r for r in page}
+    frontier = list(page)
+    for _ in range(10):
+        if not frontier:
+            break
+        lo = min(r["start_ts"] for r in frontier) - MATCH_SLACK
+        hi = max(_session_until(r, now) for r in frontier) + MATCH_SLACK
+        rows = q("SELECT * FROM sessions WHERE server_id=? AND start_ts <= ? AND COALESCE(end_ts, ?) >= ?",
+                 (server_id, hi, now + 60, lo))
+        frontier = [r for r in rows if r["id"] not in members and any(
+            r["start_ts"] <= _session_until(m, now) + MATCH_SLACK and _session_until(r, now) + MATCH_SLACK >= m["start_ts"]
+            for m in members.values())]
+        for r in frontier:
+            members[r["id"]] = r
 
-    # Events can belong to a session on this page even if they're newer than `before`
-    # (a long session that started before the previous page's cutoff), so the event
-    # window reaches to the latest end among this page's sessions.
-    upper = max([before] + [until(r) for r in sess]) + MATCH_SLACK
+    # Cluster overlapping sessions.
+    rows = sorted(members.values(), key=lambda r: r["start_ts"])
+    clusters: list[list[sqlite3.Row]] = []
+    cur_end = None
+    for r in rows:
+        if clusters and r["start_ts"] <= cur_end + MATCH_SLACK:
+            clusters[-1].append(r)
+            cur_end = max(cur_end, _session_until(r, now))
+        else:
+            clusters.append([r])
+            cur_end = _session_until(r, now)
+    # A cluster belongs to the page holding its newest session; drop ones owned by a newer page,
+    # and with a player filter, ones that don't include that player.
+    page_ids = {r["id"] for r in page}
+    keep = [c for c in clusters if max(r["start_ts"] for r in c) < before and any(r["id"] in page_ids for r in c)]
+    # Events of sessions in clusters shown on another page must not leak in here as loose lines.
+    elsewhere = [(r["player"].lower(), r["start_ts"], _session_until(r, now)) for c in clusters if c not in keep for r in c]
+    clusters = keep
+
+    lo = min((r["start_ts"] for c in clusters for r in c), default=cutoff) - MATCH_SLACK
+    hi = max([before] + [_session_until(r, now) for c in clusters for r in c]) + MATCH_SLACK
     esql = "SELECT * FROM events WHERE server_id=? AND ts >= ? AND ts < ?"
-    eargs: list = [server_id, (cutoff - MATCH_SLACK) if cutoff else 0, upper]
-    if player:
-        esql += " AND (lower(player)=lower(?) OR (player IS NULL AND type='server'))"
-        eargs.append(player)
+    eargs: list = [server_id, min(lo, cutoff - MATCH_SLACK) if cutoff else 0, hi]
     if not include_chat:
         esql += " AND type != 'chat'"
-    esql += " ORDER BY ts ASC, id ASC LIMIT 5000"
+    esql += " ORDER BY ts ASC, id ASC LIMIT 10000"
     evs = [dict(r) for r in q(esql, tuple(eargs))]
 
-    # Sessions that straddle the cutoff belong to the next page; their events are
-    # shown there, not as loose lines here.
+    # Sessions straddling the cutoff belong to the next page; their events wait for it.
     straddle = []
     if more:
         ssql = "SELECT * FROM sessions WHERE server_id=? AND start_ts < ? AND COALESCE(end_ts, last_seen_ts) >= ?"
-        sargs: list = [server_id, cutoff, cutoff - MATCH_SLACK]
-        if player:
-            ssql += " AND lower(player)=lower(?)"
-            sargs.append(player)
-        straddle = [(r["player"].lower(), r["start_ts"], until(r)) for r in q(ssql, tuple(sargs))]
+        straddle = [(r["player"].lower(), r["start_ts"], _session_until(r, now))
+                    for r in q(ssql, (server_id, cutoff, cutoff - MATCH_SLACK)) if r["id"] not in members]
+    straddle += elsewhere
 
     blocks = []
-    by_player: dict[str, list[dict]] = {}
-    for r in sess:
-        end = r["end_ts"] or r["last_seen_ts"]
-        b = {"kind": "session", "player": r["player"], "uuid": r["uuid"], "start": r["start_ts"], "end": r["end_ts"],
-             "last_seen": r["last_seen_ts"], "open": r["end_ts"] is None, "seconds": max(0, end - r["start_ts"]),
-             "events": [], "_until": until(r)}
+    owner: list[tuple[str, float, float, dict]] = []  # (player, start, until, block)
+    for c in clusters:
+        sessions_out = []
+        for r in sorted(c, key=lambda r: r["start_ts"]):
+            end = r["end_ts"] or r["last_seen_ts"]
+            sessions_out.append({"player": r["player"], "uuid": r["uuid"], "start": r["start_ts"], "end": r["end_ts"],
+                                 "last_seen": r["last_seen_ts"], "open": r["end_ts"] is None,
+                                 "seconds": max(0, end - r["start_ts"])})
+        start = min(x["start"] for x in sessions_out)
+        until_c = max(_session_until(r, now) for r in c)
+        is_open = any(x["open"] for x in sessions_out)
+        names = list(dict.fromkeys(x["player"] for x in sessions_out))
+        b = {"kind": "session" if len(names) == 1 else "group", "players": names, "sessions": sessions_out,
+             "start": start, "end": None if is_open else until_c, "open": is_open,
+             "seconds": max(0, (now if is_open else until_c) - start), "events": []}
+        if len(names) == 1:  # keep the single-session fields the UI already uses
+            first = sessions_out[0]
+            b.update(player=first["player"], uuid=first["uuid"], last_seen=sessions_out[-1]["last_seen"],
+                     seconds=sum(x["seconds"] for x in sessions_out))
         blocks.append(b)
-        by_player.setdefault(r["player"].lower(), []).append(b)
+        for r in c:
+            owner.append((r["player"].lower(), r["start_ts"], _session_until(r, now), b))
 
     loose = []
     for e in evs:
         home = None
         if e["player"]:
-            for b in by_player.get(e["player"].lower(), []):
-                if b["start"] - MATCH_SLACK <= e["ts"] <= b["_until"] + MATCH_SLACK:
+            pl = e["player"].lower()
+            for p, s0, u, b in owner:
+                if p == pl and s0 - MATCH_SLACK <= e["ts"] <= u + MATCH_SLACK:
                     home = b
                     break
         if home is not None:
-            if e["type"] not in ("join", "leave"):
+            # A solo block's edges are its join/leave; in a group they show who came and went.
+            if e["type"] not in ("join", "leave") or home["kind"] == "group":
                 home["events"].append(e)
             continue
         if e["ts"] >= before or (cutoff and e["ts"] < cutoff):
-            continue  # belongs to another page
+            continue
+        if player and e["type"] != "server" and (e["player"] or "").lower() != player.lower():
+            continue
         if e["player"] and any(p == e["player"].lower() and s0 - MATCH_SLACK <= e["ts"] <= u + MATCH_SLACK
                                for p, s0, u in straddle):
             continue
         loose.append({"kind": "event", **e})
+
     for b in blocks:
-        b.pop("_until")
         counts: dict[str, int] = {}
         for e in b["events"]:
             counts[e["type"]] = counts.get(e["type"], 0) + 1
         b["counts"] = counts
 
     items = blocks + loose
-    items.sort(key=lambda it: it["start"] if it["kind"] == "session" else it["ts"], reverse=True)
+    items.sort(key=lambda it: it["start"] if it["kind"] != "event" else it["ts"], reverse=True)
     return {"items": items, "next_before": cutoff if more else None}
 
 
@@ -340,6 +403,48 @@ def get_log_state(server_id: str) -> sqlite3.Row | None:
 def set_log_state(server_id: str, inode: int, offset: int, head: str) -> None:
     x("INSERT INTO log_state VALUES (?,?,?,?) ON CONFLICT(server_id) DO UPDATE SET inode=excluded.inode, "
       "offset=excluded.offset, head=excluded.head", (server_id, inode, offset, head))
+
+
+def alert_once(key: str) -> bool:
+    """True the first time a key is seen (used so an alert fires once per day/week)."""
+    with _lock:
+        cur = conn().execute("INSERT OR IGNORE INTO alerts(key, ts) VALUES (?, ?)", (key, time.time()))
+        return cur.rowcount == 1
+
+
+def week_stats(server_id: str, days: int = 7) -> dict:
+    """Numbers for the weekly digest."""
+    daily = daily_playtime(server_id, days)
+    since = datetime.combine(datetime.fromisoformat(daily[0]["date"]).date(), datetime.min.time(), tz()).timestamp()
+    per_player: dict[str, dict] = {}
+    for d in daily:
+        for name, secs in d["players"].items():
+            per_player.setdefault(name, {"seconds": 0, "deaths": 0, "advancements": 0})["seconds"] += secs
+    for r in q("SELECT player, type, COUNT(*) AS n FROM events WHERE server_id=? AND ts>=? AND type IN ('death','advancement') "
+               "AND player IS NOT NULL GROUP BY player, type", (server_id, since)):
+        entry = next((v for k, v in per_player.items() if k.lower() == r["player"].lower()), None)
+        if entry is None:
+            entry = per_player.setdefault(r["player"], {"seconds": 0, "deaths": 0, "advancements": 0})
+        entry["deaths" if r["type"] == "death" else "advancements"] += r["n"]
+    busiest = max(daily, key=lambda d: sum(d["players"].values())) if daily else None
+    # Time spent online together, per pair of players
+    rows = q("SELECT player, start_ts, COALESCE(end_ts, last_seen_ts) AS e FROM sessions WHERE server_id=? AND "
+             "COALESCE(end_ts, last_seen_ts) >= ?", (server_id, since))
+    pairs: dict[tuple[str, str], float] = {}
+    for i, a in enumerate(rows):
+        for b in rows[i + 1:]:
+            if a["player"].lower() == b["player"].lower():
+                continue
+            overlap = min(a["e"], b["e"]) - max(a["start_ts"], b["start_ts"], since)
+            if overlap > 0:
+                key = tuple(sorted((a["player"], b["player"]), key=str.lower))
+                pairs[key] = pairs.get(key, 0) + overlap
+    top_pair = max(pairs.items(), key=lambda kv: kv[1]) if pairs else None
+    return {
+        "players": per_player,
+        "busiest_day": {"date": busiest["date"], "seconds": sum(busiest["players"].values())} if busiest and sum(busiest["players"].values()) else None,
+        "together": {"players": list(top_pair[0]), "seconds": round(top_pair[1])} if top_pair else None,
+    }
 
 
 def prune(metrics_days: int, events_days: int) -> None:

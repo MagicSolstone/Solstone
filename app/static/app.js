@@ -398,6 +398,7 @@ function serverHeader(s, tab) {
     s.mem && s.running && `<span>RAM <b>${esc(s.mem)}</b></span>`,
     s.world_size && `<span>World <b>${esc(s.world_size)}</b></span>`,
     s.perf && s.running && `<span>TPS <b>${esc(s.perf.tps.toFixed(1))}</b></span>`,
+    s.backup?.found && `<span class="${s.backup.stale ? "warn-fact" : ""}" title="${esc(s.backup.latest.name)}">Backup <b>${esc(fmtAgo(s.backup.latest.ts))}</b></span>`,
     s.port && `<span>Port <b>${esc(s.port)}</b></span>`,
   ].filter(Boolean).join("");
   const base = `#/s/${encodeURIComponent(s.id)}`;
@@ -410,6 +411,8 @@ function serverHeader(s, tab) {
     </header>
     ${!s.folder_found ? `<div class="notice">Lodestone can't find this server's files at <code>${esc(s.folder)}</code>. Mount Crafty's servers folder so player data can be read.</div>` : ""}
     ${s.rcon?.error && s.running ? `<div class="notice">Live data is unavailable: ${esc(s.rcon.error)}. Showing the last saved data instead.</div>` : ""}
+    ${s.backup?.found && s.backup.stale ? `<div class="notice">The last backup was ${esc(fmtAgo(s.backup.latest.ts))}. Check the backup schedule in Crafty.</div>` : ""}
+    ${s.backup?.configured && !s.backup.found ? `<div class="notice">No backups found for this server in Crafty's backups folder.</div>` : ""}
     <nav class="tabs" aria-label="Server sections">${tabs.map(([k, label, href]) => `<a href="${href}" ${k === tab ? 'aria-current="page"' : ""}>${label}</a>`).join("")}</nav>`;
 }
 
