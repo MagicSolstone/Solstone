@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS ix_events ON events(server_id, ts);
 CREATE INDEX IF NOT EXISTS ix_events_player ON events(server_id, player, ts);
 
+CREATE UNIQUE INDEX IF NOT EXISTS ux_events ON events(server_id, ts, type, COALESCE(player, ''), message);
+
 CREATE TABLE IF NOT EXISTS log_state (
     server_id TEXT PRIMARY KEY,
     inode INTEGER,
@@ -81,7 +83,13 @@ def conn() -> sqlite3.Connection:
             _conn.row_factory = sqlite3.Row
             _conn.execute("PRAGMA journal_mode=WAL")
             _conn.execute("PRAGMA synchronous=NORMAL")
-            _conn.executescript(SCHEMA)
+            try:
+                _conn.executescript(SCHEMA)
+            except sqlite3.IntegrityError:
+                # Older databases may already hold duplicate events; drop them, then index.
+                _conn.execute("DELETE FROM events WHERE id NOT IN (SELECT MIN(id) FROM events "
+                              "GROUP BY server_id, ts, type, COALESCE(player, ''), message)")
+                _conn.executescript(SCHEMA)
         return _conn
 
 
@@ -206,7 +214,8 @@ def metrics(server_id: str, rng: str = "24h") -> dict:
 
 # ---------------------------------------------------------------- events
 def add_event(server_id: str, ts: float, etype: str, message: str, player: str | None = None, uuid: str | None = None) -> int:
-    return x("INSERT INTO events(server_id, ts, type, player, uuid, message) VALUES (?,?,?,?,?,?)",
+    # OR IGNORE: the same log line read twice (e.g. after a rotation mix-up) is stored once.
+    return x("INSERT OR IGNORE INTO events(server_id, ts, type, player, uuid, message) VALUES (?,?,?,?,?,?)",
              (server_id, ts, etype, player, uuid, message))
 
 
@@ -226,6 +235,100 @@ def events(server_id: str, types: list[str] | None = None, player: str | None = 
     sql += " ORDER BY ts DESC, id DESC LIMIT ?"
     args.append(min(limit, 500))
     return [dict(r) for r in q(sql, tuple(args))]
+
+
+# ---------------------------------------------------------------- timeline
+MATCH_SLACK = 90  # seconds; sessions come from a 30 s poll, log lines are exact
+
+
+def timeline(server_id: str, player: str | None = None, before: float | None = None,
+             sessions_limit: int = 20, include_chat: bool = True) -> dict:
+    """Group activity into play-session blocks, newest first.
+
+    Each session holds that player's events (chat, deaths, advancements) that
+    happened while they were online; the join/leave lines it replaces are
+    dropped. Events that don't fall inside a session -- server start/stop, or
+    log lines from before Lodestone was recording -- stay as standalone items.
+    """
+    before = before or time.time() + 60
+    sql = "SELECT * FROM sessions WHERE server_id=? AND start_ts < ?"
+    args: list = [server_id, before]
+    if player:
+        sql += " AND lower(player)=lower(?)"
+        args.append(player)
+    sql += " ORDER BY start_ts DESC LIMIT ?"
+    args.append(sessions_limit)
+    sess = q(sql, tuple(args))
+    more = len(sess) == sessions_limit
+    cutoff = min(r["start_ts"] for r in sess) if more else 0.0
+    now = time.time()
+
+    def until(r) -> float:
+        return now + 60 if r["end_ts"] is None else (r["end_ts"] or r["last_seen_ts"])
+
+    # Events can belong to a session on this page even if they're newer than `before`
+    # (a long session that started before the previous page's cutoff), so the event
+    # window reaches to the latest end among this page's sessions.
+    upper = max([before] + [until(r) for r in sess]) + MATCH_SLACK
+    esql = "SELECT * FROM events WHERE server_id=? AND ts >= ? AND ts < ?"
+    eargs: list = [server_id, (cutoff - MATCH_SLACK) if cutoff else 0, upper]
+    if player:
+        esql += " AND (lower(player)=lower(?) OR (player IS NULL AND type='server'))"
+        eargs.append(player)
+    if not include_chat:
+        esql += " AND type != 'chat'"
+    esql += " ORDER BY ts ASC, id ASC LIMIT 5000"
+    evs = [dict(r) for r in q(esql, tuple(eargs))]
+
+    # Sessions that straddle the cutoff belong to the next page; their events are
+    # shown there, not as loose lines here.
+    straddle = []
+    if more:
+        ssql = "SELECT * FROM sessions WHERE server_id=? AND start_ts < ? AND COALESCE(end_ts, last_seen_ts) >= ?"
+        sargs: list = [server_id, cutoff, cutoff - MATCH_SLACK]
+        if player:
+            ssql += " AND lower(player)=lower(?)"
+            sargs.append(player)
+        straddle = [(r["player"].lower(), r["start_ts"], until(r)) for r in q(ssql, tuple(sargs))]
+
+    blocks = []
+    by_player: dict[str, list[dict]] = {}
+    for r in sess:
+        end = r["end_ts"] or r["last_seen_ts"]
+        b = {"kind": "session", "player": r["player"], "uuid": r["uuid"], "start": r["start_ts"], "end": r["end_ts"],
+             "last_seen": r["last_seen_ts"], "open": r["end_ts"] is None, "seconds": max(0, end - r["start_ts"]),
+             "events": [], "_until": until(r)}
+        blocks.append(b)
+        by_player.setdefault(r["player"].lower(), []).append(b)
+
+    loose = []
+    for e in evs:
+        home = None
+        if e["player"]:
+            for b in by_player.get(e["player"].lower(), []):
+                if b["start"] - MATCH_SLACK <= e["ts"] <= b["_until"] + MATCH_SLACK:
+                    home = b
+                    break
+        if home is not None:
+            if e["type"] not in ("join", "leave"):
+                home["events"].append(e)
+            continue
+        if e["ts"] >= before or (cutoff and e["ts"] < cutoff):
+            continue  # belongs to another page
+        if e["player"] and any(p == e["player"].lower() and s0 - MATCH_SLACK <= e["ts"] <= u + MATCH_SLACK
+                               for p, s0, u in straddle):
+            continue
+        loose.append({"kind": "event", **e})
+    for b in blocks:
+        b.pop("_until")
+        counts: dict[str, int] = {}
+        for e in b["events"]:
+            counts[e["type"]] = counts.get(e["type"], 0) + 1
+        b["counts"] = counts
+
+    items = blocks + loose
+    items.sort(key=lambda it: it["start"] if it["kind"] == "session" else it["ts"], reverse=True)
+    return {"items": items, "next_before": cutoff if more else None}
 
 
 # ---------------------------------------------------------------- log state

@@ -177,55 +177,87 @@ function dayLabel(ts) {
   if (d.toDateString() === y.toDateString()) return "Yesterday";
   return d.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
 }
-function feedHtml(events, lastDay = null) {
-  let out = "";
-  for (const e of events) {
-    const day = dayLabel(e.ts);
-    if (day !== lastDay) { out += `<li class="feed-day">${esc(day)}</li>`; lastDay = day; }
-    const time = new Date(e.ts * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    let msg = esc(e.message);
-    if (e.type === "chat") msg = `<b>${esc(e.player)}</b> ${esc(e.message)}`;
-    else if (e.player) msg = msg.replace(esc(e.player), `<b>${esc(e.player)}</b>`);
+// One timeline: each play session is a block in the player's colour holding what they
+// did while online (deaths, advancements, chat). Joins/leaves are the block's edges, so
+// they aren't repeated. Server events and anything outside a session stand alone.
+const COUNT_LABELS = { death: ["death", "deaths"], advancement: ["advancement", "advancements"], chat: ["message", "messages"] };
+const hm = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const NEST_SHOWN = 6;
+
+function eventLineHtml(e, withName) {
+  let msg;
+  if (e.type === "chat") msg = withName ? `<b>${esc(e.player)}</b> ${esc(e.message)}` : esc(e.message);
+  else {
+    msg = esc(e.message);
+    if (e.player) msg = withName ? msg.replace(esc(e.player), `<b>${esc(e.player)}</b>`) : msg.replace(`${esc(e.player)} `, "");
     if (e.type === "advancement") msg = msg.replace(/\[(.+)\]$/, '<span class="adv-name">$1</span>');
-    out += `<li class="feed-item ev-${esc(e.type)}"><span class="ev-icon" aria-hidden="true">${EVENT_ICON[e.type] || "•"}</span><span class="ev-time">${esc(time)}</span><span class="ev-msg">${msg}</span></li>`;
+    if (!withName) msg = msg.charAt(0).toUpperCase() + msg.slice(1);
   }
-  return { html: out, lastDay };
-}
-function mountFeed(el, sid, player = "") {
-  const filters = [["", "Everything"], ["chat", "Chat"], ["death", "Deaths"], ["advancement", "Advancements"], ["join,leave", "Joins"], ["server", "Server"]];
-  let types = "", oldest = null, lastDay = null;
-  el.innerHTML = `<div class="toolbar"><div class="seg" role="group" aria-label="Filter activity">${filters.map(([k, l]) => `<button data-t="${k}" aria-pressed="${k === ""}">${l}</button>`).join("")}</div></div>
-    <ul class="feed"></ul><button class="btn more" hidden>Show older</button>`;
-  const list = $(".feed", el), more = $(".more", el);
-  const load = async (reset) => {
-    if (reset) { oldest = null; lastDay = null; list.innerHTML = ""; }
-    const qs = new URLSearchParams({ types, limit: "80" });
-    if (player) qs.set("player", player);
-    if (oldest) qs.set("before", oldest);
-    const evs = await api(`/api/servers/${encodeURIComponent(sid)}/events?${qs}`).catch(() => []);
-    if (!evs.length && reset) list.innerHTML = `<li class="feed-empty">Nothing here yet. Lodestone records activity from the server log from now on.</li>`;
-    const r = feedHtml(evs, lastDay); lastDay = r.lastDay;
-    list.insertAdjacentHTML("beforeend", r.html);
-    if (evs.length) oldest = evs[evs.length - 1].ts;
-    more.hidden = evs.length < 80;
-  };
-  $$(".seg button", el).forEach((b) => b.addEventListener("click", () => {
-    types = b.dataset.t; $$(".seg button", el).forEach((x) => x.setAttribute("aria-pressed", x === b)); load(true);
-  }));
-  more.addEventListener("click", () => load(false));
-  load(true);
-  return () => load(true);
+  return `<li class="feed-item ev-${esc(e.type)}"><span class="ev-icon" aria-hidden="true">${EVENT_ICON[e.type] || "•"}</span><span class="ev-time">${esc(hm(e.ts))}</span><span class="ev-msg">${msg}</span></li>`;
 }
 
-function sessionsHtml(sessions, showName = true, show = 12) {
-  if (!sessions.length) return `<p class="muted">No sessions recorded yet.</p>`;
-  const extra = sessions.length - show;
-  return `<ul class="sessions">${sessions.slice(0, show).map((s) => {
-    const start = new Date(s.start * 1000);
-    const when = `${dayLabel(s.start)}, ${start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
-    const end = s.open ? '<span class="live-tag"><span class="status-dot on"></span>playing now</span>' : `until ${new Date((s.end || s.last_seen) * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
-    return `<li>${showName ? `<span class="sw" style="background:${playerColor(s.player)}"></span><b>${esc(s.player)}</b>` : ""}<span class="muted">${esc(when)} ${end}</span><span class="dur">${s.seconds >= 60 ? fmtSeconds(s.seconds) : "<1m"}</span></li>`;
-  }).join("")}</ul>${extra > 0 ? `<p class="muted" style="margin-top:8px;font-size:.88rem">${extra} older sessions are counted in the chart above.</p>` : ""}`;
+function sessionBlockHtml(b, showPlayer) {
+  const color = playerColor(b.player);
+  const range = b.open
+    ? `${hm(b.start)} – now <span class="live-tag"><span class="status-dot on"></span>playing</span>`
+    : `${hm(b.start)} – ${hm(b.end || b.last_seen)}`;
+  const summary = Object.entries(COUNT_LABELS).filter(([k]) => b.counts[k])
+    .map(([k, [one, many]]) => `<span class="cnt ev-${k}"><span aria-hidden="true">${EVENT_ICON[k]}</span> ${b.counts[k]} ${b.counts[k] === 1 ? one : many}</span>`).join("");
+  const evs = b.events;
+  const hidden = Math.max(0, evs.length - NEST_SHOWN);
+  const body = evs.length
+    ? `<ul class="nested">${evs.map((e, i) => eventLineHtml(e, false).replace('<li class="', `<li ${i >= NEST_SHOWN ? "hidden " : ""}class="`)).join("")}</ul>
+       ${hidden ? `<button class="link-btn show-all" type="button">Show ${hidden} more</button>` : ""}`
+    : "";
+  const head = showPlayer
+    ? `<a class="tl-who" href="#/s/${encodeURIComponent(curSid)}/p/${b.uuid || ""}">${miniHead(b)}<b>${esc(b.player)}</b></a>`
+    : "";
+  return `<li class="tl-session" style="--pc:${color}">
+    <div class="tl-head">${head}<span class="tl-range">${range}</span><span class="tl-dur">${b.seconds >= 60 ? fmtSeconds(b.seconds) : "under a minute"}</span></div>
+    ${summary ? `<div class="tl-sum">${summary}</div>` : ""}${body}</li>`;
+}
+
+function timelineItemsHtml(items, state, showPlayer) {
+  let out = "";
+  for (const it of items) {
+    const ts = it.kind === "session" ? it.start : it.ts;
+    const day = dayLabel(ts);
+    if (day !== state.lastDay) { out += `<li class="feed-day">${esc(day)}</li>`; state.lastDay = day; }
+    out += it.kind === "session" ? sessionBlockHtml(it, showPlayer) : `<li class="tl-loose"><ul class="nested">${eventLineHtml(it, true)}</ul></li>`;
+  }
+  return out;
+}
+
+function mountTimeline(el, sid, player = "") {
+  const st = { lastDay: null, before: null, chat: true, pages: 0, expanded: false };
+  el.innerHTML = `<div class="toolbar"><label class="check toggle"><input type="checkbox" checked> Show chat</label></div>
+    <ul class="timeline"></ul><button class="btn more" hidden>Show older</button>`;
+  const list = $(".timeline", el), more = $(".more", el);
+  const load = async (reset) => {
+    if (reset) { st.lastDay = null; st.before = null; st.pages = 0; st.expanded = false; }
+    st.pages += 1;
+    const qs = new URLSearchParams({ sessions: "20", chat: st.chat ? "true" : "false" });
+    if (player) qs.set("player", player);
+    if (st.before) qs.set("before", st.before);
+    const data = await api(`/api/servers/${encodeURIComponent(sid)}/timeline?${qs}`).catch(() => ({ items: [], next_before: null }));
+    const html = timelineItemsHtml(data.items, st, !player);
+    if (reset) list.innerHTML = html || `<li class="feed-empty">Nothing recorded yet. Play sessions and activity from the server log appear here as they happen.</li>`;
+    else list.insertAdjacentHTML("beforeend", html);
+    st.before = data.next_before;
+    more.hidden = !data.next_before;
+  };
+  list.addEventListener("click", (e) => {
+    const btn = e.target.closest(".show-all");
+    if (!btn) return;
+    btn.parentElement.querySelectorAll(".nested li[hidden]").forEach((li) => (li.hidden = false));
+    btn.remove();
+    st.expanded = true;
+  });
+  $("input", el).addEventListener("change", (e) => { st.chat = e.target.checked; load(true); });
+  more.addEventListener("click", () => load(false));
+  load(true);
+  // Auto-refresh only while the reader is on the first page and hasn't expanded anything.
+  return () => { if (st.pages <= 1 && !st.expanded) load(true); };
 }
 
 // ================================================================ Activity tab
@@ -239,12 +271,10 @@ async function viewActivity(sid) {
       <div class="seg" role="group" aria-label="Days shown" id="days-seg">${[7, 14, 30].map((d) => `<button data-d="${d}" aria-pressed="${d === days}">${d} days</button>`).join("")}</div></div>
       <div class="panel"><div id="today-row" class="today-row"></div><div id="legend"></div><div class="chart" id="daily-chart"></div></div>
     </section>
-    <div class="two-col">
-      <section class="section"><div class="section-head"><h2>Activity</h2></div><div id="feed"></div></section>
-      <section class="section"><div class="section-head"><h2>Recent sessions</h2></div><div class="panel" id="sessions"></div></section>
-    </div>`);
+    <section class="section"><div class="section-head"><h2>Activity</h2><span class="muted">Each block is one play session, with what happened while that player was on</span></div>
+      <div id="feed"></div></section>`);
   wireHeader(s);
-  const refreshFeed = mountFeed($("#feed"), sid);
+  const refreshFeed = mountTimeline($("#feed"), sid);
   const load = async () => {
     const a = await api(`/api/servers/${sid}/activity?days=${days}`);
     const names = [...new Set(a.daily.flatMap((d) => Object.keys(d.players)))].sort((x, y) => playerColor(x).localeCompare(playerColor(y)));
@@ -261,7 +291,6 @@ async function viewActivity(sid) {
       $("#legend").innerHTML = order.length > 1 ? legendHtml(order) : "";
       renderDailyBars($("#daily-chart"), a.daily, order);
     }
-    $("#sessions").innerHTML = sessionsHtml(a.sessions);
   };
   $$("#days-seg button").forEach((b) => b.addEventListener("click", () => {
     days = +b.dataset.d; $$("#days-seg button").forEach((x) => x.setAttribute("aria-pressed", x === b)); load();
@@ -335,10 +364,7 @@ async function viewPerformance(sid) {
 async function renderPlayerHistory(el, sid, p) {
   el.innerHTML = `<section class="section"><div class="section-head"><h2>Time played per day</h2><span class="muted" id="h-total"></span></div>
       <div class="panel"><div class="chart" id="p-daily"></div></div></section>
-    <div class="two-col">
-      <section class="section"><div class="section-head"><h2>Activity</h2></div><div id="p-feed"></div></section>
-      <section class="section"><div class="section-head"><h2>Sessions</h2></div><div class="panel" id="p-sessions"></div></section>
-    </div>`;
+    <section class="section"><div class="section-head"><h2>Sessions and activity</h2></div><div id="p-feed"></div></section>`;
   const all = await api(`/api/servers/${sid}/players`).catch(() => ({ players: [] }));
   setPlayerSlots(all.players.map((x) => x.name));
   const h = await api(`/api/servers/${sid}/players/${p.uuid}/history?days=30`);
@@ -347,8 +373,7 @@ async function renderPlayerHistory(el, sid, p) {
   $("#h-total").textContent = `${fmtSeconds(week)} this week · ${fmtSeconds(total)} in 30 days`;
   if (!total) $("#p-daily").innerHTML = `<div class="empty"><p>No play time recorded yet. Daily totals build up from when Lodestone started recording.</p></div>`;
   else renderDailyBars($("#p-daily"), h.daily.map((d) => ({ date: d.date, players: { [p.name]: d.seconds } })), [p.name], { color: playerColor(p.name), label: `${p.name}'s time played per day` });
-  $("#p-sessions").innerHTML = sessionsHtml(h.sessions, false);
-  mountFeed($("#p-feed"), sid, p.name);
+  mountTimeline($("#p-feed"), sid, p.name);
 }
 
 // ================================================================ notification settings

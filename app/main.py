@@ -174,6 +174,12 @@ async def events(sid: str, types: str = "", player: str = "", limit: int = 100, 
     return db.events(srv.id, tlist, player or None, limit, before)
 
 
+@app.get("/api/servers/{sid}/timeline")
+async def timeline(sid: str, player: str = "", before: float | None = None, sessions: int = 20, chat: bool = True):
+    srv = await _server(sid)
+    return db.timeline(srv.id, player or None, before, max(1, min(sessions, 100)), chat)
+
+
 @app.get("/api/servers/{sid}/metrics")
 async def server_metrics(sid: str, range: str = "24h"):  # noqa: A002 - query param name
     srv = await _server(sid)

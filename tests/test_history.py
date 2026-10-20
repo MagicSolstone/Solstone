@@ -148,3 +148,71 @@ def test_notification_settings(client):
 def test_quiet_hours_wraparound():
     assert notify._in_quiet_hours({"quiet_start": "00:00", "quiet_end": "23:59"}) is True
     assert notify._in_quiet_hours({"quiet_start": "", "quiet_end": ""}) is False
+
+
+# ---------------------------------------------------------------- timeline
+def _seed_timeline(sid: str, base: float) -> None:
+    def sess(player, start, end):
+        db.x("INSERT INTO sessions(server_id, player, start_ts, last_seen_ts, end_ts) VALUES (?,?,?,?,?)",
+             (sid, player, start, end, end))
+    sess("Tyler", base, base + 3600)            # older
+    sess("Gimli_Jr", base + 600, base + 1800)   # overlaps Tyler
+    sess("Tyler", base + 7200, base + 9000)     # newest
+    for ts, typ, p, msg in [
+        (base + 5, "join", "Tyler", "Tyler joined the game"),
+        (base + 100, "death", "Tyler", "Tyler drowned"),
+        (base + 700, "chat", "Gimli_Jr", "hi dad"),
+        (base + 4000, "server", None, "Server stopped"),
+        (base + 7300, "advancement", "Tyler", "Tyler has made the advancement [Diamonds!]"),
+        (base + 8990, "leave", "Tyler", "Tyler left the game"),
+    ]:
+        db.add_event(sid, ts, typ, msg, p)
+
+
+def test_timeline_groups_events_into_sessions():
+    sid, base = "tl-test", 1_700_000_000.0
+    _seed_timeline(sid, base)
+    t = db.timeline(sid, before=base + 20000)
+    kinds = [(i["kind"], i.get("player"), i.get("message")) for i in t["items"]]
+    assert kinds == [("session", "Tyler", None), ("event", None, "Server stopped"),
+                     ("session", "Gimli_Jr", None), ("session", "Tyler", None)]
+    newest, _, gimli, oldest = t["items"]
+    assert [e["type"] for e in newest["events"]] == ["advancement"]  # leave line folded into the block
+    assert [e["message"] for e in gimli["events"]] == ["hi dad"]
+    assert [e["type"] for e in oldest["events"]] == ["death"]
+    assert oldest["counts"] == {"death": 1}
+    assert t["next_before"] is None
+
+
+def test_timeline_paging_keeps_every_event_once():
+    sid, base = "tl-page", 1_700_000_000.0
+    _seed_timeline(sid, base)
+    seen, before = [], base + 20000
+    while True:
+        t = db.timeline(sid, before=before, sessions_limit=1)
+        for it in t["items"]:
+            seen += [e["id"] for e in it.get("events", [])] + ([it["id"]] if it["kind"] == "event" else [])
+        if not t["next_before"]:
+            break
+        before = t["next_before"]
+    assert len(seen) == len(set(seen)) == 4  # death, chat, server, advancement (join/leave folded)
+
+
+def test_timeline_player_filter_and_chat_toggle():
+    sid, base = "tl-filter", 1_700_000_000.0
+    _seed_timeline(sid, base)
+    t = db.timeline(sid, player="Gimli_Jr", before=base + 20000, include_chat=False)
+    sessions = [i for i in t["items"] if i["kind"] == "session"]
+    assert [s["player"] for s in sessions] == ["Gimli_Jr"]
+    assert sessions[0]["events"] == []
+
+
+def test_duplicate_log_lines_stored_once():
+    db.add_event("dup-test", 123.0, "chat", "hello", "Tyler")
+    db.add_event("dup-test", 123.0, "chat", "hello", "Tyler")
+    assert len(db.events("dup-test")) == 1
+
+
+def test_timeline_endpoint(client, sid):
+    r = client.get(f"/api/servers/{sid}/timeline?chat=false")
+    assert r.status_code == 200 and "items" in r.json()
