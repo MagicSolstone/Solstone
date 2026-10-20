@@ -38,8 +38,7 @@ function showLogin(message = "") {
   root.innerHTML = `<canvas id="login-sky" aria-hidden="true"></canvas>
     <div class="login-wrap"><form class="login-card" id="login-form" autocomplete="on">
       <img src="/static/lodestone.svg" alt="" width="56" height="56">
-      <h1>Lodestone</h1>
-      <p class="muted">Sign in to see the family servers.</p>
+      <div class="login-title"><h1>Lodestone</h1><p class="tagline">Server explorer for Minecraft</p></div>
       <label>Username<input class="input" name="username" autocomplete="username" autocapitalize="off" required></label>
       <label>Password<input class="input" type="password" name="password" autocomplete="current-password" required></label>
       <p class="login-error" role="alert">${esc(message)}</p>

@@ -463,12 +463,18 @@ body.logged-out .shell { display: none; }
   background: linear-gradient(#0a0e1c 0%, #141a2c 55%, #1d2233 100%); }
 #login-sky { position: fixed; inset: 0; width: 100vw; height: 100vh; image-rendering: pixelated; pointer-events: none; }
 .login-wrap { position: relative; z-index: 1; width: min(400px, 100%); display: grid; gap: 14px; }
-.login-servers { background: rgba(46, 51, 59, .88); backdrop-filter: blur(4px); border-radius: 12px; padding: 16px 18px; }
+.login-servers { border-radius: 14px; padding: 16px 18px; position: relative;
+  background: linear-gradient(160deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,.04) 60%);
+  backdrop-filter: blur(16px) saturate(150%); -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid rgba(255,255,255,.12); box-shadow: 0 16px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.16); }
 .login-servers h2 { font-size: 1.05rem; margin-bottom: 10px; color: var(--muted); }
 .login-servers ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .login-servers li { display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: start; }
 .login-servers .server-icon { width: 40px; height: 40px; }
-.login-servers .server-icon .status-dot { border-color: #2e333b; }
+.login-servers .server-icon .status-dot { border-color: #262b38; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .login-card, .login-servers { background: rgba(40, 45, 58, .94); }
+}
 .ls-name { font-weight: 700; line-height: 1.2; }
 .ls-status { font-size: .88rem; color: var(--muted); }
 .ls-status.live { color: var(--copper); font-weight: 700; }
@@ -476,11 +482,21 @@ body.logged-out .shell { display: none; }
 .ls-names { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; font-size: .82rem; color: var(--muted); }
 .ls-names span { display: inline-flex; align-items: center; gap: 4px; }
 .ls-names img { width: 16px; height: 16px; image-rendering: pixelated; border-radius: 2px; }
-.login-card { width: 100%; background: rgba(46, 51, 59, .94); backdrop-filter: blur(4px); border-radius: 12px; padding: 28px; display: grid; gap: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
-.login-card img { image-rendering: pixelated; border-radius: 6px; }
-.login-card h1 { font-size: 2rem; }
+.login-card { width: 100%; border-radius: 14px; padding: 28px; display: grid; gap: 12px; position: relative;
+  /* Frosted glass: the fireworks show through, softly blurred. */
+  background: linear-gradient(160deg, rgba(255,255,255,.13) 0%, rgba(255,255,255,.05) 45%, rgba(255,255,255,.08) 100%);
+  backdrop-filter: blur(16px) saturate(150%); -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid rgba(255,255,255,.16);
+  box-shadow: 0 24px 60px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.22), inset 0 -1px 0 rgba(0,0,0,.25); }
+.login-card::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(115deg, rgba(255,255,255,.10) 0%, transparent 32%); }
+.login-card img { image-rendering: pixelated; border-radius: 6px; width: 64px; height: 64px; filter: drop-shadow(0 0 14px rgba(255,150,40,.35)); }
+.login-title h1 { font-size: 2.1rem; }
+.tagline { color: rgba(235,230,217,.72); font-size: .95rem; margin-top: 2px; }
 .login-card label { display: grid; gap: 4px; font-weight: 700; font-size: .92rem; }
-.login-error { color: #ff9d8f; min-height: 1.2em; font-size: .9rem; }
+.login-card .input { background: rgba(10,12,18,.45); border-color: rgba(255,255,255,.14); }
+.login-card .input:focus { border-color: #f2a43a; box-shadow: 0 0 0 3px rgba(242,164,58,.18); }
+.login-error { color: #ffb3a8; min-height: 1.2em; font-size: .9rem; }
 .admin-only { display: none !important; }
 body.is-admin .admin-only { display: block !important; }
 .account { position: relative; width: 100%; }

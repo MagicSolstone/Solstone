@@ -7,7 +7,52 @@ const loginScene = { stop: null };
 
 // Minecraft dye colours, brightened the way firework stars look in-game.
 const FW_COLORS = ["#ff5a4f", "#ffa13d", "#ffe45c", "#9be34a", "#4fd7e6", "#5d8bff", "#c46cf0", "#ff8fc0", "#ffffff", "#3fd1b0"];
-const FW_SHAPES = ["ball", "ball", "large", "star", "burst", "ring"];
+const FW_SHAPES = ["ball", "ball", "large", "star", "burst", "ring", "cube", "pickaxe", "axe"];
+// Pixel templates for shaped bursts: each "#" becomes a spark that flies out to its spot.
+const FW_TEMPLATES = {
+  cube: [
+    "......#......",
+    "....##.##....",
+    "..##.....##..",
+    "##.........##",
+    "#.##.....##.#",
+    "#...##.##...#",
+    "#.....#.....#",
+    "#.....#.....#",
+    "#.....#.....#",
+    "##....#....##",
+    "..##..#..##..",
+    "....##.##....",
+    "......#......",
+  ],
+  pickaxe: [
+    "...#######...",
+    ".##...#...##.",
+    "#.....#.....#",
+    "......#......",
+    "......#......",
+    "......#......",
+    "......#......",
+    "......#......",
+    "......#......",
+    "......#......",
+  ],
+  axe: [
+    "....##.",
+    "..####.",
+    ".######",
+    "#######",
+    "#######",
+    ".######",
+    "..####.",
+    "....##.",
+    ".....#.",
+    ".....#.",
+    ".....#.",
+    ".....#.",
+    ".....#.",
+  ],
+};
 
 function startLoginScene() {
   stopLoginScene();
@@ -45,11 +90,12 @@ function startLoginScene() {
     });
     // Sitting figure and dog on the left hilltop, facing the sky. Pixel maps: # = filled.
     const top = H - heights[Math.floor(sitX / B)];
-    const person = [".##....", ".##....", "###....", "####...", ".###...", ".######", ".##..##"];
+    // Standing, head tipped back to watch the sky.
+    const person = ["....##.", "...##..", "...##..", "..####.", ".#.##.#", ".#.##.#", "...##..", "...#.#.", "...#.#.", "...#.#."];
     const dog = ["##.....", "###....", ".#...#.", ".#####.", ".#####.", ".#.#.#."];
     g.fillStyle = "#0d1014";
     const draw = (map, ox, oy) => map.forEach((row, y) => [...row].forEach((c, x) => { if (c === "#") g.fillRect(ox + x, oy + y, 1, 1); }));
-    draw(person, sitX - 4, top - person.length);
+    draw(person, sitX - 5, top - person.length);
     draw(dog, sitX + 5, top - dog.length);
   }
 
@@ -77,9 +123,22 @@ function startLoginScene() {
   }
 
   function explode(r) {
+    const add = (vx, vy, i, extra = {}) => sparks.push({ x: r.x, y: r.y, px: r.x, py: r.y, vx, vy, life: 0, max: rand(55, 85) * (r.shape === "large" ? 1.3 : 1),
+      color: r.colors[i % r.colors.length], fade: r.fade, trail: r.trail, twinkle: r.twinkle, ...extra });
+    const tpl = FW_TEMPLATES[r.shape];
+    if (tpl) {
+      // Sparks fly out to their place in the shape, hang there, then droop and fade.
+      const rows = tpl.length, cols = tpl[0].length, rot = rand(-0.35, 0.35), flip = Math.random() < 0.5 ? -1 : 1;
+      const k = rand(0.17, 0.21), cos = Math.cos(rot), sin = Math.sin(rot);
+      let i = 0;
+      tpl.forEach((row, y) => [...row].forEach((c, x) => {
+        if (c !== "#") return;
+        const ox = (x - (cols - 1) / 2) * flip, oy = y - (rows - 1) / 2;
+        add((ox * cos - oy * sin) * k, (ox * sin + oy * cos) * k, i++, { shaped: true, max: rand(95, 115) });
+      }));
+      return;
+    }
     const n = { ball: 34, large: 64, star: 50, burst: 46, ring: 40 }[r.shape];
-    const add = (vx, vy, i) => sparks.push({ x: r.x, y: r.y, px: r.x, py: r.y, vx, vy, life: 0, max: rand(55, 85) * (r.shape === "large" ? 1.3 : 1),
-      color: r.colors[i % r.colors.length], fade: r.fade, trail: r.trail, twinkle: r.twinkle });
     for (let i = 0; i < n; i++) {
       let a = (i / n) * Math.PI * 2, sp;
       if (r.shape === "ball") { sp = rand(0.9, 1.3); a += rand(-0.08, 0.08); }
@@ -136,7 +195,8 @@ function startLoginScene() {
       p.life++;
       if (p.life > p.max) { sparks.splice(i, 1); continue; }
       p.px = p.x; p.py = p.y;
-      p.vx *= 0.975; p.vy = p.vy * 0.975 + G * (p.ember ? 0.3 : 0.55);
+      if (p.shaped) { p.vx *= 0.95; p.vy = p.vy * 0.95 + G * (p.life > 45 ? 0.35 : 0.04); }   // hold the shape, then fall
+      else { p.vx *= 0.975; p.vy = p.vy * 0.975 + G * (p.ember ? 0.3 : 0.55); }
       p.x += p.vx; p.y += p.vy;
       const t = p.life / p.max;
       if (p.twinkle && t > 0.35 && Math.random() < 0.45) continue;      // crackle
