@@ -13,7 +13,7 @@ const ACTION_LABELS = {
   "player:op": "Made operator", "player:deop": "Removed operator", "power:start_server": "Started the server",
   "power:stop_server": "Stopped the server", "power:restart_server": "Restarted the server", "power:backup_server": "Started a backup",
   kick: "Disconnected", add_user: "Added a user", edit_user: "Changed a user", delete_user: "Removed a user",
-  change_password: "Changed their password", login_failed: "Failed sign-in", notification_settings: "Changed notifications",
+  change_password: "Changed their password", login_page_settings: "Changed the sign-in page", login_failed: "Failed sign-in", notification_settings: "Changed notifications",
 };
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -339,7 +339,7 @@ async function viewAdmin() {
   curSid = null;
   document.title = "Users & activity · Lodestone";
   $("#rail-servers").innerHTML = railHtml(null);
-  const [users, audit] = await Promise.all([api("/api/users"), api("/api/audit?limit=200")]);
+  const [users, audit, lp] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/login")]);
   const fmtWhen = (ts) => ts ? fmtAgo(ts) : "never";
   setView(`<h1 style="margin-bottom:20px">Users &amp; activity</h1>
     <section class="section"><div class="section-head"><h2>Users</h2><span class="muted">Viewers can see everything but can't change anything. Admins can also control servers.</span></div>
@@ -355,9 +355,21 @@ async function viewAdmin() {
         <label>Role<select class="input" name="role"><option value="viewer">Viewer (read-only)</option><option value="admin">Admin</option></select></label>
         <button class="btn primary" type="submit">Add user</button></div></form>
     </section>
+    <section class="section"><div class="section-head"><h2>Sign-in page</h2><span class="muted">What people see before they sign in</span></div>
+      <div class="panel rules-ctl" id="login-page-settings" style="max-width:640px">
+        <label class="switch-row"><span>Show servers, how many people are playing, and the in-game day and weather</span><input type="checkbox" role="switch" data-lp="show_servers" ${lp.show_servers ? "checked" : ""}></label>
+        <label class="switch-row"><span>Also show who's playing (their Minecraft names)</span><input type="checkbox" role="switch" data-lp="show_names" ${lp.show_names ? "checked" : ""}></label>
+        <p class="muted small" style="margin-top:8px">Anyone with the address can see the sign-in page. Leave names off if Lodestone is reachable from outside your home.</p>
+      </div></section>
     <section class="section"><div class="section-head"><h2>Admin activity</h2><span class="muted">Commands, changes and sign-in failures across all servers</span></div>
       <div class="panel">${auditHtml(audit, true)}</div></section>`);
 
+  $("#login-page-settings").addEventListener("change", async () => {
+    const body = {};
+    $$("[data-lp]").forEach((i) => { body[i.dataset.lp] = i.checked; });
+    try { await post("/api/settings/login", body, "PUT"); showToast("Sign-in page updated", 2500); }
+    catch (err) { showToast(esc(err.message), 5000); }
+  });
   $("#add-user").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);

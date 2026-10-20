@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -56,7 +57,7 @@ async def require_login(request: Request, call_next):
         if request.method not in SAFE_METHODS and request.headers.get("x-lodestone") != "1":
             return JSONResponse({"detail": "Missing X-Lodestone header"}, status_code=403)
         request.state.user = await asyncio.to_thread(auth.user_from_request, request)
-        if request.state.user is None and path not in PUBLIC_API:
+        if request.state.user is None and path not in PUBLIC_API and not path.startswith("/api/public/"):
             return JSONResponse({"detail": "Sign in to continue"}, status_code=401)
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -100,6 +101,96 @@ async def status():
         "servers_dir_found": config.servers_dir.is_dir(),
         "server_count": len(S.registry.servers),
     }
+
+
+# ------------------------------------------------------------------ sign-in page (no login needed)
+LOGIN_DEFAULTS = {"show_servers": True, "show_names": False}
+_public_cache: tuple[float, list] | None = None
+_public_lock = asyncio.Lock()
+
+
+def _login_cfg() -> dict:
+    return {**LOGIN_DEFAULTS, **settings_store.load().get("login", {})}
+
+
+def _phase(t: int) -> str:
+    return ("Morning" if t < 6000 else "Afternoon" if t < 12000 else "Sunset" if t < 13000
+            else "Night" if t < 23000 else "Sunrise")
+
+
+async def _public_servers() -> list[dict]:
+    """What the sign-in page shows. Cached so anonymous visitors can't hammer RCON or Crafty."""
+    global _public_cache
+    async with _public_lock:
+        if _public_cache and time.monotonic() - _public_cache[0] < 15:
+            return _public_cache[1]
+        cfg = _login_cfg()
+        out = []
+        await S.registry.refresh()
+        for srv in [s for s in S.registry.servers.values() if not s.settings.get("hidden")]:
+            try:
+                summ = await S.server_summary(srv)
+            except Exception as e:
+                log.warning("sign-in page status failed for %s: %s", srv.id, e)
+                continue
+            item = {"id": srv.id, "name": summ["name"], "running": summ["running"], "crashed": summ["crashed"],
+                    "online": len(summ["online"]), "max": summ["max_players"], "version": summ["version"],
+                    "game": summ["game_label"], "has_icon": summ["has_icon"]}
+            if cfg["show_names"]:
+                item["names"] = summ["online"]
+            if srv.is_java and summ["running"] is not False:
+                try:
+                    w = await asyncio.to_thread(S.world_info, srv)
+                    if srv.rcon_conf():
+                        w.update(await S.live_world(srv))
+                    if w.get("time_of_day") is not None:
+                        item["world"] = {"day": w["day"], "phase": _phase(w["time_of_day"]),
+                                         "weather": None if w.get("raining") is None else
+                                         "Thunderstorm" if w.get("thundering") else "Rain" if w.get("raining") else "Clear",
+                                         "paused": len(summ["online"]) == 0}
+                except Exception:
+                    pass
+            out.append(item)
+        _public_cache = (time.monotonic(), out)
+        return out
+
+
+@app.get("/api/public/status")
+async def public_status():
+    cfg = _login_cfg()
+    servers = await _public_servers() if cfg["show_servers"] else []
+    return {"servers": servers, "show_servers": cfg["show_servers"]}
+
+
+@app.get("/api/public/icon/{sid}.png")
+async def public_icon(sid: str):
+    if not _login_cfg()["show_servers"]:
+        raise HTTPException(404)
+    srv = await S.registry.get(sid)
+    if not srv or srv.settings.get("hidden"):
+        raise HTTPException(404)
+    data = S.server_icon_bytes(srv)
+    if not data:
+        raise HTTPException(404)
+    return Response(data, media_type="image/png", headers={"Cache-Control": "max-age=300"})
+
+
+@app.get("/api/settings/login")
+async def get_login_settings(request: Request):
+    auth.require_admin(request)
+    return _login_cfg()
+
+
+@app.put("/api/settings/login")
+async def put_login_settings(request: Request):
+    global _public_cache
+    user = auth.require_admin(request)
+    body = await _body(request)
+    cfg = {k: bool(body.get(k, v)) for k, v in _login_cfg().items() if k in LOGIN_DEFAULTS}
+    settings_store.save_section("login", cfg)
+    _public_cache = None
+    auth.audit(user, None, "login_page_settings", ", ".join(f"{k}={v}" for k, v in cfg.items()))
+    return cfg
 
 
 # ------------------------------------------------------------------ accounts
@@ -540,7 +631,7 @@ async def spa(full_path: str):
 
 def _index_html() -> str:
     """index.html with ?v= on the CSS/JS links so browsers pick up new versions after an update."""
-    names = ("app.css", "app.js", "history.js", "control.js")
+    names = ("app.css", "login.js", "app.js", "history.js", "control.js")
     files = [STATIC / n for n in names]
     stamp = format(int(max(f.stat().st_mtime for f in files if f.exists())), "x")
     html = (STATIC / "index.html").read_text(encoding="utf-8")

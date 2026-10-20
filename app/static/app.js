@@ -35,7 +35,8 @@ function showLogin(message = "") {
   document.body.classList.add("logged-out");
   const root = $("#login-root");
   root.hidden = false;
-  root.innerHTML = `<form class="login-card" id="login-form" autocomplete="on">
+  root.innerHTML = `<canvas id="login-sky" aria-hidden="true"></canvas><div id="login-glow" aria-hidden="true"></div>
+    <div class="login-wrap"><form class="login-card" id="login-form" autocomplete="on">
       <img src="/static/lodestone.svg" alt="" width="56" height="56">
       <h1>Lodestone</h1>
       <p class="muted">Sign in to see the family servers.</p>
@@ -43,9 +44,12 @@ function showLogin(message = "") {
       <label>Password<input class="input" type="password" name="password" autocomplete="current-password" required></label>
       <p class="login-error" role="alert">${esc(message)}</p>
       <button class="btn primary" type="submit">Sign in</button>
-    </form>`;
+    </form><section class="login-servers" id="login-servers" aria-label="Servers" hidden></section></div>`;
   const form = $("#login-form");
   form.querySelector("input").focus();
+  loadPublicStatus().then(() => startLoginScene());
+  state.loginRefresh && clearInterval(state.loginRefresh);
+  state.loginRefresh = setInterval(() => { if (!me.user) loadPublicStatus(); }, 30000);
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(form), btn = form.querySelector("button");
@@ -65,6 +69,8 @@ async function signedIn(user) {
   me.user = user;
   document.body.classList.remove("logged-out");
   document.body.classList.toggle("is-admin", user.role === "admin");
+  stopLoginScene();
+  clearInterval(state.loginRefresh);
   const root = $("#login-root"); root.hidden = true; root.innerHTML = "";
   $("#account-name").textContent = user.username;
   $("#account-role").textContent = user.role === "admin" ? "Admin" : "Viewer (read-only)";

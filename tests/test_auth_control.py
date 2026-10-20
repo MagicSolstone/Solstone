@@ -277,3 +277,24 @@ def test_console_stream(client, sid):
 
 def test_helpers_players_constant():
     assert helpers.PLAYERS[0][0] == "Tyler"
+
+
+# ---------------------------------------------------------------- sign-in page
+def test_public_status_without_login(anon, client, viewer):
+    from app import main
+    from app import servers as S
+    main._public_cache = None
+    S.registry.servers[helpers.SID]._rcon = None  # test clients run separate event loops
+    data = anon.get("/api/public/status").json()
+    assert data["show_servers"] is True
+    s = next(x for x in data["servers"] if x["id"] == helpers.SID)
+    assert {"name", "running", "online", "version"} <= set(s)
+    assert "names" not in s                        # names are off by default
+    assert anon.get(f"/api/public/icon/{helpers.SID}.png").status_code == 200
+    assert anon.get("/api/servers").status_code == 401  # everything else still needs a login
+
+    assert viewer.put("/api/settings/login", json={"show_servers": False}).status_code == 403
+    assert client.put("/api/settings/login", json={"show_servers": False, "show_names": True}).json() == {"show_servers": False, "show_names": True}
+    assert anon.get("/api/public/status").json()["servers"] == []
+    assert anon.get(f"/api/public/icon/{helpers.SID}.png").status_code == 404
+    client.put("/api/settings/login", json={"show_servers": True, "show_names": False})
