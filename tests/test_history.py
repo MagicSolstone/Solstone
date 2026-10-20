@@ -220,3 +220,13 @@ def test_duplicate_log_lines_stored_once():
 def test_timeline_endpoint(client, sid):
     r = client.get(f"/api/servers/{sid}/timeline?chat=false")
     assert r.status_code == 200 and "items" in r.json()
+
+
+def test_memory_bytes_from_crafty():
+    assert parse_mem_mb(1646161920) == 1569.9          # newer Crafty: bytes
+    assert parse_mem_mb("1646161920") == 1569.9
+    assert parse_mem_mb(2048) == 2048.0                # small bare numbers are MB
+    db.add_metric("mem-fix", time.time(), True, 0, 1.0, 1646161920.0, 5.0, None, None)
+    # The start-up fix-up converts values stored in bytes by earlier builds
+    db.conn().execute("UPDATE metrics SET mem_mb = ROUND(mem_mb / 1048576.0, 1) WHERE mem_mb > 100000")
+    assert db.metrics("mem-fix", "6h")["latest"]["mem_mb"] == 1569.9

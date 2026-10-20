@@ -255,7 +255,7 @@ async def server_summary(srv: Server) -> dict:
         "crashed": bool(stats.get("crashed")),
         "started": stats.get("started"),
         "cpu": stats.get("cpu"),
-        "mem": stats.get("mem"),
+        "mem": _fmt_mem(stats.get("mem")),
         "mem_percent": stats.get("mem_percent"),
         "world_size": stats.get("world_size"),
         "version": srv.mc_version or stats.get("version"),
@@ -289,6 +289,15 @@ def _latest_perf(srv: Server) -> dict | None:
     if not rows or time.time() - rows[0]["ts"] > 180:
         return None
     return {"tps": rows[0]["tps"], "mspt": rows[0]["mspt"]}
+
+
+def _fmt_mem(v: Any) -> str | None:
+    """Human memory text whether Crafty sent "1.6GB" or a raw byte count."""
+    from .recorder import parse_mem_mb
+    mb = parse_mem_mb(v)
+    if mb is None:
+        return v if isinstance(v, str) and v else None
+    return f"{mb / 1024:.2f} GB" if mb >= 1024 else f"{mb:.0f} MB"
 
 
 def _int(v: Any) -> int | None:

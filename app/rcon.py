@@ -49,6 +49,10 @@ class Rcon:
             self._reader, self._writer = await asyncio.wait_for(
                 asyncio.open_connection(self.host, self.port), self.timeout
             )
+        except ConnectionRefusedError as e:
+            raise RconError(f"Nothing is listening for RCON at {self.host}:{self.port}. Check that this port is "
+                            f"published from the Crafty container and that RCON is enabled, or set the RCON host "
+                            f"in server settings") from e
         except (OSError, asyncio.TimeoutError) as e:
             raise RconError(f"Can't reach RCON at {self.host}:{self.port} ({e})") from e
         rid = await self._send(AUTH, self.password)

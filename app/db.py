@@ -102,6 +102,8 @@ def conn() -> sqlite3.Connection:
                 _conn.execute("DELETE FROM events WHERE id NOT IN (SELECT MIN(id) FROM events "
                               "GROUP BY server_id, ts, type, COALESCE(player, ''), message)")
                 _conn.executescript(SCHEMA)
+            # Early builds stored Crafty's byte counts as megabytes; convert them.
+            _conn.execute("UPDATE metrics SET mem_mb = ROUND(mem_mb / 1048576.0, 1) WHERE mem_mb > 100000")
         return _conn
 
 

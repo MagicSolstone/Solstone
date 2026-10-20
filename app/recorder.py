@@ -37,11 +37,18 @@ _TICK_TARGET = re.compile(r"Target tick rate:\s*([\d.]+)", re.I)
 _TICK_AVG = re.compile(r"Average time per tick:\s*([\d.]+)\s*ms", re.I)
 
 
+BYTES_THRESHOLD = 100_000  # a bare number this large can't be MB (that'd be ~100 GB of heap); it's bytes
+
+
 def parse_mem_mb(v) -> float | None:
-    if v is None:
+    """Crafty reports memory either as text ("1.6GB") or, depending on version, a bare byte count."""
+    if v is None or v == "":
         return None
+    if isinstance(v, str) and re.fullmatch(r"\s*[\d.]+\s*", v):
+        v = float(v)
     if isinstance(v, (int, float)):
-        return float(v)
+        v = float(v)
+        return round(v / 1048576, 1) if v > BYTES_THRESHOLD else v
     m = _MEM.search(str(v))
     if not m:
         return None
