@@ -412,6 +412,10 @@ async function viewAdmin() {
 const FW_LABELS = [
   ["ball", "Small ball"], ["large", "Large ball"], ["star", "Star"], ["burst", "Burst"], ["ring", "Ring"],
   ["crossette", "Crossette", "bursts twice"], ["spiral", "Spiral"], ["willow", "Willow", "falling glitter"],
+  ["saturn", "Saturn", "ball with a ring"], ["pair", "Mirror pair", "one from each side"],
+  ["candle", "Roman candle", "a row of shots"], ["cake", "Cake", "a fast fan of shots"],
+  ["fountain", "Fountain", "on the hill"], ["wheel", "Spinning wheel", "on the hill"],
+  ["sparkler", "Sparkler", "the watcher waves one"], ["shootingstar", "Shooting star"],
   ["cube", "Block"], ["pickaxe", "Pickaxe"], ["axe", "Axe"], ["creeper", "Creeper"], ["heart", "Heart"],
   ["dragon", "Ender dragon", "show-piece"], ["bow", "Bow and arrow", "show-piece"], ["tree", "Tree", "show-piece"],
 ];

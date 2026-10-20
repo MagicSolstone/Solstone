@@ -147,3 +147,16 @@ def test_custom_firework_editor(client, viewer, anon):
     assert client.delete(f"/api/fireworks/{fid}").json() == {"ok": True}
     assert client.delete(f"/api/fireworks/{other['id']}").status_code == 200
     assert client.get(f"/api/fireworks/{fid}").status_code in (404, 405)
+
+
+def test_firework_stages_launches_and_frames():
+    from app.fireworks import MAX_STAGES, sanitize
+    d = sanitize({"launch": "wheel", "rocket_style": "corkscrew", "mirror": 1, "rockets": 40, "interval": 0, "hang": 9,
+                  "picture": ["0"], "picture2": ["1.", "bad!"], "pattern": "picture",
+                  "stages": [{"action": "implode", "pattern": "picture", "delay": 99, "sparks": 3, "colors": ["#FFFFFF", "nope"]}] * 5})
+    assert d["launch"] == "wheel" and d["rocket_style"] == "corkscrew" and d["mirror"] is True
+    assert d["rockets"] == 12 and d["interval"] == 0.05 and d["hang"] == 3
+    assert d["picture2"] == ["1."] and len(d["stages"]) == MAX_STAGES
+    st = d["stages"][0]
+    assert st == {"action": "implode", "pattern": "ball", "delay": 4, "size": 0.8, "sparks": 8, "colors": ["#ffffff"]}
+    assert sanitize({"launch": "cannon", "rocket_style": "laser"})["launch"] == "rocket"

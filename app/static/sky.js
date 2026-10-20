@@ -5,7 +5,8 @@
 // Minecraft dye colours, brightened the way firework stars look in-game.
 const FW_COLORS = ["#ff5a4f", "#ffa13d", "#ffe45c", "#9be34a", "#4fd7e6", "#5d8bff", "#c46cf0", "#ff8fc0", "#ffffff", "#3fd1b0"];
 const FW_SHAPES = ["ball", "ball", "large", "star", "burst", "ring", "cube", "pickaxe", "axe", "creeper", "heart",
-  "crossette", "crossette", "spiral", "spiral", "willow", "willow"];
+  "crossette", "crossette", "spiral", "spiral", "willow", "willow", "saturn", "pair", "candle", "cake", "fountain", "wheel",
+  "sparkler", "shootingstar"];
 // Show-pieces: rarer, and only one on screen at a time so the sky never gets cluttered.
 const FW_SPECIALS = ["dragon", "bow", "tree"];
 const FW_PACE = { calm: [2600, 6500], normal: [700, 1900], lively: [350, 1000] };
@@ -152,7 +153,7 @@ function startSkyScene(cv, opts = {}) {
   const pick = (a) => a[Math.floor(Math.random() * a.length)];
   const rand = (a, b) => a + Math.random() * (b - a);
   let W = 0, H = 0, raf = 0, timer = 0, running = false, frame = 0, stopped = false;
-  let stars = [], land = null, groundY = 0, cardBox = null, hill = [];
+  let stars = [], land = null, groundY = 0, cardBox = null, hill = [], watcher = { x: 0, y: 0 };
   const rockets = [], sparks = [], figures = [], trees = [];
 
   // ---- static layer: blocky hill with two small silhouettes
@@ -183,6 +184,7 @@ function startSkyScene(cv, opts = {}) {
     g.fillStyle = "#0d1014";
     const draw = (map, ox, oy) => map.forEach((row, y) => [...row].forEach((c, x) => { if (c === "#") g.fillRect(ox + x, oy + y, 1, 1); }));
     draw(person, sitX - 5, top - person.length);
+    watcher = { x: sitX - 5 + 7, y: top - person.length + 3 };      // just past the raised hand
     draw(dog, sitX + 5, top - dog.length);
   }
 
@@ -211,6 +213,23 @@ function startSkyScene(cv, opts = {}) {
       else return null;                            // only show-pieces are on, and one is already up
     }
     if (shape && typeof shape === "object") return launchDesign(shape, at?.x);
+    if (shape === "sparkler") {
+      if (emitters.some((e) => e.kind === "sparkler")) shape = "ball";
+      else return addEmitter("sparkler", { duration: rand(5, 8) }, watcher.x);
+    }
+    if (shape === "shootingstar") {
+      const left = Math.random() < 0.5;
+      return addEmitter("comet", { duration: 4 }, left ? rand(-10, W * 0.3) : rand(W * 0.7, W + 10), { y: rand(2, H * 0.25), vx: (left ? 1 : -1) * rand(2.2, 3.4), vy: rand(0.5, 1.1) });
+    }
+    if (shape === "pair") {                         // the same firework from both sides at once
+      const base = pick(["ball", "large", "star", "ring", "crossette", "willow", "spiral", "heart"]);
+      const px = rand(W * 0.1, W * 0.35), apex = rand(H * 0.12, Math.min(H * 0.4, groundY - 40));
+      const a1 = launch(base, { x: px, y: apex }), a2 = launch(base, { x: W - px, y: apex });
+      if (a1 && a2) { a2.colors = a1.colors; a2.fade = a1.fade; a2.trail = a1.trail; a2.twinkle = a1.twinkle; }
+      return a1;
+    }
+    const preset = builtinDesign(shape);
+    if (preset) return launchDesign(preset, preset.launch ? undefined : x);
     if (FW_SPECIALS.includes(shape)) x = Math.max(W * 0.18, Math.min(W * 0.82, x));
     // A tree bursts low, just above the hill, and grows upwards from there.
     // A tree's rocket comes up out of the hill itself and bursts right at the surface.
@@ -229,83 +248,278 @@ function startSkyScene(cv, opts = {}) {
     return r;
   }
 
-  // ---- custom fireworks from the Firework editor
-  // A design is a bag of numbers (see app/fireworks.py); each rocket carries it to the burst.
+  // ---- custom fireworks from the Firework editor (and the built-in kinds made the same way)
+  // A design is a bag of numbers (see app/fireworks.py). Rockets carry it to the burst;
+  // fountains and wheels burn it on the hill. Everything one design makes shares a group,
+  // so pictures can move as one and "then…" stages can act on all the pieces together.
+  const emitters = [], groups = [], events = [];
+  const later = (frames, fn) => events.push({ at: frame + Math.max(1, Math.round(frames)), fn });
+  const surfaceAt = (x) => hill.length ? H - hill[Math.max(0, Math.min(hill.length - 1, Math.floor(x / 3)))] : groundY;
+  const dv = (d, k, def) => (d[k] ?? def);
+
   function launchDesign(d, atX) {
-    const n = Math.max(1, Math.min(5, d.rockets || 1));
-    const x0 = atX ?? rand(W * 0.2, W * 0.8);
-    const first = rocketFor(d, x0 - ((n - 1) / 2) * 28);
-    for (let k = 1; k < n; k++) setTimeout(() => { if (!stopped) { rocketFor(d, x0 + (k - (n - 1) / 2) * 28 + rand(-6, 6)); wake(); } }, k * rand(160, 320));
-    return first;
+    if (d.launch === "fountain" || d.launch === "wheel") {
+      const x = atX ?? rand(W * 0.15, W * 0.85);
+      addEmitter(d.launch, d, x);
+      if (d.mirror && Math.abs(W - x - x) > 12) addEmitter(d.launch, d, W - x);
+      return true;
+    }
+    const n = Math.max(1, Math.min(12, d.rockets || 1)), spread = dv(d, "spot", 0.3);
+    const x0 = atX ?? (n > 1 && spread > 0.6 ? W / 2 : rand(W * 0.2, W * 0.8));
+    const gap = dv(d, "interval", 0.25) * 60;
+    for (let k = 0; k < n; k++) {
+      const off = n > 1 ? k / (n - 1) - 0.5 : 0;
+      const fire = () => {
+        const x = Math.max(8, Math.min(W - 8, x0 + off * spread * W * 0.7 + rand(-3, 3) * spread));
+        const fan = off * dv(d, "fan", 0) * 1.1;
+        rocketFor(d, x, fan);
+        if (d.mirror) rocketFor(d, W - x, -fan, true);
+      };
+      if (k === 0) fire(); else later(k * gap, fire);
+    }
+    return true;
   }
-  function rocketFor(d, x) {
-    x = Math.max(8, Math.min(W - 8, x));
-    const top = H * 0.06, apex = groundY - (groundY - top) * Math.max(0.1, Math.min(1, d.height ?? 0.6)) + rand(-6, 6);
-    const r = { x, y: groundY + 4, vx: rand(-0.06, 0.06), vy: -Math.sqrt(2 * G * Math.max(4, groundY + 4 - apex)), shape: "custom", design: d, colors: d.colors };
+  function rocketFor(d, x, fan = 0, mirrored = false) {
+    const lean = (mirrored ? -1 : 1) * dv(d, "lean", 0) * 0.55 + fan;
+    const top = H * 0.06, apex = groundY - (groundY - top) * Math.max(0.1, Math.min(1, dv(d, "height", 0.6))) + rand(-6, 6);
+    const v = Math.sqrt(2 * G * Math.max(4, groundY + 4 - apex));
+    const r = { x, y: groundY + 4, vx: Math.sin(lean) * v, vy: -Math.cos(lean) * v, shape: "custom", design: d, colors: d.colors,
+      style: d.rocket_style || "normal", hang: Math.round(dv(d, "hang", 0) * 60), t: 0, mirrored };
     rockets.push(r);
     return r;
   }
+
+  // ---- bursts
+  function newGroup(d, x, y) {
+    const g = { d, born: frame, bx: x, by: y, cx: x, cy: y, rot: 0, released: true, hue: rand(0, 360) };
+    groups.push(g);
+    return g;
+  }
+  const colorsOf = (d, own) => (own?.length ? own : d.colors?.length ? d.colors : ["#ffe45c"]);
   function explodeCustom(r) {
-    const d = r.design, S = d.size || 1.2, cols = d.colors?.length ? d.colors : ["#ffe45c"];
-    const rt = { d, drag: 0.995 - (d.drag ?? 0.4) * 0.07, born: frame, hue: rand(0, 360) };
-    const life = () => (d.life || 1.4) * 60 * rand(0.85, 1.15);
-    const rot = rand(-1, 1) * (d.tilt || 0) * 1.2, cos = Math.cos(rot), sin = Math.sin(rot);
-    const out = [];
-    const colorFor = (i, n) => d.color_mode === "alternate" ? cols[i % cols.length] : d.color_mode === "mix" ? pick(cols) : cols[0];
-    const spark = (vx, vy, i, n, extra = {}) => {
-      const sq = d.pattern === "picture" || d.pattern === "spiral" ? 1 : d.squash ?? 1;
-      const rx = vx * cos - vy * sin, ry = (vx * sin + vy * cos) * sq;
-      out.push({ cd: rt, x: r.x, y: r.y, px: r.x, py: r.y, vx: rx, vy: ry, life: 0, max: life(), color: colorFor(i, n), hueOff: (i / n) * 360, ...extra });
-    };
-    const n = Math.max(8, Math.min(160, d.sparks || 48));
-    const jitter = () => 1 - (d.spread || 0) * Math.random();
-    if (d.flash > 0) {                               // the bright pop at the moment of the burst
-      const m = Math.round(8 + d.flash * 26);
-      for (let i = 0; i < m; i++) {
-        const a = (i / m) * Math.PI * 2;
-        sparks.push({ x: r.x, y: r.y, px: r.x, py: r.y, vx: Math.cos(a) * (0.6 + d.flash), vy: Math.sin(a) * (0.6 + d.flash), life: 0, max: rand(8, 14), color: "#ffffff" });
-      }
+    const d = r.design, g = newGroup(d, r.x, r.y);
+    if (d.flash > 0) flashBurst(r.x, r.y, d.flash);
+    burst(g, r.x, r.y, { pattern: d.pattern, size: d.size || 1.2, sparks: d.sparks || 48, colors: colorsOf(d), mirrored: r.mirrored });
+    let t = 0;
+    for (const st of d.stages || []) { t += st.delay * 60; later(t, () => runStage(g, st)); }
+  }
+  function flashBurst(x, y, power) {
+    const m = Math.round(8 + power * 26);
+    for (let i = 0; i < m; i++) {
+      const a = (i / m) * Math.PI * 2;
+      sparks.push({ x, y, px: x, py: y, vx: Math.cos(a) * (0.6 + power), vy: Math.sin(a) * (0.6 + power), life: 0, max: rand(8, 14), color: "#ffffff" });
     }
-    if (d.pattern === "picture" && d.picture?.length) {
-      const rows = d.picture.length, w = Math.max(...d.picture.map((row) => row.length)), k = 0.15 * S;
-      const hold = 45 + (d.hold ?? 0.8) * 60;
-      let i = 0;
-      d.picture.forEach((row, y) => [...row].forEach((c, x) => {
-        if (c === ".") return;
-        const ox = x - (w - 1) / 2, oy = y - (rows - 1) / 2;
-        spark(ox * k, oy * k, i++, 1, { hold, max: hold + life(), color: cols[+c] || cols[0] });
-      }));
-    } else if (d.pattern === "spiral") {
-      const arms = Math.max(2, Math.min(6, d.arms || 3)), per = Math.max(4, Math.round(n / arms)), spin = (d.spin ?? 0.5) * 0.08 || 0.01, off = rand(0, Math.PI * 2);
+  }
+  function customSpark(g, x, y, vx, vy, color, i, n, extra = {}) {
+    const d = g.d;
+    return { cd: g, x, y, px: x, py: y, vx, vy, life: 0, max: (d.life || 1.4) * 60 * rand(0.85, 1.15), color, hueOff: (i / Math.max(1, n)) * 360, seed: rand(0, 6.28), ...extra };
+  }
+  // One burst of a pattern at (x, y), added to the group's pieces.
+  function burst(g, x, y, o) {
+    const d = g.d, S = o.size, cols = o.colors, n = Math.max(6, Math.min(160, Math.round(o.sparks)));
+    const rot = rand(-1, 1) * dv(d, "tilt", 0) * 1.2, cos = Math.cos(rot), sin = Math.sin(rot);
+    const jitter = () => 1 - dv(d, "spread", 0) * Math.random();
+    const colorFor = (i) => d.color_mode === "alternate" ? cols[i % cols.length] : d.color_mode === "mix" ? pick(cols) : cols[0];
+    const add = (vx, vy, i, extra = {}, squash = true) => {
+      const sq = squash ? dv(d, "squash", 1) : 1;
+      sparks.push(customSpark(g, x, y, vx * cos - vy * sin, (vx * sin + vy * cos) * sq, colorFor(i), i, n, extra));
+    };
+    const pattern = o.pattern;
+    if (pattern === "picture" && d.picture?.length) return pictureBurst(g, x, y, S, cols, o.mirrored);
+    if (pattern === "spiral") {
+      const arms = Math.max(2, Math.min(6, d.arms || 3)), per = Math.max(4, Math.round(n / arms)), spin = dv(d, "spin", 0.5) * 0.08 || 0.01, off = rand(0, Math.PI * 2);
       for (let a = 0; a < arms; a++) for (let j = 0; j < per; j++) {
-        spark(0, 0, a * per + j, n, { orbit: { cx: r.x, cy: r.y, a: off + (a / arms) * Math.PI * 2 - j * 0.15 * Math.sign(spin), r: 0, dr: S * (0.3 + j * (1.2 / per)), da: spin } });
+        sparks.push(customSpark(g, x, y, 0, 0, colorFor(a * per + j), a * per + j, n,
+          { orbit: { cx: x, cy: y, a: off + (a / arms) * Math.PI * 2 - j * 0.15 * Math.sign(spin), r: 0, dr: S * (0.3 + j * (1.2 / per)), da: spin } }));
       }
-    } else if (d.pattern === "palm") {
+      return;
+    }
+    if (pattern === "palm") {
       const arms = Math.max(5, Math.min(12, Math.round(n / 6)));
       for (let i = 0; i < arms; i++) {
         const a = (i / arms) * Math.PI * 2 - Math.PI / 2 + rand(-0.1, 0.1);
-        spark(Math.cos(a) * S * 1.15 * jitter(), Math.sin(a) * S * 1.15 * jitter() - 0.25, i, arms, { palm: true, max: life() * 1.2 });
+        add(Math.cos(a) * S * 1.15 * jitter(), Math.sin(a) * S * 1.15 * jitter() - 0.25, i, { palm: true, max: (d.life || 1.4) * 72 });
       }
-    } else {
-      for (let i = 0; i < n; i++) {
-        let a = (i / n) * Math.PI * 2, sp = S * jitter();
-        if (d.pattern === "burst") { a = rand(0, Math.PI * 2); sp = S * rand(0.15, 1); }
-        else if (d.pattern === "ring") { sp = S * (1 - (d.spread || 0) * 0.2 * Math.random()); }
-        else if (d.pattern === "star") {
-          const pts = Math.max(3, Math.min(10, d.points || 5)), k = ((a / (Math.PI * 2)) * pts) % 1;
-          sp = S * (0.45 + 0.75 * (1 - Math.abs(k - 0.5) * 2)) * jitter();
-          a -= Math.PI / 2;
-        } else a += rand(-0.06, 0.06);
-        spark(Math.cos(a) * sp, Math.sin(a) * sp * (d.pattern === "ring" ? 0.5 : 1), i, n);
+      return;
+    }
+    if (pattern === "pop") {
+      const m = Math.min(n, 14);
+      for (let i = 0; i < m; i++) { const a = rand(0, Math.PI * 2), sp = S * rand(0.2, 0.55); add(Math.cos(a) * sp, Math.sin(a) * sp, i, { max: (d.life || 1.4) * 40 }); }
+      return;
+    }
+    if (pattern === "saturn") {                    // a ball with a tilted ring around it
+      const core = Math.round(n * 0.55), ring = n - core, tilt = rand(-0.5, 0.5), tc = Math.cos(tilt), ts = Math.sin(tilt);
+      for (let i = 0; i < core; i++) { const a = (i / core) * Math.PI * 2; const sp = S * 0.55 * jitter(); add(Math.cos(a) * sp, Math.sin(a) * sp, i, {}, false); }
+      for (let i = 0; i < ring; i++) {
+        const a = (i / ring) * Math.PI * 2, rx = Math.cos(a) * S * 1.25, ry = Math.sin(a) * S * 0.3;
+        sparks.push(customSpark(g, x, y, rx * tc - ry * ts, rx * ts + ry * tc, cols[(i + 1) % cols.length], i, ring));
+      }
+      return;
+    }
+    for (let i = 0; i < n; i++) {
+      let a = (i / n) * Math.PI * 2, sp = S * jitter();
+      if (pattern === "burst") { a = rand(0, Math.PI * 2); sp = S * rand(0.15, 1); }
+      else if (pattern === "ring") { sp = S * (1 - dv(d, "spread", 0) * 0.2 * Math.random()); }
+      else if (pattern === "star") {
+        const pts = Math.max(3, Math.min(10, d.points || 5)), k = ((a / (Math.PI * 2)) * pts) % 1;
+        sp = S * (0.45 + 0.75 * (1 - Math.abs(k - 0.5) * 2)) * jitter();
+        a -= Math.PI / 2;
+      } else a += rand(-0.06, 0.06);
+      add(Math.cos(a) * sp, Math.sin(a) * sp * (pattern === "ring" ? 0.5 : 1), i);
+    }
+    if (dv(d, "second", 0) > 0) {
+      for (const p of sparks.slice(-n)) if (p.cd === g && Math.random() < d.second) p.fuse = Math.round(dv(d, "second_delay", 0.5) * 60 * rand(0.85, 1.15));
+    }
+  }
+
+  // Pictures: pieces fly into place, then the whole picture can drift, spin and swap between
+  // two painted frames while it holds, before falling (or whatever the next stage says).
+  function pictureLayout(rows, k) {
+    if (!rows?.length) return [];
+    const h = rows.length, w = Math.max(...rows.map((r) => r.length)), out = [];
+    rows.forEach((row, y) => [...row].forEach((c, x) => { if (c !== ".") out.push({ x: (x - (w - 1) / 2) * k, y: (y - (h - 1) / 2) * k, c: +c }); }));
+    return out;
+  }
+  function pictureBurst(g, x, y, S, cols, mirrored) {
+    // Spacing between painted squares: firework-like dots at small sizes, solid pixel art
+    // when the piece size fills the gaps.
+    const d = g.d, k = 1.2 + S * 1.6;
+    const flip = (pts) => mirrored ? pts.map((p) => ({ ...p, x: -p.x })) : pts;
+    const f1 = flip(pictureLayout(d.picture, k)), f2 = flip(pictureLayout(d.picture2, k));
+    const n = Math.max(f1.length, f2.length);
+    Object.assign(g, {
+      released: false, form: 42, hold: Math.round(dv(d, "hold", 0.8) * 60), swap: f2.length ? Math.round(dv(d, "swap", 0.4) * 60) : 0,
+      vx: dv(d, "move_x", 0) * 0.7 * (mirrored ? -1 : 1), vy: -dv(d, "move_y", 0) * 0.5, turn: dv(d, "turn", 0) * 0.05 * (mirrored ? -1 : 1),
+      rot: rand(-1, 1) * dv(d, "tilt", 0) * 0.6,
+    });
+    for (let i = 0; i < n; i++) {
+      const a = f1[i] || null, b = f2.length ? f2[i] || null : a;
+      sparks.push(customSpark(g, x, y, 0, 0, cols[(a || b).c] || cols[0], i, n, {
+        pin: true, t1: a, t2: b, c1: a ? cols[a.c] || cols[0] : null, c2: b ? cols[b.c] || cols[0] : null, max: 1e9,
+      }));
+    }
+  }
+  function release(g, kick = 0.2) {
+    if (g.released) return;
+    g.released = true;
+    for (const p of sparks) {
+      if (p.cd !== g || !p.pin) continue;
+      p.pin = false;
+      if (p.hidden) { p.max = 0; continue; }
+      p.vx = rand(-kick, kick) + (g.vx || 0); p.vy = rand(-kick * 1.4, kick * 0.4) + (g.vy || 0);
+      p.max = p.life + (g.d.life || 1.4) * 60 * rand(0.85, 1.15);
+    }
+  }
+  function updateGroups() {
+    for (let i = groups.length - 1; i >= 0; i--) {
+      const g = groups[i], age = frame - g.born;
+      if (!g.released && age > g.form) {
+        g.cx += g.vx; g.cy += g.vy; g.rot += g.turn;
+        if (age >= g.form + g.hold) release(g);
+      }
+      if (age > 60 * 40) groups.splice(i, 1);
+    }
+  }
+
+  // ---- "then…" stages, acting on everything the firework has made so far
+  function piecesOf(g) { return sparks.filter((p) => p.cd === g && !p.hidden && p.life < p.max); }
+  function centreOf(g, list) {
+    if (!g.released) return { x: g.cx, y: g.cy };
+    if (!list.length) return { x: g.cx, y: g.cy };
+    return { x: list.reduce((a, p) => a + p.x, 0) / list.length, y: list.reduce((a, p) => a + p.y, 0) / list.length };
+  }
+  function runStage(g, st) {
+    if (stopped) return;
+    const d = g.d, cols = colorsOf(d, st.colors);
+    const list = piecesOf(g);
+    const c = centreOf(g, list);
+    if (st.action === "burst") {
+      if (d.flash > 0) flashBurst(c.x, c.y, d.flash * 0.7);
+      release(g);
+      burst(g, c.x, c.y, { pattern: st.pattern, size: st.size, sparks: st.sparks, colors: cols });
+    } else if (st.action === "pieces") {
+      release(g, 0);
+      const step = Math.max(1, Math.floor(list.length / 14));
+      for (let i = 0; i < list.length; i += step) {
+        const p = list[i];
+        p.max = 0;
+        burst(g, p.x, p.y, { pattern: st.pattern, size: st.size * 0.5, sparks: Math.min(st.sparks, 16), colors: cols });
+      }
+    } else if (st.action === "shatter") {
+      release(g, 0);
+      for (const p of list) {
+        const dx = p.x - c.x, dy = p.y - c.y, len = Math.hypot(dx, dy) || 1, sp = st.size * rand(0.6, 1.25);
+        p.vx = (dx / len) * sp; p.vy = (dy / len) * sp; p.orbit = null; p.fuse = 0;
+        p.max = p.life + (d.life || 1.4) * 60 * rand(0.85, 1.15);
+        if (st.colors?.length) { p.color = pick(st.colors); p.c1 = p.c2 = null; }
+      }
+    } else if (st.action === "implode") {
+      release(g, 0);
+      for (const p of list) { p.implode = { x: c.x, y: c.y }; p.orbit = null; p.fuse = 0; p.max = p.life + 40; }
+      later(30, () => {
+        flashBurst(c.x, c.y, 0.8);
+        burst(g, c.x, c.y, { pattern: st.pattern, size: st.size, sparks: st.sparks, colors: cols });
+      });
+    }
+    wake();
+  }
+
+  // ---- fountains, spinning wheels, the sparkler and shooting stars
+  function addEmitter(kind, d, x, extra = {}) {
+    const y = kind === "comet" ? 0 : surfaceAt(x);
+    const e = { kind, d, x, y, t: 0, dur: Math.round(dv(d, "duration", 4) * 60), acc: 0, ang: 0, g: newGroup(d, x, y), ...extra };
+    emitters.push(e);
+    return e;
+  }
+  function updateEmitters() {
+    for (let i = emitters.length - 1; i >= 0; i--) {
+      const e = emitters[i], d = e.d, g = e.g;
+      e.t++;
+      if (e.t > e.dur) { emitters.splice(i, 1); continue; }
+      const cols = colorsOf(d), fade = Math.min(1, (e.dur - e.t) / 40, e.t / 15);
+      const colorFor = (k) => d.color_mode === "alternate" ? cols[k % cols.length] : d.color_mode === "mix" ? pick(cols) : cols[0];
+      if (e.kind === "fountain") {
+        ctx.fillStyle = "#3a3f4a"; ctx.fillRect(Math.round(e.x) - 1, e.y - 3, 3, 3);
+        ctx.fillStyle = "#fff3c4"; ctx.fillRect(Math.round(e.x), e.y - 4, 1, 1);
+        e.acc += dv(d, "rate", 0.5) * 3.2 * fade;
+        for (; e.acc >= 1; e.acc--) {
+          const a = -Math.PI / 2 + rand(-1, 1) * dv(d, "angle", 0.3) * 0.7 + dv(d, "lean", 0) * 0.35;
+          const sp = dv(d, "power", 0.8) * rand(1.4, 2.3);
+          sparks.push(customSpark(g, e.x, e.y - 4, Math.cos(a) * sp, Math.sin(a) * sp, colorFor(e.t), e.t, 60));
+        }
+      } else if (e.kind === "wheel") {
+        const hx = Math.round(e.x), hy = e.y - 16;
+        ctx.fillStyle = "#2a2e36"; ctx.fillRect(hx, hy, 1, 16);
+        e.ang += dv(d, "wheel_spin", 0.6) * 0.16;
+        const spokes = 4;
+        for (let k = 0; k < spokes; k++) {
+          const a = e.ang + (k / spokes) * Math.PI * 2, rx = hx + Math.cos(a) * 4, ry = hy + Math.sin(a) * 4;
+          ctx.fillStyle = cols[k % cols.length]; ctx.fillRect(Math.round(rx), Math.round(ry), 1, 1);
+          if (Math.random() < dv(d, "rate", 0.5) * 1.6 * fade) {
+            const dir = Math.sign(dv(d, "wheel_spin", 0.6)) || 1, ta = a + (dir * Math.PI) / 2, sp = dv(d, "power", 0.8) * rand(0.8, 1.4);
+            sparks.push(customSpark(g, rx, ry, Math.cos(ta) * sp, Math.sin(ta) * sp, colorFor(k), k, spokes, { max: (d.life || 1.4) * 60 * rand(0.5, 0.9) }));
+          }
+        }
+        ctx.fillStyle = "#fff6d8"; ctx.fillRect(hx, hy, 1, 1);
+      } else if (e.kind === "sparkler") {
+        const hx = watcher.x + Math.cos(e.t * 0.12) * 2.5, hy = watcher.y + Math.sin(e.t * 0.12) * 2;
+        ctx.fillStyle = "#fffbe6"; ctx.fillRect(Math.round(hx), Math.round(hy), 1, 1);
+        for (let k = 0; k < 3; k++) {
+          const a = rand(0, Math.PI * 2), sp = rand(0.3, 0.9);
+          sparks.push({ x: hx, y: hy, px: hx, py: hy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0, max: rand(6, 16), color: pick(["#fff3c4", "#ffffff", "#ffcf5a"]), twinkle: true });
+        }
+      } else if (e.kind === "comet") {
+        e.x += e.vx; e.y += e.vy;
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(Math.round(e.x), Math.round(e.y), 1, 1);
+        sparks.push({ x: e.x, y: e.y, px: e.x - e.vx, py: e.y - e.vy, vx: 0, vy: 0, life: 0, max: rand(14, 24), color: pick(["#dfe9ff", "#ffffff", "#9fd8ff"]), still: true, ember: true });
+        if (e.x < -10 || e.x > W + 10 || e.y > groundY) e.t = e.dur + 1;
       }
     }
-    // Some pieces burst again a moment later.
-    if (d.second > 0) for (const p of out) if (Math.random() < d.second) p.fuse = Math.round((d.second_delay || 0.5) * 60 * rand(0.85, 1.15));
-    sparks.push(...out);
   }
+
   function customColor(p, t) {
-    const d = p.cd.d, cols = d.colors?.length ? d.colors : ["#ffe45c"];
-    if (d.color_mode === "rainbow") return `hsl(${(p.cd.hue + p.hueOff + p.life * 5) % 360} 100% 66%)`;
+    const g = p.cd, d = g.d, cols = colorsOf(d);
+    if (d.color_mode === "rainbow") return `hsl(${(g.hue + p.hueOff + p.life * 5) % 360} 100% 66%)`;
     if (d.color_mode === "change") {
       const list = cols.length > 1 ? cols : [cols[0], "#ffffff"];
       const f = Math.min(0.999, t) * (list.length - 1), k = Math.floor(f);
@@ -313,51 +527,84 @@ function startSkyScene(cv, opts = {}) {
     }
     return p.color;
   }
-  // Returns false when the spark is used up (and has been removed).
+  // Moves and draws one custom piece. Removes it (and returns) when it's used up.
   function stepCustom(p, i) {
-    const rt = p.cd, d = rt.d;
-    if (p.fuse && p.life >= p.fuse) {
+    const g = p.cd, d = g.d, age = frame - g.born;
+    if (p.fuse && p.life >= p.fuse) {               // "burst again"
       sparks.splice(i, 1);
-      const cols = d.colors?.length ? d.colors : ["#ffe45c"], m = 14, sp = (d.size || 1.2) * (d.second_size || 0.6) * 0.55;
-      const next = cols[(cols.indexOf(p.color) + 1) % cols.length] || cols[0];
-      for (let k = 0; k < m; k++) {
-        const a = (k / m) * Math.PI * 2 + rand(-0.1, 0.1);
-        sparks.push({ cd: rt, x: p.x, y: p.y, px: p.x, py: p.y, vx: Math.cos(a) * sp + p.vx * 0.3, vy: Math.sin(a) * sp + p.vy * 0.3,
-          life: 0, max: (d.life || 1.4) * 40 * rand(0.8, 1.1), color: next, hueOff: (k / m) * 360 });
-      }
-      return false;
+      const cols = colorsOf(d), next = cols[(cols.indexOf(p.color) + 1) % cols.length] || cols[0];
+      burst(g, p.x, p.y, { pattern: "ball", size: (d.size || 1.2) * dv(d, "second_size", 0.6) * 0.45, sparks: 14, colors: [next] });
+      for (const q of sparks.slice(-14)) { q.fuse = 0; q.vx += p.vx * 0.3; q.vy += p.vy * 0.3; q.max *= 0.7; }
+      return;
     }
-    if (p.orbit) {
+    let colorOverride = null;
+    if (p.pin) {
+      const f = g.swap && age > g.form ? Math.floor((age - g.form) / g.swap) % 2 : 0;
+      const tg = f ? p.t2 : p.t1;
+      p.hidden = !tg;
+      if (tg) {
+        const cos = Math.cos(g.rot), sin = Math.sin(g.rot);
+        const tx = g.cx + tg.x * cos - tg.y * sin, ty = g.cy + tg.x * sin + tg.y * cos;
+        if (age < g.form) { const e = 1 - (1 - age / g.form) ** 3; p.x = g.bx + (tx - g.bx) * e; p.y = g.by + (ty - g.by) * e; }
+        else { p.x = tx; p.y = ty; }
+        colorOverride = f ? p.c2 : p.c1;
+      }
+    } else if (p.implode) {
+      p.x += (p.implode.x - p.x) * 0.13; p.y += (p.implode.y - p.y) * 0.13;
+    } else if (p.orbit) {
       const o = p.orbit;
-      o.a += o.da; o.r += o.dr; o.dr *= 0.962; o.cy += (0.03 + p.life * 0.001) * (d.gravity ?? 1);
+      o.a += o.da; o.r += o.dr; o.dr *= 0.962; o.cy += (0.03 + p.life * 0.001) * dv(d, "gravity", 1);
       p.x = o.cx + Math.cos(o.a) * o.r; p.y = o.cy + Math.sin(o.a) * o.r * 0.9;
     } else {
-      if (p.hold && p.life < p.hold) { p.vx *= 0.95; p.vy = p.vy * 0.95 + G * 0.04; }     // pictures hang in shape
-      else { p.vx *= rt.drag; p.vy = p.vy * rt.drag + G * 0.55 * (d.gravity ?? 1); }
+      const drag = 0.995 - dv(d, "drag", 0.4) * 0.07;
+      p.vx = p.vx * drag + dv(d, "wind", 0) * 0.012;
+      p.vy = p.vy * drag + G * 0.55 * dv(d, "gravity", 1);
+      if (d.wobble > 0) p.vx += Math.sin(p.life * 0.3 + p.seed) * 0.05 * d.wobble;
       p.x += p.vx; p.y += p.vy;
     }
-    const t = p.life / p.max;
-    const color = customColor(p, t);
-    if ((d.trail > 0 || p.palm) && p.life % 2 === 0 && t < 0.85 && Math.random() < (p.palm ? 0.9 : d.trail)) {
+    if (p.hidden) { p.px = p.x; p.py = p.y; return; }
+    const t = p.pin ? Math.min(0.2, age / 600) : p.life / p.max;
+    const color = colorOverride && d.color_mode !== "rainbow" && d.color_mode !== "change" ? colorOverride : customColor(p, t);
+    if (!p.pin && (d.trail > 0 || p.palm) && p.life % 2 === 0 && t < 0.85 && Math.random() < (p.palm ? 0.9 : d.trail)) {
       sparks.push({ x: p.x, y: p.y, px: p.x, py: p.y, vx: rand(-0.03, 0.03), vy: 0.05, life: 0, max: p.palm ? 22 : 14, color, ember: true });
     }
-    if (d.glitter > 0 && t < 0.85 && Math.random() < d.glitter * 0.45) {
+    if (!p.pin && d.glitter > 0 && t < 0.85 && Math.random() < d.glitter * 0.45) {
       sparks.push({ x: p.x, y: p.y, px: p.x, py: p.y, vx: rand(-0.03, 0.03), vy: rand(0.02, 0.09), life: 0, max: rand(40, 75),
         color: Math.random() < 0.45 ? "#fff3c4" : color, glitter: true, twinkle: true });
     }
-    if (d.sparkle > 0 && t > 0.25 && Math.random() < d.sparkle * 0.6) return true;      // crackle
+    if (d.sparkle > 0 && t > 0.25 && Math.random() < d.sparkle * 0.6) return;            // crackle
+    if (d.fizzle > 0 && t > 0.7 && Math.random() < d.fizzle * (t - 0.7) * 3) return;      // flickering out
     let alpha = Math.min(1, 1.25 * (1 - t * t));
-    const age = frame - rt.born;
-    if (d.blink > 0 && Math.floor(age / Math.round(36 - d.blink * 30)) % 2) alpha *= 0.06;
-    if (d.breathe > 0) alpha *= 1 - d.breathe * 0.75 * (0.5 + 0.5 * Math.sin(age * (0.06 + d.breathe * 0.1)));
+    const pulse = frame - g.born;
+    if (d.blink > 0 && Math.floor(pulse / Math.round(36 - d.blink * 30)) % 2) alpha *= 0.06;
+    if (d.breathe > 0) alpha *= 1 - d.breathe * 0.75 * (0.5 + 0.5 * Math.sin(pulse * (0.06 + d.breathe * 0.1)));
     let fill = color;
     if (d.strobe > 0) {
       const roll = Math.random();
-      if (roll < d.strobe * 0.3) { fill = "#ffffff"; alpha = 1; } else if (roll < d.strobe * 0.55) return true;
+      if (roll < d.strobe * 0.3) { fill = "#ffffff"; alpha = 1; } else if (roll < d.strobe * 0.55) return;
     }
+    if (d.fizzle > 0 && t > 0.7 && Math.random() < d.fizzle * 0.3) fill = "#ffffff";
     ctx.globalAlpha = alpha; ctx.fillStyle = fill;
-    line(p.px, p.py, p.x, p.y);
-    return true;
+    const size = Math.min(4, dv(d, "piece", 1) + Math.floor(t * dv(d, "grow", 0) * 3));
+    if (size <= 1 && !p.pin) line(p.px, p.py, p.x, p.y);
+    else ctx.fillRect(Math.round(p.x - (size - 1) / 2), Math.round(p.y - (size - 1) / 2), Math.max(1, size), Math.max(1, size));
+  }
+
+  // Built-in kinds made from designs, so they share all the machinery above.
+  function builtinDesign(kind) {
+    const two = () => [pick(FW.colors), pick(FW.colors)];
+    const base = { colors: two(), color_mode: "mix", size: 1.2, sparks: 48, life: 1.4, gravity: 1, drag: 0.4, flash: 0.3 };
+    switch (kind) {
+      case "candle": return { ...base, rockets: Math.round(rand(5, 8)), interval: rand(0.35, 0.55), spot: 0, fan: rand(0.1, 0.3), lean: rand(-0.35, 0.35),
+        pattern: "pop", size: 0.7, sparks: 12, height: rand(0.45, 0.7), rocket_style: "colored", life: 0.9, flash: 0, trail: 0.4, color_mode: "alternate" };
+      case "cake": return { ...base, rockets: Math.round(rand(10, 15)), interval: rand(0.09, 0.15), spot: 0, fan: rand(0.6, 1), pattern: pick(["ball", "pop", "star"]),
+        size: 0.55, sparks: 20, height: rand(0.35, 0.55), rocket_style: "sparkly", life: 0.9, sparkle: 0.4, flash: 0.15 };
+      case "fountain": return { ...base, launch: "fountain", duration: rand(4, 6.5), rate: rand(0.55, 0.85), power: rand(0.6, 1), angle: rand(0.15, 0.35),
+        colors: Math.random() < 0.5 ? ["#ffcf5a", "#fff3c4"] : two(), life: 1.1, glitter: 0.15, sparkle: 0.3 };
+      case "wheel": return { ...base, launch: "wheel", duration: rand(4, 6), rate: 0.8, power: rand(0.6, 1), wheel_spin: pick([-0.8, 0.8]), life: 0.8, sparkle: 0.2 };
+      case "saturn": return { ...base, pattern: "saturn", sparks: 64, size: 1.3, color_mode: "alternate" };
+      default: return null;
+    }
   }
 
   // ---- figures (dragon, bow, arrow)
@@ -608,10 +855,27 @@ function startSkyScene(cv, opts = {}) {
 
     for (let i = rockets.length - 1; i >= 0; i--) {
       const r = rockets[i];
+      r.t = (r.t || 0) + 1;
+      if (r.hanging > 0) {                           // hang time: hiss at the top, then burst
+        r.hanging--;
+        if (Math.random() < 0.6) sparks.push({ x: r.x, y: r.y, px: r.x, py: r.y, vx: rand(-0.3, 0.3), vy: rand(-0.2, 0.3), life: 0, max: rand(6, 12), color: "#fff1c2", ember: true });
+        ctx.fillStyle = r.t % 6 < 3 ? "#ffffff" : "#ffcf5a"; ctx.fillRect(Math.round(r.x), Math.round(r.y), 1, 1);
+        if (r.hanging <= 0) { rockets.splice(i, 1); explode(r); }
+        continue;
+      }
       r.x += r.vx; r.y += r.vy; r.vy += G;
-      ctx.fillStyle = "#fff1c2"; ctx.fillRect(Math.round(r.x), Math.round(r.y), 1, 2);
-      if (frame % 2 === 0) sparks.push({ x: r.x, y: r.y + 2, px: r.x, py: r.y + 2, vx: rand(-0.08, 0.08), vy: rand(0.1, 0.4), life: 0, max: rand(10, 20), color: "#ffb35c", ember: true });
-      if (r.vy >= -0.15) { rockets.splice(i, 1); explode(r); }
+      const wig = r.style === "corkscrew" ? Math.sin(r.t * 0.35) * 2.5 : 0, rx = Math.round(r.x + wig), ry = Math.round(r.y);
+      if (r.style !== "invisible") {
+        const head = r.style === "colored" ? r.colors[0] : "#fff1c2";
+        ctx.fillStyle = head; ctx.fillRect(rx, ry, 1, 2);
+        if (frame % 2 === 0) sparks.push({ x: rx, y: ry + 2, px: rx, py: ry + 2, vx: rand(-0.08, 0.08), vy: rand(0.1, 0.4), life: 0, max: rand(10, 20), color: r.style === "colored" ? head : "#ffb35c", ember: true });
+        if (r.style === "sparkly" && Math.random() < 0.8) sparks.push({ x: rx, y: ry + 1, px: rx, py: ry + 1, vx: rand(-0.3, 0.3), vy: rand(0, 0.3), life: 0, max: rand(10, 22), color: pick(["#ffffff", "#fff3c4", "#ffcf5a"]), twinkle: true });
+      }
+      if (r.vy >= -0.15) {
+        r.x += wig;
+        if (r.hang > 0 && !r.hung) { r.hung = true; r.hanging = r.hang; r.vx = 0; continue; }
+        rockets.splice(i, 1); explode(r);
+      }
     }
 
     for (let i = sparks.length - 1; i >= 0; i--) {
@@ -659,6 +923,10 @@ function startSkyScene(cv, opts = {}) {
       }
     }
     ctx.globalAlpha = 1;
+    for (let k = events.length - 1; k >= 0; k--) if (events[k].at <= frame) { const ev = events.splice(k, 1)[0]; ev.fn(); }
+    updateGroups();
+    updateEmitters();
+    ctx.globalAlpha = 1;
     updateTrees();
     updateFigures();
     ctx.drawImage(land, 0, 0);                        // hill and watchers in front of everything
@@ -671,7 +939,7 @@ function startSkyScene(cv, opts = {}) {
   function loop() {
     if (!running) return;
     step();
-    if (!auto && !rockets.length && !sparks.length && !figures.length && !trees.length) { running = false; frame = 0; step(); return; }
+    if (!auto && !rockets.length && !sparks.length && !figures.length && !trees.length && !emitters.length && !events.length) { running = false; frame = 0; step(); return; }
     raf = requestAnimationFrame(loop);
   }
   function wake() {
@@ -701,7 +969,7 @@ function startSkyScene(cv, opts = {}) {
     rockets.length = 0; sparks.length = 0;
     for (let k = 0; k < 2; k++) { launch(pick(["ball", "large", "star", "heart"])); const r = rockets.pop(); r.y = rand(H * 0.15, H * 0.35); explode(r); }
     for (let i = 0; i < 18; i++) step();
-    rockets.length = 0; sparks.length = 0; figures.length = 0; trees.length = 0;
+    rockets.length = 0; sparks.length = 0; figures.length = 0; trees.length = 0; emitters.length = 0; events.length = 0;
   }
 
   resize();

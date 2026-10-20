@@ -834,3 +834,14 @@ body.logged-out .sky-ctl { display: none; }
 .fwe-stamps { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 @media (max-width: 1100px) { .fwe { grid-template-columns: 1fr; } .fwe-left { position: static; } }
 body.on-editor .sky-ctl { display: none; }
+
+.fwe-launches { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 10px; }
+.fwe-styles, .fwe-frames { margin-bottom: 10px; }
+.fwe-sec > .check { margin: 4px 0 12px; font-weight: 700; font-size: .9rem; }
+.fwe-stage { border: 1px solid var(--line); border-radius: var(--radius-m); padding: 10px 12px; margin-bottom: 10px; background: var(--well); display: grid; gap: 10px; }
+.fwe-stage-head { display: flex; justify-content: space-between; align-items: center; }
+.fwe-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.fwe-actions button { border: 1px solid var(--line); background: rgba(255,255,255,.04); border-radius: 999px; padding: 5px 12px; cursor: pointer; font-weight: 700; font-size: .85rem; color: var(--muted); }
+.fwe-actions button[aria-pressed="true"] { border-color: var(--gold); color: var(--bone); background: rgba(242,193,78,.12); }
+.fwe-select { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: .9rem; }
+.fwe-grid span.ghost { background: rgba(255,255,255,.12); }

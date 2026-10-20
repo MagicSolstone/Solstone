@@ -13,8 +13,12 @@ import time
 
 from . import settings_store
 
-PATTERNS = ("ball", "ring", "star", "burst", "spiral", "palm", "picture")
+PATTERNS = ("ball", "ring", "star", "burst", "spiral", "palm", "saturn", "pop", "picture")
 COLOR_MODES = ("mix", "alternate", "change", "rainbow")
+LAUNCHES = ("rocket", "fountain", "wheel")           # from the sky, or set up on the hill
+ROCKET_STYLES = ("normal", "sparkly", "corkscrew", "colored", "invisible")
+STAGE_ACTIONS = ("burst", "pieces", "shatter", "implode")
+MAX_STAGES = 3
 
 # name: (min, max, default)
 NUMBERS: dict[str, tuple[float, float, float]] = {
@@ -30,7 +34,26 @@ NUMBERS: dict[str, tuple[float, float, float]] = {
     "drag": (0, 1, 0.4),             # air resistance
     "life": (0.4, 6, 1.4),           # seconds before pieces fade out
     "height": (0.1, 1, 0.6),         # how high the rocket goes
-    "rockets": (1, 5, 1),            # launched together
+    "rockets": (1, 12, 1),           # how many go up (a volley, like a Roman candle or a cake)
+    "interval": (0.05, 2, 0.25),     # seconds between them
+    "fan": (0, 1, 0),                # spread their launch angles like a fan
+    "spot": (0, 1, 0.3),             # 0 = all from one spot, 1 = spread across the sky
+    "lean": (-1, 1, 0),              # launch at an angle
+    "hang": (0, 3, 0),               # seconds the rocket hangs at the top before bursting
+    "wind": (-1, 1, 0),              # pushes the pieces sideways
+    "piece": (1, 3, 1),              # piece size in pixels
+    "grow": (0, 1, 0),               # pieces get bigger as they fade
+    "wobble": (0, 1, 0),             # pieces zigzag
+    "fizzle": (0, 1, 0),             # pieces flicker out at the end
+    "duration": (1, 10, 4),          # fountains and wheels: seconds they burn
+    "rate": (0.1, 1, 0.5),           # fountains and wheels: how many sparks
+    "power": (0.2, 1.5, 0.8),        # fountains: how high; wheels: how far the sparks fly
+    "angle": (0, 1, 0.3),            # fountains: how wide the spray is
+    "wheel_spin": (-1, 1, 0.6),      # wheels: speed and direction
+    "move_x": (-1, 1, 0),            # pictures: drift sideways while holding
+    "move_y": (-1, 1, 0),            # pictures: drift up or down
+    "turn": (-1, 1, 0),              # pictures: spin while holding
+    "swap": (0, 2, 0.4),             # pictures: seconds between frame 1 and frame 2
     "hold": (0, 3, 0.8),             # pictures: seconds they hang in shape
     "sparkle": (0, 1, 0),            # crackle
     "trail": (0, 1, 0),              # sparks leave short trails
@@ -43,7 +66,8 @@ NUMBERS: dict[str, tuple[float, float, float]] = {
     "second_delay": (0.2, 1.5, 0.5),
     "second_size": (0.2, 1.5, 0.6),
 }
-INTS = {"sparks", "points", "arms", "rockets"}
+INTS = {"sparks", "points", "arms", "rockets", "piece"}
+STAGE_NUMBERS = {"delay": (0.1, 4, 0.8), "size": (0.2, 3, 0.8), "sparks": (8, 120, 30)}
 PIC_MAX = 25
 MAX_DESIGNS = 200
 MAX_PER_USER = 40
@@ -61,22 +85,46 @@ def sanitize(d: dict) -> dict:
     colors = [c.lower() for c in (d.get("colors") or []) if isinstance(c, str) and _HEX.match(c)][:4]
     out["colors"] = colors or ["#ffe45c"]
     for k, (lo, hi, default) in NUMBERS.items():
-        try:
-            v = float(d.get(k, default))
-        except (TypeError, ValueError):
-            v = default
-        if v != v:  # NaN
-            v = default
-        v = min(hi, max(lo, v))
-        out[k] = int(round(v)) if k in INTS else round(v, 3)
-    pic = d.get("picture") if isinstance(d.get("picture"), list) else []
+        out[k] = _num(d.get(k, default), lo, hi, default, k in INTS)
+    out["launch"] = d.get("launch") if d.get("launch") in LAUNCHES else "rocket"
+    out["rocket_style"] = d.get("rocket_style") if d.get("rocket_style") in ROCKET_STYLES else "normal"
+    out["mirror"] = bool(d.get("mirror"))
+    out["picture"] = _picture(d.get("picture"))
+    out["picture2"] = _picture(d.get("picture2"))
+    out["stages"] = [_stage(st) for st in (d.get("stages") or [])[:MAX_STAGES] if isinstance(st, dict)]
+    if out["pattern"] == "picture" and not any(c != "." for r in out["picture"] for c in r):
+        out["pattern"] = "ball"            # an empty picture would launch nothing
+    return out
+
+
+def _num(v, lo: float, hi: float, default: float, as_int: bool = False):
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        v = default
+    if v != v:  # NaN
+        v = default
+    v = min(hi, max(lo, v))
+    return int(round(v)) if as_int else round(v, 3)
+
+
+def _picture(pic) -> list[str]:
+    pic = pic if isinstance(pic, list) else []
     rows = [str(r)[:PIC_MAX] for r in pic[:PIC_MAX] if isinstance(r, str) and _PIC_ROW.match(str(r)[:PIC_MAX])]
     if rows:
         width = max(len(r) for r in rows)
         rows = [r.ljust(width, ".") for r in rows]
-    out["picture"] = rows
-    if out["pattern"] == "picture" and not any(c != "." for r in rows for c in r):
-        out["pattern"] = "ball"            # an empty picture would launch nothing
+    return rows
+
+
+def _stage(st: dict) -> dict:
+    """One "then…" step: burst again from the centre, every piece bursts, the pieces
+    shatter outwards, or they pull back in and pop."""
+    out = {"action": st.get("action") if st.get("action") in STAGE_ACTIONS else "burst",
+           "pattern": st.get("pattern") if st.get("pattern") in PATTERNS and st.get("pattern") != "picture" else "ball"}
+    for k, (lo, hi, default) in STAGE_NUMBERS.items():
+        out[k] = _num(st.get(k, default), lo, hi, default, k == "sparks")
+    out["colors"] = [c.lower() for c in (st.get("colors") or []) if isinstance(c, str) and _HEX.match(c)][:4]
     return out
 
 
@@ -90,7 +138,8 @@ def _save(items: list[dict]) -> None:
 
 
 def all_designs() -> list[dict]:
-    return _load()
+    # Re-clean on the way out so designs saved by older versions get the newer fields.
+    return [{**d, **sanitize(d)} for d in _load()]
 
 
 def in_show() -> list[dict]:

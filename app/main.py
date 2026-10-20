@@ -330,8 +330,9 @@ async def _skin_response(uuid: str, cache: str) -> Response:
 
 # Fireworks: which kinds go off, their colours and pace. Public so the sign-in and
 # status pages can use them; only admins can change them.
-FIREWORK_KINDS = ["ball", "large", "star", "burst", "ring", "crossette", "spiral", "willow", "cube", "pickaxe",
-                  "axe", "creeper", "heart", "dragon", "bow", "tree"]
+FIREWORK_KINDS = ["ball", "large", "star", "burst", "ring", "crossette", "spiral", "willow", "saturn", "pair",
+                  "cube", "pickaxe", "axe", "creeper", "heart", "candle", "cake", "fountain", "wheel", "sparkler",
+                  "shootingstar", "dragon", "bow", "tree"]
 FIREWORK_COLORS = ["#ff5a4f", "#ffa13d", "#ffe45c", "#9be34a", "#4fd7e6", "#5d8bff", "#c46cf0", "#ff8fc0", "#ffffff", "#3fd1b0"]
 FIREWORK_PACE = ("calm", "normal", "lively")
 FIREWORK_SPECIALS = ("rare", "sometimes", "often")
