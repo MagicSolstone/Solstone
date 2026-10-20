@@ -111,18 +111,17 @@ def test_texture_path_is_sanitised(client, sid):
     assert client.get(f"/api/servers/{sid}/assets/texture/../../../../etc/passwd").status_code == 404
 
 
-def test_settings_require_admin_token(client, sid):
+def test_settings_require_admin(client, viewer, sid):
     url = f"/api/servers/{sid}/settings"
-    assert client.put(url, json={"map_url": "http://map:8100"}).status_code == 403
-    r = client.put(url, json={"map_url": "http://map:8100", "rcon_password": "secret", "bogus": 1},
-                   headers={"X-Admin-Token": "letmein"})
+    assert viewer.put(url, json={"map_url": "http://map:8100"}).status_code == 403
+    r = client.put(url, json={"map_url": "http://map:8100", "rcon_password": "secret", "bogus": 1})
     assert r.status_code == 200
     body = r.json()
     assert body["map_url"] == "http://map:8100"
     assert "rcon_password" not in body and body["rcon_password_set"] is True
     assert "bogus" not in body
     assert client.get(f"/api/servers/{sid}").json()["map_url"] == "http://map:8100"
-    client.put(url, json={"map_url": "", "rcon_password": ""}, headers={"X-Admin-Token": "letmein"})
+    client.put(url, json={"map_url": "", "rcon_password": ""})
 
 
 def test_spa_fallback(client):

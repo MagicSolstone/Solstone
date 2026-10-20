@@ -17,6 +17,9 @@ A family-friendly web dashboard for Minecraft Java servers run by **Crafty Contr
 - **Backup status:** when the last Crafty backup ran, with a warning when it's overdue.
 - **Leaderboards** across the family.
 - **Mods:** the Fabric or Quilt mods installed, with modded item icons and names read from the mod jars.
+- **Accounts:** everyone signs in. Viewers see everything read-only; admins also get the Control tab, settings and user management. Every admin action is logged.
+- **Control (admins):** a live console with command history, one-click time, weather and difficulty, game-rule switches, and a message to everyone (optionally shown big on screen). Player actions: heal, send to spawn or bed, teleport, game mode, give items, private message and kick. Also whitelist and operator management, and start, stop, restart and back up through Crafty.
+- **Bedtime mode:** in-game warnings, then save and disconnect at a set time, with joins blocked until wake-up. Daily screen-time limits can also warn then disconnect a player.
 
 It's read-only. Lodestone never writes to your servers, and the servers folder can be mounted `:ro`.
 
@@ -75,7 +78,13 @@ Open `http://<host>:8085`. If you only have one server, Lodestone opens straight
 
 **Unraid:** add a container from `ghcr.io/tjusczak/lodestone:latest` with those two paths and env vars. `PUID`/`PGID` decide who owns `/data`; `99`/`100` is nobody:users.
 
-### 4. Optional: a live map
+### 4. Sign in
+
+On first start Lodestone creates an admin account. If you didn't set `ADMIN_PASSWORD`, the password is in the container log (Unraid: the Lodestone icon → Logs) and in `/data/admin_credentials.txt`. Sign in, change it from the account menu, and delete that file. Add family and friends under **Users & activity**.
+
+For start, stop, restart and backup buttons, the Crafty API key needs command permission on the servers. A full-access key already has it.
+
+### 5. Optional: a live map
 Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web map on port 8100. Then in Lodestone open **⚙ Server settings** and paste the map address (e.g. `http://192.168.150.10:8100`). It appears on the World tab.
 
 ## Environment variables
@@ -90,7 +99,11 @@ Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web ma
 | `RCON_TIMEOUT` | `4` | Seconds |
 | `LIVE_TTL` | `3` | Seconds to cache live RCON data |
 | `DOWNLOAD_ASSETS` | `true` | Download the Minecraft client jar for icons and names. If `false`, you can drop a `client.jar` into `/data/assets/<version>/` yourself |
-| `ADMIN_TOKEN` | – | If set, changing settings in the UI requires this token |
+| `ADMIN_USERNAME` | `admin` | Username of the first admin, created on first start |
+| `ADMIN_PASSWORD` | generated | Password for that first admin. If unset, one is generated, printed in the container log and saved to `/data/admin_credentials.txt`. Only used while there are no users |
+| `TRUST_PROXY_HEADERS` | `false` | Set `true` behind Cloudflare Tunnel or a reverse proxy you control |
+| `SESSION_DAYS` | `30` | How long a sign-in lasts |
+| `LOGIN_MAX_ATTEMPTS` | `8` | Failed sign-ins per IP or username before a 15-minute lockout |
 | `TZ` | `UTC` | Your time zone (e.g. `America/Chicago`). Decides where "today" starts in play time |
 | `POLL_INTERVAL` | `30` | Seconds between recordings of who's online and performance |
 | `METRICS_RETENTION_DAYS` | `30` | How long performance history is kept |
@@ -113,7 +126,7 @@ Without Crafty configured, Lodestone still works by scanning `SERVERS_DIR` for f
 
 - **Player skins** come from mc-heads.net in the visitor's browser. Offline-mode servers fall back to initials.
 - **Block-entity items** (chests, beds, heads, banners) are drawn as a cube of their particle texture. Everything else renders like the game's own icons.
-- **Exposing it outside your LAN:** put it behind your reverse proxy or Tailscale. There's no login, because it's meant for the family network. `ADMIN_TOKEN` only protects the settings.
+- **Exposing it outside your LAN:** everything needs a sign-in, so a Cloudflare Tunnel or reverse proxy is reasonable. Set `TRUST_PROXY_HEADERS=true` behind one so sign-in rate limits see real visitor IPs and cookies are marked secure. Give friends viewer accounts; only admins can send commands.
 - **Bedrock servers** aren't supported. They store player data in LevelDB and have no statistics files.
 
 ## Choosing a release channel

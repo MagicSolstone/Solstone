@@ -75,6 +75,38 @@ class CraftyClient:
             data = {**body, **(data or {})}
         return data
 
+    async def _post(self, path: str, *, content: str | None = None) -> dict:
+        if not self._token:
+            await self._login()
+        for attempt in range(2):
+            headers = {"Authorization": f"Bearer {self._token}"}
+            if content is not None:
+                headers["Content-Type"] = "text/plain"
+            r = await self._client.post(f"{self.base}{path}", headers=headers, content=content)
+            if r.status_code in (401, 403) and attempt == 0 and config.crafty_user:
+                await self._login()
+                continue
+            try:
+                body = r.json()
+            except ValueError:
+                body = {}
+            if r.status_code >= 400 or body.get("status") == "error":
+                detail = body.get("error_data") or body.get("error") or f"HTTP {r.status_code}"
+                if r.status_code in (401, 403):
+                    detail = f"Crafty refused this ({detail}). The API key needs permission to control this server"
+                raise RuntimeError(detail)
+            self._cache.clear()  # state changed; don't serve stale stats
+            return body
+        raise RuntimeError("unreachable")
+
+    async def action(self, server_id: str, action: str) -> dict:
+        """start_server, stop_server, restart_server, kill_server or backup_server."""
+        return await self._post(f"/api/v2/servers/{server_id}/action/{action}")
+
+    async def stdin(self, server_id: str, command: str) -> dict:
+        """Type a line into the server console (works for any game Crafty runs)."""
+        return await self._post(f"/api/v2/servers/{server_id}/stdin", content=command)
+
     async def close(self) -> None:
         await self._client.aclose()
 

@@ -12,13 +12,88 @@ const nf = new Intl.NumberFormat();
 const fmtNum = (n) => nf.format(Math.round(n || 0));
 
 async function api(path, opts = {}) {
-  const r = await fetch(path, opts);
+  const headers = { "X-Lodestone": "1", ...(opts.headers || {}) };
+  if (opts.body && typeof opts.body === "string" && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  const r = await fetch(path, { ...opts, headers, credentials: "same-origin" });
   if (!r.ok) {
     let msg = `${r.status} ${r.statusText}`;
     try { msg = (await r.json()).detail || msg; } catch {}
+    if (r.status === 401 && !path.startsWith("/api/auth/")) showLogin();
     const err = new Error(msg); err.status = r.status; throw err;
   }
   return r.json();
+}
+const post = (path, body = {}, method = "POST") => api(path, { method, body: JSON.stringify(body) });
+
+// ================================================================ accounts
+const me = { user: null };
+const isAdmin = () => me.user?.role === "admin";
+
+function showLogin(message = "") {
+  clearTimers?.();
+  me.user = null;
+  document.body.classList.add("logged-out");
+  const root = $("#login-root");
+  root.hidden = false;
+  root.innerHTML = `<form class="login-card" id="login-form" autocomplete="on">
+      <img src="/static/lodestone.svg" alt="" width="56" height="56">
+      <h1>Lodestone</h1>
+      <p class="muted">Sign in to see the family servers.</p>
+      <label>Username<input class="input" name="username" autocomplete="username" autocapitalize="off" required></label>
+      <label>Password<input class="input" type="password" name="password" autocomplete="current-password" required></label>
+      <p class="login-error" role="alert">${esc(message)}</p>
+      <button class="btn primary" type="submit">Sign in</button>
+    </form>`;
+  const form = $("#login-form");
+  form.querySelector("input").focus();
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = new FormData(form), btn = form.querySelector("button");
+    btn.disabled = true;
+    try {
+      const r = await post("/api/auth/login", { username: f.get("username"), password: f.get("password") });
+      signedIn(r.user);
+    } catch (err) {
+      $(".login-error", form).textContent = err.status === 401 ? "Wrong username or password." : err.message;
+      btn.disabled = false;
+      form.querySelector('[name="password"]').select();
+    }
+  });
+}
+
+async function signedIn(user) {
+  me.user = user;
+  document.body.classList.remove("logged-out");
+  document.body.classList.toggle("is-admin", user.role === "admin");
+  const root = $("#login-root"); root.hidden = true; root.innerHTML = "";
+  $("#account-name").textContent = user.username;
+  $("#account-role").textContent = user.role === "admin" ? "Admin" : "Viewer (read-only)";
+  await loadServers();
+  route();
+}
+
+function wireAccountMenu() {
+  const btn = $("#btn-account"), menu = $("#account-menu");
+  const close = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
+  btn.addEventListener("click", (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; btn.setAttribute("aria-expanded", String(!menu.hidden)); });
+  document.addEventListener("click", (e) => { if (!menu.contains(e.target)) close(); });
+  $("#btn-logout").addEventListener("click", async () => { close(); await post("/api/auth/logout").catch(() => {}); showLogin(); });
+  $("#btn-password").addEventListener("click", () => { close(); openPasswordChange(); });
+}
+
+function openPasswordChange() {
+  openModal(`<h2>Change password</h2><form id="pw-form">
+      <label>Current password<input class="input" type="password" name="current" autocomplete="current-password" required></label>
+      <label>New password <small>At least 8 characters</small><input class="input" type="password" name="new" minlength="8" autocomplete="new-password" required></label>
+      <div class="actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" type="submit">Change password</button></div>
+    </form>`, (m) => {
+    $("#pw-form", m).addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      try { await post("/api/auth/password", { current: f.get("current"), new: f.get("new") }); closeModal(); showToast("Password changed", 2500); }
+      catch (err) { showToast(esc(err.message), 4000); }
+    });
+  });
 }
 
 function fmtDuration(ticks) {
@@ -405,11 +480,12 @@ function serverHeader(s, tab) {
   const base = `#/s/${encodeURIComponent(s.id)}`;
   const java = !s.game || s.game === "minecraft-java";
   const tabs = [["players", "Players", base], ["activity", "Activity", `${base}/activity`], ["performance", "Performance", `${base}/performance`],
-    ...(java ? [["world", "World", `${base}/world`], ["leaderboards", "Leaderboards", `${base}/leaderboards`], ["mods", "Mods", `${base}/mods`]] : [])];
+    ...(java ? [["world", "World", `${base}/world`], ["leaderboards", "Leaderboards", `${base}/leaderboards`], ["mods", "Mods", `${base}/mods`]] : []),
+    ...(isAdmin() ? [["control", "Control", `${base}/control`]] : [])];
   return `<header class="server-head">
       <div class="big-icon">${s.has_icon ? `<img src="/api/servers/${encodeURIComponent(s.id)}/icon.png" alt="">` : esc((s.name || "?")[0])}</div>
       <div><h1>${esc(s.name)}</h1><div class="motd">${motdHtml(s.motd)}</div><div class="facts">${facts}</div></div>
-      <div class="head-actions">${statePill}<button class="icon-btn" id="btn-settings" title="Server settings" aria-label="Server settings">⚙</button></div>
+      <div class="head-actions">${statePill}${isAdmin() ? '<button class="icon-btn" id="btn-settings" title="Server settings" aria-label="Server settings">⚙</button>' : ""}</div>
     </header>
     ${!java ? `<div class="notice">${esc(s.game_label)} server: Lodestone shows its status, who's online, play time and performance. Inventories, stats and world details are Minecraft Java only for now.</div>` : ""}
     ${java && !s.folder_found ? `<div class="notice">Lodestone can't find this server's files at <code>${esc(s.folder)}</code>. Mount Crafty's servers folder so player data can be read.</div>` : ""}
@@ -803,16 +879,8 @@ async function openSettings(s) {
       const body = { display_name: f.get("display_name"), map_url: f.get("map_url"), rcon_host: f.get("rcon_host"),
         rcon_port: f.get("rcon_port") ? Number(f.get("rcon_port")) : "", hidden: f.get("hidden") ? true : "" };
       if (f.get("rcon_password")) body.rcon_password = f.get("rcon_password");
-      const send = (token) => api(`/api/servers/${encodeURIComponent(s.id)}/settings`, {
-        method: "PUT", headers: { "Content-Type": "application/json", ...(token ? { "X-Admin-Token": token } : {}) }, body: JSON.stringify(body) });
       try {
-        let token = localStorage.getItem("lodestone-admin") || "";
-        try { await send(token); }
-        catch (err) {
-          if (err.status !== 403) throw err;
-          token = prompt("Enter the admin token to change settings") || "";
-          await send(token); localStorage.setItem("lodestone-admin", token);
-        }
+        await post(`/api/servers/${encodeURIComponent(s.id)}/settings`, body, "PUT");
         closeModal(); showToast("Settings saved", 2500);
         await loadServers(); route();
       } catch (err) { showToast(`Couldn't save settings: ${esc(err.message)}`, 5000); }
@@ -825,11 +893,14 @@ async function route() {
   clearTimers();
   const parts = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent).filter(Boolean);
   try {
+    if (!me.user) return;
+    if (parts[0] === "admin") { await viewAdmin(); return; }
     if (parts[0] === "s" && parts[1]) {
       const sid = parts[1];
       if (parts[2] === "p" && parts[3]) await viewPlayer(sid, parts[3], parts[4] || "inventory");
       else if (parts[2] === "world") await viewWorld(sid);
       else if (parts[2] === "activity") await viewActivity(sid);
+      else if (parts[2] === "control") await viewControl(sid);
       else if (parts[2] === "performance") await viewPerformance(sid);
       else if (parts[2] === "leaderboards") await viewLeaderboards(sid);
       else if (parts[2] === "mods") await viewMods(sid);
@@ -843,7 +914,9 @@ async function route() {
 addEventListener("hashchange", () => { route(); view().focus({ preventScroll: true }); scrollTo(0, 0); });
 document.addEventListener("DOMContentLoaded", async () => {
   $("#btn-notify")?.addEventListener("click", openNotifications);
+  wireAccountMenu();
   const ch = $("#build-channel");
   if (ch && BUILD_CHANNEL === "beta") { ch.textContent = "Beta build"; ch.hidden = false; }
-  await loadServers(); route();
+  try { signedIn((await api("/api/auth/me")).user); }
+  catch { showLogin(); }
 });

@@ -18,7 +18,8 @@ services:
       PGID: "100"
       TZ: America/Chicago
       # RCON_HOST: 192.168.150.10       # where Minecraft RCON ports are published (defaults to the Crafty host)
-      # ADMIN_TOKEN: pick-something     # require a token to change settings in the web UI
+      # ADMIN_PASSWORD: choose-something-long   # first admin's password; generated into the log if unset
+      # TRUST_PROXY_HEADERS: "true"     # ONLY behind Cloudflare Tunnel or a reverse proxy you control
       # NTFY_URL: https://ntfy.sh/your-secret-topic   # or set notifications up in the UI
     volumes:
       # Crafty's servers folder, read-only. With the Unraid Crafty template

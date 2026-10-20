@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from . import db
 from . import servers as S
 from .logparse import parse_line
-from . import backups, notify
+from . import backups, guard, notify
 from .notify import maybe_notify
 from .rcon import RconError
 
@@ -27,6 +27,7 @@ log = logging.getLogger("lodestone.recorder")
 
 POLL_INTERVAL = float(os.getenv("POLL_INTERVAL", "30"))
 LOG_INTERVAL = float(os.getenv("LOG_INTERVAL", "5"))
+GUARD_INTERVAL = float(os.getenv("GUARD_INTERVAL", "10"))
 METRICS_DAYS = int(os.getenv("METRICS_RETENTION_DAYS", "30"))
 EVENTS_DAYS = int(os.getenv("EVENTS_RETENTION_DAYS", "180"))
 NOTIFY_MAX_AGE = 120  # don't push notifications for log lines older than this (restarts, backfill)
@@ -89,7 +90,8 @@ class Recorder:
         db.close_stale_sessions(POLL_INTERVAL * 3)
         self._tasks = [asyncio.create_task(self._loop(self.poll_all, POLL_INTERVAL)),
                        asyncio.create_task(self._loop(self.tail_all, LOG_INTERVAL)),
-                       asyncio.create_task(self._loop(self.prune, 6 * 3600))]
+                       asyncio.create_task(self._loop(self.prune, 6 * 3600)),
+                       asyncio.create_task(self._loop(self.guard, GUARD_INTERVAL))]
 
     async def stop(self) -> None:
         for t in self._tasks:
@@ -105,6 +107,10 @@ class Recorder:
             except Exception:
                 log.exception("%s failed", fn.__name__)
             await asyncio.sleep(interval)
+
+    async def guard(self) -> None:
+        await S.registry.refresh()
+        await guard.tick([s for s in S.registry.servers.values() if not s.settings.get("hidden")])
 
     async def prune(self) -> None:
         db.prune(METRICS_DAYS, EVENTS_DAYS)

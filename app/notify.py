@@ -31,6 +31,8 @@ def get_config() -> dict:
         "digest_enabled": bool(stored.get("digest_enabled", False)),
         "digest_day": int(stored.get("digest_day", 6)),     # 0 = Monday ... 6 = Sunday
         "digest_hour": int(stored.get("digest_hour", 18)),
+        "limit_action": stored.get("limit_action", "notify"),   # "notify" or "kick" (warn, then disconnect)
+        "limit_grace_minutes": int(stored.get("limit_grace_minutes", 5)),
     }
 
 
@@ -48,6 +50,8 @@ def public_config() -> dict:
         "digest_enabled": c["digest_enabled"],
         "digest_day": c["digest_day"],
         "digest_hour": c["digest_hour"],
+        "limit_action": c["limit_action"],
+        "limit_grace_minutes": c["limit_grace_minutes"],
     }
 
 
@@ -73,6 +77,13 @@ def save_config(values: dict) -> dict:
             if mins > 0:
                 limits[str(name).lower()] = min(mins, 24 * 60)
         cur["limits"] = limits
+    if values.get("limit_action") in ("notify", "kick"):
+        cur["limit_action"] = values["limit_action"]
+    if "limit_grace_minutes" in values:
+        try:
+            cur["limit_grace_minutes"] = max(1, min(30, int(values["limit_grace_minutes"])))
+        except (TypeError, ValueError):
+            pass
     if "digest_enabled" in values:
         cur["digest_enabled"] = bool(values["digest_enabled"])
     for k, lo, hi in (("digest_day", 0, 6), ("digest_hour", 0, 23)):

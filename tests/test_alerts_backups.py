@@ -38,7 +38,7 @@ def test_digest_text_empty():
 
 
 def test_limits_saved_and_validated(client):
-    hdr = {"X-Admin-Token": "letmein"}
+    hdr = {}
     r = client.put("/api/settings/notifications", json={"limits": {"Gimli_Jr": 120, "Tyler": "abc", "Mom": 0},
                                                         "digest_enabled": True, "digest_day": 9, "digest_hour": 18}, headers=hdr).json()
     assert r["limits"] == {"gimli_jr": 120}

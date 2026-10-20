@@ -2,17 +2,18 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import backups, db, notify
+from . import auth, backups, control, db, guard, notify
 from . import servers as S
 from . import settings_store
 from .recorder import recorder
@@ -31,6 +32,7 @@ async def lifespan(_app: FastAPI):
     await S.registry.refresh(force=True)
     log.info("Lodestone %s — %d server(s) found", VERSION, len(S.registry.servers))
     db.conn()
+    auth.bootstrap()
     if os.getenv("RECORDER_ENABLED", "true").lower() not in ("0", "false", "no"):
         recorder.start()
     yield
@@ -40,6 +42,27 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="Lodestone", version=VERSION, lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+PUBLIC_API = {"/api/health", "/api/auth/login"}
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    """Every /api route needs a signed-in user except health and login. Changes also need
+    the X-Lodestone header, which cross-site pages can't send (CSRF protection)."""
+    path = request.url.path
+    if path.startswith("/api/"):
+        if request.method not in SAFE_METHODS and request.headers.get("x-lodestone") != "1":
+            return JSONResponse({"detail": "Missing X-Lodestone header"}, status_code=403)
+        request.state.user = await asyncio.to_thread(auth.user_from_request, request)
+        if request.state.user is None and path not in PUBLIC_API:
+            return JSONResponse({"detail": "Sign in to continue"}, status_code=401)
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    return response
 
 
 async def _server(sid: str) -> S.Server:
@@ -76,8 +99,97 @@ async def status():
         "servers_dir": str(config.servers_dir),
         "servers_dir_found": config.servers_dir.is_dir(),
         "server_count": len(S.registry.servers),
-        "settings_locked": bool(config.admin_token),
     }
+
+
+# ------------------------------------------------------------------ accounts
+async def _body(request: Request) -> dict:
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Expected a JSON object")
+    return body
+
+
+@app.post("/api/auth/login")
+async def login(request: Request):
+    body = await _body(request)
+    user, token = await asyncio.to_thread(auth.login, request, str(body.get("username", "")), str(body.get("password", "")))
+    resp = JSONResponse({"user": user.public()})
+    auth.set_cookie(resp, request, token)
+    return resp
+
+
+@app.post("/api/auth/logout")
+async def logout(request: Request):
+    auth.logout(request.cookies.get(auth.COOKIE))
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(auth.COOKIE, path="/")
+    return resp
+
+
+@app.get("/api/auth/me")
+async def me(request: Request):
+    return {"user": auth.require_user(request).public(), "version": VERSION}
+
+
+@app.post("/api/auth/password")
+async def change_password(request: Request):
+    user = auth.require_user(request)
+    body = await _body(request)
+    row = db.q("SELECT password_hash FROM users WHERE id=?", (user.id,))[0]
+    if not auth.verify_password(str(body.get("current", "")), row["password_hash"]):
+        raise HTTPException(400, "Your current password is wrong")
+    auth.update_user(user.id, password=str(body.get("new", "")))
+    auth.audit(user, None, "change_password", user.username)
+    user2, token = await asyncio.to_thread(auth.login, request, user.username, str(body.get("new", "")))
+    resp = JSONResponse({"ok": True})
+    auth.set_cookie(resp, request, token)
+    return resp
+
+
+@app.get("/api/users")
+async def users(request: Request):
+    auth.require_admin(request)
+    return auth.list_users()
+
+
+@app.post("/api/users")
+async def add_user(request: Request):
+    admin = auth.require_admin(request)
+    body = await _body(request)
+    u = auth.create_user(str(body.get("username", "")).strip(), str(body.get("password", "")), str(body.get("role", "viewer")))
+    auth.audit(admin, None, "add_user", f"{u.username} ({u.role})")
+    return u.public()
+
+
+@app.patch("/api/users/{uid}")
+async def edit_user(uid: int, request: Request):
+    admin = auth.require_admin(request)
+    body = await _body(request)
+    u = auth.update_user(uid, role=body.get("role") or None, password=body.get("password") or None)
+    changes = ", ".join(k for k in ("role", "password") if body.get(k))
+    auth.audit(admin, None, "edit_user", f"{u.username}: {changes}")
+    return u.public()
+
+
+@app.delete("/api/users/{uid}")
+async def remove_user(uid: int, request: Request):
+    admin = auth.require_admin(request)
+    if uid == admin.id:
+        raise HTTPException(400, "You can't delete your own account")
+    u = auth.get_user(uid)
+    auth.delete_user(uid)
+    auth.audit(admin, None, "delete_user", u.username if u else str(uid))
+    return {"ok": True}
+
+
+@app.get("/api/audit")
+async def audit_all(request: Request, limit: int = 200):
+    auth.require_admin(request)
+    return auth.audit_log(None, max(1, min(limit, 1000)))
 
 
 @app.get("/api/servers")
@@ -145,20 +257,26 @@ async def server_icon(sid: str):
 
 
 @app.put("/api/servers/{sid}/settings")
-async def put_settings(sid: str, request: Request, x_admin_token: str | None = Header(default=None)):
-    _require_admin(x_admin_token)
+async def put_settings(sid: str, request: Request):
+    user = auth.require_admin(request)
     srv = await _server(sid)
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise HTTPException(400, "Expected a JSON object")
+    body = await _body(request)
+    if "bedtime" in body:
+        try:
+            body["bedtime"] = guard.validate_bedtime(body["bedtime"] or {})
+        except (ValueError, TypeError) as e:
+            raise HTTPException(400, "Bedtime needs times like 21:00") from e
     saved = settings_store.update_server(srv.id, body)
+    auth.audit(user, srv.id, "settings", ", ".join(sorted(k for k in body if k != "rcon_password")) +
+               (", rcon_password" if "rcon_password" in body else ""))
     safe = {k: v for k, v in saved.items() if k != "rcon_password"}
     safe["rcon_password_set"] = "rcon_password" in saved
     return safe
 
 
 @app.get("/api/servers/{sid}/settings")
-async def get_settings(sid: str):
+async def get_settings(sid: str, request: Request):
+    auth.require_admin(request)
     srv = await _server(sid)
     s = dict(srv.settings)
     s["rcon_password_set"] = "rcon_password" in s
@@ -219,32 +337,27 @@ async def player_history(sid: str, uuid: str, days: int = 30):
 
 
 # ------------------------------------------------------------------ notifications
-def _require_admin(token: str | None) -> None:
-    if config.admin_token and token != config.admin_token:
-        raise HTTPException(403, "Admin token required to change settings")
-
-
 @app.get("/api/settings/notifications")
-async def get_notifications():
+async def get_notifications(request: Request):
+    auth.require_admin(request)
     return notify.public_config()
 
 
 @app.put("/api/settings/notifications")
-async def put_notifications(request: Request, x_admin_token: str | None = Header(default=None)):
-    _require_admin(x_admin_token)
-    body = await request.json()
-    if not isinstance(body, dict):
-        raise HTTPException(400, "Expected a JSON object")
+async def put_notifications(request: Request):
+    user = auth.require_admin(request)
+    body = await _body(request)
+    auth.audit(user, None, "notification_settings", ", ".join(sorted(k for k in body if "token" not in k and "webhook" not in k)))
     return notify.save_config(body)
 
 
 @app.post("/api/settings/notifications/digest")
-async def digest_preview(send: bool = False, x_admin_token: str | None = Header(default=None)):
+async def digest_preview(request: Request, send: bool = False):
+    auth.require_admin(request)
     await S.registry.refresh()
     text = recorder.digest(list(S.registry.servers.values()))
     result = {"text": text}
     if send:
-        _require_admin(x_admin_token)
         errors = await notify.send("Lodestone weekly digest", text, notify.TAGS["digest"], force=True)
         result.update(ok=not errors, errors=errors)
     return result
@@ -267,8 +380,8 @@ async def server_backups(sid: str):
 
 
 @app.post("/api/settings/notifications/test")
-async def test_notifications(x_admin_token: str | None = Header(default=None)):
-    _require_admin(x_admin_token)
+async def test_notifications(request: Request):
+    auth.require_admin(request)
     errors = await notify.send("Lodestone", "Test notification. Join alerts will look like this.", force=True)
     return {"ok": not errors, "errors": errors}
 
@@ -312,7 +425,7 @@ async def item_icon(sid: str, ns: str, name: str):
     data = await asyncio.to_thread(a.icon, f"{ns}:{name}")
     if not data:
         raise HTTPException(404)
-    return Response(data, media_type="image/png", headers={"Cache-Control": "public, max-age=604800"})
+    return Response(data, media_type="image/png", headers={"Cache-Control": "private, max-age=604800"})
 
 
 @app.get("/api/servers/{sid}/assets/texture/{path:path}")
@@ -324,7 +437,94 @@ async def texture(sid: str, path: str):
     data = a.read(rel)
     if not data:
         raise HTTPException(404)
-    return Response(data, media_type="image/png", headers={"Cache-Control": "public, max-age=604800"})
+    return Response(data, media_type="image/png", headers={"Cache-Control": "private, max-age=604800"})
+
+
+# ------------------------------------------------------------------ control (admins)
+@app.get("/api/servers/{sid}/control")
+async def control_info(sid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    rules = await control.game_rules(srv) if srv.is_java else []
+    online, source = await S.online_players(srv)
+    return {
+        "can_rcon": srv.rcon_conf() is not None,
+        "can_crafty": bool(srv.crafty and crafty.enabled),
+        "is_java": srv.is_java,
+        "game_rules": rules,
+        "online": online,
+        "online_source": source,
+        "known_players": sorted((p["name"] for p in S.known_players(srv).values()), key=str.lower) if srv.is_java else [],
+        "lists": await control.whitelist(srv) if srv.is_java else None,
+        "bedtime": guard.bedtime_config(srv),
+        "audit": auth.audit_log(srv.id, 40),
+    }
+
+
+async def _act(request: Request, sid: str, action: str, detail: str, coro_fn):
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    try:
+        result = await coro_fn(srv, user)
+    except HTTPException as e:
+        auth.audit(user, srv.id, action, detail, f"failed: {e.detail}")
+        raise
+    outputs = result if isinstance(result, list) else [result]
+    summary = " | ".join((r.get("output") or "").strip() for r in outputs if isinstance(r, dict) and r.get("output"))
+    auth.audit(user, srv.id, action, detail, summary or "ok")
+    return {"results": outputs}
+
+
+@app.post("/api/servers/{sid}/control/command")
+async def control_command(sid: str, request: Request):
+    body = await _body(request)
+    cmd = str(body.get("command", ""))
+    return await _act(request, sid, "command", cmd, lambda srv, _u: control.run(srv, cmd))
+
+
+@app.post("/api/servers/{sid}/control/quick")
+async def control_quick(sid: str, request: Request):
+    body = await _body(request)
+    action, value = str(body.get("action", "")), str(body.get("value", ""))
+    return await _act(request, sid, f"quick:{action}", value,
+                      lambda srv, u: control.quick(srv, action, value, u.username))
+
+
+@app.post("/api/servers/{sid}/control/gamerule")
+async def control_gamerule(sid: str, request: Request):
+    body = await _body(request)
+    key = str(body.get("key", ""))
+    return await _act(request, sid, "gamerule", f"{key}={body.get('value')}",
+                      lambda srv, _u: control.set_rule(srv, key, body.get("value")))
+
+
+@app.post("/api/servers/{sid}/control/broadcast")
+async def control_broadcast(sid: str, request: Request):
+    body = await _body(request)
+    msg = str(body.get("message", ""))
+    return await _act(request, sid, "broadcast", msg,
+                      lambda srv, u: control.broadcast(srv, msg, u.username, bool(body.get("on_screen"))))
+
+
+@app.post("/api/servers/{sid}/control/player/{player}/{action}")
+async def control_player(sid: str, player: str, action: str, request: Request):
+    body = await _body(request)
+    detail = f"{player} {json.dumps({k: v for k, v in body.items()}, ensure_ascii=False)}" if body else player
+    return await _act(request, sid, f"player:{action}", detail,
+                      lambda srv, u: control.player_action(srv, player, action, body, u.username))
+
+
+@app.post("/api/servers/{sid}/control/power/{action}")
+async def control_power(sid: str, action: str, request: Request):
+    return await _act(request, sid, f"power:{action}", "", lambda srv, _u: control.power(srv, action))
+
+
+@app.get("/api/servers/{sid}/console/stream")
+async def console_stream(sid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    return StreamingResponse(control.console_stream(srv, request.is_disconnected), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 # ------------------------------------------------------------------ frontend
@@ -340,9 +540,10 @@ async def spa(full_path: str):
 
 def _index_html() -> str:
     """index.html with ?v= on the CSS/JS links so browsers pick up new versions after an update."""
-    files = [STATIC / n for n in ("app.css", "app.js", "history.js")]
+    names = ("app.css", "app.js", "history.js", "control.js")
+    files = [STATIC / n for n in names]
     stamp = format(int(max(f.stat().st_mtime for f in files if f.exists())), "x")
     html = (STATIC / "index.html").read_text(encoding="utf-8")
-    for n in ("app.css", "app.js", "history.js"):
+    for n in names:
         html = html.replace(f"/static/{n}\"", f"/static/{n}?v={stamp}\"")
     return html

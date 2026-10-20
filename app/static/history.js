@@ -452,6 +452,11 @@ async function openNotifications() {
       </fieldset>
       <fieldset class="checks"><legend>Daily screen-time limits</legend>
         <p class="muted" style="font-size:.85rem;margin:0 0 8px">Get one notification a day when someone passes their limit, counting all servers. Leave blank for no limit.</p>
+        <label>When someone passes their limit
+          <select class="input" name="limit_action">
+            <option value="notify" ${c.limit_action !== "kick" ? "selected" : ""}>Just notify me</option>
+            <option value="kick" ${c.limit_action === "kick" ? "selected" : ""}>Notify me, warn them in-game, then disconnect them after ${c.limit_grace_minutes} minutes</option>
+          </select></label>
         ${everyone.length ? `<div class="limits">${everyone.map((n) => `<label class="limit-row"><span>${esc(n)}</span><input class="input" type="number" min="0" max="1440" step="15" name="limit" data-player="${esc(n)}" value="${esc(c.limits[n.toLowerCase()] || "")}" placeholder="No limit"><span class="muted">min</span></label>`).join("")}</div>` : '<p class="muted">Players appear here once they have joined a server.</p>'}
       </fieldset>
       <fieldset class="checks"><legend>Weekly digest</legend>
@@ -476,21 +481,12 @@ async function openNotifications() {
       const limits = {};
       $$('input[name="limit"]', form).forEach((i) => { if (i.value) limits[i.dataset.player] = Number(i.value); });
       const b = { ntfy_url: f.get("ntfy_url"), events: f.getAll("ev"), quiet_start: f.get("quiet_start"), quiet_end: f.get("quiet_end"),
-        limits, digest_enabled: !!f.get("digest_enabled"), digest_day: Number(f.get("digest_day")), digest_hour: Number(f.get("digest_hour")) };
+        limits, limit_action: f.get("limit_action"), digest_enabled: !!f.get("digest_enabled"), digest_day: Number(f.get("digest_day")), digest_hour: Number(f.get("digest_hour")) };
       if (f.get("ntfy_token")) b.ntfy_token = f.get("ntfy_token");
       if (f.get("discord_webhook")) b.discord_webhook = f.get("discord_webhook");
       return b;
     };
-    const adminFetch = async (url, opts) => {
-      let token = localStorage.getItem("lodestone-admin") || "";
-      const go = (t) => api(url, { ...opts, headers: { "Content-Type": "application/json", ...(t ? { "X-Admin-Token": t } : {}) } });
-      try { return await go(token); }
-      catch (err) {
-        if (err.status !== 403) throw err;
-        token = prompt("Enter the admin token to change settings") || "";
-        const r = await go(token); localStorage.setItem("lodestone-admin", token); return r;
-      }
-    };
+    const adminFetch = (url, opts) => api(url, opts);
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       try { await adminFetch("/api/settings/notifications", { method: "PUT", body: JSON.stringify(body()) }); closeModal(); showToast("Notifications saved", 2500); }

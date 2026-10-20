@@ -17,16 +17,27 @@
       </a>
       <div class="rail-servers" id="rail-servers"></div>
       <div class="rail-foot">
-        <button class="rail-btn" id="btn-notify" type="button">🔔 <span>Notifications</span></button>
+        <button class="rail-btn admin-only" id="btn-notify" type="button">🔔 <span>Notifications</span></button>
+        <a class="rail-btn admin-only" id="btn-admin" href="#/admin">👥 <span>Users &amp; activity</span></a>
+        <div class="account">
+          <button class="rail-btn" id="btn-account" type="button" aria-haspopup="menu" aria-expanded="false">👤 <span id="account-name"></span></button>
+          <div class="account-menu" id="account-menu" role="menu" hidden>
+            <div class="account-role" id="account-role"></div>
+            <button type="button" role="menuitem" id="btn-password">Change password</button>
+            <button type="button" role="menuitem" id="btn-logout">Sign out</button>
+          </div>
+        </div>
         <span id="build-channel" class="channel" hidden></span>
       </div>
     </nav>
     <main id="view" tabindex="-1"></main>
   </div>
+  <div id="login-root" hidden></div>
   <div id="tooltip" class="mc-tooltip" role="tooltip" hidden></div>
   <div id="modal-root"></div>
   <div id="toast" class="toast" hidden></div>
   <script src="/static/app.js" defer></script>
   <script src="/static/history.js" defer></script>
+  <script src="/static/control.js" defer></script>
 </body>
 </html>

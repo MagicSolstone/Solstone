@@ -131,10 +131,10 @@ def test_history_endpoints(client, sid, tyler):
     assert all("today_seconds" in p for p in players)
 
 
-def test_notification_settings(client):
+def test_notification_settings(client, viewer):
     url = "/api/settings/notifications"
-    assert client.put(url, json={"ntfy_url": "https://ntfy.example/t"}).status_code == 403
-    hdr = {"X-Admin-Token": "letmein"}
+    assert viewer.put(url, json={"ntfy_url": "https://ntfy.example/t"}).status_code == 403
+    hdr = {}
     r = client.put(url, json={"ntfy_url": "https://ntfy.example/t", "ntfy_token": "tk", "events": ["join", "death", "bogus"]}, headers=hdr)
     body = r.json()
     assert body["events"] == ["join", "death"]
