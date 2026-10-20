@@ -279,22 +279,46 @@ def test_helpers_players_constant():
     assert helpers.PLAYERS[0][0] == "Tyler"
 
 
-# ---------------------------------------------------------------- sign-in page
-def test_public_status_without_login(anon, client, viewer):
+# ---------------------------------------------------------------- public status page
+def test_public_status_page(anon, client, viewer, monkeypatch):
     from app import main
     from app import servers as S
-    main._public_cache = None
-    S.registry.servers[helpers.SID]._rcon = None  # test clients run separate event loops
-    data = anon.get("/api/public/status").json()
-    assert data["show_servers"] is True
-    s = next(x for x in data["servers"] if x["id"] == helpers.SID)
-    assert {"name", "running", "online", "version"} <= set(s)
-    assert "names" not in s                        # names are off by default
-    assert anon.get(f"/api/public/icon/{helpers.SID}.png").status_code == 200
-    assert anon.get("/api/servers").status_code == 401  # everything else still needs a login
+    main._list_cache = None
+    main._board_cache.clear()
+    # Each anonymous test request runs in its own event loop, so a pooled RCON connection
+    # can't be shared between them; read from files instead.
+    monkeypatch.setattr(S.Server, "rcon_conf", lambda self: None)
+    S.registry.servers[helpers.SID]._rcon = None
 
-    assert viewer.put("/api/settings/login", json={"show_servers": False}).status_code == 403
-    assert client.put("/api/settings/login", json={"show_servers": False, "show_names": True}).json() == {"show_servers": False, "show_names": True}
-    assert anon.get("/api/public/status").json()["servers"] == []
+    # Off by default: nothing public except "it's off".
+    assert anon.get("/api/public/status").json() == {"enabled": False, "servers": []}
+    assert anon.get(f"/api/public/status/{helpers.SID}").status_code == 404
     assert anon.get(f"/api/public/icon/{helpers.SID}.png").status_code == 404
-    client.put("/api/settings/login", json={"show_servers": True, "show_names": False})
+    assert anon.get("/status").status_code == 404 and "Status page is off" in anon.get("/status").text
+
+    assert viewer.put("/api/settings/status", json={"enabled": True}).status_code == 403
+    cfg = client.put("/api/settings/status", json={"enabled": True}).json()
+    assert cfg == {"enabled": True, "show_positions": True, "show_items": True, "show_activity": True, "show_web_map": False}
+    try:
+        lst = anon.get("/api/public/status").json()
+        assert lst["enabled"] is True
+        assert any(s["id"] == helpers.SID for s in lst["servers"])
+        r = anon.get("/status")
+        assert r.status_code == 200 and "/static/status.js?v=" in r.text
+        board = anon.get(f"/api/public/status/{helpers.SID}").json()
+        assert {"name", "running", "players", "recent", "recently", "world"} <= set(board)
+        assert all(e["type"] != "chat" for e in board["recent"])   # chat is never public
+        assert anon.get(f"/api/public/icon/{helpers.SID}.png").status_code == 200
+        assert anon.get(f"/api/public/item/{helpers.SID}/minecraft/..%2f..%2fx.png").status_code == 404
+        assert anon.get("/api/servers").status_code == 401         # everything else still needs a login
+        assert anon.get(f"/api/servers/{helpers.SID}/players").status_code == 401
+
+        client.put("/api/settings/status", json={"enabled": True, "show_positions": False, "show_items": False})
+        main._board_cache.clear()
+        board = anon.get(f"/api/public/status/{helpers.SID}").json()
+        assert board["spawn"] is None
+        assert all("position" not in p and "held" not in p for p in board["players"])
+        assert anon.get(f"/api/public/item/{helpers.SID}/minecraft/stone.png").status_code == 404
+    finally:
+        client.put("/api/settings/status", json={"enabled": False})
+        main._board_cache.clear()

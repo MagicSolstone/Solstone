@@ -232,7 +232,47 @@ class Assets:
                 })
             if out:
                 break
-        return out
+        return out + self._mod_advancements()
+
+    def _mod_advancements(self) -> list[dict]:
+        """Advancements shipped in mod jars, each mod tree grouped under its root."""
+        found: dict[str, dict] = {}
+        for rel in self._mod_index():
+            parts = rel.split("/", 3)  # data/<ns>/advancement(s)/<path>.json
+            if (len(parts) < 4 or parts[0] != "data" or parts[1] == "minecraft"
+                    or parts[2] not in ("advancement", "advancements") or not rel.endswith(".json")):
+                continue
+            path = parts[3][:-5]
+            if path.startswith("recipes/") or "/recipes/" in path:
+                continue
+            d = self.json(rel)
+            disp = d.get("display") if isinstance(d, dict) else None
+            if not isinstance(disp, dict):
+                continue
+            icon = disp.get("icon") or {}
+            found[f"{parts[1]}:{path}"] = {
+                "id": f"{parts[1]}:{path}", "parent": d.get("parent"),
+                "title": disp.get("title"), "description": disp.get("description"),
+                "icon": icon.get("id") or icon.get("item") if isinstance(icon, dict) else None,
+                "frame": disp.get("frame", "task"), "hidden": bool(disp.get("hidden", False)),
+            }
+
+        def root(a: dict, depth: int = 0) -> dict:
+            p = found.get(a.get("parent") or "")
+            return root(p, depth + 1) if p and depth < 50 else a
+
+        for a in found.values():
+            r = root(a)
+            a["category"] = r["id"]
+            a["category_title"] = r["title"]
+        return list(found.values())
+
+    _lang: dict[str, str] | None = None
+
+    def lang_cached(self) -> dict[str, str]:
+        if self._lang is None or len(self._lang) < 50:
+            self._lang = self.lang()
+        return self._lang
 
     # ------------------------------------------------------------ icons
     def icon_path(self, item_id: str) -> Path:

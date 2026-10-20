@@ -487,7 +487,7 @@ def _game_rules(lvl: dict, extras: dict[str, dict]) -> dict:
     return {}
 
 
-def world_info(srv: Server) -> dict:
+def world_info(srv: Server, with_dimensions: bool = True) -> dict:
     lvl = srv.level()
     props = srv.props
     extras = _world_extras(srv)
@@ -542,7 +542,7 @@ def world_info(srv: Server) -> dict:
         "game_rules": {str(k): (str(v) if not isinstance(v, (int, float, bool)) else v) for k, v in rules.items()
                        if not isinstance(v, (dict, list))},
         "datapacks": {"enabled": datapacks.get("Enabled", []), "disabled": datapacks.get("Disabled", [])},
-        "dimensions": dimensions(srv),
+        "dimensions": dimensions(srv) if with_dimensions else [],
         "properties": {k: props[k] for k in ("view-distance", "simulation-distance", "pvp", "spawn-protection",
                                                "white-list", "online-mode", "max-players", "allow-flight",
                                                "level-type") if k in props},

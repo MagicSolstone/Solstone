@@ -132,6 +132,70 @@ def _ench_map(raw: Any) -> list[dict]:
     return out
 
 
+def _attribute_modifiers(raw: Any) -> list[dict]:
+    """1.20.5+ attribute modifiers (list, or {modifiers: [...]}), as used by gear from
+    RPG mods: [{type, amount, operation, slot}]."""
+    if isinstance(raw, dict):
+        raw = raw.get("modifiers")
+    out = []
+    for m in raw if isinstance(raw, list) else []:
+        if not isinstance(m, dict) or "type" not in m:
+            continue
+        try:
+            amount = float(m.get("amount", 0))
+        except (TypeError, ValueError):
+            continue
+        out.append({"type": _ns(m["type"]), "amount": round(amount, 3),
+                    "operation": str(m.get("operation", "add_value")), "slot": str(m.get("slot", "any"))})
+    return out[:16]
+
+
+# Player NBT keys the vanilla game uses for items; anything item-shaped outside these
+# comes from a mod (Trinkets, Accessories, Curios-style slots, backpacks...).
+_VANILLA_KEYS = {"Inventory", "EnderItems", "equipment", "ShoulderEntityLeft", "ShoulderEntityRight",
+                 "RootVehicle", "recipeBook", "Brain", "attributes", "Attributes", "active_effects",
+                 "ActiveEffects", "LastDeathLocation", "respawn", "warden_spawn_tracker", "enteredNetherPosition"}
+
+
+def _looks_like_item(d: Any) -> bool:
+    return (isinstance(d, dict) and isinstance(d.get("id"), str) and ":" in d["id"]
+            and ("count" in d or "Count" in d))
+
+
+def extra_items(nbt: dict, limit: int = 120) -> list[dict]:
+    """Items stored by mods in the player's data, grouped by where they were found."""
+    groups: dict[str, list[dict]] = {}
+    seen = 0
+
+    def walk(node: Any, path: tuple[str, ...], depth: int) -> None:
+        nonlocal seen
+        if seen >= limit or depth > 8:
+            return
+        if _looks_like_item(node):
+            it = norm_item(node)
+            if it:
+                label = " › ".join(p for p in path if not p.isdigit()) or "Mod slots"
+                groups.setdefault(label, []).append(it)
+                seen += 1
+            return
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if depth == 0 and k in _VANILLA_KEYS:
+                    continue
+                walk(v, (*path, str(k)), depth + 1)
+        elif isinstance(node, list):
+            for i, v in enumerate(node):
+                walk(v, (*path, str(i)), depth + 1)
+
+    walk(nbt, (), 0)
+    out = []
+    for label, items in groups.items():
+        # Drop wrapper words mods commonly use so labels read like "trinkets › chest › back".
+        parts = [p for p in label.split(" › ") if p not in ("cardinal_components", "Items", "items", "stack", "Stack", "item", "Item", "inventory", "Inventory")]
+        out.append({"label": " › ".join(parts) or "Mod slots", "items": items})
+    return out
+
+
 def _ns(s: str) -> str:
     s = str(s)
     return s if ":" in s else f"minecraft:{s}"
@@ -200,6 +264,15 @@ def norm_item(raw: dict | None) -> dict | None:
     lore = c("lore") or (tag.get("display") or {}).get("Lore")
     if isinstance(lore, list) and lore:
         item["lore"] = [text_of(line) for line in lore]
+
+    attrs = _attribute_modifiers(c("attribute_modifiers"))
+    if attrs:
+        item["attributes"] = attrs
+    # Components added by mods (RPG stats, backpack contents, ...): we can't interpret
+    # them, but listing which mods touched the item helps explain what it is.
+    mod_ns = sorted({k.split(":", 1)[0] for k in comps if ":" in k and not k.startswith("minecraft:")})
+    if mod_ns:
+        item["mod_data"] = mod_ns
 
     # Containers: shulker boxes, bundles
     contents: list = []
@@ -324,4 +397,5 @@ def norm_player(nbt: dict) -> dict:
         "inventory": {"hotbar": hotbar, "main": main, "armor": armor, "offhand": offhand},
         "ender_chest": ender,
         "effects": effects,
+        "mod_items": extra_items(nbt),
     }

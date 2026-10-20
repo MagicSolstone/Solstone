@@ -7,7 +7,6 @@ const BUILD_CHANNEL = "__BUILD_CHANNEL__";
 // ================================================================ utilities
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
-const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const nf = new Intl.NumberFormat();
 const fmtNum = (n) => nf.format(Math.round(n || 0));
 
@@ -27,12 +26,14 @@ const post = (path, body = {}, method = "POST") => api(path, { method, body: JSO
 
 // ================================================================ accounts
 const me = { user: null };
+const appSky = { stop: null };  // the still night sky behind the signed-in app
 const isAdmin = () => me.user?.role === "admin";
 
 function showLogin(message = "") {
   clearTimers?.();
   me.user = null;
   document.body.classList.add("logged-out");
+  appSky.stop?.(); appSky.stop = null;
   const root = $("#login-root");
   root.hidden = false;
   root.innerHTML = `<canvas id="login-sky" aria-hidden="true"></canvas>
@@ -43,7 +44,7 @@ function showLogin(message = "") {
       <label>Password<input class="input" type="password" name="password" autocomplete="current-password" required></label>
       <p class="login-error" role="alert">${esc(message)}</p>
       <button class="btn primary" type="submit">Sign in</button>
-    </form><section class="login-servers" id="login-servers" aria-label="Servers" hidden></section></div>`;
+    </form><a class="login-status glass" id="login-status-link" href="/status" hidden></a></div>`;
   const form = $("#login-form");
   form.querySelector("input").focus();
   loadPublicStatus().then(() => startLoginScene());
@@ -70,9 +71,11 @@ async function signedIn(user) {
   document.body.classList.toggle("is-admin", user.role === "admin");
   stopLoginScene();
   clearInterval(state.loginRefresh);
+  if (!appSky.stop && $("#app-sky")) appSky.stop = startSkyScene($("#app-sky"), { still: true }).stop;
   const root = $("#login-root"); root.hidden = true; root.innerHTML = "";
   $("#account-name").textContent = user.username;
   $("#account-role").textContent = user.role === "admin" ? "Admin" : "Viewer (read-only)";
+  fetch("/api/public/status").then((r) => r.json()).then((d) => { $("#btn-status").hidden = !d.enabled; }).catch(() => {});
   await loadServers();
   route();
 }
@@ -238,51 +241,6 @@ async function ensureServerAssets(sid) {
   } catch { /* assets are optional */ }
 }
 
-// ================================================================ pixel HUD icons
-const HEART = [".##.##.", "#######", "#######", ".#####.", "..###..", "...#..."];
-const FOOD = [".....##.", "....####", "...#####", "...####.", "..##....", ".##.....", "#.#.....", ".#......"];
-function pixelSvg(pattern, fillFn, title = "") {
-  const h = pattern.length, w = pattern[0].length;
-  const filled = (x, y) => y >= 0 && y < h && x >= 0 && x < w && pattern[y][x] === "#";
-  let rects = "";
-  for (let y = -1; y <= h; y++) for (let x = -1; x <= w; x++) {
-    if (!filled(x, y) && (filled(x - 1, y) || filled(x + 1, y) || filled(x, y - 1) || filled(x, y + 1)))
-      rects += `<rect x="${x + 1}" y="${y + 1}" width="1" height="1" fill="#111"/>`;
-  }
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++)
-    if (filled(x, y)) rects += `<rect x="${x + 1}" y="${y + 1}" width="1" height="1" fill="${fillFn(x, y, w, h)}"/>`;
-  return `<svg viewBox="0 0 ${w + 2} ${h + 2}" shape-rendering="crispEdges" aria-hidden="true">${title ? `<title>${esc(title)}</title>` : ""}${rects}</svg>`;
-}
-function heartsHtml(health, max = 20) {
-  const n = Math.ceil(max / 2);
-  let out = "";
-  for (let i = 0; i < n; i++) {
-    const v = health - i * 2; // 2 = full, 1 = half
-    out += pixelSvg(HEART, (x, y, w) => {
-      const red = v >= 2 || (v >= 1 && x < Math.ceil(w / 2));
-      if (!red) return "#3a1414";
-      return x === 1 && y === 1 ? "#ffb3a8" : "#e0302a";
-    });
-  }
-  return `<div class="hud-row" role="img" aria-label="Health ${health} of ${max}">${out}</div>`;
-}
-function foodHtml(food) {
-  let out = "";
-  for (let i = 0; i < 10; i++) {
-    const v = food - i * 2;
-    out += pixelSvg(FOOD, (x, y, w) => {
-      const on = v >= 2 || (v >= 1 && x >= 4);
-      if (!on) return "#3a2a1a";
-      if (x <= 2 && y >= 5) return "#f1e7d0";
-      return y <= 1 || (x === 4 && y === 2) ? "#e8a05a" : "#b3602a";
-    });
-  }
-  return `<div class="hud-row food" role="img" aria-label="Hunger ${food} of 20">${out}</div>`;
-}
-function xpHtml(level, progress) {
-  return `<div class="xp" role="img" aria-label="Level ${level}"><span class="lvl-num">${level}</span><div class="xp-bar"><span style="width:${Math.round((progress || 0) * 100)}%"></span></div></div>`;
-}
-
 // ================================================================ heads
 function headHtml(p, size = 56, cls = "head") {
   const initial = esc((p.name || "?")[0].toUpperCase());
@@ -292,23 +250,6 @@ function headHtml(p, size = 56, cls = "head") {
 const miniHead = (p) => p.uuid
   ? `<img src="https://mc-heads.net/avatar/${p.uuid.replace(/-/g, "")}/56" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
   : `<span class="mini-head"></span>`;
-
-// ================================================================ MOTD colours
-const MC_COLORS = { 0: "#000", 1: "#00a", 2: "#0a0", 3: "#0aa", 4: "#a00", 5: "#a0a", 6: "#fa0", 7: "#aaa", 8: "#555", 9: "#55f", a: "#5f5", b: "#5ff", c: "#f55", d: "#f5f", e: "#ff5", f: "#fff" };
-function motdHtml(text) {
-  if (!text) return "";
-  const parts = String(text).split(/§([0-9a-fk-or])/i);
-  let out = esc(parts[0]), color = null, bold = false, italic = false;
-  for (let i = 1; i < parts.length; i += 2) {
-    const code = parts[i].toLowerCase(), chunk = parts[i + 1] || "";
-    if (MC_COLORS[code]) { color = MC_COLORS[code]; bold = italic = false; }
-    else if (code === "l") bold = true;
-    else if (code === "o") italic = true;
-    else if (code === "r") { color = null; bold = italic = false; }
-    if (chunk) out += `<span style="${color ? `color:${color};` : ""}${bold ? "font-weight:700;" : ""}${italic ? "font-style:italic;" : ""}">${esc(chunk)}</span>`;
-  }
-  return out;
-}
 
 // ================================================================ slots + tooltip
 function slotHtml(item, opts = {}) {
@@ -348,6 +289,7 @@ function tooltipHtml(item) {
   if (item.trim) h += `<div class="t-ench">Trim: ${esc(humanize(item.trim.pattern))} (${esc(humanize(item.trim.material))})</div>`;
   if (item.color != null && item.id.includes("leather")) h += `<div class="t-ench">Dyed #${item.color.toString(16).padStart(6, "0")}</div>`;
   for (const line of item.lore || []) h += `<div class="t-lore">${esc(line)}</div>`;
+  if (item.attributes?.length) h += `<div class="t-attrs">${item.attributes.map(attrLine).join("")}</div>`;
   if (item.contents) {
     if (item.contents.length) {
       const isBundle = item.id.includes("bundle");
@@ -358,8 +300,21 @@ function tooltipHtml(item) {
   if (item.unbreakable) h += `<div class="t-blue">Unbreakable</div>`;
   if (item.max_damage) h += `<div class="t-ench">Durability: ${item.max_damage - (item.damage || 0)} / ${item.max_damage}</div>`;
   if (item.count > 1) h += `<div class="t-ench">Count: ${item.count}</div>`;
+  if (item.mod_data?.length) h += `<div class="t-dim">Mod data: ${esc(item.mod_data.map(humanize).join(", "))}</div>`;
   h += `<div class="t-dim">${esc(item.id)}</div>`;
   return h;
+}
+
+// Attribute modifiers, as shown on gear from RPG mods ("+4 Attack Damage", "+10% Speed").
+function attrName(id) {
+  const [ns, n] = splitId(id), l = L();
+  return l[`attribute.name.${n}`] || l[`attribute.name.generic.${n}`] || l[`attribute.name.player.${n}`]
+    || l[`attribute.name.${ns}.${n}`] || l[`attribute.${ns}.${n}`] || l[`attribute.name.${ns}.${n.replace(/\//g, ".")}`] || humanize(n);
+}
+function attrLine(a) {
+  const pct = a.operation !== "add_value" && a.operation !== "0" && a.operation !== 0;
+  const v = pct ? `${+(a.amount * 100).toFixed(1)}%` : `${+a.amount.toFixed(2)}`;
+  return `<div class="${a.amount < 0 ? "t-neg" : "t-blue"}">${a.amount >= 0 ? "+" : ""}${esc(v)} ${esc(attrName(a.type))}</div>`;
 }
 
 const tip = () => $("#tooltip");
@@ -497,7 +452,7 @@ function serverHeader(s, tab) {
   ].filter(Boolean).join("");
   const base = `#/s/${encodeURIComponent(s.id)}`;
   const java = !s.game || s.game === "minecraft-java";
-  const tabs = [["players", "Players", base], ["activity", "Activity", `${base}/activity`], ["performance", "Performance", `${base}/performance`],
+  const tabs = [["overview", "Overview", base], ["performance", "Performance", `${base}/performance`],
     ...(java ? [["world", "World", `${base}/world`], ["leaderboards", "Leaderboards", `${base}/leaderboards`], ["mods", "Mods", `${base}/mods`]] : []),
     ...(isAdmin() ? [["control", "Control", `${base}/control`]] : [])];
   return `<header class="server-head">
@@ -529,44 +484,53 @@ function wireHeader(s) {
   $("#btn-settings")?.addEventListener("click", () => openSettings(s));
 }
 
-// ---------------------------------------------------------------- players tab
-function playerCard(p) {
+// ---------------------------------------------------------------- overview tab
+// Players down the side, play time and the activity timeline in the main column.
+function playerRow(p) {
   const href = p.uuid ? `#/s/${encodeURIComponent(curSid)}/p/${p.uuid}` : null;
-  const presence = p.online
-    ? `<span class="live-tag"><span class="status-dot on"></span>Playing now</span>`
-    : `Last seen ${esc(fmtAgo(p.last_seen))}`;
-  const where = p.online && p.dimension ? ` · ${esc(dimName(p.dimension))}` : "";
   const h = p.headline || {};
-  const inner = `${headHtml(p)}
-    <div><div class="pname">${esc(p.name)} ${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""} ${p.op ? '<span class="op-badge">OP</span>' : ""}</div>
-      <div class="meta">${presence}${where}</div>
-      <div class="line"><span title="Time played in total">⏱ ${fmtDuration(h.play_time)}</span>${p.today_seconds ? `<span title="Played today">Today ${fmtSeconds(p.today_seconds)}</span>` : ""}<span title="Advancements">★ ${p.advancements ?? 0}</span>${p.health != null ? `<span title="Health">❤ ${p.health}</span>` : ""}</div>
-    </div>`;
-  return href ? `<a class="player-card ${p.online ? "is-online" : ""}" href="${href}">${inner}</a>` : `<div class="player-card is-online">${inner}</div>`;
+  const sub = p.online
+    ? `<span class="live-tag"><span class="status-dot on"></span>Playing</span>${p.dimension ? `<span>${esc(dimName(p.dimension))}</span>` : ""}`
+    : `<span>Last seen ${esc(fmtAgo(p.last_seen))}</span>`;
+  const vitals = p.online && p.health != null
+    ? `<span title="Health">❤ ${p.health}</span>${p.food != null ? `<span title="Hunger">🍗 ${p.food}</span>` : ""}`
+    : "";
+  const right = p.online && p.today_seconds ? `<span class="pr-val" title="Played today">${fmtSeconds(p.today_seconds)}<small>today</small></span>`
+    : `<span class="pr-val" title="Time played in total">${fmtDuration(h.play_time)}<small>total</small></span>`;
+  const inner = `${headHtml(p, 40, "head sm")}
+    <div class="pr-main"><div class="pr-name">${esc(p.name)}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}${p.op ? '<span class="op-badge">OP</span>' : ""}</div>
+      <div class="pr-sub">${sub}${vitals}</div></div>${right}`;
+  const cls = `pl-row ${p.online ? "is-online" : ""}`;
+  return href ? `<a class="${cls}" href="${href}">${inner}</a>` : `<div class="${cls}">${inner}</div>`;
 }
-async function viewPlayers(sid) {
-  const s = await serverFrame(sid, "players");
-  const draw = (data) => {
-    const on = data.players.filter((p) => p.online), off = data.players.filter((p) => !p.online);
-    return `${on.length ? `<section class="section"><div class="section-head"><h2>Playing now</h2></div><div class="player-grid">${on.map(playerCard).join("")}</div></section>` : ""}
-      <section class="section"><div class="section-head"><h2>${on.length ? "Everyone else" : "Players"}</h2><span class="muted">${data.players.length} ${data.players.length === 1 ? "player has" : "players have"} joined this world</span></div>
-      ${off.length ? `<div class="player-grid">${off.map(playerCard).join("")}</div>` : on.length ? "" : `<div class="empty"><h3>Nobody has joined yet</h3><p>Players appear here after their first visit.</p></div>`}</section>`;
-  };
+function playersListHtml(data) {
+  const on = data.players.filter((p) => p.online), off = data.players.filter((p) => !p.online);
+  if (!data.players.length) return `<div class="empty"><h3>Nobody has joined yet</h3><p>Players appear here after their first visit.</p></div>`;
+  return `${on.length ? `<div class="pl-group"><div class="pl-label">Playing now · ${on.length}</div>${on.map(playerRow).join("")}</div>` : `<p class="muted pl-none">Nobody is playing right now.</p>`}
+    ${off.length ? `<div class="pl-group"><div class="pl-label">${on.length ? "Everyone else" : "Players"}</div>${off.map(playerRow).join("")}</div>` : ""}`;
+}
+async function viewOverview(sid) {
+  const s = await serverFrame(sid, "overview");
   const data = await api(`/api/servers/${sid}/players`);
-  setView(serverHeader(s, "players") + `<div id="players-body">${draw(data)}</div>`);
+  setView(serverHeader(s, "overview") + `<div class="overview">
+      <aside class="ov-side" aria-label="Players"><div class="section-head"><h2>Players</h2><span class="muted">${data.players.length} joined</span></div>
+        <div id="players-body">${playersListHtml(data)}</div></aside>
+      <div class="ov-main" id="ov-activity"></div></div>`);
   wireHeader(s);
+  const refreshActivity = mountActivity($("#ov-activity"), sid, data.players.map((p) => p.name));
   every(10000, async () => {
     const d = await api(`/api/servers/${sid}/players`).catch(() => null);
-    if (d && $("#players-body")) $("#players-body").innerHTML = draw(d);
+    if (d && $("#players-body")) $("#players-body").innerHTML = playersListHtml(d);
   });
+  every(30000, refreshActivity);
 }
 
 // ---------------------------------------------------------------- player page
 async function viewPlayer(sid, uuid, tab = "inventory") {
-  const s = await serverFrame(sid, "players");
+  const s = await serverFrame(sid, "overview");
   let p;
   try { p = await api(`/api/servers/${sid}/players/${uuid}`); }
-  catch (e) { setView(serverHeader(s, "players") + `<div class="empty"><h3>Player not found</h3><p>${esc(e.message)}</p></div>`); wireHeader(s); return; }
+  catch (e) { setView(serverHeader(s, "overview") + `<div class="empty"><h3>Player not found</h3><p>${esc(e.message)}</p></div>`); wireHeader(s); return; }
   const base = `#/s/${encodeURIComponent(sid)}/p/${uuid}`;
   const tabs = [["inventory", "Inventory"], ["history", "Play history"], ["stats", "Statistics"], ["advancements", "Advancements"]];
   setView(`<a class="back" href="#/s/${encodeURIComponent(sid)}">← ${esc(s.name)}</a>
@@ -661,6 +625,8 @@ function inventoryHtml(p) {
     </div>
     <div>
       <div class="mc-panel"><h3>Ender Chest</h3><div class="mc-grid">${gridHtml(d.ender_chest, 27)}</div></div>
+      ${(d.mod_items || []).map((g) => `<div class="mc-panel mod-slots"><h3>${esc(g.label.split(" › ").map(humanize).join(" › "))}</h3>
+        <div class="mc-grid">${gridHtml(g.items, Math.max(9, Math.ceil(g.items.length / 9) * 9), false)}</div></div>`).join("")}
       <p class="muted" style="margin-top:12px;font-size:.9rem;max-width:480px">Hover an item for details. Shulker boxes and bundles with a gold corner can be opened.</p>
     </div>
   </div>`;
@@ -746,11 +712,12 @@ function advancementsHtml(p) {
   }
   const byCat = {};
   for (const d of defs) (byCat[d.category] ||= []).push(d);
-  const cats = Object.keys(byCat).sort((a, b) => (ADV_ORDER.indexOf(a) + 1 || 99) - (ADV_ORDER.indexOf(b) + 1 || 99));
+  const cats = Object.keys(byCat).sort((a, b) => ((ADV_ORDER.indexOf(a) + 1 || 99) - (ADV_ORDER.indexOf(b) + 1 || 99)) || a.localeCompare(b));
+  const catTitle = (cat) => ADV_TITLES[cat] || (byCat[cat][0].category_title ? compText(byCat[cat][0].category_title) : humanize(cat.split(":")[0]));
   return `<div class="adv-cats">${cats.map((cat) => {
     const list = treeOrder(byCat[cat]);
     const done = list.filter((d) => mine[d.id]?.done).length;
-    return `<section><div class="adv-cat-head"><h2>${esc(ADV_TITLES[cat] || humanize(cat))}</h2><span class="num muted">${done} / ${list.length}</span>
+    return `<section><div class="adv-cat-head"><h2>${esc(catTitle(cat))}</h2><span class="num muted">${done} / ${list.length}</span>
       <div class="adv-progress"><span style="width:${(done / list.length) * 100}%"></span></div></div>
       <div class="adv-grid">${list.map((d) => {
         const m = mine[d.id], isDone = !!m?.done, secret = d.hidden && !isDone;
@@ -917,12 +884,12 @@ async function route() {
       const sid = parts[1];
       if (parts[2] === "p" && parts[3]) await viewPlayer(sid, parts[3], parts[4] || "inventory");
       else if (parts[2] === "world") await viewWorld(sid);
-      else if (parts[2] === "activity") await viewActivity(sid);
+      else if (parts[2] === "activity") location.replace(`#/s/${encodeURIComponent(sid)}`);
       else if (parts[2] === "control") await viewControl(sid);
       else if (parts[2] === "performance") await viewPerformance(sid);
       else if (parts[2] === "leaderboards") await viewLeaderboards(sid);
       else if (parts[2] === "mods") await viewMods(sid);
-      else await viewPlayers(sid);
+      else await viewOverview(sid);
     } else await viewHome();
   } catch (e) {
     setView(`<div class="empty"><h3>Something went wrong loading this page</h3><p>${esc(e.message)}</p><p style="margin-top:12px"><a href="#/">Back to servers</a></p></div>`);

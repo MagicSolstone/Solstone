@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f1424">
+  <title>Live status · Solstone</title>
+  <link rel="icon" href="/static/solstone.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="status-page">
+  <canvas id="status-sky" aria-hidden="true"></canvas>
+  <div class="sp">
+    <header class="sp-top">
+      <a class="brand" href="/status" title="Live status">
+        <img src="/static/solstone.svg" alt="" width="34" height="34">
+        <span>Solstone</span>
+      </a>
+      <nav class="sp-servers" id="sp-servers" aria-label="Servers"></nav>
+      <div class="sp-right">
+        <span class="sp-updated" id="sp-updated" aria-live="polite"></span>
+        <button class="sp-btn" id="sp-full" type="button" title="Full screen" aria-label="Full screen">⛶</button>
+        <a class="sp-btn" href="/">Sign in</a>
+      </div>
+    </header>
+    <main id="sp-main" class="sp-main"><p class="muted sp-loading">Loading…</p></main>
+  </div>
+  <div id="sp-toast" class="toast" hidden></div>
+  <script src="/static/sky.js" defer></script>
+  <script src="/static/hud.js" defer></script>
+  <script src="/static/status.js" defer></script>
+</body>
+</html>

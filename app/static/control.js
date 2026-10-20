@@ -339,7 +339,7 @@ async function viewAdmin() {
   curSid = null;
   document.title = "Users & activity · Solstone";
   $("#rail-servers").innerHTML = railHtml(null);
-  const [users, audit, lp] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/login")]);
+  const [users, audit, lp] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/status")]);
   const fmtWhen = (ts) => ts ? fmtAgo(ts) : "never";
   setView(`<h1 style="margin-bottom:20px">Users &amp; activity</h1>
     <section class="section"><div class="section-head"><h2>Users</h2><span class="muted">Viewers can see everything but can't change anything. Admins can also control servers.</span></div>
@@ -355,19 +355,22 @@ async function viewAdmin() {
         <label>Role<select class="input" name="role"><option value="viewer">Viewer (read-only)</option><option value="admin">Admin</option></select></label>
         <button class="btn primary" type="submit">Add user</button></div></form>
     </section>
-    <section class="section"><div class="section-head"><h2>Sign-in page</h2><span class="muted">What people see before they sign in</span></div>
-      <div class="panel rules-ctl" id="login-page-settings" style="max-width:640px">
-        <label class="switch-row"><span>Show servers, how many people are playing, and the in-game day and weather</span><input type="checkbox" role="switch" data-lp="show_servers" ${lp.show_servers ? "checked" : ""}></label>
-        <label class="switch-row"><span>Also show who's playing (their Minecraft names)</span><input type="checkbox" role="switch" data-lp="show_names" ${lp.show_names ? "checked" : ""}></label>
-        <p class="muted small" style="margin-top:8px">Anyone with the address can see the sign-in page. Leave names off if Solstone is reachable from outside your home.</p>
+    <section class="section"><div class="section-head"><h2>Public status page</h2><span class="muted">A live, read-only big-screen view anyone can open without signing in</span></div>
+      <div class="panel rules-ctl" id="status-page-settings" style="max-width:720px">
+        <label class="switch-row"><span><b>Turn on the status page</b><br><small class="muted">At <a href="/status" target="_blank" rel="noopener">${esc(location.origin)}/status</a>, linked from the sign-in page. Shows who's playing, their health, level and the in-game day. Never shows chat.</small></span><input type="checkbox" role="switch" data-sp="enabled" ${lp.enabled ? "checked" : ""}></label>
+        <label class="switch-row"><span>Show coordinates and the position map</span><input type="checkbox" role="switch" data-sp="show_positions" ${lp.show_positions ? "checked" : ""}></label>
+        <label class="switch-row"><span>Show held items and armour</span><input type="checkbox" role="switch" data-sp="show_items" ${lp.show_items ? "checked" : ""}></label>
+        <label class="switch-row"><span>Show recent joins, deaths and advancements</span><input type="checkbox" role="switch" data-sp="show_activity" ${lp.show_activity ? "checked" : ""}></label>
+        <label class="switch-row"><span>Embed the web map (BlueMap, squaremap) <br><small class="muted">Only works if visitors can reach the map's address too. A plain http:// map won't load on an https:// page.</small></span><input type="checkbox" role="switch" data-sp="show_web_map" ${lp.show_web_map ? "checked" : ""}></label>
+        <p class="muted small" style="margin-top:8px">Anyone with the address can see this page. Hidden servers are never shown.</p>
       </div></section>
     <section class="section"><div class="section-head"><h2>Admin activity</h2><span class="muted">Commands, changes and sign-in failures across all servers</span></div>
       <div class="panel">${auditHtml(audit, true)}</div></section>`);
 
-  $("#login-page-settings").addEventListener("change", async () => {
+  $("#status-page-settings").addEventListener("change", async () => {
     const body = {};
-    $$("[data-lp]").forEach((i) => { body[i.dataset.lp] = i.checked; });
-    try { await post("/api/settings/login", body, "PUT"); showToast("Sign-in page updated", 2500); }
+    $$("[data-sp]").forEach((i) => { body[i.dataset.sp] = i.checked; });
+    try { await post("/api/settings/status", body, "PUT"); showToast(body.enabled ? 'Status page updated. <a href="/status" target="_blank" rel="noopener">Open it</a>' : "Status page turned off", 3500); }
     catch (err) { showToast(esc(err.message), 5000); }
   });
   $("#add-user").addEventListener("submit", async (e) => {

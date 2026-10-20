@@ -299,23 +299,22 @@ function mountTimeline(el, sid, player = "") {
   return () => { if (st.pages <= 1 && !st.expanded) load(true); };
 }
 
-// ================================================================ Activity tab
-async function viewActivity(sid) {
-  const s = await serverFrame(sid, "activity");
-  const players = await api(`/api/servers/${sid}/players`).catch(() => ({ players: [] }));
-  setPlayerSlots(players.players.map((p) => p.name));
+// ================================================================ Activity (part of the Overview tab)
+// Daily play-time chart plus the session timeline. Returns a refresh function.
+function mountActivity(el, sid, playerNames) {
+  setPlayerSlots(playerNames);
   let days = 14;
-  setView(serverHeader(s, "activity") + `
+  el.innerHTML = `
     <section class="section"><div class="section-head"><h2>Time played</h2>
       <div class="seg" role="group" aria-label="Days shown" id="days-seg">${[7, 14, 30].map((d) => `<button data-d="${d}" aria-pressed="${d === days}">${d} days</button>`).join("")}</div></div>
       <div class="panel"><div id="today-row" class="today-row"></div><div id="legend"></div><div class="chart" id="daily-chart"></div></div>
     </section>
     <section class="section"><div class="section-head"><h2>Activity</h2><span class="muted">One block per play session. Players online at the same time share a block</span></div>
-      <div id="feed"></div></section>`);
-  wireHeader(s);
-  const refreshFeed = mountTimeline($("#feed"), sid);
+      <div id="feed"></div></section>`;
+  const refreshFeed = mountTimeline($("#feed", el), sid);
   const load = async () => {
     const a = await api(`/api/servers/${sid}/activity?days=${days}`);
+    if (!$("#daily-chart")) return;
     const names = [...new Set(a.daily.flatMap((d) => Object.keys(d.players)))].sort((x, y) => playerColor(x).localeCompare(playerColor(y)));
     const order = Object.keys(playerSlots).map((k) => names.find((n) => n.toLowerCase() === k)).filter(Boolean);
     const today = a.daily[a.daily.length - 1].players;
@@ -331,11 +330,11 @@ async function viewActivity(sid) {
       renderDailyBars($("#daily-chart"), a.daily, order);
     }
   };
-  $$("#days-seg button").forEach((b) => b.addEventListener("click", () => {
-    days = +b.dataset.d; $$("#days-seg button").forEach((x) => x.setAttribute("aria-pressed", x === b)); load();
+  $$("#days-seg button", el).forEach((b) => b.addEventListener("click", () => {
+    days = +b.dataset.d; $$("#days-seg button", el).forEach((x) => x.setAttribute("aria-pressed", x === b)); load();
   }));
-  await load();
-  every(30000, () => { load(); refreshFeed(); });
+  load();
+  return () => { load(); refreshFeed(); };
 }
 
 // ================================================================ Performance tab

@@ -3,12 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#23272e">
+  <meta name="theme-color" content="#0f1424">
   <title>Solstone</title>
   <link rel="icon" href="/static/solstone.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
+  <canvas id="app-sky" aria-hidden="true"></canvas>
   <div class="shell">
     <nav class="rail" aria-label="Servers">
       <a class="brand" href="#/" title="All servers">
@@ -17,6 +18,7 @@
       </a>
       <div class="rail-servers" id="rail-servers"></div>
       <div class="rail-foot">
+        <a class="rail-btn" id="btn-status" href="/status" target="_blank" rel="noopener" hidden>📺 <span>Live status</span></a>
         <button class="rail-btn admin-only" id="btn-notify" type="button">🔔 <span>Notifications</span></button>
         <a class="rail-btn admin-only" id="btn-admin" href="#/admin">👥 <span>Users &amp; activity</span></a>
         <div class="account">
@@ -36,7 +38,9 @@
   <div id="tooltip" class="mc-tooltip" role="tooltip" hidden></div>
   <div id="modal-root"></div>
   <div id="toast" class="toast" hidden></div>
+  <script src="/static/sky.js" defer></script>
   <script src="/static/login.js" defer></script>
+  <script src="/static/hud.js" defer></script>
   <script src="/static/app.js" defer></script>
   <script src="/static/history.js" defer></script>
   <script src="/static/control.js" defer></script>

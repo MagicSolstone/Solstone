@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -82,7 +84,18 @@ def _assets(srv: S.Server):
     version = srv.mc_version
     if not version or not srv.is_java:
         return None
-    return assets_for(version, tuple(str(p) for p in S.mod_jars(srv)), srv.id)
+    jars = tuple(str(p) for p in S.mod_jars(srv))
+    # Icons rendered from mods are cached per set of mod files, so updating a mod
+    # re-renders its icons instead of showing the old ones.
+    sig = hashlib.sha1("|".join(f"{Path(j).name}:{_size(j)}" for j in jars).encode()).hexdigest()[:10]
+    return assets_for(version, jars, f"{srv.id}-{sig}" if jars else srv.id)
+
+
+def _size(path: str) -> int:
+    try:
+        return os.path.getsize(path)
+    except OSError:
+        return 0
 
 
 # ------------------------------------------------------------------ overview
@@ -103,14 +116,28 @@ async def status():
     }
 
 
-# ------------------------------------------------------------------ sign-in page (no login needed)
-LOGIN_DEFAULTS = {"show_servers": True, "show_names": False}
-_public_cache: tuple[float, list] | None = None
-_public_lock = asyncio.Lock()
+# ------------------------------------------------------------------ public status page (no login needed)
+# Off until an admin turns it on. Everything here is read-only and cached so anonymous
+# visitors can't hammer RCON or Crafty, and chat is never included.
+STATUS_DEFAULTS = {"enabled": False, "show_positions": True, "show_items": True,
+                   "show_activity": True, "show_web_map": False}
+STATUS_TTL = 4.0
+_board_cache: dict[str, tuple[float, dict]] = {}
+_board_locks: dict[str, asyncio.Lock] = {}
+_list_cache: tuple[float, list] | None = None
+_SAFE_ID = re.compile(r"^[a-z0-9_.\-]{1,64}$")
 
 
-def _login_cfg() -> dict:
-    return {**LOGIN_DEFAULTS, **settings_store.load().get("login", {})}
+def _status_cfg() -> dict:
+    saved = settings_store.load().get("status", {})
+    return {k: bool(saved.get(k, v)) for k, v in STATUS_DEFAULTS.items()}
+
+
+def _require_status() -> dict:
+    cfg = _status_cfg()
+    if not cfg["enabled"]:
+        raise HTTPException(404, "The public status page is turned off")
+    return cfg
 
 
 def _phase(t: int) -> str:
@@ -118,78 +145,188 @@ def _phase(t: int) -> str:
             else "Night" if t < 23000 else "Sunrise")
 
 
-async def _public_servers() -> list[dict]:
-    """What the sign-in page shows. Cached so anonymous visitors can't hammer RCON or Crafty."""
-    global _public_cache
-    async with _public_lock:
-        if _public_cache and time.monotonic() - _public_cache[0] < 15:
-            return _public_cache[1]
-        cfg = _login_cfg()
-        out = []
-        await S.registry.refresh()
-        for srv in [s for s in S.registry.servers.values() if not s.settings.get("hidden")]:
-            try:
-                summ = await S.server_summary(srv)
-            except Exception as e:
-                log.warning("sign-in page status failed for %s: %s", srv.id, e)
+def _public_servers_list() -> list[S.Server]:
+    return [s for s in S.registry.servers.values() if not s.settings.get("hidden")]
+
+
+async def _public_server(sid: str) -> S.Server:
+    srv = await S.registry.get(sid)
+    if not srv or srv.settings.get("hidden"):
+        raise HTTPException(404, "Server not found")
+    return srv
+
+
+def _lang_name(lang: dict, kind: str, ident: str) -> str:
+    ns, _, name = ident.partition(":") if ":" in ident else ("minecraft", "", ident)
+    for k in (kind, "block") if kind == "item" else (kind,):
+        v = lang.get(f"{k}.{ns}.{name}")
+        if v:
+            return v
+    return name.replace("_", " ").title()
+
+
+def _public_item(it: dict | None, lang: dict) -> dict | None:
+    if not it:
+        return None
+    return {"id": it["id"], "name": it.get("name") or _lang_name(lang, "item", it["id"]), "count": it.get("count", 1),
+            "glint": bool(it.get("enchantments") or it.get("glint"))}
+
+
+async def _maybe_live(srv: S.Server, p: dict) -> dict | None:
+    return await S.live_player(srv, p["name"]) if p.get("uuid") and srv.rcon_conf() else None
+
+
+async def _build_board(srv: S.Server, cfg: dict) -> dict:
+    summ = await S.server_summary(srv)
+    board: dict = {
+        "id": srv.id, "name": summ["name"], "motd": summ["motd"], "running": summ["running"], "crashed": summ["crashed"],
+        "online_count": len(summ["online"]), "max": summ["max_players"], "version": summ["version"],
+        "loader": summ["loader"], "game": summ["game_label"], "java": srv.is_java, "has_icon": summ["has_icon"],
+        "started": summ["started"] if summ["running"] else None,
+        "tps": summ["perf"]["tps"] if summ.get("perf") and summ["running"] is not False else None,
+        "world": None, "spawn": None, "players": [], "recent": [], "recently": [], "web_map": None,
+    }
+    if cfg["show_web_map"] and summ.get("map_url"):
+        board["web_map"] = summ["map_url"]
+    lang: dict = {}
+    if srv.is_java:
+        a = _assets(srv)
+        if a and a.ready:
+            lang = await asyncio.to_thread(a.lang_cached)
+        try:
+            w = await asyncio.to_thread(S.world_info, srv, False)
+            if summ["running"] is not False and srv.rcon_conf():
+                w.update(await S.live_world(srv))
+            if w.get("time_of_day") is not None:
+                board["world"] = {"day": w["day"], "time_of_day": w["time_of_day"], "phase": _phase(w["time_of_day"]),
+                                  "raining": w.get("raining"), "thundering": w.get("thundering")}
+            if cfg["show_positions"] and w.get("spawn"):
+                board["spawn"] = {k: w["spawn"][k] for k in ("x", "y", "z")}
+        except Exception as e:
+            log.debug("status page world info failed for %s: %s", srv.id, e)
+    if summ["running"] is not False and summ["online"]:
+        overview = await S.players_overview(srv)
+        sessions = {s["player"].lower(): s["start"] for s in db.sessions(srv.id, limit=50) if s["open"]}
+        online = [p for p in overview["players"] if p["online"]]
+        details = await asyncio.gather(*(_maybe_live(srv, p) for p in online))
+        for p, live in zip(online, details, strict=True):
+            d = live
+            if d is None and p.get("uuid"):
+                d, _m = S.player_file_data(srv, p["uuid"])
+            row: dict = {"name": p["name"], "uuid": p.get("uuid"), "live": live is not None,
+                         "today_seconds": p.get("today_seconds", 0), "since": sessions.get(p["name"].lower())}
+            if d:
+                row.update(health=d["health"], max_health=d["max_health"], absorption=d.get("absorption", 0),
+                           food=d["food"], xp_level=d["xp_level"], xp_progress=d["xp_progress"],
+                           gamemode=d["gamemode"], dimension=d["position"]["dimension"],
+                           effects=[{"id": e["id"], "name": _lang_name(lang, "effect", e["id"]), "amplifier": e["amplifier"]}
+                                    for e in d.get("effects", []) if not e.get("ambient")][:6])
+                if cfg["show_positions"]:
+                    row["position"] = {k: d["position"][k] for k in ("x", "y", "z")}
+                if cfg["show_items"]:
+                    inv = d["inventory"]
+                    sel = d.get("selected_slot", 0)
+                    row["held"] = _public_item(inv["hotbar"][sel] if 0 <= sel < 9 else None, lang)
+                    row["armor"] = [_public_item(inv["armor"][k], lang) for k in ("head", "chest", "legs", "feet")]
+            board["players"].append(row)
+    if cfg["show_activity"]:
+        evs = db.events(srv.id, ["join", "leave", "death", "advancement", "server"], None, 14)
+        board["recent"] = [{"ts": e["ts"], "type": e["type"], "player": e["player"], "message": e["message"]} for e in evs]
+    online_l = {n.lower() for n in summ["online"]}
+    if srv.is_java:
+        week = time.time() - 7 * 86400
+        recent = []
+        for uuid, p in S.known_players(srv).items():
+            if p["name"].lower() in online_l:
                 continue
-            item = {"id": srv.id, "name": summ["name"], "running": summ["running"], "crashed": summ["crashed"],
-                    "online": len(summ["online"]), "max": summ["max_players"], "version": summ["version"],
-                    "game": summ["game_label"], "has_icon": summ["has_icon"]}
-            if cfg["show_names"]:
-                item["names"] = summ["online"]
-            if srv.is_java and summ["running"] is not False:
-                try:
-                    w = await asyncio.to_thread(S.world_info, srv)
-                    if srv.rcon_conf():
-                        w.update(await S.live_world(srv))
-                    if w.get("time_of_day") is not None:
-                        item["world"] = {"day": w["day"], "phase": _phase(w["time_of_day"]),
-                                         "weather": None if w.get("raining") is None else
-                                         "Thunderstorm" if w.get("thundering") else "Rain" if w.get("raining") else "Clear",
-                                         "paused": len(summ["online"]) == 0}
-                except Exception:
-                    pass
-            out.append(item)
-        _public_cache = (time.monotonic(), out)
-        return out
+            seen = S.last_seen(srv, uuid)
+            if seen and seen > week:
+                recent.append({"name": p["name"], "uuid": uuid, "last_seen": seen})
+        board["recently"] = sorted(recent, key=lambda r: -r["last_seen"])[:8]
+    return board
+
+
+async def _board(srv: S.Server, cfg: dict) -> dict:
+    hit = _board_cache.get(srv.id)
+    if hit and time.monotonic() - hit[0] < STATUS_TTL:
+        return hit[1]
+    lock = _board_locks.setdefault(srv.id, asyncio.Lock())
+    async with lock:
+        hit = _board_cache.get(srv.id)
+        if hit and time.monotonic() - hit[0] < STATUS_TTL:
+            return hit[1]
+        board = await _build_board(srv, cfg)
+        _board_cache[srv.id] = (time.monotonic(), board)
+        return board
 
 
 @app.get("/api/public/status")
 async def public_status():
-    cfg = _login_cfg()
-    servers = await _public_servers() if cfg["show_servers"] else []
-    return {"servers": servers, "show_servers": cfg["show_servers"]}
+    """Whether the status page is on, and the list of servers it can show."""
+    global _list_cache
+    cfg = _status_cfg()
+    if not cfg["enabled"]:
+        return {"enabled": False, "servers": []}
+    if _list_cache and time.monotonic() - _list_cache[0] < 15:
+        return {"enabled": True, "servers": _list_cache[1]}
+    await S.registry.refresh()
+    out = []
+    for srv in _public_servers_list():
+        try:
+            summ = await S.server_summary(srv)
+        except Exception as e:
+            log.warning("status list failed for %s: %s", srv.id, e)
+            continue
+        out.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "crashed": summ["crashed"],
+                    "online": len(summ["online"]), "max": summ["max_players"], "has_icon": summ["has_icon"]})
+    _list_cache = (time.monotonic(), out)
+    return {"enabled": True, "servers": out}
+
+
+@app.get("/api/public/status/{sid}")
+async def public_board(sid: str):
+    cfg = _require_status()
+    board = await _board(await _public_server(sid), cfg)
+    return JSONResponse(board, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/public/icon/{sid}.png")
 async def public_icon(sid: str):
-    if not _login_cfg()["show_servers"]:
-        raise HTTPException(404)
-    srv = await S.registry.get(sid)
-    if not srv or srv.settings.get("hidden"):
-        raise HTTPException(404)
-    data = S.server_icon_bytes(srv)
+    _require_status()
+    data = S.server_icon_bytes(await _public_server(sid))
     if not data:
         raise HTTPException(404)
     return Response(data, media_type="image/png", headers={"Cache-Control": "max-age=300"})
 
 
-@app.get("/api/settings/login")
-async def get_login_settings(request: Request):
+@app.get("/api/public/item/{sid}/{ns}/{name}.png")
+async def public_item_icon(sid: str, ns: str, name: str):
+    cfg = _require_status()
+    if not cfg["show_items"] or not _SAFE_ID.match(ns) or not _SAFE_ID.match(name):
+        raise HTTPException(404)
+    a = _assets(await _public_server(sid))
+    data = await asyncio.to_thread(a.icon, f"{ns}:{name}") if a and a.ready else None
+    if not data:
+        raise HTTPException(404)
+    return Response(data, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/api/settings/status")
+async def get_status_settings(request: Request):
     auth.require_admin(request)
-    return _login_cfg()
+    return _status_cfg()
 
 
-@app.put("/api/settings/login")
-async def put_login_settings(request: Request):
-    global _public_cache
+@app.put("/api/settings/status")
+async def put_status_settings(request: Request):
+    global _list_cache
     user = auth.require_admin(request)
     body = await _body(request)
-    cfg = {k: bool(body.get(k, v)) for k, v in _login_cfg().items() if k in LOGIN_DEFAULTS}
-    settings_store.save_section("login", cfg)
-    _public_cache = None
-    auth.audit(user, None, "login_page_settings", ", ".join(f"{k}={v}" for k, v in cfg.items()))
+    cfg = {k: bool(body.get(k, v)) for k, v in _status_cfg().items()}
+    settings_store.save_section("status", cfg)
+    _list_cache = None
+    _board_cache.clear()
+    auth.audit(user, None, "status_page_settings", ", ".join(f"{k}={v}" for k, v in cfg.items()))
     return cfg
 
 
@@ -622,19 +759,29 @@ async def console_stream(sid: str, request: Request):
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
+@app.get("/status", include_in_schema=False)
+@app.get("/status/{sid}", include_in_schema=False)
+async def status_page(sid: str = ""):
+    if not _status_cfg()["enabled"]:
+        return HTMLResponse(_page("status-off.html"), status_code=404, headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(_page("status.html"), headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/{full_path:path}", include_in_schema=False)
 async def spa(full_path: str):
     if full_path.startswith("api/"):
         raise HTTPException(404)
-    return HTMLResponse(_index_html(), headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(_page("index.html"), headers={"Cache-Control": "no-cache"})
 
 
-def _index_html() -> str:
-    """index.html with ?v= on the CSS/JS links so browsers pick up new versions after an update."""
-    names = ("app.css", "login.js", "app.js", "history.js", "control.js")
-    files = [STATIC / n for n in names]
+ASSET_NAMES = ("app.css", "sky.js", "hud.js", "login.js", "app.js", "history.js", "control.js", "status.js")
+
+
+def _page(name: str) -> str:
+    """An HTML page with ?v= on the CSS/JS links so browsers pick up new versions after an update."""
+    files = [STATIC / n for n in ASSET_NAMES]
     stamp = format(int(max(f.stat().st_mtime for f in files if f.exists())), "x")
-    html = (STATIC / "index.html").read_text(encoding="utf-8")
-    for n in names:
+    html = (STATIC / name).read_text(encoding="utf-8")
+    for n in ASSET_NAMES:
         html = html.replace(f"/static/{n}\"", f"/static/{n}?v={stamp}\"")
     return html
