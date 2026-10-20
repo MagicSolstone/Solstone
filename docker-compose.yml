@@ -1,0 +1,33 @@
+services:
+  lodestone:
+    image: ghcr.io/tjusczak/lodestone:latest
+    # :latest = :stable, only updates when a version is tagged (v1.2.3).
+    # Swap in :beta for builds of every push to main.
+    # To build from local source instead, comment image: and uncomment:
+    # build: .
+    container_name: lodestone
+    restart: unless-stopped
+    ports:
+      - "8085:8080"
+    environment:
+      # Crafty Controller 4 (Settings > Users > your user > API Keys)
+      CRAFTY_URL: https://192.168.150.10:8443
+      CRAFTY_TOKEN: change-me
+      CRAFTY_VERIFY_SSL: "false"        # Crafty uses a self-signed cert by default
+      PUID: "99"                        # Unraid nobody:users; use your `id -u`/`id -g` elsewhere
+      PGID: "100"
+      TZ: America/Chicago
+      # RCON_HOST: 192.168.150.10       # where Minecraft RCON ports are published (defaults to the Crafty host)
+      # ADMIN_TOKEN: pick-something     # require a token to change settings in the web UI
+    volumes:
+      # Crafty's servers folder, read-only. With the Unraid Crafty template
+      # this is usually /mnt/user/appdata/crafty-4/servers
+      - /mnt/user/appdata/crafty-4/servers:/servers:ro
+      # Lodestone settings + downloaded item icons
+      - /mnt/user/appdata/lodestone:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3

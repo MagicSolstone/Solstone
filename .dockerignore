@@ -1,0 +1,11 @@
+.git
+.github
+**/__pycache__
+*.pyc
+data
+tests
+README.md
+docker-compose.yml
+requirements-dev.txt
+ruff.toml
+pytest.ini

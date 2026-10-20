@@ -1,0 +1,107 @@
+name: Build and publish Docker image
+
+# Same release model as The Coop Ledger. Builds a multi-arch image
+# (amd64 + arm64) and pushes it to GHCR using the GITHUB_TOKEN Actions
+# provides, so no extra secrets are needed.
+#
+# - Push to main -> published as `beta` only. Automatic, no extra step.
+# - Push a tag like v1.2.3 (or publish a GitHub release with that tag)
+#   -> published as `1.2.3`, `stable` AND `latest`. `latest` tracks
+#   `stable`, so anyone who doesn't pick a tag lands on the safe default.
+#
+# Image: ghcr.io/tjusczak/lodestone
+#
+# First-time setup: after this runs once, open the package page on GitHub
+# (your profile -> Packages -> lodestone -> Package settings) and set its
+# visibility to Public, otherwise `docker pull` gets a 401 -- GHCR packages
+# start out private.
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*.*.*"]
+  workflow_dispatch: {}
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  test:
+    # A build that fails its own tests is never published to either channel.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Lint
+        run: ruff check .
+      - name: Run tests
+        run: pytest -q
+      - name: Frontend syntax check
+        run: node --check app/static/app.js
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v6
+
+      - name: Compute lowercase image name
+        # Registries require lowercase paths; the repo is TJusczak/Lodestone.
+        run: echo "IMAGE_NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      - name: Stamp the build channel into app.js
+        # Same condition as the Docker tags below, so the "Beta build" badge
+        # in the app and the image tag can never disagree.
+        run: |
+          CHANNEL=${{ startsWith(github.ref, 'refs/tags/v') && 'stable' || 'beta' }}
+          sed -i "s/__BUILD_CHANNEL__/$CHANNEL/" app/static/app.js
+
+      - name: Stamp the version into the app
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: sed -i "s/^VERSION = .*/VERSION = \"${GITHUB_REF_NAME#v}\"/" app/main.py
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=beta,enable={{is_default_branch}}
+            type=raw,value=stable,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{version}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

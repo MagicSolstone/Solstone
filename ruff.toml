@@ -1,0 +1,11 @@
+# Lint baseline, same as The Coop Ledger: real bugs (pyflakes F, syntax E9) and
+# the bugbear checks that catch them in practice, not style.
+target-version = "py311"
+line-length = 160
+extend-exclude = ["app/static"]
+
+[lint]
+select = ["E9", "F", "B"]
+ignore = [
+  "B008",  # FastAPI's Header(...)/Body(...) defaults are the framework's idiom
+]
