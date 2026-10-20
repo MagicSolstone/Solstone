@@ -16,7 +16,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, backups, control, db, guard, notify, skins
+from . import auth, backups, control, db, fireworks, guard, notify, skins
 from . import servers as S
 from . import settings_store
 from .recorder import recorder
@@ -351,7 +351,54 @@ def _fireworks_cfg() -> dict:
 
 @app.get("/api/public/fireworks")
 async def public_fireworks():
-    return JSONResponse(_fireworks_cfg(), headers={"Cache-Control": "no-cache"})
+    return JSONResponse({**_fireworks_cfg(), "custom": fireworks.in_show()}, headers={"Cache-Control": "no-cache"})
+
+
+# ---- the Firework editor: anyone signed in can make fireworks; people can change their
+# own, and admins can change or remove anyone's.
+def _can_edit(user, d: dict) -> bool:
+    return user.role == "admin" or d.get("author") == user.username
+
+
+@app.get("/api/fireworks")
+async def list_fireworks(request: Request):
+    user = request.state.user
+    return [{**d, "mine": d.get("author") == user.username, "can_edit": _can_edit(user, d)} for d in fireworks.all_designs()]
+
+
+@app.post("/api/fireworks")
+async def create_firework(request: Request):
+    user = request.state.user
+    try:
+        d = fireworks.create(await _body(request), user.username)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    auth.audit(user, None, "firework_create", d["name"])
+    return d
+
+
+@app.put("/api/fireworks/{fid}")
+async def update_firework(fid: str, request: Request):
+    user = request.state.user
+    d = fireworks.get(fid)
+    if not d:
+        raise HTTPException(404, "Firework not found")
+    if not _can_edit(user, d):
+        raise HTTPException(403, "Only its maker or an admin can change this firework")
+    return fireworks.update(fid, await _body(request))
+
+
+@app.delete("/api/fireworks/{fid}")
+async def delete_firework(fid: str, request: Request):
+    user = request.state.user
+    d = fireworks.get(fid)
+    if not d:
+        raise HTTPException(404, "Firework not found")
+    if not _can_edit(user, d):
+        raise HTTPException(403, "Only its maker or an admin can delete this firework")
+    fireworks.delete(fid)
+    auth.audit(user, None, "firework_delete", d["name"])
+    return {"ok": True}
 
 
 @app.put("/api/settings/fireworks")
@@ -845,7 +892,7 @@ async def spa(full_path: str):
     return HTMLResponse(_page("index.html"), headers={"Cache-Control": "no-cache"})
 
 
-ASSET_NAMES = ("app.css", "sky.js", "hud.js", "login.js", "app.js", "history.js", "control.js", "status.js")
+ASSET_NAMES = ("app.css", "sky.js", "hud.js", "login.js", "app.js", "history.js", "control.js", "editor.js", "status.js")
 
 
 def _page(name: str) -> str:

@@ -11,7 +11,7 @@ const FW_SPECIALS = ["dragon", "bow", "tree"];
 const FW_PACE = { calm: [2600, 6500], normal: [700, 1900], lively: [350, 1000] };
 const FW_SPECIAL_CHANCE = { rare: 0.05, sometimes: 0.1, often: 0.22 };
 // Admin settings (Users & activity → Fireworks), shared by every page. Defaults until loaded.
-const FW = { kinds: null, colors: FW_COLORS, pace: "normal", showpieces: "sometimes" };
+const FW = { kinds: null, colors: FW_COLORS, pace: "normal", showpieces: "sometimes", custom: [] };
 let fwLoaded = null;
 function loadFireworkSettings() {
   fwLoaded ||= fetch("/api/public/fireworks").then((r) => r.ok ? r.json() : null).then((c) => { if (c) applyFireworkSettings(c); }).catch(() => {});
@@ -22,6 +22,7 @@ function applyFireworkSettings(c) {
   FW.colors = c.colors?.length ? c.colors : FW_COLORS;
   FW.pace = FW_PACE[c.pace] ? c.pace : "normal";
   FW.showpieces = FW_SPECIAL_CHANCE[c.showpieces] != null ? c.showpieces : "sometimes";
+  FW.custom = Array.isArray(c.custom) ? c.custom : [];
 }
 const fwOn = (k) => !FW.kinds || FW.kinds[k] !== false;
 // Pixel templates for shaped bursts: each "#" becomes a spark that flies out to its spot.
@@ -186,7 +187,7 @@ function startSkyScene(cv, opts = {}) {
   }
 
   function resize() {
-    W = Math.ceil(innerWidth / SCALE); H = Math.ceil(innerHeight / SCALE);
+    W = Math.ceil((opts.fit ? cv.clientWidth : innerWidth) / SCALE); H = Math.ceil((opts.fit ? cv.clientHeight : innerHeight) / SCALE);
     cv.width = W; cv.height = H;
     stars = Array.from({ length: Math.round((W * H) / 700) }, () => ({ x: Math.floor(Math.random() * W), y: Math.floor(Math.random() * H * 0.7), p: Math.random() * 6.28, a: rand(0.15, 0.55) }));
     buildLand();
@@ -203,12 +204,13 @@ function startSkyScene(cv, opts = {}) {
     else if (sides.length && Math.random() < 0.8) { const [a, b] = pick(sides); x = rand(a, b); } else x = rand(W * 0.1, W * 0.9);
     if (!shape) {
       const busy = figures.length || trees.length || rockets.some((r) => FW_SPECIALS.includes(r.shape));
-      const regular = FW_SHAPES.filter(fwOn), special = FW_SPECIALS.filter(fwOn);
+      const regular = [...FW_SHAPES.filter(fwOn), ...FW.custom.map((d) => d)], special = FW_SPECIALS.filter(fwOn);
       const wantSpecial = special.length && !busy && (Math.random() < FW_SPECIAL_CHANCE[FW.showpieces] || !regular.length);
       if (wantSpecial) shape = pick(special);
       else if (regular.length) shape = pick(regular);
       else return null;                            // only show-pieces are on, and one is already up
     }
+    if (shape && typeof shape === "object") return launchDesign(shape, at?.x);
     if (FW_SPECIALS.includes(shape)) x = Math.max(W * 0.18, Math.min(W * 0.82, x));
     // A tree bursts low, just above the hill, and grows upwards from there.
     // A tree's rocket comes up out of the hill itself and bursts right at the surface.
@@ -225,6 +227,137 @@ function startSkyScene(cv, opts = {}) {
     if (shape === "heart") r.colors = [pick(["#ff5a7a", "#ff8fc0", "#ff4f4f"])];
     rockets.push(r);
     return r;
+  }
+
+  // ---- custom fireworks from the Firework editor
+  // A design is a bag of numbers (see app/fireworks.py); each rocket carries it to the burst.
+  function launchDesign(d, atX) {
+    const n = Math.max(1, Math.min(5, d.rockets || 1));
+    const x0 = atX ?? rand(W * 0.2, W * 0.8);
+    const first = rocketFor(d, x0 - ((n - 1) / 2) * 28);
+    for (let k = 1; k < n; k++) setTimeout(() => { if (!stopped) { rocketFor(d, x0 + (k - (n - 1) / 2) * 28 + rand(-6, 6)); wake(); } }, k * rand(160, 320));
+    return first;
+  }
+  function rocketFor(d, x) {
+    x = Math.max(8, Math.min(W - 8, x));
+    const top = H * 0.06, apex = groundY - (groundY - top) * Math.max(0.1, Math.min(1, d.height ?? 0.6)) + rand(-6, 6);
+    const r = { x, y: groundY + 4, vx: rand(-0.06, 0.06), vy: -Math.sqrt(2 * G * Math.max(4, groundY + 4 - apex)), shape: "custom", design: d, colors: d.colors };
+    rockets.push(r);
+    return r;
+  }
+  function explodeCustom(r) {
+    const d = r.design, S = d.size || 1.2, cols = d.colors?.length ? d.colors : ["#ffe45c"];
+    const rt = { d, drag: 0.995 - (d.drag ?? 0.4) * 0.07, born: frame, hue: rand(0, 360) };
+    const life = () => (d.life || 1.4) * 60 * rand(0.85, 1.15);
+    const rot = rand(-1, 1) * (d.tilt || 0) * 1.2, cos = Math.cos(rot), sin = Math.sin(rot);
+    const out = [];
+    const colorFor = (i, n) => d.color_mode === "alternate" ? cols[i % cols.length] : d.color_mode === "mix" ? pick(cols) : cols[0];
+    const spark = (vx, vy, i, n, extra = {}) => {
+      const sq = d.pattern === "picture" || d.pattern === "spiral" ? 1 : d.squash ?? 1;
+      const rx = vx * cos - vy * sin, ry = (vx * sin + vy * cos) * sq;
+      out.push({ cd: rt, x: r.x, y: r.y, px: r.x, py: r.y, vx: rx, vy: ry, life: 0, max: life(), color: colorFor(i, n), hueOff: (i / n) * 360, ...extra });
+    };
+    const n = Math.max(8, Math.min(160, d.sparks || 48));
+    const jitter = () => 1 - (d.spread || 0) * Math.random();
+    if (d.flash > 0) {                               // the bright pop at the moment of the burst
+      const m = Math.round(8 + d.flash * 26);
+      for (let i = 0; i < m; i++) {
+        const a = (i / m) * Math.PI * 2;
+        sparks.push({ x: r.x, y: r.y, px: r.x, py: r.y, vx: Math.cos(a) * (0.6 + d.flash), vy: Math.sin(a) * (0.6 + d.flash), life: 0, max: rand(8, 14), color: "#ffffff" });
+      }
+    }
+    if (d.pattern === "picture" && d.picture?.length) {
+      const rows = d.picture.length, w = Math.max(...d.picture.map((row) => row.length)), k = 0.15 * S;
+      const hold = 45 + (d.hold ?? 0.8) * 60;
+      let i = 0;
+      d.picture.forEach((row, y) => [...row].forEach((c, x) => {
+        if (c === ".") return;
+        const ox = x - (w - 1) / 2, oy = y - (rows - 1) / 2;
+        spark(ox * k, oy * k, i++, 1, { hold, max: hold + life(), color: cols[+c] || cols[0] });
+      }));
+    } else if (d.pattern === "spiral") {
+      const arms = Math.max(2, Math.min(6, d.arms || 3)), per = Math.max(4, Math.round(n / arms)), spin = (d.spin ?? 0.5) * 0.08 || 0.01, off = rand(0, Math.PI * 2);
+      for (let a = 0; a < arms; a++) for (let j = 0; j < per; j++) {
+        spark(0, 0, a * per + j, n, { orbit: { cx: r.x, cy: r.y, a: off + (a / arms) * Math.PI * 2 - j * 0.15 * Math.sign(spin), r: 0, dr: S * (0.3 + j * (1.2 / per)), da: spin } });
+      }
+    } else if (d.pattern === "palm") {
+      const arms = Math.max(5, Math.min(12, Math.round(n / 6)));
+      for (let i = 0; i < arms; i++) {
+        const a = (i / arms) * Math.PI * 2 - Math.PI / 2 + rand(-0.1, 0.1);
+        spark(Math.cos(a) * S * 1.15 * jitter(), Math.sin(a) * S * 1.15 * jitter() - 0.25, i, arms, { palm: true, max: life() * 1.2 });
+      }
+    } else {
+      for (let i = 0; i < n; i++) {
+        let a = (i / n) * Math.PI * 2, sp = S * jitter();
+        if (d.pattern === "burst") { a = rand(0, Math.PI * 2); sp = S * rand(0.15, 1); }
+        else if (d.pattern === "ring") { sp = S * (1 - (d.spread || 0) * 0.2 * Math.random()); }
+        else if (d.pattern === "star") {
+          const pts = Math.max(3, Math.min(10, d.points || 5)), k = ((a / (Math.PI * 2)) * pts) % 1;
+          sp = S * (0.45 + 0.75 * (1 - Math.abs(k - 0.5) * 2)) * jitter();
+          a -= Math.PI / 2;
+        } else a += rand(-0.06, 0.06);
+        spark(Math.cos(a) * sp, Math.sin(a) * sp * (d.pattern === "ring" ? 0.5 : 1), i, n);
+      }
+    }
+    // Some pieces burst again a moment later.
+    if (d.second > 0) for (const p of out) if (Math.random() < d.second) p.fuse = Math.round((d.second_delay || 0.5) * 60 * rand(0.85, 1.15));
+    sparks.push(...out);
+  }
+  function customColor(p, t) {
+    const d = p.cd.d, cols = d.colors?.length ? d.colors : ["#ffe45c"];
+    if (d.color_mode === "rainbow") return `hsl(${(p.cd.hue + p.hueOff + p.life * 5) % 360} 100% 66%)`;
+    if (d.color_mode === "change") {
+      const list = cols.length > 1 ? cols : [cols[0], "#ffffff"];
+      const f = Math.min(0.999, t) * (list.length - 1), k = Math.floor(f);
+      return mix(list[k], list[k + 1], f - k);
+    }
+    return p.color;
+  }
+  // Returns false when the spark is used up (and has been removed).
+  function stepCustom(p, i) {
+    const rt = p.cd, d = rt.d;
+    if (p.fuse && p.life >= p.fuse) {
+      sparks.splice(i, 1);
+      const cols = d.colors?.length ? d.colors : ["#ffe45c"], m = 14, sp = (d.size || 1.2) * (d.second_size || 0.6) * 0.55;
+      const next = cols[(cols.indexOf(p.color) + 1) % cols.length] || cols[0];
+      for (let k = 0; k < m; k++) {
+        const a = (k / m) * Math.PI * 2 + rand(-0.1, 0.1);
+        sparks.push({ cd: rt, x: p.x, y: p.y, px: p.x, py: p.y, vx: Math.cos(a) * sp + p.vx * 0.3, vy: Math.sin(a) * sp + p.vy * 0.3,
+          life: 0, max: (d.life || 1.4) * 40 * rand(0.8, 1.1), color: next, hueOff: (k / m) * 360 });
+      }
+      return false;
+    }
+    if (p.orbit) {
+      const o = p.orbit;
+      o.a += o.da; o.r += o.dr; o.dr *= 0.962; o.cy += (0.03 + p.life * 0.001) * (d.gravity ?? 1);
+      p.x = o.cx + Math.cos(o.a) * o.r; p.y = o.cy + Math.sin(o.a) * o.r * 0.9;
+    } else {
+      if (p.hold && p.life < p.hold) { p.vx *= 0.95; p.vy = p.vy * 0.95 + G * 0.04; }     // pictures hang in shape
+      else { p.vx *= rt.drag; p.vy = p.vy * rt.drag + G * 0.55 * (d.gravity ?? 1); }
+      p.x += p.vx; p.y += p.vy;
+    }
+    const t = p.life / p.max;
+    const color = customColor(p, t);
+    if ((d.trail > 0 || p.palm) && p.life % 2 === 0 && t < 0.85 && Math.random() < (p.palm ? 0.9 : d.trail)) {
+      sparks.push({ x: p.x, y: p.y, px: p.x, py: p.y, vx: rand(-0.03, 0.03), vy: 0.05, life: 0, max: p.palm ? 22 : 14, color, ember: true });
+    }
+    if (d.glitter > 0 && t < 0.85 && Math.random() < d.glitter * 0.45) {
+      sparks.push({ x: p.x, y: p.y, px: p.x, py: p.y, vx: rand(-0.03, 0.03), vy: rand(0.02, 0.09), life: 0, max: rand(40, 75),
+        color: Math.random() < 0.45 ? "#fff3c4" : color, glitter: true, twinkle: true });
+    }
+    if (d.sparkle > 0 && t > 0.25 && Math.random() < d.sparkle * 0.6) return true;      // crackle
+    let alpha = Math.min(1, 1.25 * (1 - t * t));
+    const age = frame - rt.born;
+    if (d.blink > 0 && Math.floor(age / Math.round(36 - d.blink * 30)) % 2) alpha *= 0.06;
+    if (d.breathe > 0) alpha *= 1 - d.breathe * 0.75 * (0.5 + 0.5 * Math.sin(age * (0.06 + d.breathe * 0.1)));
+    let fill = color;
+    if (d.strobe > 0) {
+      const roll = Math.random();
+      if (roll < d.strobe * 0.3) { fill = "#ffffff"; alpha = 1; } else if (roll < d.strobe * 0.55) return true;
+    }
+    ctx.globalAlpha = alpha; ctx.fillStyle = fill;
+    line(p.px, p.py, p.x, p.y);
+    return true;
   }
 
   // ---- figures (dragon, bow, arrow)
@@ -359,6 +492,7 @@ function startSkyScene(cv, opts = {}) {
   }
 
   function explode(r) {
+    if (r.design) { explodeCustom(r); return; }
     const add = (vx, vy, i, extra = {}) => sparks.push({ x: r.x, y: r.y, px: r.x, py: r.y, vx, vy, life: 0, max: rand(55, 85) * (r.shape === "large" ? 1.3 : 1),
       color: r.colors[i % r.colors.length], fade: r.fade, trail: r.trail, twinkle: r.twinkle, ...extra });
     if (r.shape === "dragon") {
@@ -485,6 +619,7 @@ function startSkyScene(cv, opts = {}) {
       p.life++;
       if (p.life > p.max) { sparks.splice(i, 1); continue; }
       p.px = p.x; p.py = p.y;
+      if (p.cd) { stepCustom(p, i); continue; }
       if (p.sub && p.life >= p.fuse) {               // crossette: the small rocket bursts
         sparks.splice(i, 1);
         const n = 16;
@@ -571,13 +706,15 @@ function startSkyScene(cv, opts = {}) {
 
   resize();
   addEventListener("resize", onResize);
+  let ro = null;
+  if (opts.fit && "ResizeObserver" in window) { ro = new ResizeObserver(() => onResize()); ro.observe(cv); }
   document.addEventListener("visibilitychange", onVis);
   if (reduced) { if (auto) still(); else step(); auto = false; }
   else if (auto) { launch(); setTimeout(launch, 500); wake(); schedule(); }
   else step();
   return {
     stop() {
-      stopped = true; running = false; cancelAnimationFrame(raf); clearTimeout(timer);
+      stopped = true; running = false; ro?.disconnect(); cancelAnimationFrame(raf); clearTimeout(timer);
       removeEventListener("resize", onResize); document.removeEventListener("visibilitychange", onVis);
     },
     // A salvo, e.g. when someone joins. Skipped for reduced motion and hidden tabs.
@@ -588,6 +725,8 @@ function startSkyScene(cv, opts = {}) {
     // One rocket on request (the launch button). Works even with reduced motion,
     // because someone asked for it.
     launch(shape) { if (rockets.length < 12) { launch(shape); wake(); } },
+    // Launch a design straight from the Firework editor.
+    launchDesign(d) { launchDesign(d); wake(); },
     get auto() { return auto; },
     setAuto(on) {
       auto = !!on;

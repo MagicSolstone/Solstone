@@ -114,3 +114,36 @@ def test_skin_profile_parsing(monkeypatch):
     real = httpx.AsyncClient
     monkeypatch.setattr(skins.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
     assert asyncio.run(skins._fetch("069a79f444e94726a5befca90e38aaf5")) == b"\x89PNGskin"
+
+
+def test_custom_firework_editor(client, viewer, anon):
+    from app.fireworks import sanitize
+    # Clamping and cleaning: nothing can escape the ranges.
+    d = sanitize({"name": "  Big   one ", "pattern": "nope", "sparks": 99999, "life": -4, "colors": ["#ABCDEF", "red", "#123456"] * 3,
+                  "gravity": "NaN", "picture": ["..0", "x1", "3.3"]})
+    assert d["name"] == "Big one" and d["pattern"] == "ball" and d["sparks"] == 160 and d["life"] == 0.4
+    assert d["colors"] == ["#abcdef", "#123456", "#abcdef", "#123456"] and d["gravity"] == 1.0
+    assert d["picture"] == ["..0", "3.3"]
+    assert sanitize({"pattern": "picture", "picture": ["...", "..."]})["pattern"] == "ball"   # empty picture
+
+    # A viewer (the kids) can make fireworks; they land in the public show.
+    r = viewer.post("/api/fireworks", json={"name": "Spidey", "pattern": "picture", "picture": [".0.", "000"], "colors": ["#ff0000"]})
+    assert r.status_code == 200, r.text
+    fid = r.json()["id"]
+    assert r.json()["author"] == "kiddo" and r.json()["in_show"] is True
+    pub = anon.get("/api/public/fireworks").json()["custom"]
+    assert any(x["id"] == fid and x["picture"] == [".0.", "000"] for x in pub)
+    assert anon.post("/api/fireworks", json={}).status_code == 401
+
+    # Only the maker or an admin can change or delete it.
+    other = client.post("/api/fireworks", json={"name": "Admin's"}).json()
+    assert viewer.put(f"/api/fireworks/{other['id']}", json={"name": "mine now"}).status_code == 403
+    assert viewer.delete(f"/api/fireworks/{other['id']}").status_code == 403
+    listed = {x["id"]: x for x in viewer.get("/api/fireworks").json()}
+    assert listed[fid]["can_edit"] and not listed[other["id"]]["can_edit"]
+    assert viewer.put(f"/api/fireworks/{fid}", json={"in_show": False, "size": 2}).json()["size"] == 2
+    assert all(x["id"] != fid for x in anon.get("/api/public/fireworks").json()["custom"])
+    assert client.put(f"/api/fireworks/{fid}", json={"name": "Renamed by admin"}).json()["name"] == "Renamed by admin"
+    assert client.delete(f"/api/fireworks/{fid}").json() == {"ok": True}
+    assert client.delete(f"/api/fireworks/{other['id']}").status_code == 200
+    assert client.get(f"/api/fireworks/{fid}").status_code in (404, 405)

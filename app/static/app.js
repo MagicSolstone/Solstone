@@ -160,10 +160,14 @@ const state = {
   assets: {},        // sid -> asset status
   advDefs: {},       // sid -> advancement defs
   timers: [],
+  cleanups: [],      // run when leaving a page (e.g. stop the editor's preview sky)
   items: new Map(),  // item registry for tooltips
   itemSeq: 0,
 };
-function clearTimers() { state.timers.forEach(clearInterval); state.timers = []; }
+function clearTimers() {
+  state.timers.forEach(clearInterval); state.timers = [];
+  state.cleanups.splice(0).forEach((f) => { try { f(); } catch { /* best effort */ } });
+}
 function every(ms, fn) { state.timers.push(setInterval(fn, ms)); }
 
 // ================================================================ language
@@ -877,6 +881,7 @@ async function route() {
   try {
     if (!me.user) return;
     if (parts[0] === "admin") { await viewAdmin(); return; }
+    if (parts[0] === "fireworks") { await viewFireworkEditor(parts[1]); return; }
     if (parts[0] === "s" && parts[1]) {
       const sid = parts[1];
       if (parts[2] === "p" && parts[3]) await viewPlayer(sid, parts[3], parts[4] || "inventory");
