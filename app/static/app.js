@@ -35,7 +35,7 @@ function showLogin(message = "") {
   document.body.classList.add("logged-out");
   const root = $("#login-root");
   root.hidden = false;
-  root.innerHTML = `<canvas id="login-sky" aria-hidden="true"></canvas><div id="login-glow" aria-hidden="true"></div>
+  root.innerHTML = `<canvas id="login-sky" aria-hidden="true"></canvas>
     <div class="login-wrap"><form class="login-card" id="login-form" autocomplete="on">
       <img src="/static/lodestone.svg" alt="" width="56" height="56">
       <h1>Lodestone</h1>

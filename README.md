@@ -17,7 +17,7 @@ A family-friendly web dashboard for Minecraft Java servers run by **Crafty Contr
 - **Backup status:** when the last Crafty backup ran, with a warning when it's overdue.
 - **Leaderboards** across the family.
 - **Mods:** the Fabric or Quilt mods installed, with modded item icons and names read from the mod jars.
-- **Sign-in page:** shows which servers are up, how many people are playing, and the in-game day and weather, over an animated "lodestone" background. Admins choose whether it shows anything, and whether it shows player names (off by default).
+- **Sign-in page:** shows which servers are up, how many people are playing, and the in-game day and weather, over a pixel fireworks night. Admins choose whether it shows anything, and whether it shows player names (off by default).
 - **Accounts:** everyone signs in. Viewers see everything read-only; admins also get the Control tab, settings and user management. Every admin action is logged.
 - **Control (admins):** a live console with command history, one-click time, weather and difficulty, game-rule switches, and a message to everyone (optionally shown big on screen). Player actions: heal, send to spawn or bed, teleport, game mode, give items, private message and kick. Also whitelist and operator management, and start, stop, restart and back up through Crafty.
 - **Bedtime mode:** in-game warnings, then save and disconnect at a set time, with joins blocked until wake-up. Daily screen-time limits can also warn then disconnect a player.
