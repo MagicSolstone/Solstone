@@ -391,7 +391,8 @@ function serverHeader(s, tab) {
     ? `<span class="state-pill"><span class="status-dot ${s.crashed ? "crash" : ""}"></span>${s.crashed ? "Crashed" : "Offline"}</span>`
     : `<span class="state-pill"><span class="status-dot on"></span>${s.online?.length || 0} / ${s.max_players ?? "?"} playing</span>`;
   const facts = [
-    s.version && `<span>Minecraft <b>${esc(s.version)}</b></span>`,
+    s.version && `<span>${s.game && s.game !== "minecraft-java" ? "Version" : "Minecraft"} <b>${esc(s.version)}</b></span>`,
+    s.game && s.game !== "minecraft-java" && `<span><b>${esc(s.game_label)}</b></span>`,
     s.loader && `<span><b>${esc(s.loader)}</b></span>`,
     s.started && s.running && `<span>Up since <b>${esc(new Date(s.started.replace(" ", "T")).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }))}</b></span>`,
     s.cpu != null && s.running && `<span>CPU <b>${esc(Number(s.cpu).toFixed(1))}%</b></span>`,
@@ -402,14 +403,16 @@ function serverHeader(s, tab) {
     s.port && `<span>Port <b>${esc(s.port)}</b></span>`,
   ].filter(Boolean).join("");
   const base = `#/s/${encodeURIComponent(s.id)}`;
+  const java = !s.game || s.game === "minecraft-java";
   const tabs = [["players", "Players", base], ["activity", "Activity", `${base}/activity`], ["performance", "Performance", `${base}/performance`],
-    ["world", "World", `${base}/world`], ["leaderboards", "Leaderboards", `${base}/leaderboards`], ["mods", "Mods", `${base}/mods`]];
+    ...(java ? [["world", "World", `${base}/world`], ["leaderboards", "Leaderboards", `${base}/leaderboards`], ["mods", "Mods", `${base}/mods`]] : [])];
   return `<header class="server-head">
       <div class="big-icon">${s.has_icon ? `<img src="/api/servers/${encodeURIComponent(s.id)}/icon.png" alt="">` : esc((s.name || "?")[0])}</div>
       <div><h1>${esc(s.name)}</h1><div class="motd">${motdHtml(s.motd)}</div><div class="facts">${facts}</div></div>
       <div class="head-actions">${statePill}<button class="icon-btn" id="btn-settings" title="Server settings" aria-label="Server settings">⚙</button></div>
     </header>
-    ${!s.folder_found ? `<div class="notice">Lodestone can't find this server's files at <code>${esc(s.folder)}</code>. Mount Crafty's servers folder so player data can be read.</div>` : ""}
+    ${!java ? `<div class="notice">${esc(s.game_label)} server: Lodestone shows its status, who's online, play time and performance. Inventories, stats and world details are Minecraft Java only for now.</div>` : ""}
+    ${java && !s.folder_found ? `<div class="notice">Lodestone can't find this server's files at <code>${esc(s.folder)}</code>. Mount Crafty's servers folder so player data can be read.</div>` : ""}
     ${s.rcon?.error && s.running ? `<div class="notice">Live data is unavailable: ${esc(s.rcon.error)}. Showing the last saved data instead.</div>` : ""}
     ${s.backup?.found && s.backup.stale ? `<div class="notice">The last backup was ${esc(fmtAgo(s.backup.latest.ts))}. Check the backup schedule in Crafty.</div>` : ""}
     ${s.backup?.configured && !s.backup.found ? `<div class="notice">No backups found for this server in Crafty's backups folder.</div>` : ""}
@@ -424,7 +427,7 @@ async function serverFrame(sid, tab) {
   const idx = state.servers.findIndex((x) => x.id === sid);
   if (idx >= 0) state.servers[idx] = s;
   document.title = `${s.name} · Lodestone`;
-  ensureServerAssets(sid);
+  if (!s.game || s.game === "minecraft-java") ensureServerAssets(sid);
   if (!state.lang[sid]) await api(`/api/servers/${sid}/assets/lang`).then((l) => (state.lang[sid] = l)).catch(() => {});
   return s;
 }
@@ -701,6 +704,9 @@ async function viewLeaderboards(sid) {
 
 // ---------------------------------------------------------------- world
 function skyHtml(w) {
+  if (w.time_of_day == null) {
+    return `<div class="sky" style="background:linear-gradient(#3b4252,#4c566a)"><h2>World time</h2><div class="sub">Not available yet. Turn on RCON for this server and the current day and time will show here.</div></div>`;
+  }
   const t = w.time_of_day;
   const hour = Math.floor((t / 1000 + 6) % 24), min = Math.floor(((t % 1000) / 1000) * 60);
   const clock = new Date(2000, 0, 1, hour, min).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -714,8 +720,10 @@ function skyHtml(w) {
   const orb = isNight
     ? `<svg class="orb" style="left:${left}%;top:${top}px" viewBox="0 0 8 8" shape-rendering="crispEdges"><rect x="1" y="1" width="6" height="6" fill="#dfe6f5"/><rect x="2" y="2" width="2" height="2" fill="#b9c3d8"/><rect x="5" y="4" width="1" height="2" fill="#b9c3d8"/></svg>`
     : `<svg class="orb" style="left:${left}%;top:${top}px" viewBox="0 0 8 8" shape-rendering="crispEdges"><rect x="0" y="0" width="8" height="8" fill="#ffe46b"/><rect x="1" y="1" width="6" height="6" fill="#fff6b0"/></svg>`;
-  const weather = w.thundering ? "Thunderstorm" : w.raining ? "Raining" : "Clear skies";
-  return `<div class="sky" style="background:${bg}">${orb}<h2>Day ${fmtNum(w.day)}</h2><div class="sub">${esc(clock)} · ${phase} · ${weather}</div></div>`;
+  const weather = w.raining == null ? null : w.thundering ? "Thunderstorm" : w.raining ? "Raining" : "Clear skies";
+  const bits = [clock, phase, weather].filter(Boolean).map(esc).join(" · ");
+  const src = w.time_source === "live" ? "Live from the server" : "From the last world save";
+  return `<div class="sky" style="background:${bg}">${orb}<h2>Day ${fmtNum(w.day)}</h2><div class="sub">${bits}</div><div class="sub" style="font-size:.8rem;opacity:.8">${src}</div></div>`;
 }
 async function viewWorld(sid) {
   const s = await serverFrame(sid, "world");

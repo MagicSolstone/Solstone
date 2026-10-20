@@ -198,7 +198,7 @@ class Recorder:
 
         # Joins/leaves come from the log when we can read it (exact times, no 30s lag);
         # otherwise the poll is the source.
-        if not self._log_path(srv).is_file():
+        if not srv.is_java or not self._log_path(srv).is_file():
             for n in joined:
                 self._event(srv, now, "join", f"{n} joined the game", n, online.get(n))
             for n in left:
@@ -235,6 +235,8 @@ class Recorder:
 
     def tail_server(self, srv: S.Server) -> list[tuple[str, str]]:
         """Read new log lines into events. Returns (type, message) pairs to notify about."""
+        if not srv.is_java:
+            return []  # other games log in their own formats
         path = self._log_path(srv)
         state = db.get_log_state(srv.id)
         try:

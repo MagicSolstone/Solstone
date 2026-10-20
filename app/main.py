@@ -49,9 +49,14 @@ async def _server(sid: str) -> S.Server:
     return srv
 
 
+def _require_java(srv: S.Server) -> None:
+    if not srv.is_java:
+        raise HTTPException(409, f"This is a {srv.game} server; world details are only available for Minecraft Java")
+
+
 def _assets(srv: S.Server):
     version = srv.mc_version
-    if not version:
+    if not version or not srv.is_java:
         return None
     return assets_for(version, tuple(str(p) for p in S.mod_jars(srv)), srv.id)
 
@@ -98,7 +103,11 @@ async def get_server(sid: str):
 @app.get("/api/servers/{sid}/world")
 async def get_world(sid: str):
     srv = await _server(sid)
-    return await asyncio.to_thread(S.world_info, srv)
+    _require_java(srv)
+    info = await asyncio.to_thread(S.world_info, srv)
+    if srv.rcon_conf():
+        info.update(await S.live_world(srv))
+    return info
 
 
 @app.get("/api/servers/{sid}/mods")
@@ -266,6 +275,8 @@ async def test_notifications(x_admin_token: str | None = Header(default=None)):
 @app.get("/api/servers/{sid}/assets/status")
 async def assets_status(sid: str):
     srv = await _server(sid)
+    if not srv.is_java:
+        return {"state": "not-minecraft"}
     version = srv.mc_version
     if not version:
         return {"state": "unknown", "error": "Couldn't work out the Minecraft version for this server"}

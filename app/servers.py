@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import struct
 import time
 import zipfile
@@ -97,6 +98,24 @@ class Server:
         return _cache.get(("props", self.id), self.dir / "server.properties", read_properties) or {}
 
     @property
+    def game(self) -> str:
+        """minecraft-java, minecraft-bedrock, hytale, or whatever Crafty calls it.
+        Only Java servers get the world/player/RCON features."""
+        t = (self.type or "").lower()
+        has_props = (self.dir / "server.properties").is_file()
+        if "bedrock" in t:
+            return "minecraft-bedrock"
+        if "hytale" in t or (not has_props and any(self.dir.glob("Hytale*"))):
+            return "hytale"
+        if has_props or "java" in t or not t:
+            return "minecraft-java"
+        return t
+
+    @property
+    def is_java(self) -> bool:
+        return self.game == "minecraft-java"
+
+    @property
     def world_dir(self) -> Path:
         return self.dir / self.props.get("level-name", "world")
 
@@ -123,6 +142,8 @@ class Server:
 
     # ---- RCON
     def rcon_conf(self) -> tuple[str, int, str] | None:
+        if not self.is_java:
+            return None
         s = self.settings
         p = self.props
         password = s.get("rcon_password") or p.get("rcon.password", "")
@@ -269,7 +290,9 @@ async def server_summary(srv: Server) -> dict:
         "rcon": {"configured": rcon is not None, "host": rcon[0] if rcon else None,
                  "port": rcon[1] if rcon else None, "error": srv.rcon_error},
         "map_url": srv.settings.get("map_url"),
-        "loader": detect_loader(srv),
+        "loader": detect_loader(srv) if srv.is_java else None,
+        "game": srv.game,
+        "game_label": GAME_LABELS.get(srv.game, srv.game.replace("-", " ").replace("_", " ").title()),
         "perf": _latest_perf(srv),
         "backup": _backup(srv),
     }
@@ -298,6 +321,9 @@ def _fmt_mem(v: Any) -> str | None:
     if mb is None:
         return v if isinstance(v, str) and v else None
     return f"{mb / 1024:.2f} GB" if mb >= 1024 else f"{mb:.0f} MB"
+
+
+GAME_LABELS = {"minecraft-java": "Minecraft Java", "minecraft-bedrock": "Minecraft Bedrock", "hytale": "Hytale"}
 
 
 def _int(v: Any) -> int | None:
@@ -380,11 +406,90 @@ def dimensions(srv: Server) -> list[dict]:
     return out
 
 
+def _world_extras(srv: Server) -> dict[str, dict]:
+    """Small saved-data files next to level.dat. Newer versions (26.1+) moved things like
+    world clocks, weather and game rules out of level.dat into data/minecraft/*.dat."""
+    out: dict[str, dict] = {}
+    for folder in (srv.world_dir / "data" / "minecraft", srv.world_dir / "data"):
+        if not folder.is_dir():
+            continue
+        for f in sorted(folder.glob("*.dat")):
+            try:
+                if f.stat().st_size > 2_000_000 or f.name.startswith(("map_", "raids", "chunks", "idcounts")):
+                    continue
+            except OSError:
+                continue
+            nbt = _cache.get(("extra", srv.id, str(f)), f, load_dat)
+            if isinstance(nbt, dict):
+                out[f.stem] = nbt
+    return out
+
+
+def _walk(obj: Any, path: tuple = ()):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from _walk(v, path + (str(k),))
+    else:
+        yield path, obj
+
+
+def _num(v: Any) -> int | None:
+    if isinstance(v, bool):
+        return int(v)
+    if isinstance(v, (int, float)):
+        return int(v)
+    return None
+
+
+def _find_key(sources: list[dict], *names: str) -> Any:
+    wanted = {n.lower() for n in names}
+    for src in sources:
+        for path, v in _walk(src):
+            if path and path[-1].lower() in wanted:
+                return v
+    return None
+
+
+def _clock_ticks(sources: list[dict]) -> int | None:
+    """26.1 world clocks: the overworld clock's elapsed ticks, wherever it's stored."""
+    best = None
+    for src in sources:
+        for path, v in _walk(src):
+            low = [p.lower() for p in path]
+            n = _num(v)
+            if n is None or not any("clock" in p for p in low) or not any("overworld" in p for p in low):
+                continue
+            if low[-1] in ("total_ticks", "ticks", "time", "elapsed", "total_time"):
+                return n
+            best = best if best is not None else n
+    return best
+
+
+def _game_rules(lvl: dict, extras: dict[str, dict]) -> dict:
+    rules = lvl.get("GameRules") or lvl.get("game_rules")
+    if rules:
+        return rules
+    for name, nbt in extras.items():
+        if "rule" not in name:
+            continue
+        node = nbt.get("data", nbt) if isinstance(nbt, dict) else {}
+        for _ in range(3):  # descend through single-key wrappers
+            if isinstance(node, dict) and len(node) == 1 and isinstance(next(iter(node.values())), dict):
+                node = next(iter(node.values()))
+        if isinstance(node, dict) and node:
+            return node
+    return {}
+
+
 def world_info(srv: Server) -> dict:
     lvl = srv.level()
     props = srv.props
+    extras = _world_extras(srv)
+    sources = [lvl] + list(extras.values())
     wgs = lvl.get("WorldGenSettings") or {}
     seed = wgs.get("seed", lvl.get("RandomSeed"))
+    if seed is None:
+        seed = _find_key(list(extras.values()), "seed")
     spawn = None
     if isinstance(lvl.get("spawn"), dict):  # 1.21.5+
         p = lvl["spawn"].get("pos")
@@ -392,14 +497,24 @@ def world_info(srv: Server) -> dict:
             spawn = {"x": p[0], "y": p[1], "z": p[2], "dimension": lvl["spawn"].get("dimension")}
     elif "SpawnX" in lvl:
         spawn = {"x": lvl["SpawnX"], "y": lvl["SpawnY"], "z": lvl["SpawnZ"], "dimension": "minecraft:overworld"}
-    rules = lvl.get("GameRules") or lvl.get("game_rules") or {}
+    rules = _game_rules(lvl, extras)
     datapacks = lvl.get("DataPacks") or {}
     diff = lvl.get("Difficulty")
     diff_name = {0: "peaceful", 1: "easy", 2: "normal", 3: "hard"}.get(diff, props.get("difficulty")) \
         if not isinstance(diff, str) else diff
     if isinstance(lvl.get("difficulty_settings"), dict):
         diff_name = lvl["difficulty_settings"].get("difficulty", diff_name)
-    day_time = int(lvl.get("DayTime", 0))
+
+    day_time = _num(lvl.get("DayTime"))
+    time_source = "file" if day_time is not None else None
+    if day_time is None:
+        day_time = _clock_ticks(sources)
+        time_source = "file" if day_time is not None else "unknown"
+    raining = _find_key(sources, "raining")
+    thundering = _find_key(sources, "thundering")
+    game_time = _num(lvl.get("Time"))
+    if game_time is None:
+        game_time = _num(_find_key(list(extras.values()), "game_time", "gametime"))
     return {
         "level_name": lvl.get("LevelName") or props.get("level-name", "world"),
         "version": srv.mc_version,
@@ -409,21 +524,64 @@ def world_info(srv: Server) -> dict:
         "difficulty": diff_name,
         "default_gamemode": props.get("gamemode", "survival"),
         "spawn": spawn,
-        "game_time": int(lvl.get("Time", 0)),
+        "game_time": game_time or 0,
         "day_time": day_time,
-        "day": day_time // 24000 + 1,
-        "time_of_day": day_time % 24000,
-        "raining": bool(lvl.get("raining", 0)),
-        "thundering": bool(lvl.get("thundering", 0)),
+        "day": day_time // 24000 + 1 if day_time is not None else None,
+        "time_of_day": day_time % 24000 if day_time is not None else None,
+        "time_source": time_source,
+        "raining": bool(_num(raining)) if raining is not None else None,
+        "thundering": bool(_num(thundering)) if thundering is not None else None,
         "last_played": (lvl.get("LastPlayed") or 0) / 1000 or None,
         "allow_commands": bool(lvl.get("allowCommands", 0)),
-        "game_rules": {str(k): (str(v) if not isinstance(v, (int, float, bool)) else v) for k, v in rules.items()},
+        "game_rules": {str(k): (str(v) if not isinstance(v, (int, float, bool)) else v) for k, v in rules.items()
+                       if not isinstance(v, (dict, list))},
         "datapacks": {"enabled": datapacks.get("Enabled", []), "disabled": datapacks.get("Disabled", [])},
         "dimensions": dimensions(srv),
         "properties": {k: props[k] for k in ("view-distance", "simulation-distance", "pvp", "spawn-protection",
                                                "white-list", "online-mode", "max-players", "allow-flight",
                                                "level-type") if k in props},
     }
+
+
+_TIME_IS = re.compile(r"time is\s+(-?\d+)", re.I)
+_SEED = re.compile(r"Seed:\s*\[?(-?\d+)\]?")
+_live_world_cache: dict[str, tuple[float, dict]] = {}
+
+
+def _first_int(out: str | None) -> int | None:
+    if not out:
+        return None
+    m = _TIME_IS.search(out)
+    return int(m.group(1)) if m else None
+
+
+async def live_world(srv: Server) -> dict:
+    """Ask the running server for the time and seed (works across format changes)."""
+    hit = _live_world_cache.get(srv.id)
+    if hit and time.monotonic() - hit[0] < 20:
+        return hit[1]
+    out: dict = {}
+    try:
+        day_time = _first_int(await srv.rcon("time query daytime"))
+        if day_time is not None:
+            days = _first_int(await srv.rcon("time query day"))
+            out.update(day_time=day_time, day=(days if days is not None else day_time // 24000) + 1,
+                       time_of_day=day_time % 24000, time_source="live")
+        else:
+            # 26.1+: time is kept by world clocks; `time query time` is the overworld clock's elapsed ticks.
+            ticks = _first_int(await srv.rcon("time query time"))
+            if ticks is not None:
+                out.update(day_time=ticks, day=ticks // 24000 + 1, time_of_day=ticks % 24000, time_source="live")
+        game_time = _first_int(await srv.rcon("time query gametime"))
+        if game_time is not None:
+            out["game_time"] = game_time
+        m = _SEED.search(await srv.rcon("seed") or "")
+        if m:
+            out["seed"] = m.group(1)
+    except RconError:
+        return {}
+    _live_world_cache[srv.id] = (time.monotonic(), out)
+    return out
 
 
 # ---------------------------------------------------------------- mods
