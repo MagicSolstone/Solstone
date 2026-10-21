@@ -205,3 +205,45 @@ def test_palette_as_plain_names():
     got = worldmap.render_chunk(worldmap.read_chunk(buf.getvalue()), worldmap.Colors(None), False)
     assert got is not None and (got[1] == 63).all()
     assert worldmap._block_name({"name": "oak_log"}) == "minecraft:oak_log"
+
+
+def _hm(heights_zx, min_y=-64):
+    """A WORLD_SURFACE heightmap (9 bits, x + z*16) for absolute top-block heights."""
+    vals = [int(heights_zx[z][x]) + 1 - min_y for z in range(16) for x in range(16)]
+    return LongArray(_pack(vals, 9))
+
+
+def test_narrow_packing_and_heightmap_check():
+    """Newer worlds can pack a 2-block section with 1 bit per block (the length says so)."""
+    from app import worldmap
+    col = lambda x, z: [(y, "minecraft:stone") for y in range(0, 10 + x)]    # noqa: E731 - slopes up eastwards
+    c = _chunk(0, 0, col)
+    for s in c["sections"]:
+        bs = s["block_states"]
+        names = [p["Name"] for p in bs["palette"]]
+        if len(names) == 2:                                                # repack at 1 bit per block
+            per = 4096 // 64
+            flat = []
+            for v in bs["data"]:
+                v = int(v) & ((1 << 64) - 1)
+                flat += [(v >> (4 * k)) & 0xF for k in range(16)]
+            bs["data"] = LongArray(_pack(flat[:4096], 1))
+            assert len(bs["data"]) == per
+    c["yPos"] = Int(-4)
+    c["Heightmaps"] = Compound({"WORLD_SURFACE": _hm([[9 + x for x in range(16)] for z in range(16)])})
+    buf = io.BytesIO(); nbtlib.File(c).write(buf)
+    stats = {}
+    rgb, h = worldmap.render_chunk(worldmap.read_chunk(buf.getvalue()), worldmap.Colors(None), False, stats)
+    assert (h[0] == np.arange(9, 25)).all()
+    assert stats["narrow_sections"] >= 1 and stats["checked"] == 1 and stats["agree"] == 1.0 and "turned" not in stats
+
+
+def test_turned_chunk_is_put_right():
+    from app import worldmap
+    c = _chunk(0, 0, lambda x, z: [(y, "minecraft:stone") for y in range(0, 10 + x)])
+    c["yPos"] = Int(-4)
+    c["Heightmaps"] = Compound({"WORLD_SURFACE": _hm([[9 + z for x in range(16)] for z in range(16)])})   # the game says: rises southwards
+    buf = io.BytesIO(); nbtlib.File(c).write(buf)
+    stats = {}
+    rgb, h = worldmap.render_chunk(worldmap.read_chunk(buf.getvalue()), worldmap.Colors(None), False, stats)
+    assert stats.get("turned") == 1 and (h[:, 0] == np.arange(9, 25)).all()

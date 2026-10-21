@@ -33,7 +33,7 @@ _WATERY = {"water", "bubble_column", "kelp", "kelp_plant", "seagrass", "tall_sea
 # Region chunks are big; only the block palettes, packed block data and section heights
 # are needed, so everything else is skipped without being decoded.
 _WANT = {"sections", "Sections", "Level", "block_states", "BlockStates", "blocks", "palette", "Palette", "data", "Data", "Y", "y",
-         "Name", "name", "yPos"}
+         "Name", "name", "yPos", "xPos", "zPos", "Heightmaps", "WORLD_SURFACE"}
 
 
 class _R:
@@ -244,19 +244,42 @@ class Colors:
 
 
 # ------------------------------------------------------------------ chunks -> pixels
-def _unpack(data: np.ndarray | None, n_palette: int, count: int = 4096) -> np.ndarray:
-    if n_palette <= 1 or data is None or not len(data):
-        return np.zeros(count, dtype=np.int32)
-    bits = max(4, int(np.ceil(np.log2(n_palette))))
-    per = 64 // bits
-    if len(data) != -(-count // per) and len(data) * 64 >= count * bits:
-        # 1.13-1.15: values run straight across long boundaries
+def _bits_for(n_longs: int, count: int, n_palette: int) -> tuple[int, bool]:
+    """(bits per entry, spans long boundaries) from the array's length. Usually the length
+    matches max(4, ceil(log2(palette))) packed whole-entries-per-long, but older worlds pack
+    across longs (1.13-1.15) and newer ones may use fewer bits; the length tells which."""
+    want = max(4, int(np.ceil(np.log2(n_palette))))
+    padded = lambda b: -(-count // (64 // b))                       # noqa: E731
+    if n_longs == padded(want):
+        return want, False
+    need = max(1, int(np.ceil(np.log2(n_palette))))
+    for b in range(need, 17):
+        if n_longs == padded(b):
+            return b, False
+    if (n_longs * 64) % count == 0 and n_longs * 64 // count >= need:
+        return n_longs * 64 // count, True
+    return want, n_longs * 64 >= count * want and n_longs != padded(want)
+
+
+def _unpack_bits(data: np.ndarray, bits: int, spanning: bool, count: int) -> np.ndarray:
+    if spanning:
         bitarr = np.unpackbits(data.astype(">u8").view(np.uint8).reshape(-1, 8)[:, ::-1], axis=1, bitorder="little").reshape(-1)
         bitarr = bitarr[:count * bits].reshape(count, bits)
         return (bitarr.astype(np.int32) << np.arange(bits, dtype=np.int32)).sum(axis=1).astype(np.int32)
+    per = 64 // bits
     shifts = (np.arange(per, dtype=np.uint64) * np.uint64(bits))
     vals = (data.view(np.uint64)[:, None] >> shifts[None, :]) & np.uint64((1 << bits) - 1)
     return vals.reshape(-1)[:count].astype(np.int32)
+
+
+def _unpack(data: np.ndarray | None, n_palette: int, count: int = 4096, stats: dict | None = None) -> np.ndarray:
+    if n_palette <= 1 or data is None or not len(data):
+        return np.zeros(count, dtype=np.int32)
+    bits, spanning = _bits_for(len(data), count, n_palette)
+    if stats is not None and not spanning and bits < 4:
+        stats["narrow_sections"] = stats.get("narrow_sections", 0) + 1     # fewer bits than the old 4-bit minimum
+    out = _unpack_bits(data, bits, spanning, count)
+    return np.minimum(out, n_palette - 1)                           # never index past the palette
 
 
 def _short(name: str) -> str:
@@ -288,8 +311,20 @@ def _section_blocks(s: dict) -> tuple[list[str], np.ndarray | None]:
     return [_block_name(p) for p in palette], data
 
 
-def render_chunk(nbt: dict, colors: Colors, nether: bool) -> tuple[np.ndarray, np.ndarray] | None:
+def _surface_from_heightmap(lvl: dict, min_y: int) -> np.ndarray | None:
+    """The game's own record of the top block in each column ([z, x], absolute y)."""
+    hm = lvl.get("Heightmaps")
+    data = hm.get("WORLD_SURFACE") if isinstance(hm, dict) else None
+    if data is None or not len(data):
+        return None
+    bits, spanning = _bits_for(len(data), 256, 512)
+    vals = _unpack_bits(data, bits, spanning, 256).reshape(16, 16)
+    return np.where(vals > 0, vals - 1 + min_y, -9999)
+
+
+def render_chunk(nbt: dict, colors: Colors, nether: bool, stats: dict | None = None) -> tuple[np.ndarray, np.ndarray] | None:
     """16x16 colours and heights for one chunk (None if it has no block data)."""
+    stats = stats if stats is not None else {}
     lvl = nbt.get("Level") if isinstance(nbt.get("Level"), dict) else nbt
     sections = lvl.get("sections") or lvl.get("Sections") or []
     layers = []                                   # (y, names, idx[16,16,16])
@@ -297,7 +332,7 @@ def render_chunk(nbt: dict, colors: Colors, nether: bool) -> tuple[np.ndarray, n
         names, data = _section_blocks(s)
         if not names or all(_short(n) in _AIR for n in names):
             continue
-        idx = _unpack(data, len(names)).reshape(16, 16, 16)          # y, z, x
+        idx = _unpack(data, len(names), stats=stats).reshape(16, 16, 16)          # y, z, x
         layers.append((int(s.get("Y", s.get("y", 0))), names, idx))
     if not layers:
         return None
@@ -349,6 +384,21 @@ def render_chunk(nbt: dict, colors: Colors, nether: bool) -> tuple[np.ndarray, n
             rgb = np.where(top_is_water[..., None], rgb * shade, rgb)
     rgb[~has] = 0
     heights[~has] = -9999
+    # Check against the game's own height map. If the picture only matches it turned on its
+    # side, the blocks were laid out x/z the other way round: turn it.
+    if not nether:
+        min_y = int(lvl.get("yPos", 0)) * 16          # before 1.18 (no yPos) the world starts at 0
+        hm = _surface_from_heightmap(lvl, min_y)
+        if hm is not None and has.any():
+            ok = (hm != -9999) & has
+            if ok.sum() >= 32:
+                same = float((np.abs(heights - hm)[ok] <= 1).mean())
+                turned = float((np.abs(heights.T - hm)[ok.T & ok] <= 1).mean()) if (ok.T & ok).any() else 0.0
+                stats["checked"] = stats.get("checked", 0) + 1
+                stats["agree"] = stats.get("agree", 0.0) + max(same, turned)
+                if turned > same + 0.2:
+                    stats["turned"] = stats.get("turned", 0) + 1
+                    return np.ascontiguousarray(np.transpose(rgb, (1, 0, 2))), np.ascontiguousarray(heights.T)
     return rgb, heights
 
 
@@ -465,6 +515,7 @@ def render_region(path: Path, colors: Colors, nether: bool = False, info: dict |
     chunks, drawn, blank (no blocks), failed, error, compression types and a sample chunk."""
     info = info if info is not None else {}
     info.update(chunks=0, drawn=0, blank=0, failed=0, error="", compression={}, sample=None)
+    layout: dict = {}
     try:
         data = path.read_bytes()
     except OSError as e:
@@ -499,7 +550,7 @@ def render_region(path: Path, colors: Colors, nether: bool = False, info: dict |
                 secs = lvl.get("sections") or lvl.get("Sections") or []
                 info["sample"]["sections"] = len(secs)
                 info["sample"].update(_describe(raw))
-            got = render_chunk(nbt, colors, nether)
+            got = render_chunk(nbt, colors, nether, layout)
         except Exception as e:
             info["failed"] += 1
             info["error"] = info["error"] or f"chunk {i}: {e!r}"[:300]
@@ -509,10 +560,18 @@ def render_region(path: Path, colors: Colors, nether: bool = False, info: dict |
             continue
         info["drawn"] += 1
         cx, cz = i % 32, i // 32
+        lvl = nbt.get("Level") if isinstance(nbt.get("Level"), dict) else nbt
+        if isinstance(lvl.get("xPos"), int) and isinstance(lvl.get("zPos"), int):
+            if (lvl["xPos"] & 31, lvl["zPos"] & 31) != (cx, cz):
+                layout["moved"] = layout.get("moved", 0) + 1      # the chunk says it belongs elsewhere
+            cx, cz = lvl["xPos"] & 31, lvl["zPos"] & 31
         c_rgb, c_h = got
         rgb[cz * 16:cz * 16 + 16, cx * 16:cx * 16 + 16] = c_rgb
         heights[cz * 16:cz * 16 + 16, cx * 16:cx * 16 + 16] = c_h
         alpha[cz * 16:cz * 16 + 16, cx * 16:cx * 16 + 16] = np.where(c_h != -9999, 255, 0)
+    if layout.get("checked"):
+        layout["agree"] = round(layout["agree"] / layout["checked"], 3)
+    info["layout"] = layout
     if info["failed"]:
         log.warning("map %s: %d of %d chunks couldn't be read (first: %s)", path.name, info["failed"], info["chunks"], info["error"])
     elif info["chunks"] and not info["drawn"]:
@@ -547,7 +606,7 @@ def regions(world: Path, dim: str) -> list[list[int]]:
     return out
 
 
-RENDER_VERSION = 3          # bump when the drawing changes: older cached tiles are redrawn
+RENDER_VERSION = 4          # bump when the drawing changes: older cached tiles are redrawn
 
 
 def _tile_path(sid: str, dim: str, rx: int, rz: int) -> Path:
