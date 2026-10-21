@@ -72,7 +72,7 @@ def test_log_tail_records_events_and_resumes(client, sid):
         f"[{t2}] [Server thread/INFO]: Gimli_Jr joined the game\n")
     pending = recorder.tail_server(srv)
     # The old join and the chat are recorded but not pushed; the fresh join is.
-    assert pending == [("join", "Gimli_Jr joined the game")]
+    assert pending == []                                  # join/leave alerts come from the online check
     evs = db.events(sid)
     assert [e["type"] for e in evs][:3] == ["join", "chat", "join"]
     assert evs[0]["uuid"] == helpers.PLAYERS[1][1]
@@ -83,7 +83,7 @@ def test_log_tail_records_events_and_resumes(client, sid):
     assert recorder.tail_server(srv) == [("death", "Gimli_Jr was slain by Zombie")]
     # Rotation: a new file is read from the start
     (logs / "latest.log").write_text(f"[{t2}] [Server thread/INFO]: Tyler left the game\n")
-    assert recorder.tail_server(srv) == [("leave", "Tyler left the game")]
+    assert recorder.tail_server(srv) == []
 
 
 def test_sessions_and_daily_split():
@@ -146,7 +146,7 @@ def test_notification_settings(client, viewer):
 
 
 def test_quiet_hours_wraparound():
-    assert notify._in_quiet_hours({"quiet_start": "00:00", "quiet_end": "23:59"}) is True
+    assert notify._in_quiet_hours({"quiet_enabled": True, "quiet_start": "00:00", "quiet_end": "23:59"}) is True
     assert notify._in_quiet_hours({"quiet_start": "", "quiet_end": ""}) is False
 
 
@@ -245,7 +245,7 @@ def test_log_in_another_time_zone_still_counts_as_now(client, sid):
     db.x("DELETE FROM log_state WHERE server_id=?", (sid,))
     recorder._offsets.pop(sid, None)
     last = fwshow.feed_since(-1, True)["last"]
-    assert recorder.tail_server(srv) == [("join", "MomCrafts joined the game")]
+    assert recorder.tail_server(srv) == []
     ev = db.events(sid, types=["join"], player="MomCrafts", limit=1)[0]
     assert abs(ev["ts"] - time.time()) < 120
     pushed = [i for i in fwshow.feed_since(last, True)["items"] if i["event"] == "join" and i["player"] == "MomCrafts"]
@@ -253,3 +253,33 @@ def test_log_in_another_time_zone_still_counts_as_now(client, sid):
     # the online check noticing the same join doesn't set off a second firework
     assert fwshow.pushed_recently(sid, "join", "momcrafts")
     recorder._offsets.pop(sid, None)
+
+
+def test_join_and_leave_alerts_come_from_the_online_check(client, sid, monkeypatch):
+    """With a server log present, join/leave pushes still come from who's online (the log's
+    clock can be off), once per change, and not for whoever is on when Solstone starts."""
+    import asyncio
+
+    from app import recorder as rec_mod
+    from app import servers as S
+    srv = _server(client, sid)
+    srv.dir.joinpath("logs").mkdir(exist_ok=True)
+    srv.dir.joinpath("logs", "latest.log").touch()
+    sent = []
+    monkeypatch.setattr(rec_mod, "maybe_notify", lambda t, name, msg: sent.append((t, msg)))
+    online = {"names": ["Tyler"]}
+
+    async def fake_online(_srv):
+        return list(online["names"]), "rcon"
+    monkeypatch.setattr(S, "online_players", fake_online)
+    monkeypatch.setattr(srv, "rcon_conf", lambda: None)
+    recorder._running_state.pop(srv.id, None)
+    db.update_sessions(srv.id, {}, time.time())
+    asyncio.run(recorder.poll_server(srv))               # first look after a start: no alerts
+    assert sent == []
+    online["names"] = ["Tyler", "Gimli_Jr"]
+    asyncio.run(recorder.poll_server(srv))
+    online["names"] = ["Tyler"]
+    asyncio.run(recorder.poll_server(srv))
+    assert sent == [("join", "Gimli_Jr joined the game"), ("leave", "Gimli_Jr left the game")]
+    db.update_sessions(srv.id, {}, time.time())

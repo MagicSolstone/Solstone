@@ -467,19 +467,23 @@ async function openNotifications() {
         <button type="button" class="link-btn" id="btn-digest">Preview this week's digest</button>
         <pre class="digest-preview" id="digest-preview" hidden></pre>
       </fieldset>
-      <div class="row2">
-        <label>Quiet from <small>No notifications during these hours</small><input class="input" type="time" name="quiet_start" value="${esc(c.quiet_start || "")}"></label>
-        <label>Until <small>&nbsp;</small><input class="input" type="time" name="quiet_end" value="${esc(c.quiet_end || "")}"></label>
+      <label class="switch-row"><span><b>Quiet hours</b><br><small class="muted">No notifications between these times${c.quiet_now ? " (they're on right now)" : ""}</small></span>
+        <input type="checkbox" role="switch" name="quiet_enabled" ${c.quiet_enabled ? "checked" : ""}></label>
+      <div class="row2" id="quiet-times">
+        <label>Quiet from<input class="input" type="time" name="quiet_start" value="${esc(c.quiet_start || "22:00")}"></label>
+        <label>Until<input class="input" type="time" name="quiet_end" value="${esc(c.quiet_end || "07:00")}"></label>
       </div>
       <div class="actions"><button type="button" class="btn" id="btn-test">Send test</button><span style="flex:1"></span>
         <button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Save notifications</button></div>
     </form>`, (m) => {
     const form = $("#notify-form", m);
+    const quiet = () => { const on = form.quiet_enabled.checked; $$("#quiet-times input", form).forEach((i) => { i.disabled = !on; }); $("#quiet-times", form).classList.toggle("off", !on); };
+    form.quiet_enabled.addEventListener("change", quiet); quiet();
     const body = () => {
       const f = new FormData(form);
       const limits = {};
       $$('input[name="limit"]', form).forEach((i) => { if (i.value) limits[i.dataset.player] = Number(i.value); });
-      const b = { ntfy_url: f.get("ntfy_url"), events: f.getAll("ev"), quiet_start: f.get("quiet_start"), quiet_end: f.get("quiet_end"),
+      const b = { ntfy_url: f.get("ntfy_url"), events: f.getAll("ev"), quiet_enabled: !!f.get("quiet_enabled"), quiet_start: form.quiet_start.value, quiet_end: form.quiet_end.value,
         limits, limit_action: f.get("limit_action"), digest_enabled: !!f.get("digest_enabled"), digest_day: Number(f.get("digest_day")), digest_hour: Number(f.get("digest_hour")) };
       if (f.get("ntfy_token")) b.ntfy_token = f.get("ntfy_token");
       if (f.get("discord_webhook")) b.discord_webhook = f.get("discord_webhook");

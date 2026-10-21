@@ -539,7 +539,9 @@ function serverIconHtml(s, withDot = true) {
   return `<span class="server-icon">${inner}${dot}</span>`;
 }
 async function loadServers() {
+  const uuids = api("/api/players/uuids").then((m) => Object.assign(knownUuids, m)).catch(() => null);
   try { state.servers = await api("/api/servers"); } catch (e) { state.servers = state.servers || []; }
+  await uuids;
   $("#rail-servers").innerHTML = railHtml(curSid);
 }
 

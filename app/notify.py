@@ -26,6 +26,8 @@ def get_config() -> dict:
         "events": stored.get("events", DEFAULT_EVENTS),
         "quiet_start": stored.get("quiet_start", ""),  # "22:00" -> no pushes until quiet_end
         "quiet_end": stored.get("quiet_end", ""),
+        # quiet hours can be switched off without losing the times (older settings: on if both set)
+        "quiet_enabled": bool(stored.get("quiet_enabled", bool(stored.get("quiet_start") and stored.get("quiet_end")))),
         # player name (lowercase) -> daily limit in minutes
         "limits": {k.lower(): int(v) for k, v in (stored.get("limits") or {}).items() if str(v).isdigit() and int(v) > 0},
         "digest_enabled": bool(stored.get("digest_enabled", False)),
@@ -45,6 +47,8 @@ def public_config() -> dict:
         "events": c["events"],
         "quiet_start": c["quiet_start"],
         "quiet_end": c["quiet_end"],
+        "quiet_enabled": c["quiet_enabled"],
+        "quiet_now": _in_quiet_hours(c),
         "event_types": EVENT_TYPES,
         "limits": c["limits"],
         "digest_enabled": c["digest_enabled"],
@@ -84,6 +88,8 @@ def save_config(values: dict) -> dict:
             cur["limit_grace_minutes"] = max(1, min(30, int(values["limit_grace_minutes"])))
         except (TypeError, ValueError):
             pass
+    if "quiet_enabled" in values:
+        cur["quiet_enabled"] = bool(values["quiet_enabled"])
     if "digest_enabled" in values:
         cur["digest_enabled"] = bool(values["digest_enabled"])
     for k, lo, hi in (("digest_day", 0, 6), ("digest_hour", 0, 23)):
@@ -97,7 +103,7 @@ def save_config(values: dict) -> dict:
 
 
 def _in_quiet_hours(c: dict) -> bool:
-    if not (c["quiet_start"] and c["quiet_end"]):
+    if not (c.get("quiet_enabled") and c["quiet_start"] and c["quiet_end"]):
         return False
     from datetime import datetime
 

@@ -236,6 +236,13 @@ class Recorder:
                 self._event(srv, now, "join", f"{n} joined the game", n, online.get(n))
             for n in left:
                 self._event(srv, now, "leave", f"{n} left the game", n, name_to_uuid.get(n.lower()))
+        elif self._running_state.get(srv.id) is not None:
+            # The log records the event, but join/leave notifications come from here: the
+            # online list doesn't depend on the log's clock or time zone.
+            for n in joined:
+                maybe_notify("join", srv.display_name, f"{n} joined the game")
+            for n in left:
+                maybe_notify("leave", srv.display_name, f"{n} left the game")
         # Join fireworks from the online check too, in case the log line was missed or its
         # clock is off (each join sets off one firework, whichever notices first).
         if self._running_state.get(srv.id) is not None:
@@ -385,12 +392,14 @@ class Recorder:
             if ts_dt > now + timedelta(seconds=60):
                 ts_dt -= timedelta(days=1)
             ts = ts_dt.timestamp() - offset
-            fresh = time.time() - ts < NOTIFY_MAX_AGE
+            # Lines appended since the last read are happening now, whatever the log's clock
+            # says; on a first read or a new log file, go by the time on the line.
+            fresh = (same_file and time.time() - st.st_mtime < NOTIFY_MAX_AGE) or time.time() - ts < NOTIFY_MAX_AGE
             uuid = known.get(ev.player.lower()) if ev.player else None
             db.add_event(srv.id, ts, ev.type, ev.message, ev.player, uuid)
-            if fresh and ev.type != "chat":
+            if fresh and ev.type not in ("chat", "join", "leave"):      # join/leave: see poll_server
                 pending.append((ev.type, ev.message))
-            if fresh and time.time() - ts < 90:            # fireworks only for things happening now
+            if fresh:                                      # fireworks only for things happening now
                 if ev.type == "join":
                     if not fwshow.pushed_recently(srv.id, "join", ev.player):
                         fwshow.push(srv.id, srv.display_name, "join", ev.player, ev.message)

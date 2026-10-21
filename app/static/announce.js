@@ -159,7 +159,7 @@ function annBirthdays(el) {
   const d = ann.data;
   const list = [...d.birthdays].sort((a, b) => annDaysUntil(a) - annDaysUntil(b));
   const row = (b) => `<div class="ann-bday" data-player="${esc(b.player)}">
-      <span class="ann-bd-face">${faceHtml({ name: b.player }, 28)}</span>
+      <span class="ann-bd-face">${faceHtml({ name: b.player, uuid: (d.uuids || {})[String(b.player).toLowerCase()] }, 28)}</span>
       <input class="input sm" name="player" value="${esc(b.player)}" list="ann-players" maxlength="16" aria-label="Player" placeholder="Player">
       <select class="input sm" name="month" aria-label="Month">${ANN_MONTHS.map((m, i) => `<option value="${i + 1}" ${i + 1 === b.month ? "selected" : ""}>${m}</option>`).join("")}</select>
       <input class="input sm" name="day" type="number" min="1" max="31" value="${b.day}" aria-label="Day" style="width:70px">

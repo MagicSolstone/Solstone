@@ -465,10 +465,12 @@ async def get_board(request: Request):
     auth.require_admin(request)
     await S.registry.refresh()
     players: dict[str, str] = {}
+    uuids: dict[str, str] = {}                     # for faces from the world's own skin copy
     for srv in S.registry.servers.values():
-        for p in S.known_players(srv).values():
+        for u, p in S.known_players(srv).items():
             players.setdefault(p["name"].lower(), p["name"])
-    return {**board.config(), "players": sorted(players.values(), key=str.lower),
+            uuids.setdefault(p["name"].lower(), u)
+    return {**board.config(), "players": sorted(players.values(), key=str.lower), "uuids": uuids,
             "servers": [{"id": x.id, "name": x.display_name, "bedtime": guard.bedtime_config(x)["enabled"]} for x in _board_servers()],
             "shows": [{"id": x["id"], "name": x["name"]} for x in fwshow.shows()], "now": time.time(),
             "status_enabled": _status_cfg()["enabled"]}
@@ -1288,6 +1290,17 @@ async def list_servers():
         else:
             out.append(r)
     return out
+
+
+@app.get("/api/players/uuids")
+async def player_uuids():
+    """Every known player name (lowercase) -> UUID, so heads can use the world's own skin copy
+    wherever only a name is at hand."""
+    out: dict[str, str] = {}
+    for srv in S.registry.servers.values():
+        for u, p in S.known_players(srv).items():
+            out.setdefault(p["name"].lower(), u)
+    return JSONResponse(out, headers={"Cache-Control": "private, max-age=300"})
 
 
 @app.get("/api/servers-hidden")

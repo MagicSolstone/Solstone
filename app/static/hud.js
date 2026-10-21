@@ -77,8 +77,12 @@ function motdHtml(text) {
 // layer are separate layers of the same image; the initial shows if neither loads.
 let skinSource = (p) => p.uuid ? `/api/skins/${String(p.uuid).replace(/-/g, "")}.png` : null;
 const backupSkin = (p) => `https://mc-heads.net/skin/${p.name ? encodeURIComponent(p.name) : String(p.uuid || "").replace(/-/g, "")}`;
+// name (lowercase) -> UUID for players Solstone knows; filled after sign-in so a head drawn
+// from just a name still uses the real skin rather than a name lookup (Steve for unknown names).
+const knownUuids = {};
 function faceHtml(p, size, cls = "") {
   const initial = esc((p.name || "?")[0].toUpperCase());
+  if (!p.uuid && p.name && knownUuids[String(p.name).toLowerCase()]) p = { ...p, uuid: knownUuids[String(p.name).toLowerCase()] };
   const main = skinSource(p);
   return `<span class="face ${cls}" style="--s:${size}px;--skin:${main ? `url('${main}')` : "none"};--skin2:url('${backupSkin(p)}')" aria-hidden="true"><span class="face-init">${initial}</span></span>`;
 }
