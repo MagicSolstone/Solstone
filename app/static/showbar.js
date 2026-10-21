@@ -88,7 +88,9 @@ const FWAudio = {
     try { this.playNow(type, info); } finally { this.dest = null; }
   },
   playNow(type, info) {
-    if (this.solo && !info.solo) return;            // the firework editor: only the preview makes sound
+    // The firework editor (or a preview window): only its sky makes sound, unless the page is
+    // hidden to watch the big sky.
+    if (this.solo && !info.solo && !document.body.classList.contains("ui-hidden")) return;
     const budget = { thunder: [1, 4000], launch: [5, 600], burst: [6, 500], crackle: [3, 900], fizzle: [3, 800], hiss: [3, 1500], ground: [3, 1500] }[type] || [4, 500];
     if (!this.allow(`${info.bus || ""}:${type}`, ...budget)) return;
     const ctx = this.ctx, t0 = ctx.currentTime + (info.delay || 0) + 0.01, pan = info.pan || 0;

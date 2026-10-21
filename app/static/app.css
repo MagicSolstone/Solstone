@@ -1356,7 +1356,7 @@ body:not(.logged-out):not(.status-page) .mbar.no-music { width: auto; }
 .mq-head .mq-tool:first-child:not([data-mq="shuffle"]) { margin-right: 4px; }
 body.ui-hidden .music-pop:not([hidden]) { display: grid !important; }
 body.ui-hidden .mbar { display: grid; }
-body.on-editor .mb-launch, body.on-editor .mb-sky .sky-auto, body.on-editor .mb-hide { display: none; }
+body.on-editor:not(.ui-hidden) .mb-launch, body.on-editor:not(.ui-hidden) .mb-sky .sky-auto { display: none; }
 body.on-editor .mbar.no-music { display: none; }
 .sky-ctl { display: none !important; }
 body.tv .mbar:not(.playing) { display: none; }

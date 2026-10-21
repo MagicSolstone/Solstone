@@ -215,7 +215,11 @@ function startSkyScene(cv, opts = {}) {
   }
 
   function resize() {
-    W = Math.ceil((opts.fit ? cv.clientWidth : innerWidth) / SCALE); H = Math.ceil((opts.fit ? cv.clientHeight : innerHeight) / SCALE);
+    let w = Math.ceil((opts.fit ? cv.clientWidth : innerWidth) / SCALE), h = Math.ceil((opts.fit ? cv.clientHeight : innerHeight) / SCALE);
+    // A hidden canvas measures 0 x 0 (the page hidden to watch the sky, say). Keep the last
+    // size until it's visible again; a 0-size sky can't be drawn and would stop the animation.
+    if (!w || !h) { if (W && H) return; w = h = 1; }
+    W = w; H = h;
     cv.width = W; cv.height = H;
     stars = Array.from({ length: Math.round((W * H) / 700) }, () => ({ x: Math.floor(Math.random() * W), y: Math.floor(Math.random() * H * 0.7), p: Math.random() * 6.28, a: rand(0.15, 0.55) }));
     buildLand();
