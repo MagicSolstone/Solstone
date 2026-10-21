@@ -1447,3 +1447,11 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .hidden-row { display: flex; align-items: center; gap: 10px; }
 .hidden-row button { margin-left: auto; }
 #quiet-times.off { opacity: .45; }
+
+/* ------------------------------------------------------------ picking songs */
+.mu-rows.pickable .mu-row { grid-template-columns: 22px 40px minmax(0, 1fr) 54px auto; }
+.mu-pick { width: 18px; height: 18px; accent-color: var(--gold); cursor: pointer; margin: 0; }
+.mu-row.picked { background: rgba(242, 193, 78, .1); }
+.mu-selbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 96px; z-index: 60; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  padding: 10px 14px; border-radius: var(--radius-m); border: 1px solid var(--gold-deep); background: rgba(16, 20, 32, .92); max-width: calc(100vw - 32px); }
+@media (max-width: 640px) { .mu-rows.pickable .mu-row { grid-template-columns: 22px 36px minmax(0, 1fr) auto; } .mu-selbar { bottom: 84px; } }

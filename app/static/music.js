@@ -4,7 +4,7 @@
 "use strict";
 
 const MU_TABS = [["songs", "Songs"], ["albums", "Albums"], ["artists", "Artists"], ["playlists", "Playlists"]];
-const mu = { tab: "songs", q: "", filter: "", view: null, lists: null, settings: null, page: 0, results: null };
+const mu = { tab: "songs", q: "", filter: "", view: null, lists: null, settings: null, page: 0, results: null, sel: new Map(), lastSel: null };
 const muFmt = (t) => { t = Math.max(0, Math.round(t || 0)); return t >= 3600 ? `${Math.floor(t / 3600)}:${String(Math.floor((t % 3600) / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}` : `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
 const muArt = (id, cls = "") => `<span class="mu-art ${cls}"><img src="/api/public/music/${encodeURIComponent(id)}/art" alt="" loading="lazy" data-fail="remove"></span>`;
 const muMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -30,6 +30,7 @@ async function viewMusic(tab, id) {
     const el = $("#mu-radio");
     if (el) el.innerHTML = `📻 The radio is playing <b>${esc(d.radio.name)}</b>${d.radio.why && d.radio.why !== "The main library" ? ` <span class="muted">(${esc(d.radio.why)})</span>` : ""}. That's what the status page and anyone who hasn't picked something else hears.`;
   }).catch(() => {});
+  state.cleanups.push(() => $("#mu-selbar")?.remove());       // leaving Music: the bar goes (the selection stays)
   await muRender();
 }
 const muHidden = () => isAdmin() && mu.filter ? 1 : 0;
@@ -37,6 +38,9 @@ const muHidden = () => isAdmin() && mu.filter ? 1 : 0;
 async function muRender() {
   const el = $("#mu-body");
   if (!el) return;
+  try { await muRenderView(el); } finally { muSelBar(); }
+}
+async function muRenderView(el) {
   try {
     if (mu.view?.type === "albums") return await muAlbum(el, mu.view.id);
     if (mu.view?.type === "artists") return await muArtist(el, mu.view.id);
@@ -52,7 +56,9 @@ async function muRender() {
 // ---------------------------------------------------------------- song rows (shared)
 function muRowsHtml(tracks, o = {}) {
   if (!tracks.length) return `<p class="muted mu-none">${o.empty || "No songs here."}</p>`;
-  return `<ol class="mu-rows">${tracks.map((t, i) => `<li class="mu-row ${t.status && t.status !== "ok" ? `is-${t.status}` : ""} ${FWMusic.current?.id === t.id ? "now" : ""}" data-id="${esc(t.id)}" data-i="${i}">
+  const pick = !o.playlist && !o.noPick;
+  return `<ol class="mu-rows ${pick ? "pickable" : ""}">${tracks.map((t, i) => `<li class="mu-row ${t.status && t.status !== "ok" ? `is-${t.status}` : ""} ${FWMusic.current?.id === t.id ? "now" : ""} ${mu.sel.has(t.id) ? "picked" : ""}" data-id="${esc(t.id)}" data-i="${i}">
+      ${pick ? `<input type="checkbox" class="mu-pick" ${mu.sel.has(t.id) ? "checked" : ""} aria-label="Select ${esc(t.title)}" title="Select (Shift-click for a range)">` : ""}
       ${o.numbers ? `<span class="mu-n">${o.numbers === "track" && t.track ? t.track : i + 1}</span>` : muArt(t.id, "sm")}
       <button type="button" class="mu-main" data-play title="Play">${FWMusic.current?.id === t.id && FWMusic.playing ? "<i>♪</i> " : ""}<b>${esc(t.title)}</b>
         <small>${esc([t.artist, o.noAlbum ? "" : t.album].filter(Boolean).join(" · "))}${t.status === "blocked" ? " · 🚫 Blocked" : t.status === "unapproved" ? " · ⏳ Not approved" : ""}${t.source === "external" && isAdmin() && o.showSource ? ' <span class="chip mu-src">External</span>' : ""}</small></button>
@@ -69,6 +75,20 @@ function muRowsHtml(tracks, o = {}) {
 function muWireRows(el, tracks, src, o = {}) {
   el.querySelectorAll(".mu-row").forEach((li) => {
     const t = tracks[+li.dataset.i];
+    li.querySelector(".mu-pick")?.addEventListener("click", (e) => {
+      const on = e.currentTarget.checked, i = +li.dataset.i;
+      // Shift-click: everything between the last ticked row and this one
+      const range = e.shiftKey && mu.lastSel && mu.lastSel.list === tracks ? [Math.min(mu.lastSel.i, i), Math.max(mu.lastSel.i, i)] : [i, i];
+      for (let k = range[0]; k <= range[1]; k++) {
+        const tk = tracks[k];
+        if (on) mu.sel.set(tk.id, tk.title); else mu.sel.delete(tk.id);
+        const row = el.querySelector(`.mu-row[data-i="${k}"]`);
+        row?.classList.toggle("picked", on);
+        const cb = row?.querySelector(".mu-pick"); if (cb) cb.checked = on;
+      }
+      mu.lastSel = { list: tracks, i };
+      muSelBar();
+    });
     li.querySelector("[data-play]")?.addEventListener("click", () => muPlay(src, t.id));
     li.querySelector("[data-add]")?.addEventListener("click", (e) => muAddMenu(e.currentTarget, [t.id]));
     li.querySelectorAll("[data-rule]").forEach((b) => b.addEventListener("click", async () => {
@@ -97,8 +117,31 @@ async function muRule(action, kind, value, on, label = "") {
     showToast(action === "blocked" ? (on ? `Blocked ${esc(label || value)}. Nobody can play it now.` : `${esc(label || value)} can be played again`) : (on ? `Approved ${esc(label || value)}` : `Took away approval for ${esc(label || value)}`), 3000);
   } catch (e) { showToast(esc(e.message), 4000); }
 }
+// Ticked songs (kept while you search around), and what to do with them.
+function muSelBar() {
+  let bar = $("#mu-selbar");
+  if (!mu.sel.size || !$("#mu-body")) { bar?.remove(); return; }
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "mu-selbar"; bar.className = "mu-selbar glass"; bar.setAttribute("role", "region"); bar.setAttribute("aria-label", "Selected songs");
+    document.body.append(bar);
+    bar.addEventListener("click", (e) => {
+      if (e.target.closest("[data-sel-add]")) muAddMenu(e.target.closest("[data-sel-add]"), [...mu.sel.keys()], () => muClearSel());
+      else if (e.target.closest("[data-sel-play]")) muPlay({ type: "ids", id: [...mu.sel.keys()].join(","), name: "Selected songs" });
+      else if (e.target.closest("[data-sel-clear]")) muClearSel();
+    });
+  }
+  bar.innerHTML = `<b>${mu.sel.size} ${mu.sel.size === 1 ? "song" : "songs"} selected</b>
+    <button type="button" class="btn sm primary" data-sel-add>＋ Add to playlist</button><button type="button" class="btn sm" data-sel-play>▶ Play</button><button type="button" class="btn sm" data-sel-clear>Clear</button>`;
+}
+function muClearSel() {
+  mu.sel.clear(); mu.lastSel = null;
+  $$(".mu-row.picked").forEach((r) => { r.classList.remove("picked"); const cb = r.querySelector(".mu-pick"); if (cb) cb.checked = false; });
+  muSelBar();
+}
+
 // "Add to a playlist": the playlists you can change, or a new one.
-function muAddMenu(anchor, ids) {
+function muAddMenu(anchor, ids, done) {
   $(".mu-menu")?.remove();
   const mine = (mu.lists || []).filter((p) => p.can_edit);
   const m = document.createElement("div");
@@ -121,9 +164,12 @@ function muAddMenu(anchor, ids) {
         const p = await post("/api/music/playlists", { name, tracks: ids });
         showToast(`Made “${esc(p.name)}” with ${ids.length} ${ids.length === 1 ? "song" : "songs"}`, 2500);
       } else {
+        const before = (mu.lists || []).find((x) => x.id === b.dataset.pl)?.count ?? 0;
         const p = await post(`/api/music/playlists/${b.dataset.pl}`, { add: ids }, "PUT");
-        showToast(`Added to “${esc(p.name)}”`, 2000);
+        const added = Math.max(0, (p.count ?? before + ids.length) - before), dup = ids.length - added;
+        showToast(ids.length === 1 ? `Added to “${esc(p.name)}”` : `Added ${added} to “${esc(p.name)}”${dup ? ` (${dup} already there)` : ""}`, 2500);
       }
+      done?.();
       mu.lists = (await api("/api/music/playlists")).playlists;
     } catch (err) { showToast(esc(err.message), 4000); }
   });
@@ -161,7 +207,7 @@ async function muSongs(el) {
   const d = await api(`/api/music/library?q=${encodeURIComponent(mu.q)}&status=${status}&limit=${(mu.page + 1) * 200}`);
   const tracks = muHidden() ? d.tracks : d.tracks.filter((t) => (t.status || "ok") === "ok");
   el.innerHTML = `<div class="mu-bar"><span class="muted">${d.total.toLocaleString()} ${d.total === 1 ? "song" : "songs"}</span>
-      ${tracks.length ? `<button class="btn sm primary" type="button" id="mu-playall">▶ Play these</button><button class="btn sm" type="button" id="mu-shuf">🔀 Shuffle</button>` : ""}</div>
+      ${tracks.length ? `<button class="btn sm primary" type="button" id="mu-playall">▶ Play these</button><button class="btn sm" type="button" id="mu-shuf">🔀 Shuffle</button><button class="btn sm" type="button" id="mu-addall" title="Add every song listed here to a playlist">＋ Add these</button>` : ""}</div>
     ${muRowsHtml(tracks, { showSource: true, empty: mu.q ? "No songs match." : "No music yet." })}
     ${d.total > d.tracks.length ? `<button class="btn" type="button" id="mu-more">Show more</button>` : ""}`;
   const src = { type: "ids", id: tracks.slice(0, 500).map((t) => t.id).join(","), name: mu.q ? `Search: ${mu.q}` : "All songs" };
@@ -169,6 +215,7 @@ async function muSongs(el) {
   $("#mu-playall")?.addEventListener("click", () => muPlay(src));
   $("#mu-shuf")?.addEventListener("click", () => muPlay(src, null, true));
   $("#mu-more")?.addEventListener("click", () => { mu.page++; muRender(); });
+  $("#mu-addall")?.addEventListener("click", (e) => muAddMenu(e.currentTarget, tracks.map((t) => t.id)));
 }
 
 // ---------------------------------------------------------------- albums
