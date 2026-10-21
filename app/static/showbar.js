@@ -669,12 +669,13 @@ function startShowBar(scene, opts = {}) {
         sync(); poke();
       };
       const poke = () => {
-        bar.classList.remove("faded"); clearTimeout(idle);
-        if (document.body.classList.contains("ui-hidden")) idle = setTimeout(() => { if (pop.hidden) bar.classList.add("faded"); }, 3000);
+        bar.classList.remove("faded"); document.body.classList.remove("pointer-idle"); clearTimeout(idle);
+        if (document.body.classList.contains("ui-hidden")) idle = setTimeout(() => { if (pop.hidden) { bar.classList.add("faded"); document.body.classList.add("pointer-idle"); } }, 3000);
       };
       const onKey = (e) => { if (e.key === "Escape" && document.body.classList.contains("ui-hidden")) setHidden(false); };
       document.addEventListener("keydown", onKey); addEventListener("pointermove", poke);
-      cleanup.push(() => { document.removeEventListener("keydown", onKey); removeEventListener("pointermove", poke); document.body.classList.remove("ui-hidden"); });
+      addEventListener("pointerdown", poke);
+      cleanup.push(() => { document.removeEventListener("keydown", onKey); removeEventListener("pointermove", poke); removeEventListener("pointerdown", poke); document.body.classList.remove("ui-hidden", "pointer-idle"); });
     }
   }
 

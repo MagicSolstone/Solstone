@@ -873,8 +873,8 @@ body.on-editor .sky-ctl { display: none; }
 .fw-countdown[hidden] { display: none; }
 body.ui-hidden .shell, body.ui-hidden .sp, body.ui-hidden #login-root, body.ui-hidden .music-pop { display: none !important; }
 body.ui-hidden #app-sky { opacity: 1; }
-body.ui-hidden { cursor: none; }
-body.ui-hidden .sky-ctl:not(.faded) ~ *, body.ui-hidden:has(.sky-ctl:not(.faded)) { cursor: auto; }
+/* While watching the sky, the pointer hides only when the mouse has been still (the bar fades then too). */
+body.ui-hidden.pointer-idle, body.ui-hidden.pointer-idle * { cursor: none; }
 
 /* editor tabs; the preview stays in view while you scroll */
 .fwe-head .tabs { margin: 10px 0 12px; }
