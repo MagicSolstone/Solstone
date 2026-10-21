@@ -155,7 +155,7 @@ function toast(html) {
 }
 
 // ------------------------------------------------------------------ rendering
-const EVENT_ICON = { join: "→", leave: "←", death: "☠", advancement: "★", server: "⏻" };
+const EVENT_ICON = { join: "→", leave: "←", death: "☠", advancement: "★", level: "⬆", server: "⏻" };
 
 // Sections are only replaced when their content changes, so the web map iframe and the
 // position canvas aren't rebuilt on every refresh.
@@ -252,6 +252,7 @@ function tick() {
     if (ph) ph.textContent = phaseOf(t);
   }
   document.querySelectorAll("[data-since-ts]").forEach((el) => { el.textContent = fmtSpan(Date.now() / 1000 - Number(el.dataset.sinceTs)); });
+  document.querySelectorAll(".tv-events [data-ago]").forEach((el) => { el.textContent = fmtAgo(Number(el.dataset.ago)); });
   const up = $("#sp-uptime");
   if (up) {
     const since = new Date(up.dataset.since.replace(" ", "T")).getTime();
@@ -473,13 +474,52 @@ function tvNewsHtml() {
     <span class="tv-news-emoji">${esc(it.emoji || "📣")}</span><div><h2>${esc(it.text)}</h2>${it.detail ? `<p>${esc(it.detail)}</p>` : ""}</div>
     ${it.countdown ? `<span class="bn-cd big" data-cd="${it.countdown}"></span>` : ""}</div>`).join("")}</div>`;
 }
+// Always beside the slides: what's playing, and the last few things that happened.
+function tvSideFeedHtml(b) {
+  const list = b.recent.slice(0, 7);
+  if (!list.length) return "";
+  const uuids = Object.fromEntries([...b.players, ...b.recently].filter((p) => p.uuid).map((p) => [p.name.toLowerCase(), p.uuid]));
+  return `<section class="tv-side-box glass"><h3>Lately</h3><ul class="tv-events">${list.map((e) => {
+    const name = e.player ? `<b>${esc(e.player)}</b>` : "";
+    const rest = e.player && e.message.startsWith(e.player) ? esc(e.message.slice(e.player.length)) : esc(e.message);
+    return `<li class="ev-${esc(e.type)}">${e.player ? faceHtml({ name: e.player, uuid: uuids[e.player.toLowerCase()] }, 28) : `<span class="tv-ev-ic">${EVENT_ICON[e.type] || "•"}</span>`}
+      <span class="tv-ev-text"><span class="tv-ev-ic-sm" aria-hidden="true">${EVENT_ICON[e.type] || ""}</span> ${name}${rest.replace(/\[(.+)\]$/, '<span class="adv-name">$1</span>')}</span>
+      <time data-ago="${e.ts}"></time></li>`;
+  }).join("")}</ul></section>`;
+}
+function renderTvMusic() {
+  const el = $("#tv-side-music");
+  if (!el) return;
+  const t = FWMusic.current;
+  if (!FW.music || !FWMusic.tracks.length || !t) { setHtml(el, ""); return; }
+  const next = FWMusic.tracks.length > 1 ? FWMusic.tracks[(FWMusic.idx + 1) % FWMusic.tracks.length] : null;
+  setHtml(el, `<section class="tv-side-box glass tv-music ${FWMusic.playing ? "playing" : ""}">
+    <div class="tv-np"><span class="tv-np-art"><img src="${FWMusic.artUrl(t)}" alt="" onerror="this.remove()"></span>
+      <div><small>${FWMusic.playing ? "♪ Now playing" : FWMusic.waiting ? "Click to carry on" : "Paused"}</small><b>${esc(t.title)}</b>${t.artist ? `<span>${esc(t.artist)}</span>` : ""}</div></div>
+    <div class="tv-np-bar"><i id="tv-np-fill"></i></div>
+    <div class="tv-np-times"><span id="tv-np-t">0:00</span><span>${FWMusic.duration ? fmtClockSecs(FWMusic.duration) : ""}</span></div>
+    ${next && !FWMusic.shuffle ? `<p class="tv-np-next">Up next: <b>${esc(next.title)}</b>${next.artist ? ` · ${esc(next.artist)}` : ""}</p>` : FWMusic.shuffle ? `<p class="tv-np-next">🔀 Shuffling ${esc(FWMusic.source?.name || "")}</p>` : ""}
+  </section>`);
+  tvMusicTime();
+}
+const fmtClockSecs = (t) => { t = Math.max(0, Math.floor(t || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+function tvMusicTime() {
+  const f = $("#tv-np-fill"), tt = $("#tv-np-t");
+  if (!f) return;
+  const d = FWMusic.duration;
+  f.style.width = `${d ? Math.min(100, (FWMusic.time / d) * 100) : 0}%`;
+  if (tt) tt.textContent = fmtClockSecs(FWMusic.time);
+}
+FWMusic.on((what) => { if (!st.tv) return; if (what === "time") tvMusicTime(); else renderTvMusic(); });
+
 function renderTv(b) {
   const main = $("#sp-main");
   if (main.dataset.sid !== b.id || main.dataset.mode !== "tv") {
     main.dataset.sid = b.id; main.dataset.mode = "tv";
-    main.innerHTML = `<div class="tv-stage">${TV_SLIDES.map(([k, title]) => `<section class="tv-slide" data-slide="${k}" aria-hidden="true">
+    main.innerHTML = `<div class="tv-wrap"><div class="tv-main"><div class="tv-stage">${TV_SLIDES.map(([k, title]) => `<section class="tv-slide" data-slide="${k}" aria-hidden="true">
         <h2 class="tv-title">${esc(title)}<span class="tv-sub" data-sub="${k}"></span></h2><div class="tv-scroll"><div class="tv-inner" id="tv-${k}"></div></div></section>`).join("")}</div>
-      <nav class="tv-dots" id="tv-dots" aria-hidden="true"></nav>`;
+      <nav class="tv-dots" id="tv-dots" aria-hidden="true"></nav></div>
+      <aside class="tv-side" aria-label="Now playing and recent events"><div id="tv-side-music"></div><div id="tv-side-feed"></div></aside></div>`;
     st.map = null; tv.idx = -1; tv.shown = null; tv.loops = 0;
   }
   setHtml($("#tv-now"), heroHtml(b) + playersHtml(b));
@@ -490,6 +530,9 @@ function renderTv(b) {
   setHtml($("#tv-recap"), tvRecapHtml());
   setHtml($("#tv-feed"), b.recent.length ? `<div class="glass tv-feed">${feedHtml(b)}</div>` : "");
   setHtml($("#tv-news"), tvNewsHtml());
+  setHtml($("#tv-side-feed"), tvSideFeedHtml(b));
+  document.querySelectorAll(".tv-events [data-ago]").forEach((el) => { el.textContent = fmtAgo(Number(el.dataset.ago)); });
+  renderTvMusic();
   const sub = $('[data-sub="now"]');
   if (sub) sub.textContent = ` on ${b.name}`;
   if (tv.idx < 0) tvNext();

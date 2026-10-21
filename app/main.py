@@ -243,7 +243,7 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
                     row["armor"] = [_public_item(inv["armor"][k], lang) for k in ("head", "chest", "legs", "feet")]
             board["players"].append(row)
     if cfg["show_activity"]:
-        evs = db.events(srv.id, ["join", "leave", "death", "advancement", "server"], None, 14)
+        evs = db.events(srv.id, ["join", "leave", "death", "advancement", "level", "server"], None, 14)
         board["recent"] = [{"ts": e["ts"], "type": e["type"], "player": e["player"], "message": e["message"]} for e in evs]
     online_l = {n.lower() for n in summ["online"]}
     if srv.is_java:
