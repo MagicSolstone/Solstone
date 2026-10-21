@@ -87,6 +87,7 @@ $("#sp-servers")?.addEventListener("click", (e) => {
   e.preventDefault();
   if (a.dataset.sid === st.sid) return;
   st.sid = a.dataset.sid; st.board = null; st.prevOnline = null; st.prevEventTs = 0; st.map = null;
+  st.bar?.skyChanged();
   delete $("#sp-main").dataset.sid;
   history.pushState(null, "", a.getAttribute("href"));
   renderServerTabs();
@@ -359,8 +360,8 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden && (!
 document.addEventListener("DOMContentLoaded", async () => {
   const sky = $("#status-sky");
   if (sky) {
-    st.scene = startSkyScene(sky, { auto: false, sound: (t, i) => FWAudio.play(t, i) });
-    startShowBar(st.scene, { key: "solstone-sky-status", defaultOn: true, hide: true,
+    st.scene = startSkyScene(sky, { auto: false, sound: (t, i) => FWAudio.play(t, i), dim: () => (document.body.classList.contains("ui-hidden") ? 0 : 0.35) });
+    st.bar = startShowBar(st.scene, { key: "solstone-sky-status", defaultOn: true, hide: true, skyServer: () => st.sid || "",
       onEvent: (item) => { if (item.text && item.server_id === st.sid) toast(esc(item.text)); } });
   }
   keepAwake();

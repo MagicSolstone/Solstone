@@ -43,7 +43,7 @@ def events_cfg() -> dict:
         cur = {**default, **(saved.get(k) if isinstance(saved.get(k), dict) else {})}
         cur["on"] = bool(cur.get("on"))
         fw = str(cur.get("firework") or default["firework"])
-        if fw not in EVENT_CHOICES and fw not in BUILTIN_KINDS and not fw.startswith("custom:"):
+        if fw not in EVENT_CHOICES and fw not in BUILTIN_KINDS and not fw.startswith(("custom:", "show:")):
             fw = default["firework"]
         cur["firework"] = fw
         if "every" in default:
@@ -91,6 +91,9 @@ def _resolve(event: str, player: str | None) -> dict | None:
         return {"design": {**d, **fireworks.sanitize(d)}, "count": 1} if d else {"kind": "random", "count": 1}
     if fw == "none":
         return None
+    if fw.startswith("show:"):
+        sh = resolved(get_show(fw.split(":", 1)[1]))
+        return {"play": sh} if sh else {"kind": "random", "count": 1}
     count = {"challenge": 3, "start": 2}.get(event, 1)
     if fw == "show":
         return {"show": cfg.get("minutes", 2) * 60}
@@ -205,6 +208,7 @@ def _clean_entry(e: dict, fallback_id: str | None = None) -> dict | None:
         "message": str(e.get("message") or "").strip()[:80],
         "enabled": e.get("enabled", True) is not False,
         "finale": {"on": bool(fin.get("on")), "day": num(fin.get("day"), 0, days - 1, 0),
+                   "show": str(fin.get("show") or "")[:24],
                    "time": fin.get("time") if isinstance(fin.get("time"), str) and _TIME.match(fin["time"]) else "20:00",
                    "minutes": num(fin.get("minutes"), 1, 30, 5), "countdown": bool(fin.get("countdown"))},
     }
@@ -298,6 +302,111 @@ def today_state(now: datetime | None = None) -> dict:
                 if now - timedelta(minutes=f["minutes"]) <= st <= now + timedelta(hours=26) or st <= now < end:
                     finales.append({"id": e["id"], "name": e["name"], "emoji": e["emoji"], "message": e["message"],
                                     "start": st.timestamp(), "end": end.timestamp(), "countdown": f["countdown"],
-                                    "colors": e["colors"], "kinds": e["kinds"]})
+                                    "colors": e["colors"], "kinds": e["kinds"], "show": resolved(get_show(f["show"])) if f["show"] else None})
     finales.sort(key=lambda x: x["start"])
     return {"theme": theme, "finales": finales, "now": now.timestamp()}
+
+
+# ------------------------------------------------------------------ shows
+# A show is a timeline: at N seconds, launch something (a kind, a design, something
+# random or a show-piece), so many times, from somewhere. Base shows (day and night)
+# replace the random mix while the Show switch is on; special shows play at calendar
+# times or for game events.
+SHOW_WHERE = ("random", "left", "center", "right", "spread", "sides")
+MAX_STEPS = 120
+
+
+def _clean_show(sh: dict) -> dict | None:
+    if not isinstance(sh, dict):
+        return None
+    steps = []
+    for st in (sh.get("steps") or [])[:MAX_STEPS]:
+        if not isinstance(st, dict):
+            continue
+        what = str(st.get("what") or "random")
+        if what not in ("random", "showpiece") and what not in BUILTIN_KINDS and not what.startswith("custom:"):
+            what = "random"
+        try:
+            at = max(0.0, min(600.0, round(float(st.get("at", 0)), 2)))
+            count = max(1, min(12, int(st.get("count", 1))))
+        except (TypeError, ValueError):
+            continue
+        steps.append({"at": at, "what": what[:32], "count": count,
+                      "where": st.get("where") if st.get("where") in SHOW_WHERE else "random"})
+    steps.sort(key=lambda x: x["at"])
+    return {"id": re.sub(r"[^a-z0-9_-]", "", str(sh.get("id") or secrets.token_hex(4)).lower())[:24] or secrets.token_hex(4),
+            "name": str(sh.get("name") or "My show").strip()[:40] or "My show",
+            "steps": steps, "loop_gap": max(0.0, min(30.0, float(sh.get("loop_gap", 2) or 0)))}
+
+
+DEFAULT_SHOWS = [
+    {"id": "gentle-night", "name": "Gentle night", "loop_gap": 3, "steps": [
+        {"at": 0, "what": "willow", "count": 1, "where": "random"}, {"at": 3, "what": "random", "count": 1, "where": "random"},
+        {"at": 6, "what": "spiral", "count": 1, "where": "random"}, {"at": 9, "what": "random", "count": 2, "where": "spread"},
+        {"at": 13, "what": "fountain", "count": 1, "where": "random"}, {"at": 16, "what": "random", "count": 1, "where": "random"}]},
+    {"id": "grand-finale", "name": "Grand finale", "loop_gap": 2, "steps": [
+        {"at": 0, "what": "candle", "count": 2, "where": "sides"}, {"at": 2, "what": "large", "count": 3, "where": "spread"},
+        {"at": 4, "what": "crossette", "count": 2, "where": "sides"}, {"at": 6, "what": "willow", "count": 3, "where": "spread"},
+        {"at": 8, "what": "showpiece", "count": 1, "where": "center"}, {"at": 11, "what": "cake", "count": 2, "where": "sides"},
+        {"at": 13, "what": "random", "count": 5, "where": "spread"}, {"at": 15, "what": "saturn", "count": 1, "where": "center"},
+        {"at": 16, "what": "large", "count": 6, "where": "spread"}]},
+    {"id": "daytime-smoke", "name": "Daytime smoke", "loop_gap": 6, "steps": [
+        {"at": 0, "what": "ball", "count": 1, "where": "random"}, {"at": 5, "what": "ring", "count": 1, "where": "random"},
+        {"at": 10, "what": "fountain", "count": 1, "where": "random"}]},
+]
+
+
+def shows() -> list[dict]:
+    saved = settings_store.load().get("fw_shows")
+    items = saved if isinstance(saved, list) else DEFAULT_SHOWS
+    return [c for c in (_clean_show(x) for x in items) if c]
+
+
+def get_show(sid: str) -> dict | None:
+    return next((x for x in shows() if x["id"] == sid), None)
+
+
+def save_shows(items: list) -> list[dict]:
+    clean = [c for c in (_clean_show(x) for x in (items or [])[:40]) if c]
+    seen: set[str] = set()
+    for c in clean:
+        while c["id"] in seen:
+            c["id"] = f"{c['id'][:18]}-{secrets.token_hex(2)}"
+        seen.add(c["id"])
+    settings_store.save_section("fw_shows", clean)
+    return shows()
+
+
+def base_shows() -> dict:
+    saved = settings_store.load().get("fw_base_shows") or {}
+    return {k: str(saved.get(k) or "") for k in ("day", "night")}
+
+
+def save_base_shows(body: dict) -> dict:
+    cur = base_shows()
+    for k in ("day", "night"):
+        if k in (body or {}):
+            cur[k] = str(body[k] or "")[:24]
+    settings_store.save_section("fw_base_shows", cur)
+    return base_shows()
+
+
+def resolved(sh: dict | None) -> dict | None:
+    """A show ready for the sky: editor fireworks it uses are sent along with it."""
+    if not sh:
+        return None
+    steps = []
+    for st in sh["steps"]:
+        st = dict(st)
+        if st["what"].startswith("custom:"):
+            d = fireworks.get(st["what"].split(":", 1)[1])
+            if d:
+                st["design"] = {**d, **fireworks.sanitize(d)}
+            else:
+                st["what"] = "random"
+        steps.append(st)
+    return {**sh, "steps": steps}
+
+
+def base_shows_resolved() -> dict:
+    return {k: resolved(get_show(v)) if v else None for k, v in base_shows().items()}

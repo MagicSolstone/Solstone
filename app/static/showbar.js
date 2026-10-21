@@ -57,7 +57,7 @@ const FWAudio = {
   filter(type, freq, q = 0.8) { const f = this.ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; return f; },
   play(type, info = {}) {
     if (!this.on || document.hidden || !this.ensure()) return;
-    const budget = { launch: [5, 600], burst: [6, 500], crackle: [3, 900], fizzle: [3, 800], hiss: [3, 1500] }[type] || [4, 500];
+    const budget = { thunder: [1, 4000], launch: [5, 600], burst: [6, 500], crackle: [3, 900], fizzle: [3, 800], hiss: [3, 1500] }[type] || [4, 500];
     if (!this.allow(type, ...budget)) return;
     const ctx = this.ctx, t0 = ctx.currentTime + (info.delay || 0) + 0.01, pan = info.pan || 0;
     if (type === "launch" && info.style === "whistle") {
@@ -88,6 +88,10 @@ const FWAudio = {
     } else if (type === "crackle") {
       const n = Math.round((info.dur || 1.2) * 45);
       for (let i = 0; i < n; i++) this.click(t0 + Math.random() * (info.dur || 1.2), pan + (Math.random() - 0.5) * 0.3, 0.05 + Math.random() * 0.16);
+    } else if (type === "thunder") {                 // a low rolling rumble
+      const lp = this.filter("lowpass", 220, 0.7), g = this.chain(pan, t0 + 0.4);
+      g.gain.linearRampToValueAtTime(0.5, t0 + 0.55); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.4);
+      this.noiseSrc(t0 + 0.4, 3.2, 0.5).connect(lp).connect(g);
     } else if (type === "fizzle" || type === "hiss") {
       const dur = type === "hiss" ? Math.min(10, info.dur || 4) : 1.1;
       const f = this.filter("bandpass", type === "hiss" ? 4200 : 2600, 0.7), g = this.chain(pan, t0);
@@ -249,12 +253,14 @@ function startShowBar(scene, opts = {}) {
   const runShow = (show) => {
     const n = Math.max(1, Math.min(5, show.count || 1));
     for (let i = 0; i < n; i++) setTimeout(() => {
+      if (show.play) return;
       if (show.design) scene.launch(show.design);
       else if (show.kind === "showpiece") scene.showpiece();
       else if (show.kind === "random" || !show.kind) scene.launch();
       else scene.launch(show.kind);
     }, i * 450);
     if (show.show) scene.boost(show.show);
+    if (show.play) scene.playShow(show.play);
   };
   const poll = async () => {
     clearTimeout(pollT);
@@ -279,8 +285,8 @@ function startShowBar(scene, opts = {}) {
       if (f.countdown && f.start - now <= 10 && f.start - now > 0) cd = Math.ceil(f.start - now);
       if (now >= f.start && now < f.end && !done.has(f.id + f.start)) {
         done.add(f.id + f.start);
-        scene.boost(f.end - now);
-        for (let i = 0; i < (f.countdown ? 10 : 4); i++) setTimeout(() => scene.launch(), i * 220);   // the opening salvo
+        scene.boost(f.end - now, f.show);
+        if (!f.show) for (let i = 0; i < (f.countdown ? 10 : 4); i++) setTimeout(() => scene.launch(), i * 220);   // the opening salvo
         if (f.countdown || f.message) {
           count.hidden = false; count.classList.add("msg"); count.textContent = f.message || f.name;
           setTimeout(() => { count.hidden = true; count.classList.remove("msg"); }, 6000);
@@ -291,12 +297,30 @@ function startShowBar(scene, opts = {}) {
     else if (!count.classList.contains("msg")) count.hidden = true;
     tickT = setTimeout(tick, 250);
   };
+  // The sky follows a server's in-game time and weather (Show settings → Sky).
+  let skyT = 0, lastSkySid = null;
+  const pollSky = async () => {
+    clearTimeout(skyT);
+    const sid = opts.skyServer?.() || "";
+    if (!document.hidden || lastSkySid !== sid) {
+      lastSkySid = sid;
+      try {
+        const r = await fetch(`/api/public/sky?sid=${encodeURIComponent(sid)}`, { cache: "no-store" });
+        const sky = r.ok ? await r.json() : null;
+        scene.setGameSky(sky?.mode === "game" ? sky : null);
+      } catch { /* keep the last sky */ }
+    }
+    skyT = setTimeout(pollSky, 15000);
+  };
+  // Pages call bar.skyChanged() when the server in view changes.
+  const skyChanged = (force) => { if (force || (opts.skyServer?.() || "") !== lastSkySid) pollSky(); };
   // Settings (theme, finales) refresh now and then, so a page left open picks up a new day.
   const refresh = setInterval(() => { fwLoaded = null; loadFireworkSettings(); }, 10 * 60 * 1000);
-  loadFireworkSettings().then(() => { poll(); tick(); });
+  loadFireworkSettings().then(() => { poll(); tick(); pollSky(); });
   return {
+    skyChanged,
     remove() {
-      clearTimeout(pollT); clearTimeout(tickT); clearInterval(refresh);
+      clearTimeout(pollT); clearTimeout(tickT); clearInterval(refresh); clearTimeout(skyT);
       cleanup.forEach((f) => f()); els.forEach((e) => e.remove());
     },
   };

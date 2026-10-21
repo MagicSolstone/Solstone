@@ -375,7 +375,19 @@ def _fireworks_cfg() -> dict:
         "colors": colors or list(FIREWORK_COLORS),
         "pace": saved.get("pace") if saved.get("pace") in FIREWORK_PACE else "normal",
         "showpieces": saved.get("showpieces") if saved.get("showpieces") in FIREWORK_SPECIALS else "sometimes",
+        "sky": _sky_cfg(saved.get("sky")),
     }
+
+
+SKY_MODES = ("game", "night")
+SKY_DAYTIME = ("smoke", "normal", "pause")
+
+
+def _sky_cfg(v) -> dict:
+    v = v if isinstance(v, dict) else {}
+    return {"mode": v.get("mode") if v.get("mode") in SKY_MODES else "game",
+            "server": str(v.get("server") or "auto")[:64],
+            "daytime": v.get("daytime") if v.get("daytime") in SKY_DAYTIME else "smoke"}
 
 
 def _creator_weights() -> dict[str, float]:
@@ -398,7 +410,7 @@ def _show_designs() -> list[dict]:
 @app.get("/api/public/fireworks")
 async def public_fireworks(request: Request):
     signed_in = request.state.user is not None
-    return JSONResponse({**_fireworks_cfg(), "custom": _show_designs(), **fwshow.today_state(),
+    return JSONResponse({**_fireworks_cfg(), "custom": _show_designs(), **fwshow.today_state(), "base_shows": fwshow.base_shows_resolved(),
                          "music": signed_in or (music.public() and _status_cfg()["enabled"])},
                         headers={"Cache-Control": "no-cache"})
 
@@ -423,6 +435,8 @@ async def get_firework_show(request: Request):
             "players": sorted(players.values(), key=str.lower), "today": fwshow.today_state(),
             "calendar_defaults": [fwshow._clean_entry(e) for e in fwshow.DEFAULT_CALENDAR],
             "creators": _creators_summary(),
+            "shows": fwshow.shows(), "base_shows": fwshow.base_shows(),
+            "servers": [{"id": x.id, "name": x.display_name} for x in S.registry.servers.values() if x.is_java and not x.settings.get("hidden")],
             "music": {"tracks": music.tracks(), "public": music.public()}}
 
 
@@ -436,11 +450,15 @@ async def put_firework_show(request: Request):
         fwshow.save_signatures(body["signatures"])
     if isinstance(body.get("calendar"), list):
         fwshow.save_calendar(body["calendar"])
+    if isinstance(body.get("shows"), list):
+        fwshow.save_shows(body["shows"])
+    if isinstance(body.get("base_shows"), dict):
+        fwshow.save_base_shows(body["base_shows"])
     if isinstance(body.get("creators"), dict):
         cw = _creator_weights()
         cw.update({str(k)[:32]: _weight(v) for k, v in body["creators"].items()})
         settings_store.save_section("fw_creators", cw)
-    auth.audit(user, None, "fireworks_show", ", ".join(sorted(k for k in body if k in ("events", "signatures", "calendar", "creators"))))
+    auth.audit(user, None, "fireworks_show", ", ".join(sorted(k for k in body if k in ("events", "signatures", "calendar", "creators", "shows", "base_shows"))))
     return await get_firework_show(request)
 
 
@@ -463,6 +481,65 @@ async def test_firework_event(request: Request):
     player = str(body.get("player") or "") or None
     fwshow.push("test", "Test", ev, player, f"Test: {ev}" + (f" for {player}" if player else ""))
     return {"ok": True}
+
+
+# ---- the sky follows a server's in-game time and weather
+_sky_cache: dict[str, tuple[float, dict]] = {}
+
+
+async def _sky_server(sid: str | None) -> S.Server | None:
+    await S.registry.refresh()
+    visible = [x for x in S.registry.servers.values() if x.is_java and not x.settings.get("hidden")]
+    want = sid if sid and sid != "auto" else _fireworks_cfg()["sky"]["server"]
+    srv = next((x for x in visible if x.id == want), None)
+    if srv:
+        return srv
+    # Auto: a running server with people on it, else any running one, else the first.
+    running = [x for x in visible if (x.crafty or {}).get("_stats", {}).get("running")]
+    return next((x for x in running if (x.crafty or {}).get("_stats", {}).get("online")), None) or (running or visible or [None])[0]
+
+
+@app.get("/api/public/sky")
+async def public_sky(sid: str = ""):
+    """In-game time and weather for the sky behind every page (nothing private)."""
+    cfg = _fireworks_cfg()["sky"]
+    if cfg["mode"] != "game":
+        return {"mode": "night"}
+    srv = await _sky_server(sid)
+    if not srv:
+        return {"mode": "night"}
+    hit = _sky_cache.get(srv.id)
+    if hit and time.monotonic() - hit[0] < 10:
+        return hit[1]
+    out: dict = {"mode": "game", "server": srv.id}
+    try:
+        w = await asyncio.to_thread(S.world_info, srv, False)
+        online = []
+        if srv.rcon_conf():
+            w.update(await S.live_world(srv))
+            online, _src = await S.online_players(srv)
+        if w.get("time_of_day") is not None:
+            day = w.get("day") or 1
+            out.update(time_of_day=w["time_of_day"], day=day, moon=(day - 1) % 8, raining=bool(w.get("raining")),
+                       thundering=bool(w.get("thundering")), ticking=bool(online), as_of=time.time())
+        else:
+            out = {"mode": "night"}
+    except Exception as e:
+        log.debug("sky info failed for %s: %s", srv.id, e)
+        out = {"mode": "night"}
+    _sky_cache[srv.id] = (time.monotonic(), out)
+    return out
+
+
+@app.get("/api/players/skins")
+async def player_skin_list():
+    """Everyone who has joined, with their UUID, for the painter's face stamp."""
+    await S.registry.refresh()
+    seen: dict[str, dict] = {}
+    for srv in S.registry.servers.values():
+        for u, p in S.known_players(srv).items():
+            seen.setdefault(p["name"].lower(), {"name": p["name"], "uuid": u})
+    return sorted(seen.values(), key=lambda x: x["name"].lower())
 
 
 # ---- music for the show
@@ -603,6 +680,8 @@ async def put_fireworks(request: Request):
         cur["pace"] = body["pace"]
     if body.get("showpieces") in FIREWORK_SPECIALS:
         cur["showpieces"] = body["showpieces"]
+    if isinstance(body.get("sky"), dict):
+        cur["sky"] = _sky_cfg({**cur["sky"], **body["sky"]})
     if not any(cur["kinds"].values()):
         raise HTTPException(400, "Leave at least one kind of firework on")
     settings_store.save_section("fireworks", cur)

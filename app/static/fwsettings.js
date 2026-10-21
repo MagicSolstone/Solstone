@@ -3,7 +3,7 @@
    scheduled shows, and the music playlist. Loaded after app.js, control.js and editor.js. */
 "use strict";
 
-const FWS_TABS = [["show", "The show"], ["events", "Game events"], ["join", "Join fireworks"], ["calendar", "Calendar"], ["music", "Music"]];
+const FWS_TABS = [["show", "The show"], ["shows", "Shows"], ["events", "Game events"], ["join", "Join fireworks"], ["calendar", "Calendar"], ["music", "Music"]];
 const FWS_EVENTS = [
   ["join", "Someone joins", "Their join firework if they have one (Join fireworks tab), otherwise what you pick."],
   ["advancement", "Advancement", "Any normal advancement."],
@@ -22,7 +22,8 @@ function fwsKindOptions(cur, extra = []) {
   const kinds = FW_LABELS.map(([k, l]) => [k, l]);
   const custom = fws.designs.map((d) => [`custom:${d.id}`, `🎨 ${d.name}`]);
   const opt = ([v, l]) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`;
-  return `${extra.map(opt).join("")}<optgroup label="Built-in">${kinds.map(opt).join("")}</optgroup>${custom.length ? `<optgroup label="Made in the editor">${custom.map(opt).join("")}</optgroup>` : ""}`;
+  const showOpts = (fws.data?.shows || []).map((x) => [`show:${x.id}`, `🎬 ${x.name}`]);
+  return `${extra.map(opt).join("")}${showOpts.length && extra.length ? `<optgroup label="Shows">${showOpts.map(opt).join("")}</optgroup>` : ""}<optgroup label="Built-in">${kinds.map(opt).join("")}</optgroup>${custom.length ? `<optgroup label="Made in the editor">${custom.map(opt).join("")}</optgroup>` : ""}`;
 }
 function fwsDateText(e) {
   const d = e.date, ord = (n) => (n === -1 ? "last" : ["", "1st", "2nd", "3rd", "4th"][n]);
@@ -68,11 +69,14 @@ async function fwsSave(body, msg = "Saved") {
 function renderFws() {
   const el = $("#fws-body");
   if (fws.tab === "show") {
-    el.innerHTML = `<section class="panel fw-settings" id="fw-settings">${fireworksSettingsHtml(fws.fw)}</section>
+    el.innerHTML = `<section class="panel fws-sky" id="fws-sky"></section>
+      <section class="panel fw-settings" id="fw-settings">${fireworksSettingsHtml(fws.fw)}</section>
       <section class="panel fws-community" id="fws-community"></section>`;
+    renderSky($("#fws-sky"));
     wireFireworksSettings($("#fw-settings"), fws.fw);
     renderCommunity($("#fws-community"));
-  } else if (fws.tab === "events") renderEvents(el);
+  } else if (fws.tab === "shows") renderShows(el);
+  else if (fws.tab === "events") renderEvents(el);
   else if (fws.tab === "join") renderJoin(el);
   else if (fws.tab === "calendar") renderCalendar(el);
   else renderMusic(el);
@@ -232,6 +236,7 @@ function calEditHtml(e, i) {
       <label class="inl">at <input class="input sm" type="time" name="ftime" value="${esc(e.finale.time)}"></label>
       <label class="inl">for ${num("fmin", e.finale.minutes, 1, 30)} minutes</label>
       <label class="check"><input type="checkbox" name="fcount" ${e.finale.countdown ? "checked" : ""}> Count down from 10</label>
+      <label class="inl">playing <select class="input sm" name="fshow"><option value="">a lively random mix</option>${(fws.data.shows || []).map((x) => `<option value="${esc(x.id)}" ${e.finale.show === x.id ? "selected" : ""}>🎬 ${esc(x.name)}</option>`).join("")}</select></label>
     </div>
     <div class="btn-row"><button class="btn primary" type="submit">Save</button><button type="button" class="btn" data-cancel>Cancel</button>
       <button type="button" class="btn" data-preview>Preview</button><button type="button" class="btn danger" data-del>Delete</button></div>
@@ -253,7 +258,7 @@ function wireCalEdit(el, i) {
     } else Object.assign(d, { month: draft.date.month || 1, day: draft.date.day || 1, weekday: 4, n: 1, iso: new Date().toISOString().slice(0, 10) });
     draft.date = d;
     draft.kinds = [...form.querySelectorAll("[data-kind]:checked")].map((c) => c.value);
-    draft.finale = { on: !!f.get("fon"), day: Math.max(0, (+f.get("fday") || 1) - 1), time: f.get("ftime") || "20:00", minutes: +f.get("fmin") || 5, countdown: !!f.get("fcount") };
+    draft.finale = { on: !!f.get("fon"), day: Math.max(0, (+f.get("fday") || 1) - 1), time: f.get("ftime") || "20:00", minutes: +f.get("fmin") || 5, countdown: !!f.get("fcount"), show: f.get("fshow") || "" };
   };
   const redraw = () => { read(); fws.data.calendar[i] = draft; renderCalendar(el); };
   form.querySelector('[name="dtype"]').addEventListener("change", redraw);
@@ -325,5 +330,128 @@ function renderMusic(el) {
       await api(`/api/music/${id}`, { method: "DELETE" }).catch((err) => showToast(esc(err.message), 3000));
       reload();
     });
+  });
+}
+
+// ---------------------------------------------------------------- the sky
+function renderSky(el) {
+  const sky = fws.fw.sky || { mode: "game", server: "auto", daytime: "smoke" };
+  const seg = (name, opts, cur) => `<div class="seg" role="group" data-sky="${name}">${opts.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${v === cur}">${l}</button>`).join("")}</div>`;
+  el.innerHTML = `<h3 class="fw-sub">The sky <span class="muted small">behind every page</span></h3>
+    <div class="fw-row"><span>Sky</span>${seg("mode", [["game", "Follow the game"], ["night", "Always night"]], sky.mode)}</div>
+    ${sky.mode === "game" ? `<div class="fw-row"><span>From</span><select class="input sm" data-sky-server><option value="auto">The server people are playing on</option>
+        ${(fws.data.servers || []).map((x) => `<option value="${esc(x.id)}" ${sky.server === x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></div>
+      <div class="fw-row"><span>In the daytime</span>${seg("daytime", [["smoke", "Coloured smoke"], ["normal", "Same as night"], ["pause", "Wait for night"]], sky.daytime)}</div>
+      <p class="muted small">The sun, moon (with its phases), clouds, rain and thunder follow the game. On a server's page the sky shows that server. Daytime fireworks leave coloured smoke and go up less often, like real ones; game events and scheduled shows still go off either way.</p>` : ""}`;
+  const save = async (patch) => {
+    try {
+      const cfg = await post("/api/settings/fireworks", { sky: patch }, "PUT");
+      fws.fw = { ...fws.fw, ...cfg };
+      fwLoaded = null; await loadFireworkSettings(); appSky.bar?.skyChanged(true);
+      showToast("Saved", 1200);
+    } catch (err) { showToast(esc(err.message), 3000); }
+    renderSky(el);
+  };
+  el.querySelectorAll("[data-sky] button").forEach((b) => b.addEventListener("click", () => save({ [b.closest("[data-sky]").dataset.sky]: b.dataset.v })));
+  el.querySelector("[data-sky-server]")?.addEventListener("change", (e) => save({ server: e.target.value }));
+}
+
+// ---------------------------------------------------------------- show builder
+const SHOW_WHERE = [["random", "Anywhere"], ["left", "Left"], ["center", "Middle"], ["right", "Right"], ["spread", "Spread out"], ["sides", "Both sides"]];
+function showLength(sh) { return sh.steps.length ? Math.max(...sh.steps.map((x) => x.at)) : 0; }
+function renderShows(el) {
+  const shows = fws.data.shows || [], base = fws.data.base_shows || { day: "", night: "" };
+  const pickShow = (k) => `<select class="input sm" data-base="${k}"><option value="">The usual random mix</option>${shows.map((x) => `<option value="${esc(x.id)}" ${base[k] === x.id ? "selected" : ""}>🎬 ${esc(x.name)}</option>`).join("")}</select>`;
+  el.innerHTML = `<section class="panel"><h3 class="fw-sub">Base shows <span class="muted small">what plays while the Show switch is on</span></h3>
+      <div class="fw-row"><span>☀️ Daytime</span>${pickShow("day")}</div><div class="fw-row"><span>🌙 Night</span>${pickShow("night")}</div>
+      <p class="muted small">Day and night follow the game when the sky does (otherwise 7 pm to 7 am). A base show loops; game events and holiday shows still play on top.</p></section>
+    <section class="panel" style="margin-top:16px"><h3 class="fw-sub">Shows <span class="muted small">timed lists of fireworks, for base shows, the calendar and game events</span></h3>
+      <div class="fws-shows">${shows.map((sh, i) => fws.editingShow === i ? showEditHtml(sh, i) : `<div class="fws-show-row" data-i="${i}">
+        <b>🎬 ${esc(sh.name)}</b><span class="muted small">${sh.steps.length} steps · ${Math.round(showLength(sh))} s${base.day === sh.id ? " · daytime base" : ""}${base.night === sh.id ? " · night base" : ""}</span>
+        <span class="row-actions"><button type="button" class="icon-btn" data-play title="Watch it" aria-label="Watch ${esc(sh.name)}">▶</button>
+          <button type="button" class="btn sm" data-edit>Edit</button><button type="button" class="btn sm" data-copy>Copy</button></span>
+        ${timelineHtml(sh)}</div>`).join("")}</div>
+      <button type="button" class="btn" id="fws-newshow" style="margin-top:12px">+ New show</button></section>`;
+  el.querySelectorAll("[data-base]").forEach((sel) => sel.addEventListener("change", async () => {
+    await fwsSave({ base_shows: { [sel.dataset.base]: sel.value } }, "Base show set");
+  }));
+  el.querySelectorAll(".fws-show-row").forEach((row) => {
+    const i = +row.dataset.i, sh = shows[i];
+    row.querySelector("[data-play]").addEventListener("click", () => previewShow(sh));
+    row.querySelector("[data-edit]").addEventListener("click", () => { fws.editingShow = i; renderShows(el); });
+    row.querySelector("[data-copy]").addEventListener("click", async () => {
+      await fwsSave({ shows: [...fweCopy(shows), { ...fweCopy(sh), id: "", name: `${sh.name} (copy)` }] }, "Copied"); renderShows(el);
+    });
+  });
+  $("#fws-newshow").addEventListener("click", async () => {
+    await fwsSave({ shows: [...fweCopy(shows), { name: "New show", loop_gap: 2, steps: [{ at: 0, what: "random", count: 1, where: "random" }, { at: 2, what: "random", count: 2, where: "spread" }] }] }, "Added");
+    fws.editingShow = fws.data.shows.length - 1; renderShows(el);
+  });
+  if (fws.editingShow != null && shows[fws.editingShow]) wireShowEdit(el, fws.editingShow);
+}
+function stepLabel(what) {
+  if (what === "random") return "🎲 Random";
+  if (what === "showpiece") return "⭐ Show-piece";
+  if (what.startsWith("custom:")) { const d = fws.designs.find((x) => `custom:${x.id}` === what); return d ? `🎨 ${d.name}` : "🎨 (deleted)"; }
+  return (FW_LABELS.find(([k]) => k === what) || [what, what])[1];
+}
+function timelineHtml(sh) {
+  const len = Math.max(1, showLength(sh));
+  return `<div class="fws-timeline" aria-hidden="true">${sh.steps.map((x) => `<i style="left:${(x.at / len) * 100}%" title="${esc(`${x.at}s: ${stepLabel(x.what)} ×${x.count}`)}" class="${x.what === "showpiece" ? "big" : x.what.startsWith("custom:") ? "mine" : ""}"></i>`).join("")}</div>`;
+}
+function previewShow(sh) {
+  const scene = appSky.scene;
+  if (!scene) return;
+  scene.clear();
+  const steps = sh.steps.map((x) => (x.what.startsWith("custom:") ? { ...x, design: fws.designs.find((d) => `custom:${d.id}` === x.what) } : x));
+  scene.playShow({ ...sh, steps });
+  showToast(`🎬 ${esc(sh.name)}`, 2000);
+}
+function showEditHtml(sh, i) {
+  const opts = (cur) => `<option value="random" ${cur === "random" ? "selected" : ""}>🎲 Random</option><option value="showpiece" ${cur === "showpiece" ? "selected" : ""}>⭐ Show-piece</option>
+    <optgroup label="Built-in">${FW_LABELS.map(([k, l]) => `<option value="${k}" ${cur === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</optgroup>
+    ${fws.designs.length ? `<optgroup label="Made in the editor">${fws.designs.map((d) => `<option value="custom:${d.id}" ${cur === `custom:${d.id}` ? "selected" : ""}>🎨 ${esc(d.name)}</option>`).join("")}</optgroup>` : ""}`;
+  return `<form class="fws-show-edit" data-i="${i}">
+    <div class="fws-grid"><label>Name<input class="input" name="name" maxlength="40" value="${esc(sh.name)}"></label>
+      <label class="inl">Pause before it repeats <input class="input sm num-in" type="number" name="gap" min="0" max="30" step="0.5" value="${sh.loop_gap ?? 2}"> s</label></div>
+    ${timelineHtml(sh)}
+    <div class="fws-steps"><div class="fws-step fws-head muted small"><span>At (s)</span><span>Launch</span><span>How many</span><span>Where</span><span></span></div>
+      ${sh.steps.map((x, k) => `<div class="fws-step" data-k="${k}">
+        <input class="input sm" type="number" min="0" max="600" step="0.25" value="${x.at}" data-f="at" aria-label="Seconds">
+        <select class="input sm" data-f="what">${opts(x.what)}</select>
+        <input class="input sm" type="number" min="1" max="12" value="${x.count}" data-f="count" aria-label="How many">
+        <select class="input sm" data-f="where">${SHOW_WHERE.map(([v, l]) => `<option value="${v}" ${x.where === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+        <button type="button" class="chip-x" data-rm aria-label="Remove step">×</button></div>`).join("")}</div>
+    <div class="btn-row"><button type="button" class="btn sm" data-add>+ Add a step</button><button type="button" class="btn sm" data-add-pause>+ Step after a 3 s pause</button></div>
+    <div class="btn-row"><button class="btn primary" type="submit">Save</button><button type="button" class="btn" data-cancel>Cancel</button>
+      <button type="button" class="btn" data-preview>▶ Watch it</button><button type="button" class="btn danger" data-del>Delete</button></div>
+  </form>`;
+}
+function wireShowEdit(el, i) {
+  const form = el.querySelector(".fws-show-edit");
+  const draft = fweCopy(fws.data.shows[i]);
+  const read = () => {
+    draft.name = form.querySelector('[name="name"]').value; draft.loop_gap = +form.querySelector('[name="gap"]').value || 0;
+    draft.steps = [...form.querySelectorAll(".fws-step[data-k]")].map((row) => ({
+      at: +row.querySelector('[data-f="at"]').value || 0, what: row.querySelector('[data-f="what"]').value,
+      count: Math.max(1, Math.min(12, +row.querySelector('[data-f="count"]').value || 1)), where: row.querySelector('[data-f="where"]').value }));
+  };
+  const redraw = () => { read(); draft.steps.sort((a, b) => a.at - b.at); fws.data.shows[i] = draft; renderShows(el); };
+  form.querySelectorAll('[data-f="at"]').forEach((inp) => inp.addEventListener("change", redraw));
+  form.querySelectorAll("[data-rm]").forEach((b) => b.addEventListener("click", () => { read(); draft.steps.splice(+b.closest("[data-k]").dataset.k, 1); fws.data.shows[i] = draft; renderShows(el); }));
+  const add = (gap) => { read(); const last = draft.steps.length ? Math.max(...draft.steps.map((x) => x.at)) : 0; draft.steps.push({ at: draft.steps.length ? last + gap : 0, what: "random", count: 1, where: "random" }); fws.data.shows[i] = draft; renderShows(el); };
+  form.querySelector("[data-add]").addEventListener("click", () => add(1));
+  form.querySelector("[data-add-pause]").addEventListener("click", () => add(3));
+  form.querySelector("[data-preview]").addEventListener("click", () => { read(); previewShow(draft); });
+  form.querySelector("[data-cancel]").addEventListener("click", async () => { fws.editingShow = null; fws.data = await api("/api/fireworks/show"); renderShows(el); });
+  form.querySelector("[data-del]").addEventListener("click", async () => {
+    if (!(await confirmBox(`Delete ${draft.name}?`, "Base shows, calendar dates and events using it go back to random fireworks.", "Delete"))) return;
+    const next = fweCopy(fws.data.shows); next.splice(i, 1);
+    fws.editingShow = null; await fwsSave({ shows: next }, "Deleted"); renderShows(el);
+  });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault(); read();
+    const next = fweCopy(fws.data.shows); next[i] = draft;
+    fws.editingShow = null; await fwsSave({ shows: next }); renderShows(el);
   });
 }

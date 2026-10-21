@@ -27,7 +27,7 @@ def test_calendar_cleaning():
                              "finale": {"on": 1, "time": "25:99", "day": 30, "minutes": 999}})
     assert len(e["name"]) == 40 and e["date"] == {"type": "nth", "month": 12, "weekday": 6, "n": 1} and e["days"] == 14
     assert e["colors"] == ["#ffffff"] and e["kinds"] == ["heart", "custom:abc"]
-    assert e["finale"] == {"on": True, "day": 13, "time": "20:00", "minutes": 30, "countdown": False}
+    assert e["finale"] == {"on": True, "day": 13, "show": "", "time": "20:00", "minutes": 30, "countdown": False}
 
 
 def test_event_feed_and_settings(client, viewer, anon):
@@ -105,3 +105,43 @@ def test_frequencies_for_kinds_people_and_designs(client, viewer, anon):
     assert creators["kiddo"]["weight"] == 0 and creators["kiddo"]["designs"] >= 1
     client.put("/api/fireworks/show", json={"creators": {"kiddo": 1, "admin": 1}})
     client.delete(f"/api/fireworks/{kid['id']}"); client.delete(f"/api/fireworks/{mine['id']}")
+
+
+def test_shows_base_shows_and_links(client, viewer, anon):
+    from app import fwshow
+    show = client.get("/api/fireworks/show").json()
+    assert any(s["id"] == "grand-finale" for s in show["shows"]) and show["base_shows"] == {"day": "", "night": ""}
+    d = client.post("/api/fireworks", json={"name": "Mine", "in_show": False}).json()
+    shows = show["shows"] + [{"name": "Test show", "steps": [{"at": 5, "what": f"custom:{d['id']}", "count": 99, "where": "nowhere"},
+                                                            {"at": -3, "what": "bogus", "count": 2, "where": "sides"}]}]
+    r = client.put("/api/fireworks/show", json={"shows": shows, "base_shows": {"night": "grand-finale"}}).json()
+    mine = next(s for s in r["shows"] if s["name"] == "Test show")
+    assert mine["steps"] == [{"at": 0, "what": "random", "count": 2, "where": "sides"},
+                             {"at": 5, "what": f"custom:{d['id']}", "count": 12, "where": "random"}]
+    pub = anon.get("/api/public/fireworks").json()
+    assert pub["base_shows"]["night"]["id"] == "grand-finale" and pub["base_shows"]["day"] is None
+    # Events can play a show; editor fireworks in it travel with it.
+    client.put("/api/fireworks/show", json={"events": {"challenge": {"firework": f"show:{mine['id']}"}}})
+    last = client.get("/api/public/fireworks/feed").json()["last"]
+    fwshow.push("s1", "Family", "challenge", "Tyler", "x")
+    play = client.get(f"/api/public/fireworks/feed?since={last}").json()["items"][0]["show"]["play"]
+    assert play["steps"][1]["design"]["name"] == "Mine"
+    assert viewer.put("/api/fireworks/show", json={"shows": []}).status_code == 403
+    client.put("/api/fireworks/show", json={"events": {"challenge": {"firework": "showpiece"}}, "base_shows": {"night": ""},
+                                           "shows": [s for s in r["shows"] if s["name"] != "Test show"]})
+    client.delete(f"/api/fireworks/{d['id']}")
+
+
+def test_sky_and_player_skins(client, viewer, anon):
+    sky = anon.get("/api/public/sky").json()
+    assert sky["mode"] in ("game", "night")
+    if sky["mode"] == "game":
+        assert 0 <= sky["time_of_day"] < 24000 and 0 <= sky["moon"] < 8 and isinstance(sky["raining"], bool)
+    client.put("/api/settings/fireworks", json={"sky": {"mode": "night"}})
+    assert anon.get("/api/public/sky").json() == {"mode": "night"}
+    cfg = client.put("/api/settings/fireworks", json={"sky": {"mode": "game", "daytime": "pause", "bogus": 1}}).json()["sky"]
+    assert cfg == {"mode": "game", "server": "auto", "daytime": "pause"}
+    client.put("/api/settings/fireworks", json={"sky": {"daytime": "smoke"}})
+    skins = viewer.get("/api/players/skins").json()
+    assert skins and {"name", "uuid"} <= set(skins[0])
+    assert anon.get("/api/players/skins").status_code == 401

@@ -347,7 +347,9 @@ function painterHtml() {
       <label class="check"><input type="checkbox" id="fwe-mirror" ${ed.mirror ? "checked" : ""}> Mirror</label>
       <button type="button" class="btn sm" id="fwe-clear">Clear</button></div>
     <div class="fwe-grid" id="fwe-grid" style="--n:${FWE_GRID}">${Array.from({ length: FWE_GRID * FWE_GRID }, (_, i) => `<span data-cell="${i}"></span>`).join("")}</div>
-    <div class="fwe-stamps"><span class="muted small">Stamps:</span>${Object.keys(FWE_STAMPS).map((k) => `<button type="button" class="btn sm" data-stamp="${k}">${k}</button>`).join("")}</div>
+    <div class="fwe-stamps"><span class="muted small">Stamps:</span>${Object.keys(FWE_STAMPS).map((k) => `<button type="button" class="btn sm" data-stamp="${k}">${k}</button>`).join("")}
+      <select class="input sm" id="fwe-face" aria-label="Use a player's face"><option value="">🙂 Face of…</option>${(ed.players || []).map((p) => `<option value="${esc(p.uuid)}">${esc(p.name)}</option>`).join("")}</select>
+      <label class="check small"><input type="checkbox" id="fwe-face-big" ${ed.faceBig !== false ? "checked" : ""}> big</label></div>
     <p class="muted small">Click or drag to paint. Each painted square becomes one spark.</p></div>`;
 }
 function stampPicture(name) {
@@ -400,6 +402,14 @@ function wirePainter() {
   $("#fwe-clear").addEventListener("click", () => { fweSetPicture(Array.from({ length: FWE_GRID }, () => new Array(FWE_GRID).fill("."))); refreshCells(); fweChanged(); });
   $$("[data-stamp]").forEach((b) => b.addEventListener("click", () => { stampPicture(b.dataset.stamp); refreshCells(); fweLaunch(); }));
   $$("[data-frame]").forEach((b) => b.addEventListener("click", () => { ed.frame = +b.dataset.frame; renderControls(); }));
+  if (!ed.players) api("/api/players/skins").then((list) => { ed.players = list; if ($("#fwe-face")) renderControls(); }).catch(() => { ed.players = []; });
+  $("#fwe-face-big")?.addEventListener("change", (e) => { ed.faceBig = e.target.checked; });
+  $("#fwe-face")?.addEventListener("change", async (e) => {
+    const uuid = e.target.value;
+    if (!uuid) return;
+    try { await faceStamp(uuid, ed.faceBig !== false); renderControls(); fweLaunch(); }
+    catch { showToast("Couldn't get that player's skin", 3000); e.target.value = ""; }
+  });
   $("#fwe-copyframe")?.addEventListener("click", () => { fweSetPicture((ed.grids[1] || fwePicture(1)).map((r) => [...r]), 2); renderControls(); fweLaunch(); });
 }
 
@@ -486,4 +496,56 @@ function renderGallery() {
       } catch (err) { showToast(esc(err.message), 4000); }
     });
   });
+}
+
+// ---------------------------------------------------------------- "Face of…" stamp
+// Takes a player's face (with the hat layer) from their skin, boils it down to the
+// four colours a picture firework can use, and paints it into the current frame.
+async function faceStamp(uuid, big) {
+  const img = new Image();
+  img.src = `/api/skins/${String(uuid).replace(/-/g, "")}.png`;
+  await img.decode();
+  const c = document.createElement("canvas"); c.width = 8; c.height = 8;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  g.imageSmoothingEnabled = false;
+  g.drawImage(img, 8, 8, 8, 8, 0, 0, 8, 8);
+  g.drawImage(img, 40, 8, 8, 8, 0, 0, 8, 8);        // hat / mask layer on top
+  const data = g.getImageData(0, 0, 8, 8).data;
+  const px = [];
+  for (let i = 0; i < 64; i++) px.push(data[i * 4 + 3] > 40 ? [data[i * 4], data[i * 4 + 1], data[i * 4 + 2]] : null);
+  const solid = px.filter(Boolean);
+  if (!solid.length) throw new Error("empty");
+  const palette = quantize(solid, 4);
+  const near = (p) => palette.reduce((best, q, k) => { const dd = (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2; return dd < best[1] ? [k, dd] : best; }, [0, Infinity])[0];
+  const scale = big ? 2 : 1, size = 8 * scale, off = Math.floor((FWE_GRID - size) / 2);
+  const grid = Array.from({ length: FWE_GRID }, () => new Array(FWE_GRID).fill("."));
+  px.forEach((p, i) => {
+    if (!p) return;
+    const v = String(near(p)), x = (i % 8) * scale, y = Math.floor(i / 8) * scale;
+    for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) grid[off + y + dy][off + x + dx] = v;
+  });
+  // Faces read best as a picture that hangs for a while with solid pieces.
+  ed.d.colors = palette.map((q) => `#${q.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}`);
+  ed.d.color_mode = "mix";
+  ed.d.piece = Math.max(ed.d.piece || 1, 2);
+  ed.d.hold = Math.max(ed.d.hold || 0.8, 1.5);
+  ed.mirror = false;
+  fweSetPicture(grid);
+}
+// k-means on a handful of pixels, started from colours that are far apart.
+function quantize(points, k) {
+  const uniq = [...new Map(points.map((p) => [p.join(","), p])).values()];
+  if (uniq.length <= k) return uniq.map((p) => [...p]);
+  const dist = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
+  const centres = [[...uniq[0]]];
+  while (centres.length < k) centres.push([...uniq.reduce((best, p) => (Math.min(...centres.map((c) => dist(p, c))) > Math.min(...centres.map((c) => dist(best, c))) ? p : best), uniq[0])]);
+  for (let it = 0; it < 10; it++) {
+    const sums = centres.map(() => [0, 0, 0, 0]);
+    for (const p of points) {
+      let bi = 0; centres.forEach((c, i) => { if (dist(p, c) < dist(p, centres[bi])) bi = i; });
+      sums[bi][0] += p[0]; sums[bi][1] += p[1]; sums[bi][2] += p[2]; sums[bi][3]++;
+    }
+    sums.forEach((sm, i) => { if (sm[3]) centres[i] = [sm[0] / sm[3], sm[1] / sm[3], sm[2] / sm[3]]; });
+  }
+  return centres;
 }

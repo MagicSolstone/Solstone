@@ -72,8 +72,10 @@ async function signedIn(user) {
   stopLoginScene();
   clearInterval(state.loginRefresh);
   if (!appSky.scene && $("#app-sky")) {
-    appSky.scene = startSkyScene($("#app-sky"), { auto: false, sound: (t, i) => FWAudio.play(t, i) });
-    appSky.bar = startShowBar(appSky.scene, { key: "solstone-sky-app", defaultOn: false, hide: true,
+    // A bright in-game day is dimmed behind the panels (but not when the page is hidden to watch).
+    appSky.scene = startSkyScene($("#app-sky"), { auto: false, sound: (t, i) => FWAudio.play(t, i),
+      dim: () => (document.body.classList.contains("ui-hidden") ? 0 : 0.5) });
+    appSky.bar = startShowBar(appSky.scene, { key: "solstone-sky-app", defaultOn: false, hide: true, skyServer: () => curSid || "",
       onEvent: (item) => { if (item.text) showToast(`🎆 ${esc(item.text)}${item.server && item.server !== "Test" ? ` <span class="muted">· ${esc(item.server)}</span>` : ""}`, 4000); } });
   }
   const root = $("#login-root"); root.hidden = true; root.innerHTML = "";
@@ -900,7 +902,7 @@ async function route() {
     console.error(e);
   }
 }
-addEventListener("hashchange", () => { route(); view().focus({ preventScroll: true }); scrollTo(0, 0); });
+addEventListener("hashchange", async () => { await route(); view().focus({ preventScroll: true }); scrollTo(0, 0); appSky.bar?.skyChanged(); });
 document.addEventListener("DOMContentLoaded", async () => {
   $("#btn-notify")?.addEventListener("click", openNotifications);
   wireAccountMenu();

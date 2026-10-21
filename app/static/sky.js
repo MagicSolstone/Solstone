@@ -28,6 +28,8 @@ function applyFireworkSettings(c) {
   FW.theme = c.theme || null;
   FW.finales = Array.isArray(c.finales) ? c.finales : [];
   FW.music = !!c.music;
+  FW.base_shows = c.base_shows || null;
+  FW.sky = c.sky || { mode: "game", daytime: "smoke" };
 }
 // How often each kind comes up (admin settings): 0 off, 0.5 rare, 1 normal, 2 often, 4 lots.
 const fwWeight = (k) => FW.weights ? (FW.weights[k] ?? 1) : FW.kinds && FW.kinds[k] === false ? 0 : 1;
@@ -191,16 +193,17 @@ function startSkyScene(cv, opts = {}) {
     }
     groundY = H - Math.max(...heights);
     hill = heights;
+    const lc = landColors();
     heights.forEach((h, i) => {
-      g.fillStyle = "#0d1014"; g.fillRect(i * B, H - h, B, h);
-      g.fillStyle = "#15211a"; g.fillRect(i * B, H - h, B, 1);    // a hint of grass on top
+      g.fillStyle = lc.ground; g.fillRect(i * B, H - h, B, h);
+      g.fillStyle = lc.grass; g.fillRect(i * B, H - h, B, 1);    // a hint of grass on top
     });
     // Sitting figure and dog on the left hilltop, facing the sky. Pixel maps: # = filled.
     const top = H - heights[Math.floor(sitX / B)];
     // Standing, head tipped back to watch the sky.
     const person = ["....##.", "...##..", "...##..", "..####.", ".#.##.#", ".#.##.#", "...##..", "...#.#.", "...#.#.", "...#.#."];
     const dog = ["##.....", "###....", ".#...#.", ".#####.", ".#####.", ".#.#.#."];
-    g.fillStyle = "#0d1014";
+    g.fillStyle = lc.figure;
     const draw = (map, ox, oy) => map.forEach((row, y) => [...row].forEach((c, x) => { if (c === "#") g.fillRect(ox + x, oy + y, 1, 1); }));
     draw(person, sitX - 5, top - person.length);
     watcher = { x: sitX - 5 + 7, y: top - person.length + 3 };      // just past the raised hand
@@ -214,6 +217,118 @@ function startSkyScene(cv, opts = {}) {
     buildLand();
     const r = card ? card.getBoundingClientRect() : null;
     cardBox = r ? { l: r.left / SCALE, r: r.right / SCALE, t: r.top / SCALE } : null;
+  }
+
+  // ---- the sky itself: always night, or following a Minecraft server's time and weather
+  let gsky = null;               // {tod, ref, ticking, moon, raining, thundering}
+  let landKey = "", flashA = 0, ambient = 0;
+  const hexRgb = (c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+  const lerpC = (a, b, t) => { const x = hexRgb(a), y = hexRgb(b); return `#${x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join("")}`; };
+  function tod() {
+    if (!gsky) return 18000;                          // midnight
+    const secs = gsky.ticking ? (performance.now() - gsky.ref) / 1000 : 0;
+    return (gsky.tod + secs * 20) % 24000;
+  }
+  // 0 = night, 1 = full day, with dawn and dusk in between (Minecraft's 0 is 6 am).
+  function daylight(t = tod()) {
+    if (t < 1000) return 0.55 + 0.45 * (t / 1000);
+    if (t < 11500) return 1;
+    if (t < 13000) return 1 - (t - 11500) / 1500;
+    if (t < 22500) return 0;
+    return 0.55 * ((t - 22500) / 1500);
+  }
+  function glow(t = tod()) {                         // warm sunrise/sunset colour
+    const near = (c, w) => Math.max(0, 1 - Math.abs(t - c) / w);
+    return Math.max(near(12500, 900), near(23700, 900), near(-300, 900));
+  }
+  const isDay = () => !!gsky && daylight() > 0.45;
+  const rainAmt = () => (gsky?.raining ? (gsky.thundering ? 1 : 0.75) : 0);
+  function landColors() {
+    const d = gsky ? daylight() : 0, r = rainAmt();
+    const ground = lerpC("#0d1014", "#26341f", d * (1 - r * 0.4)), grass = lerpC("#15211a", "#4f7a33", d * (1 - r * 0.4));
+    return { ground, grass, figure: lerpC("#0d1014", "#1a2316", d) };
+  }
+  function skyColors() {
+    const d = daylight(), g = glow(), r = rainAmt();
+    let top = lerpC("#0a0e1c", "#4a7fe0", d), bottom = lerpC("#1d2233", "#a9ccf2", d);
+    top = lerpC(top, "#2f3a78", g * 0.55); bottom = lerpC(bottom, "#f0905e", g * 0.75);
+    if (r) { top = lerpC(top, d > 0.3 ? "#57606f" : "#121620", r * 0.7); bottom = lerpC(bottom, d > 0.3 ? "#8b95a3" : "#1c212c", r * 0.7); }
+    return [top, bottom];
+  }
+  const CLOUDS = Array.from({ length: 9 }, (_, i) => ({ x: Math.random(), y: 0.06 + Math.random() * 0.24, w: 14 + Math.floor(Math.random() * 22), h: 3 + Math.floor(Math.random() * 3), sp: 0.6 + Math.random() * 0.8, seed: i }));
+  function drawBackdrop() {
+    if (!gsky) { ctx.clearRect(0, 0, W, H); return; }
+    const [top, bottom] = skyColors();
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, top); grad.addColorStop(1, bottom);
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+    const t = tod(), d = daylight(), horizon = groundY + 6, arc = horizon - H * 0.08;
+    // Sun by day, the moon (with Minecraft's eight phases) by night.
+    if (t < 12600 || t > 23400) {
+      const s = ((t + 600) % 24000) / 13200, x = W * (0.06 + 0.88 * s), y = horizon - Math.sin(Math.max(0, Math.min(1, s)) * Math.PI) * arc;
+      ctx.globalAlpha = 0.35 * (1 - rainAmt() * 0.8); ctx.fillStyle = "#fff3b0"; ctx.fillRect(Math.round(x) - 6, Math.round(y) - 6, 12, 12);
+      ctx.globalAlpha = 1 - rainAmt() * 0.7; ctx.fillStyle = "#fff7c8"; ctx.fillRect(Math.round(x) - 4, Math.round(y) - 4, 8, 8);
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(Math.round(x) - 2, Math.round(y) - 2, 4, 4);
+    }
+    if (t > 11800 && t < 24000) {
+      const s = (t - 11800) / 12200, x = W * (0.06 + 0.88 * s), y = horizon - Math.sin(s * Math.PI) * arc;
+      const phase = gsky.moon || 0, lit = [7, 5, 4, 2, 0, 2, 4, 5][phase], fromLeft = phase > 0 && phase < 4;
+      ctx.globalAlpha = (1 - d) * (1 - rainAmt() * 0.7);
+      for (let cx = 0; cx < 7; cx++) {
+        const on = fromLeft ? cx < lit : cx >= 7 - lit;
+        ctx.fillStyle = on ? "#e8edf7" : "#3a4256";
+        ctx.fillRect(Math.round(x) - 3 + cx, Math.round(y) - 3, 1, 7);
+      }
+      if (lit > 3) { ctx.fillStyle = "#c3cbdd"; ctx.fillRect(Math.round(x) - 1 + (fromLeft ? -1 : 1), Math.round(y) - 1, 2, 2); }
+      ctx.globalAlpha = 1;
+    }
+    // Blocky clouds drift with real time (so they keep moving even when nothing else does).
+    const now = performance.now() / 1000, r = rainAmt();
+    const n = r ? CLOUDS.length : Math.round(4 + 3 * d);
+    for (let i = 0; i < n; i++) {
+      const c = CLOUDS[i], cx = ((c.x * (W + 80) + now * c.sp) % (W + 80)) - 40, cy = Math.round(c.y * H);
+      ctx.globalAlpha = (0.15 + 0.7 * d) * (r ? 0.9 : 0.75);
+      ctx.fillStyle = r ? lerpC("#3a414d", "#c9ced6", d * 0.6) : lerpC("#2a3142", "#ffffff", d);
+      ctx.fillRect(Math.round(cx), cy, c.w, c.h);
+      ctx.fillRect(Math.round(cx) + 3, cy - 2, c.w - 8, 2);
+    }
+    ctx.globalAlpha = 1;
+  }
+  function drawWeather() {
+    const r = rainAmt();
+    if (!r) return;
+    const now = performance.now() / 1000, n = Math.round((W * H) / 900 * r);
+    ctx.fillStyle = "rgba(175, 195, 235, 0.55)";
+    for (let i = 0; i < n; i++) {
+      const hx = (Math.sin(i * 91.7) * 43758.5) % 1, hy = (Math.sin(i * 12.9) * 78233.1) % 1;
+      const y = ((Math.abs(hy) * (H + 20) + now * (140 + (i % 5) * 18)) % (H + 20)) - 10;
+      const x = (Math.abs(hx) * (W + 40) - y * 0.18 + now * 4) % (W + 40);
+      ctx.fillRect(Math.round(x), Math.round(y), 1, 3);
+    }
+    if (gsky.thundering && Math.random() < 0.0025) { flashA = 0.55; snd("thunder", { x: Math.random() * W }); }
+    if (flashA > 0) { ctx.fillStyle = `rgba(230, 236, 255, ${flashA})`; ctx.fillRect(0, 0, W, H); flashA -= 0.04; }
+  }
+  function refreshLand() {
+    const key = gsky ? `${Math.round(daylight() * 8)}-${rainAmt()}` : "night";
+    if (key !== landKey) { landKey = key; buildLand(); }
+  }
+  // Ambient motion (clouds, rain) when the firework loop is asleep: a gentle redraw.
+  function ambientTick() {
+    clearTimeout(ambient);
+    if (stopped) return;
+    if (gsky && !running && !document.hidden) step();
+    ambient = setTimeout(ambientTick, rainAmt() ? 50 : gsky ? 400 : 2000);
+  }
+
+  // ---- daytime fireworks: coloured smoke, the way real daytime fireworks look
+  function smoke(x, y, colors, size = 1) {
+    if (!isDay() || FW.sky?.daytime !== "smoke" || sparks.length > SPARK_SOFT) return;
+    const n = Math.round(10 + size * 6);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2, sp = rand(0.25, 0.7) * size;
+      sparks.push({ x, y, px: x, py: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0, max: rand(160, 260), puff: true,
+        color: lerpC(pick(colors || ["#ffffff"]), "#9aa3b2", 0.35), r0: rand(1.5, 3) });
+    }
   }
 
   // ---- fireworks
@@ -253,17 +368,17 @@ function startSkyScene(cv, opts = {}) {
     }
     const preset = builtinDesign(shape);
     if (preset) return launchDesign(preset, preset.launch ? undefined : x);
-    if (FW_SPECIALS.includes(shape)) x = Math.max(W * 0.18, Math.min(W * 0.82, x));
+    if (FW_SPECIALS.includes(shape) && !(at?.x != null && at.y == null && at.keepX)) x = Math.max(W * 0.18, Math.min(W * 0.82, x));
     // A tree bursts low, just above the hill, and grows upwards from there.
     // A tree's rocket comes up out of the hill itself and bursts right at the surface.
     const surface = hill.length ? H - hill[Math.max(0, Math.min(hill.length - 1, Math.floor(x / 3)))] : groundY;
-    const apex = at ? at.y : shape === "tree" ? surface - 2 : rand(H * 0.1, Math.min(H * 0.45, groundY - 40));
+    const apex = at?.y != null ? at.y : shape === "tree" ? surface - 2 : rand(H * 0.1, Math.min(H * 0.45, groundY - 40));
     const startY = shape === "tree" ? H + 2 : groundY + 4;
     const vy = -Math.sqrt(2 * G * Math.max(1, startY - apex));
     const colors = [pick(fwPalette())];
     if (Math.random() < 0.45 || shape === "crossette") colors.push(pick(fwPalette()));
     if (shape === "willow" && Math.random() < 0.6) colors[0] = pick(["#ffcf5a", "#ffe9a8", "#ffb347"]);   // classic gold
-    const r = { x, y: startY, vx: at ? 0 : rand(-0.12, 0.12), vy, shape, colors, target: at?.target || null,
+    const r = { x, y: startY, vx: at?.y != null ? 0 : rand(-0.12, 0.12), vy, shape, colors, target: at?.target || null,
       fade: Math.random() < 0.35 ? pick(fwPalette()) : null, trail: Math.random() < 0.4, twinkle: Math.random() < 0.35 };
     if (shape === "dud") { r.vy *= 0.55; r.dud = true; r.colors = ["#8a8f98"]; }
     if (shape === "creeper") r.colors = ["#7dff5c", "#5fe04a"];
@@ -325,6 +440,7 @@ function startSkyScene(cv, opts = {}) {
   function explodeCustom(r) {
     const d = r.design, g = newGroup(d, r.x, r.y);
     if (d.flash > 0) flashBurst(r.x, r.y, d.flash);
+    smoke(r.x, r.y, d.colors, Math.min(2, d.size || 1.2));
     if ((d.sound_burst || "boom") !== "none") snd("burst", { x: r.x, kind: d.sound_burst || "boom", size: d.size || 1.2 });
     if (d.sound_crackle !== false && (d.sparkle > 0 || d.strobe > 0 || d.glitter > 0 || d.second > 0)) snd("crackle", { x: r.x, delay: d.second > 0 ? dv(d, "second_delay", 0.5) : 0.5, dur: Math.min(3, (d.life || 1.4) * 0.8) });
     if (d.sound_fizzle) snd("fizzle", { x: r.x, delay: (d.life || 1.4) * 0.75 });
@@ -779,6 +895,7 @@ function startSkyScene(cv, opts = {}) {
       snd("fizzle", { x: r.x });
       return;
     }
+    smoke(r.x, r.y, r.colors, r.shape === "large" ? 1.5 : 1);
     snd("burst", { x: r.x, kind: ["large", "saturn", "dragon", "tree", "willow"].includes(r.shape) ? "boom" : r.shape === "pop" ? "pop" : Math.random() < 0.5 ? "boom" : "pop",
       size: r.shape === "large" ? 1.6 : 1 });
     if (r.twinkle || r.shape === "crossette" || r.shape === "willow") snd("crackle", { x: r.x, delay: r.shape === "crossette" ? 0.45 : 0.6, dur: r.shape === "willow" ? 2.4 : 1.2 });
@@ -888,9 +1005,13 @@ function startSkyScene(cv, opts = {}) {
 
   function step() {
     frame++;
-    ctx.clearRect(0, 0, W, H);
+    refreshLand();
+    drawBackdrop();
+    runShow();
+    const starVis = gsky ? (1 - daylight()) * (1 - rainAmt() * 0.85) : 1;
     for (const s of stars) {                         // slow twinkle
-      ctx.globalAlpha = s.a * (0.65 + 0.35 * Math.sin(s.p + frame * 0.02));
+      if (starVis <= 0.02) break;
+      ctx.globalAlpha = starVis * s.a * (0.65 + 0.35 * Math.sin(s.p + frame * 0.02));
       ctx.fillStyle = "#dfe6f5"; ctx.fillRect(s.x, s.y, 1, 1);
     }
     ctx.globalAlpha = 1;
@@ -930,6 +1051,13 @@ function startSkyScene(cv, opts = {}) {
       if (p.life > p.max) { sparks.splice(i, 1); continue; }
       p.px = p.x; p.py = p.y;
       if (p.cd) { stepCustom(p, i); continue; }
+      if (p.puff) {                                  // daytime smoke: drifts, spreads, fades
+        p.vx *= 0.97; p.vy = p.vy * 0.97 - 0.004; p.x += p.vx + 0.02; p.y += p.vy;
+        const tt = p.life / p.max, rr = Math.round(p.r0 + tt * 5);
+        ctx.globalAlpha = 0.32 * (1 - tt); ctx.fillStyle = p.color;
+        ctx.fillRect(Math.round(p.x - rr / 2), Math.round(p.y - rr / 2), rr, rr);
+        continue;
+      }
       if (p.sub && p.life >= p.fuse) {               // crossette: the small rocket bursts
         sparks.splice(i, 1);
         const n = 16;
@@ -975,7 +1103,11 @@ function startSkyScene(cv, opts = {}) {
     ctx.globalAlpha = 1;
     updateTrees();
     updateFigures();
-    ctx.drawImage(land, 0, 0);                        // hill and watchers in front of everything
+    drawWeather();
+    ctx.drawImage(land, 0, 0);
+    // A bright sky behind the app's panels is dimmed a little so the page stays readable.
+    const dim = gsky && opts.dim ? opts.dim() * daylight() : 0;
+    if (dim > 0) { ctx.fillStyle = `rgba(8, 12, 24, ${dim})`; ctx.fillRect(0, 0, W, H); }                        // hill and watchers in front of everything
   }
 
   // The loop only runs while something is moving: the automatic show is on, or rockets
@@ -994,25 +1126,77 @@ function startSkyScene(cv, opts = {}) {
     let n = 0;
     while (acc >= STEP_MS && n < 4) { step(); acc -= STEP_MS; n++; }
     if (n === 4) acc = 0;
-    if (!auto && !boosting() && !rockets.length && !sparks.length && !figures.length && !trees.length && !emitters.length && !events.length) { running = false; frame = 0; step(); return; }
+    if (!auto && !boosting() && !runner && !rockets.length && !sparks.length && !figures.length && !trees.length && !emitters.length && !events.length) { running = false; frame = 0; step(); return; }
     raf = requestAnimationFrame(loop);
   }
   function wake() {
     if (running || stopped || document.hidden) return;
     running = true; lastT = 0; loop();
   }
+  // ---- shows: timed lists of launches made in Show settings
+  let runner = null;             // {show, t0, idx, loop, base}
+  function playShow(show, o = {}) {
+    if (!show?.steps?.length) return;
+    runner = { show, t0: frame, idx: 0, loop: !!o.loop, base: !!o.base, until: o.until || 0 };
+    wake();
+  }
+  function fireStep(stp) {
+    const n = Math.max(1, Math.min(12, stp.count || 1));
+    for (let k = 0; k < n; k++) {
+      const off = n > 1 ? k / (n - 1) : 0.5;
+      const x = stp.where === "left" ? W * rand(0.12, 0.3) : stp.where === "right" ? W * rand(0.7, 0.88) : stp.where === "center" ? W * rand(0.42, 0.58)
+        : stp.where === "spread" ? W * (0.12 + 0.76 * off) : stp.where === "sides" ? (k % 2 ? W * rand(0.72, 0.88) : W * rand(0.12, 0.28)) : W * rand(0.1, 0.9);
+      const go = () => {
+        if (stp.design) launchDesign(stp.design, x);
+        else if (stp.what === "random") launch(undefined, { x });
+        else if (stp.what === "showpiece") { const sp = FW_SPECIALS.map((q) => [q, fwWeight(q)]).filter(([, w]) => w > 0); launch(sp.length ? pickWeighted(sp) : "large", { x, keepX: true }); }
+        else if (stp.what.startsWith("custom:")) { const d = FW.custom.find((q) => `custom:${q.id}` === stp.what); d ? launchDesign(d, x) : launch(undefined, { x }); }
+        else launch(stp.what, { x, keepX: true });
+      };
+      if (k === 0) go(); else later(k * rand(5, 12), go);
+    }
+  }
+  function runShow() {
+    if (!runner) return;
+    const steps = runner.show.steps, t = (frame - runner.t0) / 60;
+    while (runner.idx < steps.length && steps[runner.idx].at <= t) fireStep(steps[runner.idx++]);
+    if (runner.idx >= steps.length) {
+      const gap = (runner.show.loop_gap ?? 2) * 60;
+      const last = steps[steps.length - 1].at * 60;
+      if (frame - runner.t0 >= last + gap) {
+        const keep = runner.loop && (runner.base ? auto : runner.until > performance.now());
+        if (keep) { runner.t0 = frame; runner.idx = 0; } else runner = null;
+      }
+    }
+  }
+  const isNightNow = () => (gsky ? daylight() < 0.45 : (() => { const h = new Date().getHours(); return h >= 19 || h < 7; })());
+  // While the Show switch is on, a base show (day or night) replaces the random mix.
+  function baseShow() {
+    const b = FW.base_shows;
+    return b ? (isNightNow() ? b.night : b.day) : null;
+  }
+  function daytimePaused() { return isDay() && FW.sky?.daytime === "pause" && !boosting(); }
+
   function schedule() {
     clearTimeout(timer);
     if (!auto && !boosting()) return;
+    const bs = !boosting() && auto ? baseShow() : null;
+    if (bs && !daytimePaused()) {
+      if (!runner || !runner.base || runner.show.id !== bs.id) playShow(bs, { loop: true, base: true });
+      timer = setTimeout(schedule, 2000);           // check again for day/night changes
+      return;
+    }
+    if (runner?.base) runner = null;
     timer = setTimeout(() => {
-      if (!document.hidden && rockets.length < 6 && sparks.length < 1400) {
+      if (!document.hidden && !daytimePaused() && rockets.length < 6 && sparks.length < 1400) {
         launch();
         if (Math.random() < 0.25) setTimeout(launch, rand(150, 400));      // the occasional salvo
         if (Math.random() < 0.1) setTimeout(launch, rand(450, 700));
         wake();
       }
       schedule();
-    }, boosting() ? rand(FW_PACE.lively[0], FW_PACE.lively[1]) : rand(every()[0], every()[1]));
+    }, boosting() ? rand(FW_PACE.lively[0], FW_PACE.lively[1])
+      : isDay() && FW.sky?.daytime === "smoke" ? rand(FW_PACE.calm[0], FW_PACE.calm[1]) : rand(every()[0], every()[1]));
   }
   const onVis = () => {
     if (document.hidden) { running = false; cancelAnimationFrame(raf); }
@@ -1037,7 +1221,7 @@ function startSkyScene(cv, opts = {}) {
   else step();
   return {
     stop() {
-      stopped = true; running = false; ro?.disconnect(); cancelAnimationFrame(raf); clearTimeout(timer);
+      stopped = true; running = false; ro?.disconnect(); clearTimeout(ambient); cancelAnimationFrame(raf); clearTimeout(timer);
       removeEventListener("resize", onResize); document.removeEventListener("visibilitychange", onVis);
     },
     // A salvo, e.g. when someone joins. Skipped for reduced motion and hidden tabs.
@@ -1049,11 +1233,24 @@ function startSkyScene(cv, opts = {}) {
     // because someone asked for it.
     launch(shape) { if (rockets.length < 12) { launch(shape); wake(); } },
     // A lively show for a while (scheduled finales, the "show" event), even with Show off.
-    boost(seconds) {
+    boost(seconds, show) {
       if (reduced) return;
       boostUntil = Math.max(boostUntil, performance.now() + seconds * 1000);
-      launch(); wake(); schedule();
+      if (show?.steps?.length) playShow(show, { loop: true, until: boostUntil });
+      else launch();
+      wake(); schedule();
     },
+    // Play a show once (game events, previews in Show settings).
+    playShow(show, o = {}) { playShow(show, o); },
+    stopShow() { runner = null; },
+    // In-game time and weather: {time_of_day, moon, raining, thundering, ticking} or null for night.
+    setGameSky(info) {
+      gsky = info && info.time_of_day != null ? { tod: info.time_of_day, ref: performance.now(), ticking: !!info.ticking, moon: info.moon || 0,
+        raining: !!info.raining, thundering: !!info.thundering } : null;
+      if (!running) step();
+      ambientTick();
+    },
+    get daylight() { return gsky ? daylight() : 0; },
     get boosting() { return boosting(); },
     // One of the big show-pieces (dragon, bow, tree), for challenge advancements.
     showpiece() { const k = FW_SPECIALS.map((x) => [x, fwWeight(x)]).filter(([, w]) => w > 0); launch(k.length ? pickWeighted(k) : "large"); wake(); },
@@ -1061,7 +1258,7 @@ function startSkyScene(cv, opts = {}) {
     get busy() { return !!(rockets.length || sparks.length || figures.length || trees.length || emitters.length || events.length); },
     // Empty the sky at once (the editor uses this so previews never pile up).
     clear() {
-      rockets.length = 0; sparks.length = 0; figures.length = 0; trees.length = 0; emitters.length = 0; events.length = 0; groups.length = 0;
+      rockets.length = 0; sparks.length = 0; figures.length = 0; trees.length = 0; emitters.length = 0; events.length = 0; groups.length = 0; runner = null;
       if (!running) { frame = 0; step(); }
     },
     // Launch a design straight from the Firework editor.
