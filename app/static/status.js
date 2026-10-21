@@ -440,8 +440,8 @@ function recapPanelHtml() {
 // One slide at a time, big, for a screen on the wall. Slides with nothing to show are skipped;
 // long ones scroll gently while they're up.
 const TV_SLIDES = [["now", "Playing now"], ["map", "Where everyone is"], ["leaders", "Leaderboards"], ["recap", "Today on the server"], ["feed", "Recent activity"], ["news", "Announcements"]];
-const tv = { idx: -1, timer: 0, shown: null, loops: 0, lbPage: -1 };
-const TV_LB_PAGE = 6;                         // leaderboards per visit to the slide; each visit shows the next six
+const tv = { idx: -1, timer: 0, shown: null, loops: 0, dur: 0 };
+const TV_SCROLL_PX_S = 34;                    // how fast a long screen glides down (pixels per second)
 function nf(n) { return new Intl.NumberFormat([], { maximumFractionDigits: n < 10 ? 1 : 0 }).format(n || 0); }
 
 function tvAvailable(k, b) {
@@ -462,10 +462,7 @@ function tvLeadersHtml() {
     if (!top.length) return "";
     return `<div class="tv-board glass"><h3>${esc(title)}</h3><ol>${top.map((r, i) => `<li><span class="rank">${i + 1}</span>${faceHtml(r, 36)}<b>${esc(r.name)}</b><span class="val">${esc(fmtStat(kind, r[k]))}</span></li>`).join("")}</ol></div>`;
   }).filter(Boolean);
-  const pages = Math.max(1, Math.ceil(boards.length / TV_LB_PAGE)), page = ((tv.lbPage % pages) + pages) % pages;
-  const sub = $('[data-sub="leaders"]');
-  if (sub) sub.textContent = pages > 1 ? ` · ${page + 1} of ${pages}` : "";
-  return `<div class="tv-boards">${boards.slice(page * TV_LB_PAGE, page * TV_LB_PAGE + TV_LB_PAGE).join("")}</div>`;
+  return `<div class="tv-boards">${boards.join("")}</div>`;
 }
 function tvRecapHtml() {
   const r = st.recap;
@@ -542,12 +539,16 @@ function renderTv(b) {
   const sub = $('[data-sub="now"]');
   if (sub) sub.textContent = ` on ${b.name}`;
   if (tv.idx < 0) tvNext();
+  else if (tv.shown) {                     // the showing screen got more (or less) to scroll through: start it again
+    const inner = $(`.tv-slide[data-slide="${tv.shown}"] .tv-inner`);
+    if (inner && Math.abs(inner.scrollHeight - (tv.measured || 0)) > 40) tvShow(tv.shown);
+  }
   tvDots(b);
 }
 function tvDots(b) {
   const dots = $("#tv-dots");
   if (!dots) return;
-  const html = TV_SLIDES.filter(([k]) => tvAvailable(k, b)).map(([k, t]) => `<button type="button" data-tv="${k}" class="${k === tv.shown ? "on" : ""}" aria-current="${k === tv.shown}"><i style="--dur:${st.tvCfg.seconds}s"></i>${esc(t)}</button>`).join("");
+  const html = TV_SLIDES.filter(([k]) => tvAvailable(k, b)).map(([k, t]) => `<button type="button" data-tv="${k}" class="${k === tv.shown ? "on" : ""}" aria-current="${k === tv.shown}"><i style="--dur:${k === tv.shown && tv.dur ? tv.dur / 1000 : st.tvCfg.seconds}s"></i>${esc(t)}</button>`).join("");
   setHtml(dots, html);
   if (!dots._wired) {
     dots._wired = true;
@@ -582,26 +583,33 @@ function tvShow(key) {
   if (!b || !st.tv) return;
   const keys = TV_SLIDES.map(([k]) => k);
   tv.idx = keys.indexOf(key); tv.shown = key;
-  if (key === "leaders") { tv.lbPage++; setHtml($("#tv-leaders"), tvLeadersHtml()); }
   document.querySelectorAll(".tv-slide").forEach((el) => {
     const on = el.dataset.slide === tv.shown;
     el.classList.toggle("on", on); el.setAttribute("aria-hidden", String(!on));
   });
   if (tv.shown === "map" && b.players.some((p) => p.position)) { st.map = null; mountMap($("#sp-map"), b, null); }
-  tvScroll($(`.tv-slide[data-slide="${tv.shown}"] .tv-scroll`));
+  // A screen taller than the display stays up long enough to glide through all of it.
+  tv.dur = tvScroll($(`.tv-slide[data-slide="${tv.shown}"] .tv-scroll`));
   tvDots(b);
-  tv.timer = setTimeout(tvNext, st.tvCfg.seconds * 1000);
+  tv.timer = setTimeout(tvNext, tv.dur);
 }
 // Too tall for the screen: hold, glide down to the end, hold.
+// Returns how long the screen should stay up: the usual time, or longer when there's more to
+// scroll through (hold at the top, glide down slowly, hold at the bottom).
 function tvScroll(box) {
-  if (!box) return;
+  const base = st.tvCfg.seconds * 1000;
+  if (!box) return base;
   const inner = box.firstElementChild;
   inner.getAnimations?.().forEach((a) => a.cancel());
+  tv.measured = inner.scrollHeight;
   const over = inner.scrollHeight - box.clientHeight;
-  if (over <= 8 || !inner.animate) return;
-  const ms = st.tvCfg.seconds * 1000;
-  inner.animate([{ transform: "translateY(0)", offset: 0 }, { transform: "translateY(0)", offset: 0.18 },
-    { transform: `translateY(${-over}px)`, offset: 0.88 }, { transform: `translateY(${-over}px)`, offset: 1 }], { duration: ms, easing: "ease-in-out", fill: "forwards" });
+  if (over <= 8 || !inner.animate) return base;
+  const hold = 3500, glide = (over / TV_SCROLL_PX_S) * 1000;
+  const ms = Math.max(base, hold + glide + hold);
+  const top = hold / ms, end = 1 - hold / ms;
+  inner.animate([{ transform: "translateY(0)", offset: 0 }, { transform: "translateY(0)", offset: top },
+    { transform: `translateY(${-over}px)`, offset: end }, { transform: `translateY(${-over}px)`, offset: 1 }], { duration: ms, easing: "linear", fill: "forwards" });
+  return ms;
 }
 function setTvMode(on) {
   st.tv = on;
