@@ -176,8 +176,8 @@ function render(b) {
   }
   setHtml($("#sp-hero"), heroHtml(b));
   setHtml($("#sp-players"), playersHtml(b));
-  const hasPos = b.players.some((p) => p.position);
-  setHtml($("#sp-mapwrap"), hasPos ? `<section class="sp-panel glass"><div class="sp-h"><h2>Where everyone is</h2><span class="muted" id="sp-map-dim"></span></div><div class="sp-map" id="sp-map"></div></section>` : "");
+  const hasPos = hasMap(b);
+  setHtml($("#sp-mapwrap"), hasPos ? `<section class="sp-panel glass"><div class="sp-h"><h2>${mapPeople(b).away ? "Where everyone was last" : "Where everyone is"}</h2><span class="muted" id="sp-map-dim"></span></div><div class="sp-map" id="sp-map"></div></section>` : "");
   setHtml($("#sp-webwrap"), b.web_map ? `<section class="sp-panel glass"><div class="sp-h"><h2>World map</h2><a class="muted" href="${esc(b.web_map)}" target="_blank" rel="noopener">Open full screen</a></div><iframe class="sp-webmap" src="${esc(b.web_map)}" title="World map" loading="lazy"></iframe></section>` : "");
   setHtml($("#sp-feedwrap"), b.recent.length ? `<section class="sp-panel glass"><div class="sp-h"><h2>Recent activity</h2></div>${feedHtml(b)}</section>` : "");
   setHtml($("#sp-recapwrap"), recapPanelHtml());
@@ -264,9 +264,18 @@ setInterval(tick, 1000);
 // ------------------------------------------------------------------ position map
 // A top-down plot (north up) of everyone in one dimension, with world spawn. Heads glide
 // to their new spots between updates instead of jumping.
+// Who goes on the map: everyone online, or with nobody on, where each recent player last was.
+function mapPeople(b) {
+  const on = b.players.filter((p) => p.position);
+  return on.length ? { list: on, away: false } : { list: (b.recently || []).filter((p) => p.position), away: true };
+}
+const hasMap = (b) => mapPeople(b).list.length > 0 || !!b.spawn;
+
 function mountMap(el, b, prev) {
   const dims = {};
-  for (const p of b.players) if (p.position) (dims[dimKey(p.dimension)] ||= { id: p.dimension, players: [] }).players.push(p);
+  const people = mapPeople(b);
+  for (const p of people.list) (dims[dimKey(p.dimension)] ||= { id: p.dimension || "minecraft:overworld", players: [] }).players.push(p);
+  if (!Object.keys(dims).length && b.spawn) dims.overworld = { id: "minecraft:overworld", players: [] };     // nobody at all: around spawn
   const order = Object.keys(dims).sort((a, c) => dims[c].players.length - dims[a].players.length || (a === "overworld" ? -1 : 1));
   const dim = prev && dims[prev.dim] ? prev.dim : order[0];
   const sig = `${order.join(",")}|${dim}|${order.map((k) => dims[k].players.length).join(",")}`;
@@ -281,6 +290,7 @@ function mountMap(el, b, prev) {
   st.map = map;
   map.dim = dim;
   map.players = dims[dim].players;
+  map.away = people.away;
   map.spawn = dim === "overworld" ? b.spawn : null;
   map.anim = performance.now();
   $("#sp-map-dim").textContent = order.length === 1 ? dimName(dims[dim].id) : "";
@@ -328,7 +338,7 @@ function mountMap(el, b, prev) {
     if (map.spawn) pts.push(map.spawn);
     let x0 = Math.min(...pts.map((p) => p.x)), x1 = Math.max(...pts.map((p) => p.x));
     let z0 = Math.min(...pts.map((p) => p.z)), z1 = Math.max(...pts.map((p) => p.z));
-    const span = Math.max(96, (x1 - x0) * 1.3, (z1 - z0) * 1.3);
+    const span = Math.max(map.players.length ? 96 : 384, (x1 - x0) * 1.3, (z1 - z0) * 1.3);
     return { cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, span };
   }
   function niceStep(span) {
@@ -393,12 +403,14 @@ function mountMap(el, b, prev) {
       ctx.fillStyle = "#fff"; ctx.fillRect(x - s / 2 - 2, y - s / 2 - 2, s + 4, s + 4);
       const img = map.heads[p.name];
       ctx.imageSmoothingEnabled = false;
+      ctx.globalAlpha = map.away ? 0.6 : 1;                 // not here now: a faded head where they left
       if (img?.complete && img.naturalWidth >= 64) {        // face, then the hat layer over it
         ctx.drawImage(img, 8, 8, 8, 8, x - s / 2, y - s / 2, s, s);
         ctx.drawImage(img, 40, 8, 8, 8, x - s / 2, y - s / 2, s, s);
       }
       else { ctx.fillStyle = "#4d74d6"; ctx.fillRect(x - s / 2, y - s / 2, s, s); }
-      const label = p.name;
+      ctx.globalAlpha = 1;
+      const label = map.away && p.last_seen ? `${p.name} · ${fmtAgo(p.last_seen)}` : p.name;
       const tw = ctx.measureText(label).width + 10;
       ctx.fillStyle = "rgba(8,10,18,.7)"; ctx.fillRect(x - tw / 2, y + s / 2 + 5, tw, 18);
       ctx.fillStyle = "#ebe6d9"; ctx.fillText(label, x, y + s / 2 + 18);
@@ -447,7 +459,7 @@ function nf(n) { return new Intl.NumberFormat([], { maximumFractionDigits: n < 1
 function tvAvailable(k, b) {
   if (st.tvCfg.slides[k] === false) return false;
   if (k === "now") return true;
-  if (k === "map") return b.players.some((p) => p.position);
+  if (k === "map") return hasMap(b);
   if (k === "leaders") return !!st.leaders?.players?.some((r) => r.play_time > 0);
   if (k === "recap") return !!st.recap && (st.recap.recap.players.length || st.recap.yesterday?.players.length || st.recap.on_this_day.length);
   if (k === "feed") return b.recent.length > 0;
@@ -526,7 +538,7 @@ function renderTv(b) {
     st.map = null; tv.idx = -1; tv.shown = null; tv.loops = 0;
   }
   setHtml($("#tv-now"), heroHtml(b) + playersHtml(b));
-  const hasPos = b.players.some((p) => p.position);
+  const hasPos = hasMap(b);
   setHtml($("#tv-map"), hasPos ? `<div class="sp-map tv-map" id="sp-map"></div><span class="muted" id="sp-map-dim"></span>` : "");
   if (hasPos && tv.shown === "map") mountMap($("#sp-map"), b, st.map);
   setHtml($("#tv-leaders"), tvLeadersHtml());
@@ -587,7 +599,7 @@ function tvShow(key) {
     const on = el.dataset.slide === tv.shown;
     el.classList.toggle("on", on); el.setAttribute("aria-hidden", String(!on));
   });
-  if (tv.shown === "map" && b.players.some((p) => p.position)) { st.map = null; mountMap($("#sp-map"), b, null); }
+  if (tv.shown === "map" && hasMap(b)) { st.map = null; mountMap($("#sp-map"), b, null); }
   // A screen taller than the display stays up long enough to glide through all of it.
   tv.dur = tvScroll($(`.tv-slide[data-slide="${tv.shown}"] .tv-scroll`));
   tvDots(b);

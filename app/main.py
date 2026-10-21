@@ -284,6 +284,13 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
             if seen and seen > week:
                 recent.append({"name": p["name"], "uuid": uuid, "last_seen": seen})
         board["recently"] = sorted(recent, key=lambda r: -r["last_seen"])[:8]
+        if cfg["show_positions"]:
+            # where they were when they left, so the map has something to show with nobody on
+            for r in board["recently"]:
+                d, _m = S.player_file_data(srv, r["uuid"])
+                if d and d.get("position"):
+                    r["position"] = {k: d["position"][k] for k in ("x", "y", "z")}
+                    r["dimension"] = d["position"].get("dimension") or "minecraft:overworld"
     return board
 
 
