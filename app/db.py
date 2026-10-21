@@ -89,23 +89,11 @@ def tz() -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
-def _adopt_old_db(path) -> None:
-    """Solstone was called Lodestone; pick up its history database on first start."""
-    old = path.with_name("lodestone.db")
-    if path.exists() or not old.exists():
-        return
-    for suffix in ("", "-wal", "-shm"):
-        src = old.with_name(old.name + suffix)
-        if src.exists():
-            src.rename(path.with_name(path.name + suffix))
-
-
 def conn() -> sqlite3.Connection:
     global _conn
     with _lock:
         if _conn is None:
             path = config.data_dir / "solstone.db"
-            _adopt_old_db(path)
             _conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
             _conn.row_factory = sqlite3.Row
             # WAL needs shared-memory mmap, which FUSE filesystems such as Unraid's

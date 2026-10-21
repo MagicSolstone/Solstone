@@ -87,8 +87,6 @@ Open `http://<host>:8085`. If you only have one server, Solstone opens straight 
 
 **Unraid:** add a container from `ghcr.io/tjusczak/solstone:latest` with those two paths and env vars. `PUID`/`PGID` decide who owns `/data`; `99`/`100` is nobody:users.
 
-**Coming from Lodestone** (this project's old name): change the image to `ghcr.io/tjusczak/solstone` and keep your existing `/data` mapping, or rename the folder to `appdata/solstone` first. On first start Solstone picks up `lodestone.db`, so history, users and settings carry over. Everyone has to sign in once more because the session cookie was renamed.
-
 ### 4. Sign in
 
 On first start Solstone creates an admin account. If you didn't set `ADMIN_PASSWORD`, the password is in the container log (Unraid: the Solstone icon → Logs) and in `/data/admin_credentials.txt`. Sign in, change it from the account menu, and delete that file. Add family and friends under **Users & activity**.

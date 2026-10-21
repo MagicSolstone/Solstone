@@ -630,6 +630,8 @@ async def test_firework_event(request: Request):
     if ev not in fwshow.EVENT_DEFAULTS:
         raise HTTPException(400, "Unknown event")
     player = str(body.get("player") or "") or None
+    if body.get("preview"):               # just say what it would launch; the page plays it in a preview
+        return {"ok": True, "show": fwshow._resolve(ev, player)}
     fwshow.push("test", "Test", ev, player, f"Test: {ev}" + (f" for {player}" if player else ""))
     return {"ok": True}
 

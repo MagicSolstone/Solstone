@@ -1131,3 +1131,23 @@ body:not(.tv) .tv-stage, body:not(.tv) .tv-dots { display: none; }
 .sfx-group legend { font-family: var(--font-display); font-size: .95rem; padding: 0 4px; color: var(--gold); }
 .sfx-group .fwe-sliders { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 4px 14px; }
 .sfx-groups { grid-template-columns: 1fr; }
+
+/* ------------------------------------------------------------ firework preview window */
+.pv { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 20px; background: rgba(5, 7, 14, .72);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); animation: pvin .2s ease; }
+@keyframes pvin { from { opacity: 0; } }
+.pv-box { width: min(1100px, 100%); max-height: 100%; display: flex; flex-direction: column; gap: 12px; padding: 16px 18px;
+  border-radius: 16px; border: 1px solid var(--glass-edge); background: rgba(16, 20, 32, .92); box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.pv-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.pv-head h2 { font-size: 1.4rem; }
+.pv-x { font-size: 1.4rem; }
+.pv-stage { position: relative; height: min(62vh, 560px); min-height: 260px; border-radius: 12px; overflow: hidden; background: #0b0f1d; }
+.pv-stage canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+.pv-msg { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); padding: 6px 16px; border-radius: 999px; white-space: nowrap;
+  font-family: var(--font-display); font-size: 1.15rem; background: rgba(16, 20, 32, .7); border: 1px solid var(--glass-edge); pointer-events: none; }
+.pv-msg[hidden], .pv-count[hidden] { display: none; }
+.pv-count { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; font-family: var(--font-display);
+  font-size: min(30vh, 220px); color: #fff; text-shadow: 0 0 40px rgba(255, 210, 120, .8), 0 6px 0 rgba(0,0,0,.35); }
+.pv-foot { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.pv-foot .muted { flex: 1; }
+@media (max-width: 640px) { .pv { padding: 8px; } .pv-box { padding: 12px; } .pv-stage { height: 55vh; } .pv-foot .muted { display: none; } }

@@ -171,7 +171,7 @@ async function viewControl(sid) {
   };
 
   let history = [];
-  try { history = JSON.parse(localStorage.getItem("solstone-cmd-history") || localStorage.getItem("lodestone-cmd-history") || "[]"); } catch {}
+  try { history = JSON.parse(localStorage.getItem("solstone-cmd-history") || "[]"); } catch {}
   let hIdx = history.length;
   const input = $("#cmd-input");
   input.addEventListener("keydown", (e) => {
@@ -457,7 +457,7 @@ function wireFireworksSettings(el, fw) {
       save({ weights: { [k]: v } });
       return;
     }
-    if (t.dataset.try) { appSky.scene?.launch(t.dataset.try); return; }
+    if (t.dataset.try) { const label = FW_LABELS.find(([k]) => k === t.dataset.try)?.[1] || t.dataset.try; openFwPreview({ title: label, run: (sc) => sc.launch(t.dataset.try) }); return; }
     if (t.dataset.color) {
       const on = t.getAttribute("aria-pressed") !== "true";
       const colors = $$(".fw-swatch", el).filter((b) => (b === t ? on : b.getAttribute("aria-pressed") === "true")).map((b) => b.dataset.color);

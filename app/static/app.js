@@ -170,6 +170,7 @@ const state = {
   itemSeq: 0,
 };
 function clearTimers() {
+  if (typeof closeFwPreview === "function") closeFwPreview();
   state.timers.forEach(clearInterval); state.timers = [];
   state.cleanups.splice(0).forEach((f) => { try { f(); } catch { /* best effort */ } });
 }

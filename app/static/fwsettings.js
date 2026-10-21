@@ -122,7 +122,7 @@ function renderCommunity(el) {
   el.querySelectorAll("[data-inshow]").forEach((c) => c.addEventListener("change", () => updateDesign(c.closest("[data-id]").dataset.id, { in_show: c.checked })));
   el.querySelectorAll("[data-play]").forEach((b) => b.addEventListener("click", () => {
     const d = fws.designs.find((x) => x.id === b.closest("[data-id]").dataset.id);
-    if (d) appSky.scene?.launch({ ...d });
+    if (d) openFwPreview({ title: d.name, sub: `by ${d.author || "someone"}`, run: (sc) => sc.launch({ ...d }) });
   }));
 }
 
@@ -152,8 +152,11 @@ function renderEvents(el) {
     row.querySelectorAll("input, select").forEach((i) => i.addEventListener("change", save));
     row.querySelector("[data-test]").addEventListener("click", async () => {
       const player = k === "join" ? fws.data.players[0] : null;
-      try { await post("/api/fireworks/test-event", { event: k, player }); showToast("Watch the sky…", 1500); }
-      catch (err) { showToast(esc(err.message), 3000); }
+      try {
+        const r = await post("/api/fireworks/test-event", { event: k, player, preview: true });
+        const label = FWS_EVENTS.find(([x]) => x === k)?.[1] || k;
+        openFwPreview({ title: label, sub: player ? `As if ${player} did it` : "", run: (sc, ui) => pvRunShow(sc, r.show, ui) });
+      } catch (err) { showToast(esc(err.message), 3000); }
     });
   });
 }
@@ -171,7 +174,12 @@ function renderJoin(el) {
     if (s.value) next[s.dataset.player.toLowerCase()] = s.value; else delete next[s.dataset.player.toLowerCase()];
     fwsSave({ signatures: next }, `Join firework set for ${s.dataset.player}`);
   }));
-  el.querySelectorAll("[data-try]").forEach((b) => b.addEventListener("click", () => post("/api/fireworks/test-event", { event: "join", player: b.dataset.try }).catch(() => {})));
+  el.querySelectorAll("[data-try]").forEach((b) => b.addEventListener("click", async () => {
+    try {
+      const r = await post("/api/fireworks/test-event", { event: "join", player: b.dataset.try, preview: true });
+      openFwPreview({ title: `${b.dataset.try} joins`, sub: "Their join firework", run: (sc, ui) => pvRunShow(sc, r.show, ui) });
+    } catch (err) { showToast(esc(err.message), 3000); }
+  }));
 }
 
 // ---------------------------------------------------------------- calendar
@@ -275,13 +283,22 @@ function wireCalEdit(el, i) {
   });
   form.querySelector("[data-preview]").addEventListener("click", () => {
     read();
-    const scene = appSky.scene;
-    if (!scene) return;
-    const before = FW.theme;
-    FW.theme = { colors: draft.colors, kinds: draft.kinds, name: draft.name, emoji: draft.emoji, message: draft.message };
-    showToast(`${esc(draft.emoji)} ${esc(draft.message || draft.name)}`, 4000);
-    scene.boost(15);
-    setTimeout(() => { FW.theme = before; }, 16000);
+    const theme = { colors: draft.colors, kinds: draft.kinds, name: draft.name, emoji: draft.emoji, message: draft.message };
+    const f = draft.finale, show = f.on && f.show ? (fws.data.shows || []).find((x) => x.id === f.show) : null;
+    openFwPreview({ title: `${draft.emoji} ${draft.name}`, theme,
+      sub: f.on ? `The day's fireworks, then the scheduled show${f.countdown ? " with its countdown" : ""}` : "The day's colours and favourite kinds",
+      run: (sc, ui) => {
+        if (draft.message) ui.message(`${draft.emoji} ${draft.message}`, 3500);
+        sc.boost(6);                                       // a taste of the day: its colours and kinds
+        if (!f.on) return;
+        const start = f.countdown ? 11000 : 7000;
+        if (f.countdown) for (let n = 3; n >= 1; n--) ui.later(start - n * 1000, () => ui.count(n));
+        ui.later(start, () => {
+          ui.count(null);
+          if (f.countdown || draft.message) ui.message(draft.message || draft.name, 5000);
+          if (show) sc.playShow(pvSteps(show)); else { sc.boost(15); for (let i = 0; i < 8; i++) ui.later(i * 220, () => sc.launch()); }
+        });
+      } });
   });
   form.addEventListener("submit", async (e) => {
     e.preventDefault(); read();
@@ -399,13 +416,12 @@ function timelineHtml(sh) {
   const len = Math.max(1, showLength(sh));
   return `<div class="fws-timeline" aria-hidden="true">${sh.steps.map((x) => `<i style="left:${(x.at / len) * 100}%" title="${esc(`${x.at}s: ${stepLabel(x.what)} ×${x.count}`)}" class="${x.what === "showpiece" ? "big" : x.what.startsWith("custom:") ? "mine" : ""}"></i>`).join("")}</div>`;
 }
+function pvSteps(sh) {
+  return { ...sh, steps: sh.steps.map((x) => (x.what.startsWith("custom:") ? { ...x, design: fws.designs.find((d) => `custom:${d.id}` === x.what) } : x)) };
+}
 function previewShow(sh) {
-  const scene = appSky.scene;
-  if (!scene) return;
-  scene.clear();
-  const steps = sh.steps.map((x) => (x.what.startsWith("custom:") ? { ...x, design: fws.designs.find((d) => `custom:${d.id}` === x.what) } : x));
-  scene.playShow({ ...sh, steps });
-  showToast(`🎬 ${esc(sh.name)}`, 2000);
+  const len = pvShowLength(sh);
+  openFwPreview({ title: `🎬 ${sh.name}`, sub: `${sh.steps.length} steps · ${Math.round(len)} s`, run: (sc) => sc.playShow(pvSteps(sh)) });
 }
 function showEditHtml(sh, i) {
   const opts = (cur) => `<option value="random" ${cur === "random" ? "selected" : ""}>🎲 Random</option><option value="showpiece" ${cur === "showpiece" ? "selected" : ""}>⭐ Show-piece</option>
@@ -455,3 +471,71 @@ function wireShowEdit(el, i) {
     fws.editingShow = null; await fwsSave({ shows: next }); renderShows(el);
   });
 }
+
+// ---------------------------------------------------------------- preview window
+// Previews play in their own sky in front of everything. The background sky pauses and goes
+// quiet meanwhile, so you see and hear only what you're trying out.
+function openFwPreview({ title, sub = "", run, theme = null, again = true }) {
+  closeFwPreview();
+  const box = document.createElement("div");
+  box.className = "pv"; box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true"); box.setAttribute("aria-label", `Preview: ${title}`);
+  box.innerHTML = `<div class="pv-box">
+      <div class="pv-head"><div><h2>${esc(title)}</h2>${sub ? `<p class="muted small">${esc(sub)}</p>` : ""}</div>
+        <button class="icon-btn pv-x" type="button" data-pv-close aria-label="Close preview">×</button></div>
+      <div class="pv-stage"><canvas aria-label="Preview sky"></canvas><div class="pv-msg" hidden></div><div class="pv-count" hidden></div></div>
+      <div class="pv-foot">${again ? `<button class="btn primary" type="button" data-pv-again>↻ Play again</button>` : ""}
+        <button class="btn" type="button" data-pv-sound aria-pressed="${FWAudio.on}">${FWAudio.on ? "🔊 Sound on" : "🔇 Sound off"}</button>
+        <span class="muted small">The fireworks behind are paused while you watch.</span>
+        <button class="btn" type="button" data-pv-close>Close</button></div></div>`;
+  document.body.append(box);
+  const bg = appSky.scene, wasAuto = bg?.auto, wasSolo = FWAudio.solo, wasTheme = FW.theme;
+  bg?.setAuto(false); bg?.clear();
+  FWAudio.solo = true;
+  if (theme) FW.theme = theme;
+  const scene = startSkyScene(box.querySelector("canvas"), { fit: true, auto: false, sound: (t, i) => FWAudio.play(t, { ...i, solo: true }) });
+  const timers = [];
+  const ui = {
+    later: (ms, fn) => timers.push(setTimeout(fn, ms)),
+    message(text, ms = 4000) { const m = box.querySelector(".pv-msg"); m.textContent = text; m.hidden = !text; if (text) ui.later(ms, () => { m.hidden = true; }); },
+    count(n) { const c = box.querySelector(".pv-count"); c.hidden = n == null; c.textContent = n ?? ""; },
+  };
+  const go = () => { timers.splice(0).forEach(clearTimeout); scene.clear(); ui.count(null); ui.message(""); run(scene, ui); };
+  const close = () => {
+    timers.forEach(clearTimeout); scene.stop(); box.remove();
+    FWAudio.solo = wasSolo; FW.theme = wasTheme;
+    if (bg && wasAuto) bg.setAuto(true);
+    document.removeEventListener("keydown", onKey);
+    fwPreviewClose = null;
+  };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  box.addEventListener("click", (e) => {
+    if (e.target === box || e.target.closest("[data-pv-close]")) close();
+    else if (e.target.closest("[data-pv-again]")) go();
+    else if (e.target.closest("[data-pv-sound]")) {
+      FWAudio.setOn(!FWAudio.on);
+      const b = e.target.closest("[data-pv-sound]"); b.textContent = FWAudio.on ? "🔊 Sound on" : "🔇 Sound off"; b.setAttribute("aria-pressed", String(FWAudio.on));
+      const bar = $(".sky-sound"); if (bar) { bar.textContent = FWAudio.on ? "🔊" : "🔇"; bar.setAttribute("aria-pressed", String(FWAudio.on)); }
+    }
+  });
+  fwPreviewClose = close;
+  box.querySelector("[data-pv-again], [data-pv-close]").focus();
+  setTimeout(go, 250);                     // let the canvas size itself first
+  return close;
+}
+let fwPreviewClose = null;
+function closeFwPreview() { fwPreviewClose?.(); }
+// What a game event (or the director) would launch, played in a preview sky.
+function pvRunShow(scene, show, ui) {
+  if (!show) { ui.message("Nothing: this one is switched off"); return; }
+  if (show.play) { scene.playShow(show.play); return; }
+  if (show.show) { scene.boost(Math.min(20, show.show), null); return; }
+  const n = Math.max(1, Math.min(5, show.count || 1));
+  for (let i = 0; i < n; i++) ui.later(i * 450, () => {
+    if (show.design) scene.launch(show.design);
+    else if (show.kind === "showpiece") scene.showpiece();
+    else if (show.kind === "random" || !show.kind) scene.launch();
+    else scene.launch(show.kind);
+  });
+}
+const pvShowLength = (sh) => Math.max(0, ...sh.steps.map((x) => x.at));
