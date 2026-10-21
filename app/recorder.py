@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import backups, board, db, fwshow, guard, notify, recap
+from . import backups, board, db, fwshow, guard, music, notify, recap
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -93,7 +93,8 @@ class Recorder:
                        asyncio.create_task(self._loop(self.tail_all, LOG_INTERVAL)),
                        asyncio.create_task(self._loop(self.prune, 6 * 3600)),
                        asyncio.create_task(self._loop(self.guard, GUARD_INTERVAL)),
-                       asyncio.create_task(self._loop(self.recaps, 3600))]
+                       asyncio.create_task(self._loop(self.recaps, 3600)),
+                       asyncio.create_task(self._loop(self.music_scan, 6 * 3600))]
 
     async def stop(self) -> None:
         for t in self._tasks:
@@ -115,6 +116,11 @@ class Recorder:
         visible = [s for s in S.registry.servers.values() if not s.settings.get("hidden")]
         await guard.tick(visible)
         await board.tick(visible)
+
+    async def music_scan(self) -> None:
+        """Keep the external music library's index up to date (new albums, changed tags)."""
+        if music.external_root():
+            await asyncio.to_thread(music.scan)
 
     async def recaps(self) -> None:
         """Summarise finished days, and once per server read its old logs for the days before Solstone."""

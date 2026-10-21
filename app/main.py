@@ -588,7 +588,7 @@ async def get_firework_show(request: Request):
             "creators": _creators_summary(),
             "shows": fwshow.shows(), "base_shows": fwshow.base_shows(),
             "servers": [{"id": x.id, "name": x.display_name} for x in S.registry.servers.values() if x.is_java and not x.settings.get("hidden")],
-            "music": {"tracks": music.tracks(), "public": music.public()}}
+            "music": {"tracks": music.main_tracks(), "public": music.public()}}
 
 
 @app.put("/api/fireworks/show")
@@ -695,26 +695,206 @@ async def player_skin_list():
     return sorted(seen.values(), key=lambda x: x["name"].lower())
 
 
-# ---- music for the show
+# ---- music: the main library, an external library, playlists and the radio
 def _music_allowed(request: Request) -> None:
     if request.state.user is None and not (music.public() and _status_cfg()["enabled"]):
         raise HTTPException(404)
 
 
+def _is_admin(request: Request) -> bool:
+    return request.state.user is not None and request.state.user.role == "admin"
+
+
+def _radio_payload() -> dict:
+    r = music.radio()
+    return {"radio": {"id": r["id"], "name": r["name"], "why": r["why"]}, "tracks": r["tracks"]}
+
+
 @app.get("/api/public/music")
-async def music_list(request: Request):
+async def music_radio(request: Request):
+    """What plays by default (everyone, and the public status page)."""
     _music_allowed(request)
-    return music.tracks()
+    return await asyncio.to_thread(_radio_payload)
+
+
+def _track_for(request: Request, tid: str) -> dict:
+    """A track this visitor may play: anything visible when signed in, only the radio when not."""
+    _music_allowed(request)
+    if request.state.user is not None:
+        t = music.get(tid, include_hidden=_is_admin(request))
+        if t and (t.get("status", "ok") != "blocked"):
+            return t
+        raise HTTPException(404)
+    t = next((x for x in music.radio()["tracks"] if x["id"] == tid), None)
+    if not t:
+        raise HTTPException(404)
+    return t
 
 
 @app.get("/api/public/music/{tid}")
 async def music_file(tid: str, request: Request):
-    _music_allowed(request)
-    found = music.path_of(tid)
+    t = await asyncio.to_thread(_track_for, request, tid)
+    found = music.file_of(t)
     if not found:
         raise HTTPException(404)
     path, media = found
     return FileResponse(path, media_type=media, headers={"Cache-Control": "private, max-age=86400"})
+
+
+@app.get("/api/public/music/{tid}/art")
+async def music_art(tid: str, request: Request):
+    t = await asyncio.to_thread(_track_for, request, tid)
+    art = await asyncio.to_thread(music.art_of, t)
+    if art is None:
+        raise HTTPException(404)
+    if isinstance(art, Path):
+        return FileResponse(art, headers={"Cache-Control": "private, max-age=86400"})
+    data, mime = art
+    return Response(data, media_type=mime if mime.startswith("image/") else "image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
+@app.get("/api/music/library")
+async def music_library(request: Request, q: str = "", artist: str = "", album: str = "", source: str = "", status: str = "",
+                        offset: int = 0, limit: int = 100):
+    admin = _is_admin(request)
+    return await asyncio.to_thread(music.search, q, artist, album, source, admin, status if admin else "", max(0, offset), limit)
+
+
+@app.get("/api/music/albums")
+async def music_albums(request: Request, q: str = ""):
+    return await asyncio.to_thread(music.albums, q, _is_admin(request))
+
+
+@app.get("/api/music/artists")
+async def music_artists(request: Request, q: str = ""):
+    return await asyncio.to_thread(music.artists, q, _is_admin(request))
+
+
+def _playlist_out(p: dict, user, with_tracks: bool = False) -> dict:
+    out = {**p, "count": len(p["tracks"]), "can_edit": music.can_edit(p, user), "mine": p["owner"] == user.username}
+    if with_tracks:
+        out["items"] = music.by_id(p["tracks"])
+    if not with_tracks:
+        out.pop("tracks")
+    return out
+
+
+@app.get("/api/music/playlists")
+async def music_playlists(request: Request):
+    user = request.state.user
+    radio = await asyncio.to_thread(music.radio)
+    return {"playlists": [_playlist_out(p, user) for p in music.playlists() if music.can_see(p, user)],
+            "radio": {"id": radio["id"], "name": radio["name"], "why": radio["why"]}, "radio_default": music.radio_settings()["default"]}
+
+
+@app.get("/api/music/playlists/{pid}")
+async def music_playlist(pid: str, request: Request):
+    p = music.playlist(pid)
+    if not p or not music.can_see(p, request.state.user):
+        raise HTTPException(404)
+    return await asyncio.to_thread(_playlist_out, p, request.state.user, True)
+
+
+@app.post("/api/music/playlists")
+async def music_playlist_create(request: Request):
+    user = request.state.user
+    body = await _body(request)
+    body["_admin"] = user.role == "admin"
+    try:
+        p = music.create_playlist(body, user.username)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return _playlist_out(p, user)
+
+
+@app.put("/api/music/playlists/{pid}")
+async def music_playlist_update(pid: str, request: Request):
+    user = request.state.user
+    p = music.playlist(pid)
+    if not p or not music.can_edit(p, user):
+        raise HTTPException(404, "No such playlist, or it isn't yours")
+    body = await _body(request)
+    new = music.update_playlist(pid, body, user.role == "admin")
+    if "radio_default" in body and user.role == "admin":
+        music.set_radio_default(pid if body["radio_default"] else "")
+    return await asyncio.to_thread(_playlist_out, new, user, True)
+
+
+@app.delete("/api/music/playlists/{pid}")
+async def music_playlist_delete(pid: str, request: Request):
+    user = request.state.user
+    p = music.playlist(pid)
+    if not p or not music.can_edit(p, user):
+        raise HTTPException(404, "No such playlist, or it isn't yours")
+    music.delete_playlist(pid)
+    return {"ok": True}
+
+
+@app.get("/api/music/queue")
+async def music_queue(request: Request, type: str = "radio", id: str = ""):
+    """The tracks for something to play: the radio, a playlist, an album, an artist, or everything."""
+    user = request.state.user
+    if type == "playlist":
+        p = music.playlist(id)
+        if not p or not music.can_see(p, user):
+            raise HTTPException(404)
+        return {"name": p["name"], "tracks": await asyncio.to_thread(music.by_id, p["tracks"])}
+    if type == "album":
+        r = await asyncio.to_thread(music.search, "", "", id, "", False, "", 0, 500)
+        return {"name": r["tracks"][0]["album"] if r["tracks"] else "Album", "tracks": r["tracks"]}
+    if type == "artist":
+        r = await asyncio.to_thread(music.search, "", id, "", "", False, "", 0, 500)
+        return {"name": id, "tracks": r["tracks"]}
+    if type == "ids":
+        return {"name": "Picked songs", "tracks": await asyncio.to_thread(music.by_id, [x for x in id.split(",") if x][:500])}
+    if type == "main":
+        return {"name": "Main library", "tracks": [t for t in await asyncio.to_thread(music.all_tracks) if t["source"] == "main"]}
+    r = await asyncio.to_thread(music.radio)
+    return {"name": r["name"], "tracks": r["tracks"]}
+
+
+@app.get("/api/music/settings")
+async def music_settings(request: Request):
+    auth.require_admin(request)
+    r = music.rules()
+    return {"public": music.public(), "mode": r["mode"], "blocked": r["blocked"], "approved": r["approved"],
+            "radio_default": music.radio_settings()["default"], "external": music.external_status(), "main": music.main_tracks()}
+
+
+@app.put("/api/music/settings")
+async def music_settings_put(request: Request):
+    user = auth.require_admin(request)
+    body = await _body(request)
+    if isinstance(body.get("public"), bool):
+        music.update(public_flag=body["public"])
+    if body.get("mode") in ("all", "approved"):
+        music.set_mode(body["mode"])
+    if "radio_default" in body:
+        music.set_radio_default(str(body["radio_default"] or ""))
+    auth.audit(user, None, "music_settings", ", ".join(k for k in body))
+    return await music_settings(request)
+
+
+@app.post("/api/music/rule")
+async def music_rule(request: Request):
+    """Block (or approve) a song, an album or an artist. Blocked music can't be listed or played anywhere."""
+    user = auth.require_admin(request)
+    body = await _body(request)
+    try:
+        r = music.set_rule(str(body.get("action")), str(body.get("kind")), str(body.get("value") or ""), bool(body.get("on", True)))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    auth.audit(user, None, f"music_{body.get('action')}", f"{body.get('kind')}: {body.get('value')} {'on' if body.get('on', True) else 'off'}")
+    return r
+
+
+@app.post("/api/music/rescan")
+async def music_rescan(request: Request):
+    auth.require_admin(request)
+    if not music.external_root():
+        raise HTTPException(409, "No music folder is set up (MUSIC_LIBRARY_DIR)")
+    asyncio.get_running_loop().run_in_executor(None, music.scan)
+    return music.external_status()
 
 
 @app.post("/api/music")
@@ -1337,7 +1517,7 @@ async def spa(full_path: str):
     return HTMLResponse(_page("index.html"), headers={"Cache-Control": "no-cache"})
 
 
-ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "editor.js", "fwsettings.js", "announce.js", "status.js")
+ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "editor.js", "fwsettings.js", "announce.js", "music.js", "status.js")
 
 
 def _page(name: str) -> str:

@@ -913,6 +913,7 @@ async function route() {
     if (!me.user) return;
     if (parts[0] === "admin") { await viewAdmin(); return; }
     if (parts[0] === "announcements") { await viewAnnouncements(); return; }
+    if (parts[0] === "music") { await viewMusic(parts[1], parts[2]); return; }
     if (parts[0] === "fireworks" && parts[1] === "settings") { await viewFireworkSettings(); return; }
     if (parts[0] === "fireworks") { await viewFireworkEditor(parts[1]); return; }
     if (parts[0] === "s" && parts[1]) {

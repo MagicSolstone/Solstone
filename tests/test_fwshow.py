@@ -66,7 +66,8 @@ def test_music_playlist(client, viewer, anon):
     t1 = client.post("/api/music?filename=Song%20One.mp3", content=b"ID3" + b"x" * 5000, headers={"Content-Type": "audio/mpeg"}).json()
     t2 = client.post("/api/music?filename=two.ogg&title=Second", content=b"OggS" + b"y" * 100, headers={"Content-Type": "application/octet-stream"}).json()
     assert t1["title"] == "Song One" and t1["ext"] == "mp3" and t2["title"] == "Second" and t2["ext"] == "ogg"
-    assert [t["id"] for t in viewer.get("/api/public/music").json()] == [t1["id"], t2["id"]]
+    radio = viewer.get("/api/public/music").json()
+    assert [t["id"] for t in radio["tracks"]] == [t1["id"], t2["id"]] and radio["radio"]["name"] == "Solstone radio"
     r = viewer.get(f"/api/public/music/{t1['id']}")
     assert r.status_code == 200 and r.content.startswith(b"ID3") and r.headers["content-type"] == "audio/mpeg"
     assert "content-encoding" not in r.headers
@@ -79,7 +80,7 @@ def test_music_playlist(client, viewer, anon):
     client.put("/api/music", json={"public": False})
     assert client.delete(f"/api/music/{t1['id']}").json() == {"ok": True}
     assert client.delete(f"/api/music/{t2['id']}").status_code == 200
-    assert client.get("/api/public/music").json() == []
+    assert client.get("/api/public/music").json()["tracks"] == []
 
 
 def test_frequencies_for_kinds_people_and_designs(client, viewer, anon):

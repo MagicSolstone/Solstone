@@ -28,6 +28,10 @@ class Config:
     rcon_host: str = os.getenv("RCON_HOST", "")
     rcon_timeout: float = float(os.getenv("RCON_TIMEOUT", "4"))
 
+    # Optional: a music library to share (e.g. Jellyfin's music folder, mounted read-only).
+    # Solstone reads its tags and plays it alongside the music uploaded in the app.
+    music_library_dir: str = os.getenv("MUSIC_LIBRARY_DIR", "")
+
     # App data (settings + downloaded game assets)
     data_dir: Path = Path(os.getenv("DATA_DIR", "/data"))
 

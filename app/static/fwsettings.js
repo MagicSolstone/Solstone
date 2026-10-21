@@ -309,45 +309,7 @@ function wireCalEdit(el, i) {
 
 // ---------------------------------------------------------------- music
 function renderMusic(el) {
-  const m = fws.data.music;
-  const mb = (n) => `${(n / 1024 / 1024).toFixed(1)} MB`;
-  el.innerHTML = `<section class="panel">
-    <p class="muted" style="margin-bottom:12px">Background music for the fireworks. Anyone signed in can play it with 🎵 in the corner; it plays in order (or shuffled) and moves on by itself. MP3, OGG, M4A, WAV, FLAC or Opus, up to 60 MB each.</p>
-    <label class="switch-row" style="max-width:640px"><span>Also play music on the public status page</span><input type="checkbox" role="switch" id="fws-music-public" ${m.public ? "checked" : ""}></label>
-    <div class="fws-upload"><label class="btn primary">Add music…<input type="file" accept="audio/*" multiple hidden id="fws-file"></label><span class="muted small" id="fws-up"></span></div>
-    ${m.tracks.length ? `<ol class="fws-tracks">${m.tracks.map((t, i) => `<li data-id="${t.id}"><span class="num muted">${i + 1}</span>
-        <input class="input sm" value="${esc(t.title)}" data-title aria-label="Title"><span class="muted small">${t.ext.toUpperCase()} · ${mb(t.size)}</span>
-        <span class="row-actions"><button type="button" class="icon-btn" data-play title="Play">▶</button><button type="button" class="icon-btn" data-up ${i === 0 ? "disabled" : ""} title="Move up">▲</button>
-        <button type="button" class="icon-btn" data-down ${i === m.tracks.length - 1 ? "disabled" : ""} title="Move down">▼</button><button type="button" class="btn sm danger" data-del>Delete</button></span></li>`).join("")}</ol>`
-      : `<p class="muted" style="margin-top:12px">No music yet.</p>`}</section>`;
-  const reload = async () => { fws.data = await api("/api/fireworks/show"); FWMusic.loaded = false; await FWMusic.load(); appSky.bar?.musicChanged(); renderMusic(el); };
-  $("#fws-music-public").addEventListener("change", async (e) => { await post("/api/music", { public: e.target.checked }, "PUT").catch((err) => showToast(esc(err.message), 3000)); showToast("Saved", 1500); });
-  $("#fws-file").addEventListener("change", async (e) => {
-    const files = [...e.target.files];
-    for (const [k, f] of files.entries()) {
-      $("#fws-up").textContent = `Uploading ${k + 1} of ${files.length}: ${f.name}…`;
-      try {
-        const r = await fetch(`/api/music?filename=${encodeURIComponent(f.name)}`, { method: "POST", body: f, credentials: "same-origin",
-          headers: { "X-Solstone": "1", "Content-Type": f.type || "application/octet-stream" } });
-        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
-      } catch (err) { showToast(`${esc(f.name)}: ${esc(err.message)}`, 5000); }
-    }
-    $("#fws-up").textContent = "";
-    reload();
-  });
-  el.querySelectorAll(".fws-tracks li").forEach((li) => {
-    const id = li.dataset.id, ids = m.tracks.map((t) => t.id), i = ids.indexOf(id);
-    li.querySelector("[data-title]").addEventListener("change", (e) => post("/api/music", { titles: { [id]: e.target.value } }, "PUT").then(reload));
-    li.querySelector("[data-play]").addEventListener("click", () => { if (!FWMusic.loaded) FWMusic.load().then(() => FWMusic.play(i)); else FWMusic.play(i); });
-    const move = (to) => { const o = [...ids]; o.splice(i, 1); o.splice(to, 0, id); post("/api/music", { order: o }, "PUT").then(reload); };
-    li.querySelector("[data-up]").addEventListener("click", () => move(i - 1));
-    li.querySelector("[data-down]").addEventListener("click", () => move(i + 1));
-    li.querySelector("[data-del]").addEventListener("click", async () => {
-      if (!(await confirmBox("Delete this track?", esc(m.tracks[i].title), "Delete"))) return;
-      await api(`/api/music/${id}`, { method: "DELETE" }).catch((err) => showToast(esc(err.message), 3000));
-      reload();
-    });
-  });
+  el.innerHTML = `<section class="panel"><p>Music has its own page now: the library, playlists, the radio (including holiday playlists on their dates), uploads, your own music folder, and blocking. <a href="#/music/library">Open Music → Library</a></p></section>`;
 }
 
 // ---------------------------------------------------------------- the sky
