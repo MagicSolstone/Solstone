@@ -484,7 +484,7 @@ function openFwPreview({ title, sub = "", run, theme = null, again = true }) {
         <button class="icon-btn pv-x" type="button" data-pv-close aria-label="Close preview">×</button></div>
       <div class="pv-stage"><canvas aria-label="Preview sky"></canvas><div class="pv-msg" hidden></div><div class="pv-count" hidden></div></div>
       <div class="pv-foot">${again ? `<button class="btn primary" type="button" data-pv-again>↻ Play again</button>` : ""}
-        <button class="btn" type="button" data-pv-sound aria-pressed="${FWAudio.on}">${FWAudio.on ? "🔊 Sound on" : "🔇 Sound off"}</button>
+        <button class="btn" type="button" data-pv-sound aria-pressed="${FWAudio.isOn("preview")}">${FWAudio.isOn("preview") ? "🔊 Sound on" : "🔇 Sound off"}</button>
         <span class="muted small">The fireworks behind are paused while you watch.</span>
         <button class="btn" type="button" data-pv-close>Close</button></div></div>`;
   document.body.append(box);
@@ -492,7 +492,7 @@ function openFwPreview({ title, sub = "", run, theme = null, again = true }) {
   bg?.setAuto(false); bg?.clear();
   FWAudio.solo = true;
   if (theme) FW.theme = theme;
-  const scene = startSkyScene(box.querySelector("canvas"), { fit: true, auto: false, sound: (t, i) => FWAudio.play(t, { ...i, solo: true }) });
+  const scene = startSkyScene(box.querySelector("canvas"), { fit: true, auto: false, sound: (t, i) => FWAudio.play(t, { ...i, solo: true, channel: "preview" }) });
   const timers = [];
   const ui = {
     later: (ms, fn) => timers.push(setTimeout(fn, ms)),
@@ -513,9 +513,9 @@ function openFwPreview({ title, sub = "", run, theme = null, again = true }) {
     if (e.target === box || e.target.closest("[data-pv-close]")) close();
     else if (e.target.closest("[data-pv-again]")) go();
     else if (e.target.closest("[data-pv-sound]")) {
-      FWAudio.setOn(!FWAudio.on);
-      const b = e.target.closest("[data-pv-sound]"); b.textContent = FWAudio.on ? "🔊 Sound on" : "🔇 Sound off"; b.setAttribute("aria-pressed", String(FWAudio.on));
-      const bar = $(".sky-sound"); if (bar) { bar.textContent = FWAudio.on ? "🔊" : "🔇"; bar.setAttribute("aria-pressed", String(FWAudio.on)); }
+      const on = !FWAudio.isOn("preview");
+      FWAudio.setChannel("preview", on);              // only previews; the 🔊 in the corner is separate
+      const b = e.target.closest("[data-pv-sound]"); b.textContent = on ? "🔊 Sound on" : "🔇 Sound off"; b.setAttribute("aria-pressed", String(on));
     }
   });
   fwPreviewClose = close;

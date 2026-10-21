@@ -12,7 +12,7 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 
 // ================================================================ firework sounds
 const FWAudio = {
-  ctx: null, out: null, noise: null, solo: false, buses: {}, dest: null, on: lsGet("solstone-fw-sound", false), volume: lsGet("solstone-fw-volume", 0.7), recent: {},
+  ctx: null, out: null, noise: null, solo: false, buses: {}, busChan: {}, dest: null, on: lsGet("solstone-fw-sound", false), volume: lsGet("solstone-fw-volume", 0.7), recent: {},
   ensure() {
     if (!this.ctx) {
       const C = window.AudioContext || window.webkitAudioContext;
@@ -32,11 +32,21 @@ const FWAudio = {
     return true;
   },
   setOn(v) { this.on = v; lsSet("solstone-fw-sound", v); if (v) this.ensure(); },
+  // Separate switches: the sky behind every page ("sky", the corner 🔊), the firework
+  // editor's preview ("editor") and the preview window ("preview").
+  chan: { editor: lsGet("solstone-fw-sound-editor", true), preview: lsGet("solstone-fw-sound-preview", true) },
+  isOn(channel) { return channel && channel in this.chan ? this.chan[channel] : this.on; },
+  setChannel(channel, v) {
+    if (!(channel in this.chan)) { this.setOn(v); return; }
+    this.chan[channel] = v; lsSet(`solstone-fw-sound-${channel}`, v);
+    if (v) this.ensure(); else this.silenceChannel(channel);
+  },
+  silenceChannel(channel) { for (const id of Object.keys(this.buses)) if (this.busChan[id] === channel) this.silence(id); },
   setVolume(v) { this.volume = v; lsSet("solstone-fw-volume", v); if (this.out) this.out.gain.value = v; },
   // Too many sounds at once is just noise: each kind gets a small budget per moment.
-  allow(type, per, ms) {
-    const now = performance.now(), list = (this.recent[type] ||= []).filter((t) => now - t < ms);
-    this.recent[type] = list;
+  allow(key, per, ms) {
+    const now = performance.now(), list = (this.recent[key] ||= []).filter((t) => now - t < ms);
+    this.recent[key] = list;
     if (list.length >= per) return false;
     list.push(now);
     return true;
@@ -58,26 +68,29 @@ const FWAudio = {
   filter(type, freq, q = 0.8) { const f = this.ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; return f; },
   // Each sky has its own channel. Cutting it silences everything it started at once,
   // including sounds already scheduled for later (a fountain's hiss, an echo).
-  bus(id) {
+  bus(id, channel) {
     if (!id) return this.out;
     if (!this.buses[id]) { const g = this.ctx.createGain(); g.connect(this.out); this.buses[id] = g; }
+    if (channel) this.busChan[id] = channel;
     return this.buses[id];
   },
   silence(id) {
+    for (const k of Object.keys(this.recent)) if (k.startsWith(`${id}:`)) delete this.recent[k];   // a fresh start can sound straight away
     const g = this.buses[id];
     if (!g) return;
     delete this.buses[id];
-    try { g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.015); setTimeout(() => g.disconnect(), 120); } catch { g.disconnect(); }
+    try { g.gain.cancelScheduledValues(this.ctx.currentTime); g.gain.setValueAtTime(g.gain.value, this.ctx.currentTime); g.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.03); } catch { /* cut below */ }
+    setTimeout(() => { try { g.disconnect(); } catch { /* already gone */ } }, 60);
   },
   play(type, info = {}) {
-    if (!this.on || document.hidden || !this.ensure()) return;
-    this.dest = this.bus(info.bus);
+    if (!this.isOn(info.channel) || document.hidden || !this.ensure()) return;
+    this.dest = this.bus(info.bus, info.channel || "sky");
     try { this.playNow(type, info); } finally { this.dest = null; }
   },
   playNow(type, info) {
     if (this.solo && !info.solo) return;            // the firework editor: only the preview makes sound
     const budget = { thunder: [1, 4000], launch: [5, 600], burst: [6, 500], crackle: [3, 900], fizzle: [3, 800], hiss: [3, 1500], ground: [3, 1500] }[type] || [4, 500];
-    if (!this.allow(type, ...budget)) return;
+    if (!this.allow(`${info.bus || ""}:${type}`, ...budget)) return;
     const ctx = this.ctx, t0 = ctx.currentTime + (info.delay || 0) + 0.01, pan = info.pan || 0;
     if (info.sfx && type === "ground") {          // a made-up sound, repeated while a fountain or wheel runs
       const one = Math.max(0.12, sfxLength({ ...info.sfx, echo: 0 }) * 0.9), dur = Math.min(12, info.dur || 4);

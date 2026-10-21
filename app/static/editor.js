@@ -159,7 +159,7 @@ async function viewFireworkEditor(editId) {
           <div class="fwe-bar"><button class="btn primary" id="fwe-launch" type="button">🎆 Launch</button>
             <label class="check fwe-loopck"><input type="checkbox" id="fwe-loop" ${ed.loop ? "checked" : ""}> Keep launching</label>
             <button class="btn" id="fwe-surprise" type="button">🎲 Surprise me</button>
-            <button class="btn" id="fwe-sound" type="button" aria-pressed="${FWAudio.on}" title="Hear the fireworks">${FWAudio.on ? "🔊" : "🔇"}</button></div></div>
+            <button class="btn" id="fwe-sound" type="button" aria-pressed="${FWAudio.isOn("editor")}" title="Sound for this preview only">${FWAudio.isOn("editor") ? "🔊" : "🔇"}</button></div></div>
         <form class="panel fwe-save" id="fwe-save" autocomplete="off">
           <label>Name<input class="input" name="name" maxlength="40" placeholder="My firework" value="${esc(ed.d.name || "")}"></label>
           <label class="check"><input type="checkbox" name="in_show" ${ed.d.in_show !== false ? "checked" : ""}> In the show</label>
@@ -171,7 +171,7 @@ async function viewFireworkEditor(editId) {
     </div>`);
   ed.scene?.stop();
   // Only the preview makes sound here, so you hear just the firework you're making.
-  ed.scene = startSkyScene($("#fwe-sky"), { fit: true, auto: false, sound: (t, i) => FWAudio.play(t, { ...i, solo: true }) });
+  ed.scene = startSkyScene($("#fwe-sky"), { fit: true, auto: false, sound: (t, i) => FWAudio.play(t, { ...i, solo: true, channel: "editor" }) });
   FWAudio.solo = true;
   document.body.classList.add("on-editor");
   state.cleanups.push(() => { ed.scene?.stop(); ed.scene = null; FWAudio.solo = false; document.body.classList.remove("on-editor"); });
@@ -180,8 +180,8 @@ async function viewFireworkEditor(editId) {
   $("#fwe-launch").addEventListener("click", () => fweLaunch());
   $("#fwe-loop").addEventListener("change", (e) => { ed.loop = e.target.checked; });
   $("#fwe-sound").addEventListener("click", (e) => {
-    FWAudio.setOn(!FWAudio.on); e.currentTarget.textContent = FWAudio.on ? "🔊" : "🔇"; e.currentTarget.setAttribute("aria-pressed", String(FWAudio.on));
-    const bar = $(".sky-sound"); if (bar) { bar.textContent = FWAudio.on ? "🔊" : "🔇"; bar.setAttribute("aria-pressed", String(FWAudio.on)); }
+    const on = !FWAudio.isOn("editor");
+    FWAudio.setChannel("editor", on); e.currentTarget.textContent = on ? "🔊" : "🔇"; e.currentTarget.setAttribute("aria-pressed", String(on));
     fweLaunch();
   });
   $("#fwe-surprise").addEventListener("click", () => { ed.d = { ...fweSurprise(), name: ed.d.name, in_show: ed.d.in_show }; ed.grids = {}; ed.frame = 1; renderControls(); fweLaunch(); });
@@ -312,9 +312,9 @@ function renderControls() {
     if (b.dataset.v === "custom") {                 // start from something that sounds right for the slot
       const slot = b.dataset.snd.replace("sound_", "");
       d[`sfx_${slot}`] ||= SFX_MAKERS[{ launch: "whoosh", burst: "boom", ground: "crackle" }[slot]]();
-      renderControls(); ed.scene?.hush(); FWAudio.preview(d[`sfx_${slot}`]); return;
+      renderControls(); fweLaunch(); return;
     }
-    renderControls(); if (!FWAudio.on) showToast("Turn on 🔊 to hear it", 2000); fweLaunch();
+    renderControls(); if (!FWAudio.isOn("editor")) showToast("Turn on 🔊 under the preview to hear it", 2000); fweLaunch();
   }));
   wireSfx(el);
   el.querySelectorAll("[data-sndck]").forEach((c) => c.addEventListener("change", () => { d[c.dataset.sndck] = c.checked; fweLaunch(); }));
@@ -651,7 +651,8 @@ function wireSfx(root) {
     const p = () => (ed.d[key] = { ...SFX_DEFAULT, ...ed.d[key] });
     const play = () => { ed.scene?.hush(); FWAudio.preview(p()); };      // only this sound, nothing else
     const redraw = () => sfxDraw(box, p());
-    const rebuild = (hear = true) => { renderControls(); if (hear) play(); };
+    // A change starts the preview over, so you hear the new sound in place right away.
+    const rebuild = () => { renderControls(); fweLaunch(); };
     box.querySelector("[data-sfx-play]").addEventListener("click", play);
     box.querySelectorAll("[data-sfx-make]").forEach((b) => b.addEventListener("click", () => { ed.d[key] = SFX_MAKERS[b.dataset.sfxMake](); rebuild(); }));
     box.querySelector("[data-sfx-mutate]").addEventListener("click", () => { ed.d[key] = sfxMutate(p()); rebuild(); });
@@ -689,7 +690,7 @@ function wireSfx(root) {
         redraw();
       });
       // Hear it when the slider is let go; some sliders show or hide others.
-      inp.addEventListener("change", () => { if (["repeat", "echo"].includes(k)) rebuild(); else play(); });
+      inp.addEventListener("change", () => { if (["repeat", "echo"].includes(k)) renderControls(); fweLaunch(); });
     });
     redraw();
   });

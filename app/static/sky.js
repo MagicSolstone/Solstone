@@ -175,7 +175,8 @@ function startSkyScene(cv, opts = {}) {
   // Sound: the page passes opts.sound(type, info); pan is -1 (left) to 1 (right). Every scene
   // has its own sound channel, cut when the sky is cleared or stopped.
   const soundBus = `sky${(window.__skySeq = (window.__skySeq || 0) + 1)}`;
-  const hush = () => { try { window.FWAudio?.silence(soundBus); } catch { /* sound is optional */ } };
+  // (FWAudio is a top-level const in showbar.js, so it isn't on window: look it up by name.)
+  const hush = () => { try { if (typeof FWAudio !== "undefined") FWAudio.silence(soundBus); } catch { /* sound is optional */ } };
   const snd = (type, info = {}) => { try { opts.sound?.(type, { ...info, bus: soundBus, pan: info.x != null && W ? Math.max(-1, Math.min(1, (info.x / W) * 2 - 1)) : 0 }); } catch { /* sound is optional */ } };
   let boostUntil = 0;                                // a scheduled show or event: lively for a while
   const boosting = () => performance.now() < boostUntil;
