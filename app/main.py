@@ -60,6 +60,25 @@ class _GZipExceptMusic(GZipMiddleware):
 app.add_middleware(_GZipExceptMusic, minimum_size=1024)
 
 PUBLIC_API = {"/api/health", "/api/auth/login"}
+
+# Scripts only from Solstone itself (no inline script, so injected HTML can't run code).
+# Inline style attributes are used throughout, so styles allow them. Skins come from
+# mc-heads.net; the World tab can embed a web map (BlueMap etc.) from wherever it's hosted.
+CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https://mc-heads.net",
+    "media-src 'self' blob:",
+    "font-src 'self'",
+    "connect-src 'self'",
+    "frame-src http: https:",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self'",
+])
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
@@ -78,6 +97,15 @@ async def require_login(request: Request, call_next):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "same-origin")
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Content-Security-Policy", CSP)
+    if path.startswith("/static/") and response.status_code == 200:
+        # Pages link CSS/JS with ?v=<build>, so those can be kept for good; a new build changes the link.
+        if request.query_params.get("v"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif path.startswith("/static/fonts/"):
+            response.headers["Cache-Control"] = "public, max-age=2592000"
+        else:
+            response.headers.setdefault("Cache-Control", "no-cache")
     return response
 
 
@@ -1443,6 +1471,15 @@ async def assets_lang(sid: str):
         return {}
     data = await asyncio.to_thread(a.lang)
     return JSONResponse(data, headers={"Cache-Control": "max-age=600"})
+
+
+@app.get("/api/servers/{sid}/assets/items")
+async def assets_items(sid: str):
+    """Items that can be given, with display names (for the give-item picker)."""
+    a = _assets(await _server(sid))
+    if not a or not a.ready:
+        return []
+    return JSONResponse(await asyncio.to_thread(a.items), headers={"Cache-Control": "private, max-age=600"})
 
 
 @app.get("/api/servers/{sid}/assets/advancements")

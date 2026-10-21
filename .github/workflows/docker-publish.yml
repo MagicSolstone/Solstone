@@ -20,6 +20,7 @@ on:
   push:
     branches: [main, master]
     tags: ["v*.*.*"]
+  pull_request: {}            # Dependabot updates and other PRs: test only, never publish
   workflow_dispatch: {}
 
 env:
@@ -45,8 +46,36 @@ jobs:
       - name: Frontend syntax check
         run: for f in app/static/*.js; do node --check "$f"; done
 
+  browser:
+    # Opens every page in Chromium on a test world; fails on JS errors, broken pages
+    # and Content-Security-Policy violations.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+          python -m playwright install --with-deps chromium
+      - name: Smoke test
+        env:
+          SMOKE_SHOTS: smoke-shots
+        run: python tests/e2e/smoke.py
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshots
+          path: smoke-shots
+          retention-days: 7
+
   build-and-push:
-    needs: test
+    needs: [test, browser]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read

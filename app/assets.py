@@ -267,6 +267,42 @@ class Assets:
             a["category_title"] = r["title"]
         return list(found.values())
 
+    _items: list[dict] | None = None
+
+    # Things that have an item model but can't usefully be given.
+    _NOT_GIVEABLE = {"air", "debug_stick", "knowledge_book", "bundle_open_back", "bundle_open_front", "light"}
+
+    def items(self) -> list[dict]:
+        """Every item that can be given: [{id, name}], sorted by name. Item definitions
+        (assets/<ns>/items/, 1.21.4+) or, on older versions, item models."""
+        if self._items is not None:
+            return self._items
+        ids: set[str] = set()
+        for folder, ext in (("items", ".json"), ("models/item", ".json")):
+            d = self.vs.path(f"assets/minecraft/{folder}/")
+            if d.is_dir():
+                ids |= {f"minecraft:{f.name[:-len(ext)]}" for f in d.glob(f"*{ext}")}
+                if folder == "items" and ids:
+                    break
+        for rel in self._mod_index():
+            m = re.match(r"^assets/([a-z0-9_.-]+)/(?:items|models/item)/([a-z0-9_./-]+)\.json$", rel)
+            if m and "/" not in m.group(2):
+                ids.add(f"{m.group(1)}:{m.group(2)}")
+        lang = self.lang_cached()
+        out = []
+        for full in ids:
+            ns, name = full.split(":", 1)
+            if name in self._NOT_GIVEABLE or name.startswith(("template_", "generated", "handheld")):
+                continue
+            label = lang.get(f"item.{ns}.{name}") or lang.get(f"block.{ns}.{name}")
+            if not label:
+                continue                       # no display name: a model part, not a real item
+            out.append({"id": full, "name": label})
+        out.sort(key=lambda x: (x["name"].lower(), x["id"]))
+        if len(out) > 50:
+            self._items = out
+        return out
+
     _lang: dict[str, str] | None = None
 
     def lang_cached(self) -> dict[str, str]:

@@ -53,7 +53,7 @@ function itemImg(it, cls = "") {
   if (!it) return "";
   const [ns, n] = it.id.includes(":") ? it.id.split(":") : ["minecraft", it.id];
   return `<span class="sp-item ${it.glint ? "glint" : ""} ${cls}" style="--mask:url('/api/public/item/${encodeURIComponent(st.sid)}/${encodeURIComponent(ns)}/${encodeURIComponent(n)}.png')" title="${esc(it.name)}${it.count > 1 ? ` ×${it.count}` : ""}">
-    <img src="/api/public/item/${encodeURIComponent(st.sid)}/${encodeURIComponent(ns)}/${encodeURIComponent(n)}.png" alt="" onerror="this.parentElement.classList.add('missing');this.remove()"></span>`;
+    <img src="/api/public/item/${encodeURIComponent(st.sid)}/${encodeURIComponent(ns)}/${encodeURIComponent(n)}.png" alt="" data-fail="missing"></span>`;
 }
 
 // ------------------------------------------------------------------ data
@@ -229,7 +229,7 @@ function playerCardHtml(p) {
        ${p.armor?.some(Boolean) ? `<span class="sp-armor" aria-label="Armour">${p.armor.map((a) => a ? itemImg(a) : `<span class="sp-item empty"></span>`).join("")}</span>` : ""}</div>` : "";
   const effects = p.effects?.length ? `<div class="chips sp-effects">${p.effects.map((e) => `<span class="chip">${esc(e.name)}${e.amplifier ? ` ${ROMAN[e.amplifier + 1] || e.amplifier + 1}` : ""}</span>`).join("")}</div>` : "";
   return `<article class="sp-player glass">
-    <div class="sp-body"><img src="${bodyUrl(p)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'), { innerHTML: this.dataset.face }).firstChild)" data-face="${esc(faceHtml(p, 88))}"></div>
+    <div class="sp-body"><img src="${bodyUrl(p)}" alt="" data-fail="face" data-face="${esc(faceHtml(p, 88))}"></div>
     <div class="sp-info">
       <h2>${esc(p.name)}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}</h2>
       <div class="sp-meta"><span class="live-tag"><span class="status-dot on"></span>${since}</span>${p.today_seconds > 60 ? `<span>${esc(fmtSpan(p.today_seconds))} today</span>` : ""}</div>
@@ -494,7 +494,7 @@ function renderTvMusic() {
   if (!FW.music || !FWMusic.tracks.length || !t) { setHtml(el, ""); return; }
   const next = FWMusic.tracks.length > 1 ? FWMusic.tracks[(FWMusic.idx + 1) % FWMusic.tracks.length] : null;
   setHtml(el, `<section class="tv-side-box glass tv-music ${FWMusic.playing ? "playing" : ""}">
-    <div class="tv-np"><span class="tv-np-art"><img src="${FWMusic.artUrl(t)}" alt="" onerror="this.remove()"></span>
+    <div class="tv-np"><span class="tv-np-art"><img src="${FWMusic.artUrl(t)}" alt="" data-fail="remove"></span>
       <div><small>${FWMusic.playing ? "♪ Now playing" : FWMusic.waiting ? "Click to carry on" : "Paused"}</small><b>${esc(t.title)}</b>${t.artist ? `<span>${esc(t.artist)}</span>` : ""}</div></div>
     <div class="tv-np-bar"><i id="tv-np-fill"></i></div>
     <div class="tv-np-times"><span id="tv-np-t">0:00</span><span>${FWMusic.duration ? fmtClockSecs(FWMusic.duration) : ""}</span></div>
@@ -631,5 +631,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   keepAwake();
   await loadServers();
   poll();
-  setInterval(loadServers, 30000);
+  setInterval(() => { if (!document.hidden) loadServers(); }, 30000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });     // back from the background: refresh now
 });

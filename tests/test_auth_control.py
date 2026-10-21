@@ -323,3 +323,24 @@ def test_public_status_page(anon, client, viewer, monkeypatch):
     finally:
         client.put("/api/settings/status", json={"enabled": False})
         main._board_cache.clear()
+
+
+def test_security_and_cache_headers(client, anon):
+    page = anon.get("/")
+    csp = page.headers["content-security-policy"]
+    assert "script-src 'self'" in csp and "object-src 'none'" in csp and "frame-ancestors 'self'" in csp
+    assert page.headers["cache-control"] == "no-cache"
+    import re
+    js = re.search(r'/static/app\.js\?v=([0-9a-f]+)"', page.text)
+    assert js, "pages link their scripts with a version stamp"
+    assert "immutable" in anon.get(f"/static/app.js?v={js.group(1)}").headers["cache-control"]
+    assert anon.get("/static/app.js").headers["cache-control"] == "no-cache"           # unversioned: always check
+    assert "onerror=" not in anon.get("/static/app.js").text                           # no inline handlers (CSP)
+
+
+def test_give_items(client):
+    from helpers import SID
+    r = client.get(f"/api/servers/{SID}/assets/items")
+    assert r.status_code == 200 and isinstance(r.json(), list)
+    bad = client.post(f"/api/servers/{SID}/control/player/Tyler/give", json={"item": "minecraft:dia mond", "count": 1})
+    assert bad.status_code == 400

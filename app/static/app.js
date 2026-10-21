@@ -88,7 +88,7 @@ async function signedIn(user) {
   // Left open for a while? Say when Solstone has been updated (a reload loads it).
   clearInterval(state.buildCheck);
   state.buildCheck = setInterval(async () => {
-    try { const d = await (await fetch("/api/public/status")).json(); if (appBuild && d.build && d.build !== appBuild) { showToast('Solstone has been updated. <a href="" onclick="location.reload();return false">Reload to get the new version</a>', 0); clearInterval(state.buildCheck); } } catch { /* offline for a moment */ }
+    try { const d = await (await fetch("/api/public/status")).json(); if (appBuild && d.build && d.build !== appBuild) { showToast('Solstone has been updated. <a href="" data-reload>Reload to get the new version</a>', 0); clearInterval(state.buildCheck); } } catch { /* offline for a moment */ }
   }, 5 * 60 * 1000);
   await loadServers();
   route();
@@ -120,7 +120,7 @@ function openPasswordChange() {
   openModal(`<h2>Change password</h2><form id="pw-form">
       <label>Current password<input class="input" type="password" name="current" autocomplete="current-password" required></label>
       <label>New password <small>At least 8 characters</small><input class="input" type="password" name="new" minlength="8" autocomplete="new-password" required></label>
-      <div class="actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" type="submit">Change password</button></div>
+      <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Change password</button></div>
     </form>`, (m) => {
     $("#pw-form", m).addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -177,10 +177,20 @@ const state = {
 };
 function clearTimers() {
   if (typeof closeFwPreview === "function") closeFwPreview();
-  state.timers.forEach(clearInterval); state.timers = [];
+  state.timers.forEach(clearInterval); state.timers = []; state.onVisible?.clear();
   state.cleanups.splice(0).forEach((f) => { try { f(); } catch { /* best effort */ } });
 }
-function every(ms, fn) { state.timers.push(setInterval(fn, ms)); }
+// Page refreshes pause while the tab is in the background and catch up once when it's back.
+function every(ms, fn) {
+  const run = () => { if (!document.hidden) fn(); };
+  const t = setInterval(run, ms);
+  state.timers.push(t);
+  (state.onVisible ||= new Map()).set(t, fn);
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || !state.onVisible) return;
+  for (const [t, fn] of state.onVisible) if (state.timers.includes(t)) { try { fn(); } catch { /* next tick */ } } else state.onVisible.delete(t);
+});
 
 // ================================================================ language
 let curSid = null;
@@ -238,7 +248,7 @@ function itemIcon(item, extra = "") {
   const id = item.id;
   const glint = item.enchantments?.length || item.stored_enchantments?.length || item.glint;
   const url = iconUrl(id);
-  return `<span class="item ${glint ? "glint" : ""} ${extra}" style="--mask:url('${url}')"><img class="item-img" src="${url}" alt="" loading="lazy" data-id="${esc(id)}" onerror="lsIconFail(this)"></span>`;
+  return `<span class="item ${glint ? "glint" : ""} ${extra}" style="--mask:url('${url}')"><img class="item-img" src="${url}" alt="" loading="lazy" data-id="${esc(id)}" data-fail="icon"></span>`;
 }
 
 async function ensureServerAssets(sid) {
@@ -269,7 +279,7 @@ function slotHtml(item, opts = {}) {
   const cls = ["slot"];
   if (opts.selected) cls.push("selected");
   if (!item) {
-    const ghost = opts.ghost ? `<img class="ghost" src="${textureUrl(`gui/sprites/container/slot/${opts.ghost}`)}" alt="" onerror="this.remove()">` : "";
+    const ghost = opts.ghost ? `<img class="ghost" src="${textureUrl(`gui/sprites/container/slot/${opts.ghost}`)}" alt="" data-fail="remove">` : "";
     return `<div class="${cls.join(" ")}">${ghost}</div>`;
   }
   cls.push("filled");
@@ -383,12 +393,99 @@ function openModal(html, onMount) {
   onMount?.(root.querySelector(".modal"));
   root.querySelector("input, button, [tabindex]")?.focus();
 }
+// ---------------------------------------------------------------- give items
+// One dialog used by the player page and the control screen: search with icons, pick an
+// amount, give. It stays open so you can hand out a few things in a row.
+async function itemCatalog(sid) {
+  state.itemCatalog ||= {};
+  if (state.itemCatalog[sid]?.length) return state.itemCatalog[sid];
+  let list = await api(`/api/servers/${encodeURIComponent(sid)}/assets/items`).catch(() => []);
+  if (!list.length) {                      // game files not downloaded yet: use the names we have
+    const lang = state.lang[sid] || {};
+    list = Object.keys(lang).filter((k) => /^(item|block)\.minecraft\.[a-z0-9_]+$/.test(k))
+      .map((k) => ({ id: `minecraft:${k.split(".")[2]}`, name: lang[k] })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+  state.itemCatalog[sid] = list;
+  return list;
+}
+const GIVE_RECENT = "solstone-give-recent";
+function giveRecent() { try { return JSON.parse(localStorage.getItem(GIVE_RECENT) || "[]").slice(0, 10); } catch { return []; } }
+function giveRemember(id) { try { localStorage.setItem(GIVE_RECENT, JSON.stringify([id, ...giveRecent().filter((x) => x !== id)].slice(0, 10))); } catch { /* private window */ } }
+
+async function openGiveItem(sid, player) {
+  const list = await itemCatalog(sid);
+  const byId = new Map(list.map((x) => [x.id, x]));
+  let pick = null;
+  openModal(`<h2>Give items to ${esc(player)}</h2>
+    <input class="input" id="gv-q" type="search" placeholder="Search items, like diamond or torch" autocomplete="off" aria-label="Search items">
+    <div class="gv-label muted small" id="gv-label"></div>
+    <div class="gv-grid" id="gv-grid" role="listbox" aria-label="Items"></div>
+    <div class="gv-pick" id="gv-pick" hidden></div>
+    <div class="gv-amount"><label>How many <input class="input sm num-in" id="gv-n" type="number" min="1" max="6400" value="1"></label>
+      <span class="gv-chips">${[1, 8, 16, 32, 64].map((n) => `<button type="button" class="chip" data-n="${n}">${n}</button>`).join("")}</span></div>
+    <div class="actions"><button type="button" class="btn" data-close>Done</button><button type="button" class="btn primary" id="gv-go" disabled>Give</button></div>`, (m) => {
+    m.classList.add("gv-modal");
+    const q = $("#gv-q", m), grid = $("#gv-grid", m), label = $("#gv-label", m), go = $("#gv-go", m), num = $("#gv-n", m);
+    const cell = (x) => `<button type="button" class="gv-item ${pick?.id === x.id ? "on" : ""}" data-id="${esc(x.id)}" role="option" aria-selected="${pick?.id === x.id}" title="${esc(x.name)}">${itemIcon({ id: x.id })}<span>${esc(x.name)}</span></button>`;
+    const draw = () => {
+      const t = q.value.trim().toLowerCase();
+      let rows, head;
+      if (!t) {
+        const recent = giveRecent().map((id) => byId.get(id) || { id, name: itemName({ id }) });
+        rows = recent.length ? recent : list.slice(0, 48); head = recent.length ? "Given recently" : `${list.length} items`;
+      } else {
+        const words = t.split(/\s+/);
+        const hits = list.filter((x) => { const h = `${x.name} ${x.id}`.toLowerCase(); return words.every((w) => h.includes(w)); });
+        hits.sort((a, b) => (b.name.toLowerCase().startsWith(t) - a.name.toLowerCase().startsWith(t)) || a.name.length - b.name.length);
+        rows = hits.slice(0, 60);
+        head = hits.length > 60 ? `First 60 of ${hits.length}. Keep typing to narrow it down.` : `${hits.length} found`;
+        if (!hits.length && /^[a-z0-9_.-]+(:[a-z0-9_./-]+)?$/.test(t)) {           // a mod item we don't know about
+          const id = t.includes(":") ? t : `minecraft:${t}`;
+          rows = [{ id, name: id }]; head = "Not in the list. Give it by its id?";
+        }
+      }
+      label.textContent = head;
+      grid.innerHTML = rows.map(cell).join("") || `<p class="muted small">Nothing matches.</p>`;
+    };
+    const choose = (x) => {
+      pick = x; go.disabled = !pick;
+      const pk = $("#gv-pick", m); pk.hidden = false;
+      pk.innerHTML = `${itemIcon({ id: x.id })}<div><b>${esc(x.name)}</b><div class="muted small">${esc(x.id)}</div></div>`;
+      grid.querySelectorAll(".gv-item").forEach((b) => { const on = b.dataset.id === x.id; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
+      go.textContent = `Give ${Math.max(1, +num.value || 1)}`;
+    };
+    grid.addEventListener("click", (e) => { const b = e.target.closest(".gv-item"); if (b) choose(byId.get(b.dataset.id) || { id: b.dataset.id, name: b.dataset.id }); });
+    grid.addEventListener("dblclick", (e) => { if (e.target.closest(".gv-item")) go.click(); });
+    q.addEventListener("input", draw);
+    q.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); const first = grid.querySelector(".gv-item"); if (first && !pick) first.click(); else if (pick) go.click(); } });
+    const chips = () => m.querySelectorAll("[data-n]").forEach((c) => c.classList.toggle("on", c.dataset.n === String(+num.value)));
+    m.querySelectorAll("[data-n]").forEach((b) => b.addEventListener("click", () => { num.value = b.dataset.n; chips(); if (pick) go.textContent = `Give ${b.dataset.n}`; }));
+    num.addEventListener("input", () => { chips(); if (pick) go.textContent = `Give ${Math.max(1, +num.value || 1)}`; });
+    chips();
+    $("[data-close]", m).addEventListener("click", closeModal);
+    go.addEventListener("click", async () => {
+      if (!pick) return;
+      const n = Math.max(1, Math.min(6400, Math.round(+num.value || 1)));
+      go.disabled = true;
+      try {
+        const r = await post(`/api/servers/${encodeURIComponent(sid)}/control/player/${encodeURIComponent(player)}/give`, { item: pick.id, count: n });
+        const bad = (r.results || []).find((x) => x.ok === false);
+        if (bad) showToast(esc((bad.output || "The game said no").slice(0, 160)), 6000);
+        else { showToast(`Gave ${n} × ${esc(pick.name)} to ${esc(player)}`, 2500); giveRemember(pick.id); }
+      } catch (err) { showToast(esc(err.message), 6000); }
+      go.disabled = false;
+    });
+    draw();
+    setTimeout(() => q.focus(), 0);
+  });
+}
+
 function closeModal() { $("#modal-root").innerHTML = ""; }
 function openContainer(item) {
   const isBundle = item.id.includes("bundle");
   const grid = isBundle ? gridHtml(item.contents, Math.max(9, Math.ceil(item.contents.length / 9) * 9), false) : gridHtml(item.contents, 27);
   openModal(`<h2>${esc(item.name || itemName(item))}</h2><div class="mc-panel"><div class="mc-grid">${grid}</div></div>
-    <div class="actions"><button class="btn" onclick="closeModal()">Close</button></div>`);
+    <div class="actions"><button class="btn" data-close-modal>Close</button></div>`);
 }
 let toastTimer;
 function showToast(msg, ms = 0) {
@@ -573,6 +670,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
   const tabs = [["inventory", "Inventory"], ["history", "Play history"], ["stats", "Statistics"], ["advancements", "Advancements"]];
   setView(`<a class="back" href="#/s/${encodeURIComponent(sid)}">← ${esc(s.name)}</a>
     <div id="hero">${playerHero(p)}</div>
+    ${isAdmin() ? `<div class="btn-row player-admin" id="player-admin" ${p.online ? "" : "hidden"}><button class="btn sm" id="btn-give">🎁 Give items</button></div>` : ""}
     <div id="strip">${statStrip(p)}</div>
     <nav class="tabs" aria-label="Player sections">${tabs.map(([k, l]) => `<a href="${base}${k === "inventory" ? "" : "/" + k}" ${k === tab ? 'aria-current="page"' : ""}>${l}</a>`).join("")}</nav>
     <div id="player-tab"></div>`);
@@ -587,6 +685,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
     else if (tab === "history") renderPlayerHistory(el, sid, p);
   };
   renderTab();
+  $("#btn-give")?.addEventListener("click", () => openGiveItem(sid, p.name));
   if (p.online) {
     let last = JSON.stringify(p.data);
     every(4000, async () => {
@@ -594,6 +693,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
       if (!n || !$("#hero")) return;
       const sig = JSON.stringify(n.data);
       $("#hero").innerHTML = playerHero(n);
+      if ($("#player-admin")) $("#player-admin").hidden = !n.online;
       if (sig !== last) {
         last = sig; p = n;
         $("#strip").innerHTML = statStrip(n);
@@ -605,7 +705,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
 
 function playerHero(p) {
   const d = p.data;
-  const body = p.uuid ? `<img src="https://mc-heads.net/body/${p.uuid.replace(/-/g, "")}/240" alt="${esc(p.name)}'s skin" onerror="this.outerHTML='<div class=\\'head fallback\\'>${esc(p.name[0])}</div>'">` : "";
+  const body = p.uuid ? `<img src="https://mc-heads.net/body/${p.uuid.replace(/-/g, "")}/240" alt="${esc(p.name)}'s skin" data-fail="letter" data-letter="${esc(p.name[0])}">` : "";
   let presence;
   if (p.online) {
     presence = p.source === "live"
@@ -614,7 +714,7 @@ function playerHero(p) {
   } else presence = `<span>Last seen ${esc(fmtAgo(p.last_seen))}</span>`;
   if (!d) return `<div class="player-hero"><div class="body-render">${body}</div><div><h1>${esc(p.name)}</h1><div class="presence">${presence}</div><p class="muted" style="margin-top:12px">No saved player data yet.</p></div></div>`;
   const pos = d.position;
-  const effects = (d.effects || []).map((e) => `<span class="chip"><img src="${textureUrl(`mob_effect/${splitId(e.id)[1]}`)}" alt="" onerror="this.remove()"><b>${esc(effectName(e.id))} ${roman(e.amplifier + 1)}</b> ${e.duration > 0 && e.duration < 1e6 ? fmtDuration(e.duration) : ""}</span>`).join("");
+  const effects = (d.effects || []).map((e) => `<span class="chip"><img src="${textureUrl(`mob_effect/${splitId(e.id)[1]}`)}" alt="" data-fail="remove"><b>${esc(effectName(e.id))} ${roman(e.amplifier + 1)}</b> ${e.duration > 0 && e.duration < 1e6 ? fmtDuration(e.duration) : ""}</span>`).join("");
   return `<div class="player-hero">
     <div class="body-render">${body}</div>
     <div>
@@ -645,7 +745,7 @@ function inventoryHtml(p) {
   const d = p.data;
   if (!d) return `<div class="empty"><h3>No inventory saved yet</h3><p>Minecraft writes player data when the world saves or the player logs out.</p></div>`;
   const inv = d.inventory;
-  const body = p.uuid ? `<img src="https://mc-heads.net/body/${p.uuid.replace(/-/g, "")}/160" alt="" onerror="this.remove()">` : "";
+  const body = p.uuid ? `<img src="https://mc-heads.net/body/${p.uuid.replace(/-/g, "")}/160" alt="" data-fail="remove">` : "";
   const armor = [["head", "helmet"], ["chest", "chestplate"], ["legs", "leggings"], ["feet", "boots"]]
     .map(([k, g]) => slotHtml(inv.armor[k], { ghost: g })).join("");
   const hotbar = inv.hotbar.map((it, i) => slotHtml(it, { selected: i === d.selected_slot })).join("");
@@ -912,7 +1012,7 @@ async function openSettings(s) {
       <label>RCON port <small>Leave blank to use rcon.port from server.properties</small><input class="input" name="rcon_port" inputmode="numeric" value="${esc(cur.rcon_port || "")}"></label>
       <label>RCON password <small>${cur.rcon_password_set ? "Saved. Type a new one to replace it." : "Leave blank to use rcon.password from server.properties"}</small><input class="input" type="password" name="rcon_password" autocomplete="off"></label>
       <label class="check"><input type="checkbox" name="hidden" ${cur.hidden ? "checked" : ""}> Hide this server from Solstone</label>
-      <div class="actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" type="submit">Save settings</button></div>
+      <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Save settings</button></div>
     </form>`, (m) => {
     $("#settings-form", m).addEventListener("submit", async (e) => {
       e.preventDefault();

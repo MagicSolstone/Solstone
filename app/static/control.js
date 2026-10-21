@@ -203,11 +203,6 @@ async function viewControl(sid) {
   });
 
   // ---- players
-  function itemOptions() {
-    const lang = state.lang[sid] || {};
-    return Object.keys(lang).filter((k) => /^(item|block)\.minecraft\.[a-z0-9_]+$/.test(k))
-      .map((k) => `<option value="minecraft:${k.split(".")[2]}">${esc(lang[k])}</option>`).join("");
-  }
   function renderPlayers() {
     const el = $("#ctl-players");
     if (!el) return;
@@ -227,11 +222,12 @@ async function viewControl(sid) {
         ${others(n).length ? `<div class="btn-row"><select class="input sm" data-target aria-label="Other player">${others(n).map((o) => `<option>${esc(o)}</option>`).join("")}</select>
           <button class="btn sm" data-pa="tp_to_player">Send ${esc(n)} to them</button><button class="btn sm" data-pa="bring">Bring them here</button></div>` : ""}
         <form class="btn-row" data-form="message"><input class="input sm grow" name="message" placeholder="Private message" maxlength="256" required><button class="btn sm">Send</button></form>
-        <form class="btn-row" data-form="give"><input class="input sm grow" name="item" list="item-list" placeholder="Item, like diamond" required><input class="input sm num-in" name="count" type="number" min="1" max="6400" value="1" aria-label="How many"><button class="btn sm">Give</button></form>
-        <div class="btn-row"><button class="btn sm danger" data-pa="kick">Kick</button></div>
-      </div>`).join("")}</div><datalist id="item-list">${itemOptions()}</datalist>`;
+        <div class="btn-row"><button class="btn sm" data-give>🎁 Give items</button><button class="btn sm danger" data-pa="kick">Kick</button></div>
+      </div>`).join("")}</div>`;
   }
   $("#ctl-players")?.addEventListener("click", async (e) => {
+    const g = e.target.closest("button[data-give]");
+    if (g) return openGiveItem(sid, g.closest("[data-player]").dataset.player);
     const b = e.target.closest("button[data-pa]");
     if (!b) return;
     const card = b.closest("[data-player]"), p = card.dataset.player, a = b.dataset.pa;
@@ -253,7 +249,6 @@ async function viewControl(sid) {
     e.preventDefault();
     const form = e.target, p = form.closest("[data-player]").dataset.player, f = new FormData(form);
     if (form.dataset.form === "message") { if (await act(`player/${encodeURIComponent(p)}/message`, { message: f.get("message") }, "Message sent")) form.reset(); }
-    if (form.dataset.form === "give") await act(`player/${encodeURIComponent(p)}/give`, { item: f.get("item"), count: Number(f.get("count")) }, "Given");
   });
 
   // ---- whitelist / ops
@@ -390,7 +385,7 @@ async function viewAdmin() {
     const tr = b.closest("tr"), name = tr.querySelector("b").textContent;
     openModal(`<h2>Set a new password for ${esc(name)}</h2><form id="reset-form">
       <label>New password <small>8+ characters. They'll be signed out everywhere.</small><input class="input" type="password" name="password" minlength="8" autocomplete="new-password" required></label>
-      <div class="actions"><button type="button" class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" type="submit">Set password</button></div></form>`, (m) => {
+      <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Set password</button></div></form>`, (m) => {
       $("#reset-form", m).addEventListener("submit", async (e) => {
         e.preventDefault();
         try { await post(`/api/users/${tr.dataset.uid}`, { password: new FormData(e.target).get("password") }, "PATCH"); closeModal(); showToast("Password set", 2500); }

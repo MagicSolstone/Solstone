@@ -6,7 +6,7 @@
 const MU_TABS = [["songs", "Songs"], ["albums", "Albums"], ["artists", "Artists"], ["playlists", "Playlists"]];
 const mu = { tab: "songs", q: "", filter: "", view: null, lists: null, settings: null, page: 0, results: null };
 const muFmt = (t) => { t = Math.max(0, Math.round(t || 0)); return t >= 3600 ? `${Math.floor(t / 3600)}:${String(Math.floor((t % 3600) / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}` : `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
-const muArt = (id, cls = "") => `<span class="mu-art ${cls}"><img src="/api/public/music/${encodeURIComponent(id)}/art" alt="" loading="lazy" onerror="this.remove()"></span>`;
+const muArt = (id, cls = "") => `<span class="mu-art ${cls}"><img src="/api/public/music/${encodeURIComponent(id)}/art" alt="" loading="lazy" data-fail="remove"></span>`;
 const muMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 async function viewMusic(tab, id) {

@@ -1,3 +1,21 @@
+// Image fallbacks and a couple of shared buttons, wired here instead of with inline
+// onerror/onclick attributes so the Content-Security-Policy can forbid inline script.
+document.addEventListener("error", (e) => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement) || !img.dataset.fail) return;
+  const how = img.dataset.fail;
+  if (how === "remove") img.remove();
+  else if (how === "hide") img.style.visibility = "hidden";
+  else if (how === "missing") { img.parentElement?.classList.add("missing"); img.remove(); }
+  else if (how === "face") { const t = document.createElement("template"); t.innerHTML = img.dataset.face || ""; img.replaceWith(t.content.firstElementChild || ""); }
+  else if (how === "letter") { const d = document.createElement("div"); d.className = "head fallback"; d.textContent = img.dataset.letter || "?"; img.replaceWith(d); }
+  else if (how === "icon" && typeof window.lsIconFail === "function") window.lsIconFail(img);
+}, true);
+document.addEventListener("click", (e) => {
+  if (e.target.closest?.("[data-close-modal]")) { e.preventDefault(); if (typeof closeModal === "function") closeModal(); }
+  else if (e.target.closest?.("[data-reload]")) { e.preventDefault(); location.reload(); }
+});
+
 /* Solstone — everything around the fireworks sky that isn't drawing it:
    - the floating control (launch, Show, sounds, music, hide the page),
    - firework sounds made in the browser (Web Audio, nothing to download),
@@ -510,7 +528,7 @@ function startShowBar(scene, opts = {}) {
           <select class="input sm mq-src" aria-label="What to play">${opts.join("")}${popListsLoading ? `<option disabled>Loading playlists…</option>` : ""}</select>
           <input class="input sm mq-find" type="search" placeholder="Find a song in this list" aria-label="Find a song" value="${esc(popFind)}">
           <ol class="mp-list mq-list">${FWMusic.tracks.map((x, i) => ({ x, i })).filter(({ x }) => !popFind || `${x.title} ${x.artist} ${x.album}`.toLowerCase().includes(popFind.toLowerCase())).slice(0, 400).map(({ x, i }) => `<li><button type="button" data-mp-i="${i}" ${i === FWMusic.idx ? 'aria-current="true"' : ""}>
-            <img src="${FWMusic.artUrl(x)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><span><b>${i === FWMusic.idx && FWMusic.playing ? "♪ " : ""}${esc(x.title)}</b><small>${esc([x.artist, x.album].filter(Boolean).join(" · "))}</small></span><i>${x.duration ? fmt(x.duration) : ""}</i></button></li>`).join("") || `<li class="muted small">Nothing matches.</li>`}</ol>
+            <img src="${FWMusic.artUrl(x)}" alt="" loading="lazy" data-fail="hide"><span><b>${i === FWMusic.idx && FWMusic.playing ? "♪ " : ""}${esc(x.title)}</b><small>${esc([x.artist, x.album].filter(Boolean).join(" · "))}</small></span><i>${x.duration ? fmt(x.duration) : ""}</i></button></li>`).join("") || `<li class="muted small">Nothing matches.</li>`}</ol>
           ${!popAnon && !document.body.classList.contains("status-page") ? `<a class="mq-more" href="#/music">🎵 Open the music library</a>` : ""}`;
         const cur = pop.querySelector('[aria-current="true"]');
         if (cur && !popFind) cur.scrollIntoView({ block: "center" });

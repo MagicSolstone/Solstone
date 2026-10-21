@@ -472,7 +472,7 @@ async function openNotifications() {
         <label>Until <small>&nbsp;</small><input class="input" type="time" name="quiet_end" value="${esc(c.quiet_end || "")}"></label>
       </div>
       <div class="actions"><button type="button" class="btn" id="btn-test">Send test</button><span style="flex:1"></span>
-        <button type="button" class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" type="submit">Save notifications</button></div>
+        <button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Save notifications</button></div>
     </form>`, (m) => {
     const form = $("#notify-form", m);
     const body = () => {
