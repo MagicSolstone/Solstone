@@ -357,52 +357,97 @@ def _lz4(body: bytes) -> bytes:
     return bytes(out)
 
 
-def render_region(path: Path, colors: Colors, nether: bool = False) -> Image.Image | None:
+def _top_keys(raw: bytes) -> list[str]:
+    """Names of a chunk's top-level tags (for the map check)."""
+    r = _R(raw)
+    if r.u8() != 10:
+        return []
+    r.s()
+    out = []
+    while r.i < len(r.b):
+        t = r.u8()
+        if t == 0:
+            break
+        out.append(r.s())
+        _skip(r, t)
+    return out
+
+
+def _decompress(ctype: int, body: bytes, path: Path, i: int) -> bytes | None:
+    if ctype & 0x80:                                # too big for the region file: in c.<x>.<z>.mcc beside it
+        rx, rz = (int(v) for v in path.name.split(".")[1:3])
+        ext = path.with_name(f"c.{rx * 32 + i % 32}.{rz * 32 + i // 32}.mcc")
+        body, ctype = ext.read_bytes(), ctype & 0x7F
+    if ctype == 2:
+        return zlib.decompress(body)
+    if ctype == 1:
+        import gzip
+        return gzip.decompress(body)
+    if ctype == 3:
+        return body
+    if ctype == 4:
+        return _lz4(body)                           # region-file-compression=lz4 (1.20.5+)
+    raise ValueError(f"unknown compression type {ctype}")
+
+
+def render_region(path: Path, colors: Colors, nether: bool = False, info: dict | None = None) -> Image.Image | None:
+    """The 512x512 picture of one region file. `info`, if given, is filled with what happened:
+    chunks, drawn, blank (no blocks), failed, error, compression types and a sample chunk."""
+    info = info if info is not None else {}
+    info.update(chunks=0, drawn=0, blank=0, failed=0, error="", compression={}, sample=None)
     try:
         data = path.read_bytes()
-    except OSError:
+    except OSError as e:
+        info["error"] = f"can't read the file: {e}"
         return None
+    info["bytes"] = len(data)
     if len(data) < 8192:
+        info["error"] = "file is smaller than a region header"
         return None
     rgb = np.zeros((TILE, TILE, 3), dtype=np.float32)
     heights = np.full((TILE, TILE), -9999, dtype=np.int32)
     alpha = np.zeros((TILE, TILE), dtype=np.uint8)
-    failed, first_err = 0, ""
     for i in range(1024):
         loc = struct.unpack_from(">I", data, i * 4)[0]
         if not loc:
             continue
+        info["chunks"] += 1
         off = (loc >> 8) * 4096
-        if off + 5 > len(data):
-            continue
-        length, ctype = struct.unpack_from(">IB", data, off)
-        body = data[off + 5: off + 4 + length]
         try:
-            if ctype == 2:
-                raw = zlib.decompress(body)
-            elif ctype == 1:
-                import gzip
-                raw = gzip.decompress(body)
-            elif ctype == 3:
-                raw = body
-            elif ctype == 4:
-                raw = _lz4(body)                    # region-file-compression=lz4 (1.20.5+)
-            else:
-                continue                            # stored in a separate file: skip that chunk
-            got = render_chunk(read_chunk(raw), colors, nether)
+            if off + 5 > len(data):
+                raise ValueError("chunk points past the end of the file")
+            length, ctype = struct.unpack_from(">IB", data, off)
+            info["compression"][str(ctype)] = info["compression"].get(str(ctype), 0) + 1
+            if ctype == 0 or length <= 1:           # an allocated slot with nothing in it
+                info["blank"] += 1
+                continue
+            raw = _decompress(ctype, data[off + 5: off + 4 + length], path, i)
+            nbt = read_chunk(raw)
+            if info["sample"] is None:
+                info["sample"] = {"chunk": i, "keys": _top_keys(raw)[:40], "status": "", "sections": 0}
+                lvl = nbt.get("Level") if isinstance(nbt.get("Level"), dict) else nbt
+                secs = lvl.get("sections") or lvl.get("Sections") or []
+                info["sample"]["sections"] = len(secs)
+                if secs:
+                    info["sample"]["section_keys"] = sorted(secs[len(secs) // 2].keys())
+            got = render_chunk(nbt, colors, nether)
         except Exception as e:
-            failed += 1
-            first_err = first_err or f"chunk {i}: {e!r}"
+            info["failed"] += 1
+            info["error"] = info["error"] or f"chunk {i}: {e!r}"[:300]
             continue
         if not got:
+            info["blank"] += 1
             continue
+        info["drawn"] += 1
         cx, cz = i % 32, i // 32
         c_rgb, c_h = got
         rgb[cz * 16:cz * 16 + 16, cx * 16:cx * 16 + 16] = c_rgb
         heights[cz * 16:cz * 16 + 16, cx * 16:cx * 16 + 16] = c_h
         alpha[cz * 16:cz * 16 + 16, cx * 16:cx * 16 + 16] = np.where(c_h != -9999, 255, 0)
-    if failed:
-        log.warning("map %s: %d chunks couldn't be read (first: %s)", path.name, failed, first_err)
+    if info["failed"]:
+        log.warning("map %s: %d of %d chunks couldn't be read (first: %s)", path.name, info["failed"], info["chunks"], info["error"])
+    elif info["chunks"] and not info["drawn"]:
+        log.warning("map %s: none of %d chunks had blocks to draw (sample: %s)", path.name, info["chunks"], info["sample"])
     if not alpha.any():
         return None
     out = _shade(rgb, heights).astype(np.uint8)
@@ -457,9 +502,12 @@ def _work() -> None:
         key, src, dst, assets, nether = job
         try:
             colors = Colors(assets)
-            img = render_region(src, colors, nether)
+            info: dict = {}
+            img = render_region(src, colors, nether, info)
             colors.save()
             dst.parent.mkdir(parents=True, exist_ok=True)
+            info.pop("sample", None)
+            dst.with_suffix(".json").write_text(json.dumps(info))
             if img is None:
                 img = Image.new("RGBA", (1, 1), (0, 0, 0, 0))
             buf = io.BytesIO()
@@ -490,6 +538,47 @@ def _tidy_old_tiles() -> None:
     for d in root.iterdir():
         if d.is_dir() and d.name != f"v{RENDER_VERSION}":
             shutil.rmtree(d, ignore_errors=True)
+
+
+def tile_info(path: Path) -> dict:
+    try:
+        return json.loads(path.with_suffix(".json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def check(sid: str, world: Path, dim: str, near: list[tuple[float, float]], assets) -> dict:
+    """What the map sees, for the admin's map check: folders, region files, and a fresh
+    render of the regions where players are (or the first few) with what went wrong."""
+    d = region_dir(world, dim)
+    out: dict = {"world": str(world), "world_exists": world.is_dir(), "region_dir": str(d) if d else None,
+                 "renderer": RENDER_VERSION, "regions": [], "checked": []}
+    if not d:
+        out["error"] = "No region folder for this dimension"
+        return out
+    files = sorted(d.glob("r.*.*.mca"))
+    out["regions"] = len(files)
+    out["region_sizes"] = {"empty_or_tiny": sum(1 for f in files if f.stat().st_size < 8192)}
+    want = {(int(x // 512), int(z // 512)) for x, z in near}
+    pick = [f for f in files if tuple(int(v) for v in f.name.split(".")[1:3]) in want] or files[:3]
+    colors = Colors(assets)
+    for f in pick[:4]:
+        info: dict = {"file": f.name}
+        img = render_region(f, colors, dim.endswith("the_nether"), info)
+        info["picture"] = "drawn" if img is not None else "empty"
+        rx, rz = (int(v) for v in f.name.split(".")[1:3])
+        cached = _tile_path(sid, dim, rx, rz)
+        if cached.is_file():
+            try:
+                w, h = Image.open(cached).size
+                info["cached_tile"] = f"{w}x{h}, {int(time.time() - cached.stat().st_mtime)} s old"
+            except OSError as e:
+                info["cached_tile"] = f"unreadable: {e}"
+        else:
+            info["cached_tile"] = "not drawn yet"
+        out["checked"].append(info)
+    colors.save()
+    return out
 
 
 def tile(sid: str, world: Path, dim: str, rx: int, rz: int, assets) -> tuple[str, Path | None]:

@@ -393,6 +393,36 @@ function openModal(html, onMount) {
   onMount?.(root.querySelector(".modal"));
   root.querySelector("input, button, [tabindex]")?.focus();
 }
+// ---------------------------------------------------------------- map check (admin)
+// Re-reads the region files where players are and reports what happened, so a blank map
+// can be explained (and the text pasted into a bug report).
+function openMapCheck(sid, dims) {
+  const ids = [...new Set(["minecraft:overworld", ...dims])];
+  openModal(`<h2>Map drawing check</h2>
+    <p class="muted small">Reads the region files where players last were and tries to draw them. Nothing is changed.</p>
+    <div class="btn-row"><select class="input sm" id="mc-dim">${ids.map((d) => `<option value="${esc(d)}">${esc(dimName(d))}</option>`).join("")}</select>
+      <button class="btn sm primary" type="button" id="mc-run">Check</button><button class="btn sm" type="button" id="mc-copy" hidden>Copy</button></div>
+    <div id="mc-sum" class="mc-sum"></div><pre class="mc-out" id="mc-out" hidden></pre>
+    <div class="actions"><button type="button" class="btn" data-close-modal>Close</button></div>`, (m) => {
+    m.classList.add("mc-modal");
+    const run = async () => {
+      $("#mc-sum", m).textContent = "Reading the world…"; $("#mc-out", m).hidden = true;
+      try {
+        const r = await api(`/api/servers/${encodeURIComponent(sid)}/map/check?dim=${encodeURIComponent($("#mc-dim", m).value)}`);
+        const rows = r.checked || [];
+        const ok = rows.filter((x) => x.drawn > 0).length;
+        $("#mc-sum", m).innerHTML = r.error ? `<b>${esc(r.error)}</b>`
+          : `<div>${r.regions} region files. Checked ${rows.length}: <b>${ok} drew fine</b>${rows.length - ok ? `, <b class="warn">${rows.length - ok} came out empty</b>` : ""}.</div>`
+            + rows.map((x) => `<div class="small">${esc(x.file)}: ${x.drawn} of ${x.chunks} chunks drawn${x.failed ? `, ${x.failed} unreadable` : ""}${x.error ? ` — ${esc(x.error)}` : ""}</div>`).join("");
+        $("#mc-out", m).textContent = JSON.stringify(r, null, 1); $("#mc-out", m).hidden = false; $("#mc-copy", m).hidden = false;
+      } catch (e) { $("#mc-sum", m).textContent = e.message; }
+    };
+    $("#mc-run", m).addEventListener("click", run);
+    $("#mc-copy", m).addEventListener("click", async () => { try { await navigator.clipboard.writeText($("#mc-out", m).textContent); showToast("Copied", 1500); } catch { showToast("Select the text and copy it", 2500); } });
+    run();
+  });
+}
+
 // ---------------------------------------------------------------- give items
 // One dialog used by the player page and the control screen: search with icons, pick an
 // amount, give. It stays open so you can hand out a few things in a row.
@@ -670,7 +700,6 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
   const tabs = [["inventory", "Inventory"], ["history", "Play history"], ["stats", "Statistics"], ["advancements", "Advancements"]];
   setView(`<a class="back" href="#/s/${encodeURIComponent(sid)}">← ${esc(s.name)}</a>
     <div id="hero">${playerHero(p)}</div>
-    ${isAdmin() ? `<div class="btn-row player-admin" id="player-admin" ${p.online ? "" : "hidden"}><button class="btn sm" id="btn-give">🎁 Give items</button></div>` : ""}
     <div id="strip">${statStrip(p)}</div>
     <nav class="tabs" aria-label="Player sections">${tabs.map(([k, l]) => `<a href="${base}${k === "inventory" ? "" : "/" + k}" ${k === tab ? 'aria-current="page"' : ""}>${l}</a>`).join("")}</nav>
     <div id="player-tab"></div>`);
@@ -685,7 +714,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
     else if (tab === "history") renderPlayerHistory(el, sid, p);
   };
   renderTab();
-  $("#btn-give")?.addEventListener("click", () => openGiveItem(sid, p.name));
+  $("#hero").addEventListener("click", (e) => { if (e.target.closest("[data-give]")) openGiveItem(sid, p.name); });
   if (p.online) {
     let last = JSON.stringify(p.data);
     every(4000, async () => {
@@ -693,7 +722,6 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
       if (!n || !$("#hero")) return;
       const sig = JSON.stringify(n.data);
       $("#hero").innerHTML = playerHero(n);
-      if ($("#player-admin")) $("#player-admin").hidden = !n.online;
       if (sig !== last) {
         last = sig; p = n;
         $("#strip").innerHTML = statStrip(n);
@@ -702,6 +730,9 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
     });
   }
 }
+
+// Giving needs the player in the game, and only admins can do it.
+const giveBtn = (p) => (isAdmin() && p.online ? `<div class="btn-row hero-actions"><button class="btn sm" type="button" data-give>🎁 Give items</button></div>` : "");
 
 function playerHero(p) {
   const d = p.data;
@@ -712,7 +743,7 @@ function playerHero(p) {
       ? `<span class="live-tag"><span class="status-dot on"></span>Playing now · live</span>`
       : `<span class="live-tag"><span class="status-dot on"></span>Playing now</span><span>Inventory from last save, ${esc(fmtAgo(p.as_of))}${p.live_available ? "" : " (turn on RCON for live data)"}</span>`;
   } else presence = `<span>Last seen ${esc(fmtAgo(p.last_seen))}</span>`;
-  if (!d) return `<div class="player-hero"><div class="body-render">${body}</div><div><h1>${esc(p.name)}</h1><div class="presence">${presence}</div><p class="muted" style="margin-top:12px">No saved player data yet.</p></div></div>`;
+  if (!d) return `<div class="player-hero"><div class="body-render">${body}</div><div><h1>${esc(p.name)}</h1><div class="presence">${presence}</div><p class="muted" style="margin-top:12px">No saved player data yet.</p>${giveBtn(p)}</div></div>`;
   const pos = d.position;
   const effects = (d.effects || []).map((e) => `<span class="chip"><img src="${textureUrl(`mob_effect/${splitId(e.id)[1]}`)}" alt="" data-fail="remove"><b>${esc(effectName(e.id))} ${roman(e.amplifier + 1)}</b> ${e.duration > 0 && e.duration < 1e6 ? fmtDuration(e.duration) : ""}</span>`).join("");
   return `<div class="player-hero">
@@ -729,6 +760,7 @@ function playerHero(p) {
         ${d.last_death ? `<span class="chip" title="Where they last died">Last death <b>${d.last_death.x}, ${d.last_death.y}, ${d.last_death.z}</b> ${esc(dimName(d.last_death.dimension))}</span>` : ""}
         ${effects}
       </div>
+      ${giveBtn(p)}
     </div></div>`;
 }
 
@@ -958,7 +990,7 @@ async function viewWorld(sid) {
           <div class="coords">${Math.round(p.position.x)}, ${Math.round(p.position.y)}, ${Math.round(p.position.z)}</div></div>
         <span class="dim-tag ${dimClass(p.position.dimension)}">${esc(dimName(p.position.dimension))}</span></a>`).join("")}</div>` : `<div class="empty"><p>No player positions saved yet.</p></div>`}
     </section>
-    <section class="section"><div class="section-head"><h2>Explored</h2><span class="muted">Chunks generated in each dimension</span></div>
+    <section class="section"><div class="section-head"><h2>Explored</h2><span class="muted">Chunks generated in each dimension</span>${isAdmin() ? '<button class="btn sm" id="btn-mapcheck" style="margin-left:auto">🔍 Check the map drawing</button>' : ""}</div>
       <div class="panel dims">${w.dimensions.map((d) => `<div class="dim-bar"><span class="dim-tag ${dimClass(d.id)}" style="justify-self:start">${esc(dimName(d.id))}</span>
         <div class="bar-bg"><span style="width:${(d.chunks / maxChunks) * 100}%"></span></div><span class="num">${fmtNum(d.chunks)}</span></div>`).join("") || '<p class="muted">No region files found.</p>'}</div>
     </section>
@@ -967,6 +999,7 @@ async function viewWorld(sid) {
     </section>
     ${w.datapacks.enabled.length ? `<section class="section"><div class="section-head"><h2>Data packs</h2></div><div class="chips">${w.datapacks.enabled.map((d) => `<span class="chip">${esc(d.replace(/^file\//, ""))}</span>`).join("")}</div></section>` : ""}`);
   wireHeader(s);
+  $("#btn-mapcheck")?.addEventListener("click", () => openMapCheck(sid, w.dimensions.map((d) => d.id)));
   // The clock moves on its own (20 ticks a second while people play) and checks back with
   // the server every 20 seconds, so the time, sun and weather stay current.
   let wd = w, readAt = Date.now() - (w.age || 0) * 1000;

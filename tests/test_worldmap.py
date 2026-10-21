@@ -179,3 +179,16 @@ def test_spanning_block_states():
     longs = [(big >> (64 * j)) & ((1 << 64) - 1) for j in range(4096 * bits // 64)]
     data = np.array([x - (1 << 64) if x >= 1 << 63 else x for x in longs], dtype=np.int64)
     assert worldmap._unpack(data, 17).tolist() == vals
+
+
+def test_render_reports_what_happened(tmp_path):
+    from app import worldmap
+    _region(tmp_path / "r.0.0.mca", {(0, 0): _chunk(0, 0, _land)})
+    data = bytearray((tmp_path / "r.0.0.mca").read_bytes())
+    struct.pack_into(">I", data, 4, (2 << 8) | 1)                       # chunk 1 points at chunk 0's data...
+    data[8192 + 4] = 9                                                  # ...whose compression byte is now nonsense
+    (tmp_path / "r.0.0.mca").write_bytes(bytes(data))
+    info = {}
+    img = worldmap.render_region(tmp_path / "r.0.0.mca", worldmap.Colors(None), False, info)
+    assert img is None and info["chunks"] == 2 and info["failed"] == 2 and "compression type 9" in info["error"]
+    assert info["compression"] == {"9": 2}

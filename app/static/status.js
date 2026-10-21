@@ -315,6 +315,8 @@ function mountMap(el, b, prev) {
         if (r.status === 202) { t.state = t.img ? "ready" : "wait"; t.retry = Date.now() + 3000; t.at = t.img ? Date.now() - 170000 : 0; setTimeout(() => map.redraw?.(), 3100); return; }
         if (!r.ok) { t.state = "none"; return; }
         const bmp = await createImageBitmap(await r.blob());
+        // a 1x1 picture means nothing could be drawn; the server says why
+        t.empty = bmp.width <= 1 ? { chunks: r.headers.get("X-Map-Chunks") || "", error: r.headers.get("X-Map-Error") || "" } : null;
         t.img = bmp; t.state = "ready"; t.at = Date.now(); map.redraw?.();
       }).catch(() => { t.state = "wait"; t.retry = Date.now() + 10000; });
     return t;
@@ -351,7 +353,7 @@ function mountMap(el, b, prev) {
     const set = map.regionSets[dimId]?.set;
     if (set) {
       const x0 = bnd.cx - w / 2 / scale, x1 = bnd.cx + w / 2 / scale, z0 = bnd.cz - h / 2 / scale, z1 = bnd.cz + h / 2 / scale;
-      let n = 0, waiting = 0;
+      let n = 0, waiting = 0, empty = null, drawn = 0;
       ctx.imageSmoothingEnabled = scale < 1;
       for (let rx = Math.floor(x0 / 512); rx <= Math.floor(x1 / 512) && n < 36; rx++) {
         for (let rz = Math.floor(z0 / 512); rz <= Math.floor(z1 / 512) && n < 36; rz++) {
@@ -359,11 +361,13 @@ function mountMap(el, b, prev) {
           n++;
           const t = tileFor(rx, rz);
           if (!t.img && t.state !== "none") waiting++;
+          if (t.img && t.empty) empty = t.empty; else if (t.img) drawn++;
           if (t.img) ctx.drawImage(t.img, Math.round(sx(rx * 512)), Math.round(sz(rz * 512)), Math.ceil(512 * scale) + 1, Math.ceil(512 * scale) + 1);
         }
       }
       ctx.fillStyle = "rgba(6, 10, 18, .18)"; ctx.fillRect(0, 0, w, h);          // a touch darker, so names and heads stand out
-      map.note = waiting ? "Drawing the map…" : n ? "" : "No map here yet: this part of the world hasn't been saved";
+      map.note = waiting ? "Drawing the map…" : !n ? "No map here yet: this part of the world hasn't been saved"
+        : empty && !drawn ? `The map came out empty (${empty.chunks.split("/")[1] || "?"} chunks, none drawn)${empty.error ? `: ${empty.error.slice(0, 70)}` : ""}` : "";
     } else map.note = map.regionSets[dimId]?.failed ? "The map isn't available" : "Loading the map…";
     // grid with block coordinates
     const step = niceStep(Math.max(w, h) / scale);
@@ -518,7 +522,7 @@ function renderTv(b) {
     main.dataset.sid = b.id; main.dataset.mode = "tv";
     main.innerHTML = `<div class="tv-wrap"><div class="tv-main"><div class="tv-stage">${TV_SLIDES.map(([k, title]) => `<section class="tv-slide" data-slide="${k}" aria-hidden="true">
         <h2 class="tv-title">${esc(title)}<span class="tv-sub" data-sub="${k}"></span></h2><div class="tv-scroll"><div class="tv-inner" id="tv-${k}"></div></div></section>`).join("")}</div>
-      <nav class="tv-dots" id="tv-dots" aria-hidden="true"></nav></div>
+      <nav class="tv-dots" id="tv-dots" aria-label="Screens"></nav></div>
       <aside class="tv-side" aria-label="Now playing and recent events"><div id="tv-side-music"></div><div id="tv-side-feed"></div></aside></div>`;
     st.map = null; tv.idx = -1; tv.shown = null; tv.loops = 0;
   }
@@ -541,8 +545,12 @@ function renderTv(b) {
 function tvDots(b) {
   const dots = $("#tv-dots");
   if (!dots) return;
-  const html = TV_SLIDES.filter(([k]) => tvAvailable(k, b)).map(([k, t]) => `<span class="${k === tv.shown ? "on" : ""}"><i style="--dur:${st.tvCfg.seconds}s"></i>${esc(t)}</span>`).join("");
+  const html = TV_SLIDES.filter(([k]) => tvAvailable(k, b)).map(([k, t]) => `<button type="button" data-tv="${k}" class="${k === tv.shown ? "on" : ""}" aria-current="${k === tv.shown}"><i style="--dur:${st.tvCfg.seconds}s"></i>${esc(t)}</button>`).join("");
   setHtml(dots, html);
+  if (!dots._wired) {
+    dots._wired = true;
+    dots.addEventListener("click", (e) => { const btn = e.target.closest("[data-tv]"); if (btn) tvShow(btn.dataset.tv); });
+  }
 }
 function tvNext() {
   clearTimeout(tv.timer);
@@ -563,7 +571,15 @@ function tvNext() {
     tv.loops = 0;
     if (to && to.id !== st.sid) { switchServer(to.id, false); return; }
   }
-  tv.idx = next; tv.shown = keys[next];
+  tvShow(keys[next]);
+}
+// Show one screen now and start its timer (also used when a screen's name is clicked).
+function tvShow(key) {
+  clearTimeout(tv.timer);
+  const b = st.board;
+  if (!b || !st.tv) return;
+  const keys = TV_SLIDES.map(([k]) => k);
+  tv.idx = keys.indexOf(key); tv.shown = key;
   document.querySelectorAll(".tv-slide").forEach((el) => {
     const on = el.dataset.slide === tv.shown;
     el.classList.toggle("on", on); el.setAttribute("aria-hidden", String(!on));

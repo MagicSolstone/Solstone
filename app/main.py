@@ -510,7 +510,28 @@ async def map_tile(sid: str, request: Request, x: int, z: int, dim: str = "minec
         raise HTTPException(404)
     if state == "working":
         return Response(status_code=202, headers={"Retry-After": "3", "Cache-Control": "no-store"})
-    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "max-age=60"})
+    info = worldmap.tile_info(path)
+    head = {"Cache-Control": "max-age=60", "X-Map-Chunks": f"{info.get('drawn', '?')}/{info.get('chunks', '?')}"}
+    if info.get("error"):
+        head["X-Map-Error"] = info["error"][:200].encode("ascii", "replace").decode()
+    return FileResponse(path, media_type="image/png", headers=head)
+
+
+@app.get("/api/servers/{sid}/map/check")
+async def map_check(sid: str, request: Request, dim: str = "minecraft:overworld"):
+    """Admin: what the map sees and why a picture might come out empty."""
+    auth.require_admin(request)
+    srv = await _server(sid)
+    _require_java(srv)
+    def near() -> list[tuple[float, float]]:                 # where players last saved, in this dimension
+        out = []
+        for uuid in S.known_players(srv):
+            data, _m = S.player_file_data(srv, uuid)
+            pos = (data or {}).get("position") or {}
+            if pos and (pos.get("dimension") or "minecraft:overworld") == dim:
+                out.append((pos.get("x", 0), pos.get("z", 0)))
+        return out
+    return await asyncio.to_thread(lambda: worldmap.check(srv.id, srv.world_dir, dim, near(), _assets(srv)))
 
 
 @app.get("/api/public/icon/{sid}.png")
@@ -1267,6 +1288,14 @@ async def list_servers():
         else:
             out.append(r)
     return out
+
+
+@app.get("/api/servers-hidden")
+async def hidden_servers(request: Request):
+    """Admin: servers hidden from Solstone, so they can be brought back."""
+    auth.require_admin(request)
+    await S.registry.refresh()
+    return [{"id": s.id, "name": s.display_name, "game": s.game} for s in S.registry.servers.values() if s.settings.get("hidden")]
 
 
 @app.get("/api/servers/{sid}")

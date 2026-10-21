@@ -1111,10 +1111,11 @@ body.tv-idle.tv, body.tv-idle.tv * { cursor: none; }
 .tv-news-item p { font-size: clamp(1.1rem, 1.6vw, 1.7rem); color: var(--muted); margin: 6px 0 0; }
 .bn-cd.big { font-size: clamp(2rem, 4vw, 4.4rem); padding: 10px 28px; font-family: var(--font-display); }
 .tv-dots { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 20px; padding-top: 12px; font-size: .95rem; color: var(--muted); text-shadow: 0 1px 2px #000; position: relative; z-index: 2; }
-.tv-dots span { position: relative; padding-bottom: 6px; }
-.tv-dots span.on { color: var(--bone); font-weight: 700; }
+.tv-dots button { position: relative; padding: 4px 2px 6px; background: none; border: 0; color: inherit; font: inherit; text-shadow: inherit; cursor: pointer; }
+.tv-dots button:hover { color: var(--bone); }
+.tv-dots button.on { color: var(--bone); font-weight: 700; }
 .tv-dots i { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: var(--gold); border-radius: 2px; }
-.tv-dots span.on i { animation: tvbar var(--dur) linear forwards; }
+.tv-dots button.on i { animation: tvbar var(--dur) linear forwards; }
 @keyframes tvbar { to { width: 100%; } }
 body:not(.tv) .tv-stage, body:not(.tv) .tv-dots { display: none; }
 @media (max-width: 1100px) { .tv-boards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tv-recap { grid-template-columns: 1fr; } }
@@ -1435,7 +1436,13 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .gv-amount { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0 4px; }
 .gv-chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .gv-chips .chip { cursor: pointer; }
-.player-admin { margin: -6px 0 14px; }
+.hero-actions { margin-top: 14px; }
 #gv-q { width: 100%; }
 .gv-chips .chip.on { border-color: var(--gold); color: var(--gold); }
-.player-admin[hidden] { display: none; }
+.modal.mc-modal { width: min(720px, calc(100vw - 32px)); }
+.mc-sum { margin: 12px 0 8px; display: grid; gap: 4px; }
+.mc-sum .warn { color: var(--redstone); }
+.mc-out { max-height: 40vh; overflow: auto; font-size: .78rem; background: var(--well); padding: 10px; border-radius: var(--radius-s); white-space: pre-wrap; word-break: break-all; }
+.hidden-list { display: grid; gap: 8px; max-width: 720px; }
+.hidden-row { display: flex; align-items: center; gap: 10px; }
+.hidden-row button { margin-left: auto; }

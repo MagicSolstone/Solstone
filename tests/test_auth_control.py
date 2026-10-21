@@ -344,3 +344,16 @@ def test_give_items(client):
     assert r.status_code == 200 and isinstance(r.json(), list)
     bad = client.post(f"/api/servers/{SID}/control/player/Tyler/give", json={"item": "minecraft:dia mond", "count": 1})
     assert bad.status_code == 400
+
+
+def test_hidden_servers_can_be_shown_again(client, viewer):
+    from helpers import SID
+    assert viewer.get("/api/servers-hidden").status_code == 403
+    client.put(f"/api/servers/{SID}/settings", json={"hidden": True})
+    try:
+        assert SID not in [s["id"] for s in client.get("/api/servers").json()]
+        assert [s["id"] for s in client.get("/api/servers-hidden").json()] == [SID]
+    finally:
+        client.put(f"/api/servers/{SID}/settings", json={"hidden": False})
+    assert client.get("/api/servers-hidden").json() == []
+    assert SID in [s["id"] for s in client.get("/api/servers").json()]

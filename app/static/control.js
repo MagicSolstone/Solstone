@@ -334,7 +334,7 @@ async function viewAdmin() {
   curSid = null;
   document.title = "Users & activity · Solstone";
   $("#rail-servers").innerHTML = railHtml(null);
-  const [users, audit, lp] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/status")]);
+  const [users, audit, lp, hiddenSrv] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/status"), api("/api/servers-hidden").catch(() => [])]);
   const fmtWhen = (ts) => ts ? fmtAgo(ts) : "never";
   setView(`<h1 style="margin-bottom:20px">Users &amp; activity</h1>
     <section class="section"><div class="section-head"><h2>Users</h2><span class="muted">Viewers can see everything but can't change anything. Admins can also control servers.</span></div>
@@ -350,6 +350,8 @@ async function viewAdmin() {
         <label>Role<select class="input" name="role"><option value="viewer">Viewer (read-only)</option><option value="admin">Admin</option></select></label>
         <button class="btn primary" type="submit">Add user</button></div></form>
     </section>
+    ${hiddenSrv.length ? `<section class="section" id="hidden-servers"><div class="section-head"><h2>Hidden servers</h2><span class="muted">Hidden from Solstone and the status page. Nothing about the server itself changes.</span></div>
+      <div class="panel hidden-list">${hiddenSrv.map((x) => `<div class="hidden-row" data-hsid="${esc(x.id)}"><b>${esc(x.name)}</b><span class="muted small">${esc(x.game || "")}</span><button class="btn sm" type="button" data-unhide>Show it again</button></div>`).join("")}</div></section>` : ""}
     <section class="section"><div class="section-head"><h2>Public status page</h2><span class="muted">A live, read-only big-screen view anyone can open without signing in</span></div>
       <div class="panel rules-ctl" id="status-page-settings" style="max-width:720px">
         <label class="switch-row"><span><b>Turn on the status page</b><br><small class="muted">At <a href="/status" target="_blank" rel="noopener">${esc(location.origin)}/status</a>, linked from the sign-in page. Shows who's playing, their health, level and the in-game day. Never shows chat.</small></span><input type="checkbox" role="switch" data-sp="enabled" ${lp.enabled ? "checked" : ""}></label>
@@ -369,6 +371,16 @@ async function viewAdmin() {
     $$("[data-sp]").forEach((i) => { body[i.dataset.sp] = i.checked; });
     try { await post("/api/settings/status", body, "PUT"); showToast(body.enabled ? 'Status page updated. <a href="/status" target="_blank" rel="noopener">Open it</a>' : "Status page turned off", 3500); }
     catch (err) { showToast(esc(err.message), 5000); }
+  });
+  $("#hidden-servers")?.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-unhide]");
+    if (!b) return;
+    const row = b.closest("[data-hsid]");
+    try {
+      await post(`/api/servers/${encodeURIComponent(row.dataset.hsid)}/settings`, { hidden: false }, "PUT");
+      showToast(`${esc(row.querySelector("b").textContent)} is back`, 2500);
+      await loadServers(); viewAdmin();
+    } catch (err) { showToast(esc(err.message), 5000); }
   });
   $("#add-user").addEventListener("submit", async (e) => {
     e.preventDefault();
