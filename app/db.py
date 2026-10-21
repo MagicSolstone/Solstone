@@ -58,6 +58,16 @@ CREATE INDEX IF NOT EXISTS ix_events_player ON events(server_id, player, ts);
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_events ON events(server_id, ts, type, COALESCE(player, ''), message);
 
+-- One summary per server per day, kept forever (the raw events are pruned).
+CREATE TABLE IF NOT EXISTS recaps (
+    server_id TEXT NOT NULL,
+    day TEXT NOT NULL,
+    data TEXT NOT NULL,
+    source TEXT NOT NULL,
+    created_ts REAL NOT NULL,
+    PRIMARY KEY (server_id, day)
+);
+
 CREATE TABLE IF NOT EXISTS alerts (
     key TEXT PRIMARY KEY,
     ts REAL NOT NULL

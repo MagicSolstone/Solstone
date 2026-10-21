@@ -10,6 +10,7 @@ import re
 import secrets
 import time
 from contextlib import asynccontextmanager
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -17,7 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, backups, control, db, fireworks, fwshow, guard, music, notify, skins
+from . import auth, backups, board, control, db, fireworks, fwshow, guard, music, notify, recap, skins
 from . import servers as S
 from . import settings_store
 from .recorder import recorder
@@ -280,7 +281,7 @@ async def public_status():
     if not cfg["enabled"]:
         return {"enabled": False, "servers": []}
     if _list_cache and time.monotonic() - _list_cache[0] < 15:
-        return {"enabled": True, "servers": _list_cache[1]}
+        return {"enabled": True, "servers": _list_cache[1], "tv": _tv_cfg()}
     await S.registry.refresh()
     out = []
     for srv in _public_servers_list():
@@ -292,7 +293,7 @@ async def public_status():
         out.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "crashed": summ["crashed"],
                     "online": len(summ["online"]), "max": summ["max_players"], "has_icon": summ["has_icon"]})
     _list_cache = (time.monotonic(), out)
-    return {"enabled": True, "servers": out}
+    return {"enabled": True, "servers": out, "tv": _tv_cfg()}
 
 
 @app.get("/api/public/status/{sid}")
@@ -300,6 +301,156 @@ async def public_board(sid: str):
     cfg = _require_status()
     board = await _board(await _public_server(sid), cfg)
     return JSONResponse(board, headers={"Cache-Control": "no-store"})
+
+
+# ---- TV mode: the status page cycling through slides on a wall screen
+TV_SLIDES = ("now", "map", "leaders", "recap", "feed", "news")
+TV_DEFAULTS = {"seconds": 15, "slides": {k: True for k in TV_SLIDES}, "rotate": False}
+
+
+def _tv_cfg(v: dict | None = None) -> dict:
+    saved = v if v is not None else settings_store.load().get("tv") or {}
+    slides = saved.get("slides") if isinstance(saved.get("slides"), dict) else {}
+    try:
+        secs = max(6, min(120, int(saved.get("seconds", 15))))
+    except (TypeError, ValueError):
+        secs = 15
+    return {"seconds": secs, "slides": {k: bool(slides.get(k, True)) for k in TV_SLIDES}, "rotate": bool(saved.get("rotate", False))}
+
+
+@app.get("/api/settings/tv")
+async def get_tv_settings(request: Request):
+    auth.require_admin(request)
+    return _tv_cfg()
+
+
+@app.put("/api/settings/tv")
+async def put_tv_settings(request: Request):
+    global _list_cache
+    user = auth.require_admin(request)
+    cfg = _tv_cfg({**_tv_cfg(), **await _body(request)})
+    if not any(cfg["slides"].values()):
+        raise HTTPException(400, "Leave at least one slide on")
+    settings_store.save_section("tv", cfg)
+    _list_cache = None
+    auth.audit(user, None, "tv_settings", f"{cfg['seconds']} s, {sum(cfg['slides'].values())} slides")
+    return cfg
+
+
+_lb_cache: dict[str, tuple[float, dict]] = {}
+
+
+@app.get("/api/public/leaderboard/{sid}")
+async def public_leaderboard(sid: str):
+    _require_status()
+    srv = await _public_server(sid)
+    if not srv.is_java:
+        return {"players": []}
+    hit = _lb_cache.get(srv.id)
+    if hit and time.monotonic() - hit[0] < 120:
+        return hit[1]
+    data = await S.leaderboard(srv)
+    _lb_cache[srv.id] = (time.monotonic(), data)
+    return data
+
+
+# ---- daily recaps and "on this day"
+def _recap_payload(sid: str, day_s: str | None) -> dict:
+    today = datetime.now(db.tz()).date()
+    try:
+        day = min(today, date.fromisoformat(day_s)) if day_s else today
+    except ValueError:
+        raise HTTPException(400, "Use a date like 2026-10-20") from None
+    out = {"day": day.isoformat(), "today": today.isoformat(), "recap": recap.day_recap(sid, day),
+           "on_this_day": recap.on_this_day(sid, day), **recap.neighbours(sid, day)}
+    if day == today:
+        out["yesterday"] = recap.day_recap(sid, today - timedelta(days=1))
+    return out
+
+
+@app.get("/api/servers/{sid}/recap")
+async def get_recap(sid: str, day: str | None = None):
+    srv = await _server(sid)
+    return await asyncio.to_thread(_recap_payload, srv.id, day)
+
+
+_recap_cache: dict[str, tuple[float, dict]] = {}
+
+
+@app.get("/api/public/recap/{sid}")
+async def public_recap(sid: str):
+    cfg = _require_status()
+    if not cfg["show_activity"]:
+        raise HTTPException(404, "Activity is hidden on the status page")
+    srv = await _public_server(sid)
+    hit = _recap_cache.get(srv.id)
+    if hit and time.monotonic() - hit[0] < 60:
+        return hit[1]
+    data = await asyncio.to_thread(_recap_payload, srv.id, None)
+    _recap_cache[srv.id] = (time.monotonic(), data)
+    return data
+
+
+@app.post("/api/recap/backfill")
+async def recap_backfill(request: Request):
+    """Read every server's old logs again for days before Solstone (normally done once, automatically)."""
+    user = auth.require_admin(request)
+    await S.registry.refresh()
+    total = 0
+    for srv in S.registry.servers.values():
+        if not srv.is_java:
+            continue
+        await asyncio.to_thread(recap.finalize, srv.id)
+        known = {p["name"].lower(): u for u, p in S.known_players(srv).items()}
+        total += await asyncio.to_thread(recap.backfill, srv.id, srv.dir, known)
+    auth.audit(user, None, "recap_backfill", f"{total} days")
+    return {"days": total}
+
+
+# ---- announcements, birthdays and countdowns
+def _board_servers() -> list[S.Server]:
+    return [x for x in S.registry.servers.values() if not x.settings.get("hidden")]
+
+
+@app.get("/api/public/board")
+async def public_board_items(request: Request, where: str = "status", sid: str = ""):
+    if where not in board.WHERE:
+        raise HTTPException(400, "Unknown place")
+    signed_in = request.state.user is not None
+    status_on = _status_cfg()["enabled"]
+    if where == "app" and not signed_in:
+        raise HTTPException(401, "Sign in to continue")
+    if where == "status" and not status_on:
+        raise HTTPException(404, "The public status page is turned off")
+    await S.registry.refresh()
+    servers = _board_servers()
+    if sid and not any(x.id == sid for x in servers):
+        sid = ""
+    items = await asyncio.to_thread(board.active, where, sid or None, signed_in or status_on, None, servers)
+    return JSONResponse({"now": time.time(), "items": items}, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/board")
+async def get_board(request: Request):
+    auth.require_admin(request)
+    await S.registry.refresh()
+    players: dict[str, str] = {}
+    for srv in S.registry.servers.values():
+        for p in S.known_players(srv).values():
+            players.setdefault(p["name"].lower(), p["name"])
+    return {**board.config(), "players": sorted(players.values(), key=str.lower),
+            "servers": [{"id": x.id, "name": x.display_name, "bedtime": guard.bedtime_config(x)["enabled"]} for x in _board_servers()],
+            "shows": [{"id": x["id"], "name": x["name"]} for x in fwshow.shows()], "now": time.time(),
+            "status_enabled": _status_cfg()["enabled"]}
+
+
+@app.put("/api/board")
+async def put_board(request: Request):
+    user = auth.require_admin(request)
+    body = await _body(request)
+    cfg = board.save(body)
+    auth.audit(user, None, "announcements", f"{len(cfg['items'])} announcements, {len(cfg['birthdays'])} birthdays")
+    return await get_board(request)
 
 
 @app.get("/api/public/icon/{sid}.png")
@@ -1157,7 +1308,7 @@ async def spa(full_path: str):
     return HTMLResponse(_page("index.html"), headers={"Cache-Control": "no-cache"})
 
 
-ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "login.js", "app.js", "history.js", "control.js", "editor.js", "fwsettings.js", "status.js")
+ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "editor.js", "fwsettings.js", "announce.js", "status.js")
 
 
 def _page(name: str) -> str:

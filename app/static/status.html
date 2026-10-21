@@ -19,16 +19,21 @@
       <nav class="sp-servers" id="sp-servers" aria-label="Servers"></nav>
       <div class="sp-right">
         <span class="sp-updated" id="sp-updated" aria-live="polite"></span>
+        <span class="tv-clock" id="tv-clock" aria-hidden="true"></span>
+        <button class="sp-btn" id="sp-tv" type="button" title="TV mode: cycle through everything" aria-label="TV mode">📺</button>
         <button class="sp-btn" id="sp-full" type="button" title="Full screen" aria-label="Full screen">⛶</button>
         <a class="sp-btn" href="/">Sign in</a>
       </div>
     </header>
+    <div id="sp-board" class="board-stack" hidden></div>
     <main id="sp-main" class="sp-main"><p class="muted sp-loading">Loading…</p></main>
   </div>
   <div id="sp-toast" class="toast" hidden></div>
   <script src="/static/sky.js" defer></script>
   <script src="/static/showbar.js" defer></script>
   <script src="/static/hud.js" defer></script>
+  <script src="/static/board.js" defer></script>
+  <script src="/static/recap.js" defer></script>
   <script src="/static/status.js" defer></script>
 </body>
 </html>

@@ -12,7 +12,8 @@ function startLoginScene() {
   const scene = startSkyScene(cv, { avoid: card, dim: () => 0.25 });
   // No controls here, but holidays, scheduled shows and game events still play.
   const bar = startShowBar(scene, { controls: false });
-  loginScene.stop = () => { scene.stop(); bar.remove(); };
+  const board = startBoard(document.getElementById("login-board"), { where: "login", scene: () => scene, max: 2 });
+  loginScene.stop = () => { scene.stop(); bar.remove(); board?.remove(); };
 }
 
 function stopLoginScene() { if (loginScene.stop) { loginScene.stop(); loginScene.stop = null; } }

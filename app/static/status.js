@@ -7,7 +7,8 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const POLL_MS = 5000;
 // Skins on this page come through the public route, which only serves players of visible servers.
 skinSource = (p) => p.uuid && st.sid ? `/api/public/skin/${encodeURIComponent(st.sid)}/${String(p.uuid).replace(/-/g, "")}.png` : null;
-const st = { servers: [], sid: null, board: null, prevOnline: null, prevEventTs: 0, fetchedAt: 0, tod: null, todAt: 0, scene: null, map: null };
+const st = { servers: [], sid: null, board: null, prevOnline: null, prevEventTs: 0, fetchedAt: 0, tod: null, todAt: 0, scene: null, map: null,
+  tv: new URLSearchParams(location.search).has("tv"), tvCfg: { seconds: 15, slides: {}, rotate: false }, recap: null, recapAt: 0, leaders: null, leadersAt: 0, banners: null };
 
 // ------------------------------------------------------------------ formatting
 function fmtSpan(sec) {
@@ -64,7 +65,7 @@ function sidFromPath() {
   return m ? decodeURIComponent(m[1]) : null;
 }
 async function loadServers() {
-  try { const d = await getJSON("/api/public/status"); st.servers = d.servers || []; } catch { /* keep the last list */ }
+  try { const d = await getJSON("/api/public/status"); st.servers = d.servers || []; if (d.tv) st.tvCfg = d.tv; } catch { /* keep the last list */ }
   if (!st.sid || !st.servers.some((s) => s.id === st.sid)) {
     const want = sidFromPath();
     const pick = st.servers.find((s) => s.id === want)
@@ -77,7 +78,7 @@ function renderServerTabs() {
   const nav = $("#sp-servers");
   nav.innerHTML = st.servers.length > 1 ? st.servers.map((s) => {
     const dot = s.crashed ? "crash" : s.running !== false ? "on" : "";
-    return `<a href="/status/${encodeURIComponent(s.id)}" data-sid="${esc(s.id)}" ${s.id === st.sid ? 'aria-current="page"' : ""}>
+    return `<a href="/status/${encodeURIComponent(s.id)}${st.tv ? "?tv=1" : ""}" data-sid="${esc(s.id)}" ${s.id === st.sid ? 'aria-current="page"' : ""}>
       <span class="status-dot ${dot}"></span>${esc(s.name)}${s.running !== false && s.online ? `<b>${s.online}</b>` : ""}</a>`;
   }).join("") : "";
 }
@@ -86,13 +87,17 @@ $("#sp-servers")?.addEventListener("click", (e) => {
   if (!a) return;
   e.preventDefault();
   if (a.dataset.sid === st.sid) return;
-  st.sid = a.dataset.sid; st.board = null; st.prevOnline = null; st.prevEventTs = 0; st.map = null;
-  st.bar?.skyChanged();
+  switchServer(a.dataset.sid, true);
+});
+function switchServer(sid, push) {
+  st.sid = sid; st.board = null; st.prevOnline = null; st.prevEventTs = 0; st.map = null; st.recap = st.leaders = null; st.recapAt = st.leadersAt = 0;
+  st.bar?.skyChanged(); st.banners?.refresh();
   delete $("#sp-main").dataset.sid;
-  history.pushState(null, "", a.getAttribute("href"));
+  const url = `/status/${encodeURIComponent(sid)}${st.tv ? "?tv=1" : ""}`;
+  if (push) history.pushState(null, "", url); else history.replaceState(null, "", url);
   renderServerTabs();
   poll();
-});
+}
 addEventListener("popstate", () => { st.sid = null; loadServers().then(poll); });
 
 let pollTimer = 0;
@@ -147,21 +152,27 @@ const EVENT_ICON = { join: "→", leave: "←", death: "☠", advancement: "★"
 // Sections are only replaced when their content changes, so the web map iframe and the
 // position canvas aren't rebuilt on every refresh.
 function setHtml(el, html) { if (el && el._html !== html) { el._html = html; el.innerHTML = html; } }
+function feedHtml(b) {
+  return `<ul class="sp-feed">${b.recent.map((e) => `
+    <li class="ev-${esc(e.type)}"><span class="ev-icon" aria-hidden="true">${EVENT_ICON[e.type] || "•"}</span><span class="ev-time">${esc(fmtAgo(e.ts))}</span><span>${esc(e.message).replace(/\[(.+)\]$/, '<span class="adv-name">$1</span>')}</span></li>`).join("")}</ul>`;
+}
 function render(b) {
   document.title = `${b.name} · Live status`;
+  loadExtras(b);
+  if (st.tv) { renderTv(b); return; }
   const main = $("#sp-main");
-  if (main.dataset.sid !== b.id) {
-    main.dataset.sid = b.id;
+  if (main.dataset.sid !== b.id || main.dataset.mode !== "page") {
+    main.dataset.sid = b.id; main.dataset.mode = "page";
     main.innerHTML = `<div id="sp-hero"></div><div class="sp-grid"><section class="sp-col" id="sp-players" aria-label="Players online"></section>
-      <aside class="sp-col"><div id="sp-mapwrap"></div><div id="sp-webwrap"></div><div id="sp-feedwrap"></div></aside></div>`;
+      <aside class="sp-col"><div id="sp-mapwrap"></div><div id="sp-webwrap"></div><div id="sp-recapwrap"></div><div id="sp-feedwrap"></div></aside></div>`;
   }
   setHtml($("#sp-hero"), heroHtml(b));
   setHtml($("#sp-players"), playersHtml(b));
   const hasPos = b.players.some((p) => p.position);
   setHtml($("#sp-mapwrap"), hasPos ? `<section class="sp-panel glass"><div class="sp-h"><h2>Where everyone is</h2><span class="muted" id="sp-map-dim"></span></div><div class="sp-map" id="sp-map"></div></section>` : "");
   setHtml($("#sp-webwrap"), b.web_map ? `<section class="sp-panel glass"><div class="sp-h"><h2>World map</h2><a class="muted" href="${esc(b.web_map)}" target="_blank" rel="noopener">Open full screen</a></div><iframe class="sp-webmap" src="${esc(b.web_map)}" title="World map" loading="lazy"></iframe></section>` : "");
-  setHtml($("#sp-feedwrap"), b.recent.length ? `<section class="sp-panel glass"><div class="sp-h"><h2>Recent activity</h2></div><ul class="sp-feed">${b.recent.map((e) => `
-    <li class="ev-${esc(e.type)}"><span class="ev-icon" aria-hidden="true">${EVENT_ICON[e.type] || "•"}</span><span class="ev-time">${esc(fmtAgo(e.ts))}</span><span>${esc(e.message).replace(/\[(.+)\]$/, '<span class="adv-name">$1</span>')}</span></li>`).join("")}</ul></section>` : "");
+  setHtml($("#sp-feedwrap"), b.recent.length ? `<section class="sp-panel glass"><div class="sp-h"><h2>Recent activity</h2></div>${feedHtml(b)}</section>` : "");
+  setHtml($("#sp-recapwrap"), recapPanelHtml());
   if (hasPos) mountMap($("#sp-map"), b, st.map);
   else st.map = null;
   tick();
@@ -346,6 +357,162 @@ function mountMap(el, b, prev) {
   if (!map.resizeBound) { map.resizeBound = true; addEventListener("resize", () => st.map === map && draw()); }
 }
 
+// ------------------------------------------------------------------ recap, leaderboards (fetched now and then)
+async function loadExtras(b) {
+  const sid = b.id, now = Date.now();
+  if (now - st.recapAt > 120000) {
+    st.recapAt = now;
+    getJSON(`/api/public/recap/${encodeURIComponent(sid)}`).then((r) => { if (sid === st.sid) { st.recap = r; if (st.board) render(st.board); } }).catch(() => { st.recap = null; });
+  }
+  if (st.tv && st.tvCfg.slides.leaders !== false && now - st.leadersAt > 300000) {
+    st.leadersAt = now;
+    getJSON(`/api/public/leaderboard/${encodeURIComponent(sid)}`).then((r) => { if (sid === st.sid) { st.leaders = r; if (st.board) render(st.board); } }).catch(() => { st.leaders = null; });
+  }
+}
+function recapPanelHtml() {
+  const r = st.recap;
+  if (!r) return "";
+  const today = r.recap, y = r.yesterday;
+  const busy = (x) => x && (x.players.length || x.advancements.length);
+  if (!busy(today) && !busy(y) && !r.on_this_day.length) return "";
+  return `<section class="sp-panel glass sp-recap"><div class="sp-h"><h2>Recap</h2></div>
+    ${busy(today) ? recapCardHtml(today, "Today so far", { max: 4 }) : ""}${busy(y) ? recapCardHtml(y, "Yesterday", { max: 4 }) : ""}${onThisDayHtml(r.on_this_day)}</section>`;
+}
+
+// ------------------------------------------------------------------ TV mode
+// One slide at a time, big, for a screen on the wall. Slides with nothing to show are skipped;
+// long ones scroll gently while they're up.
+const TV_SLIDES = [["now", "Playing now"], ["map", "Where everyone is"], ["leaders", "Leaderboards"], ["recap", "Today on the server"], ["feed", "Recent activity"], ["news", "Announcements"]];
+const tv = { idx: -1, timer: 0, shown: null, loops: 0 };
+const TV_BOARDS = [["play_time", "Time played", (t) => fmtSpan(t / 20)], ["xp_level", "Highest level", (n) => nf(n)], ["mob_kills", "Mobs defeated", (n) => nf(n)],
+  ["blocks_mined", "Blocks mined", (n) => nf(n)], ["distance_cm", "Distance travelled", (cm) => `${nf(cm / 100000)} km`], ["fish_caught", "Fish caught", (n) => nf(n)],
+  ["animals_bred", "Animals bred", (n) => nf(n)], ["deaths", "Most deaths", (n) => nf(n)]];
+function nf(n) { return new Intl.NumberFormat([], { maximumFractionDigits: n < 10 ? 1 : 0 }).format(n || 0); }
+
+function tvAvailable(k, b) {
+  if (st.tvCfg.slides[k] === false) return false;
+  if (k === "now") return true;
+  if (k === "map") return b.players.some((p) => p.position);
+  if (k === "leaders") return !!st.leaders?.players?.some((r) => r.play_time > 0);
+  if (k === "recap") return !!st.recap && (st.recap.recap.players.length || st.recap.yesterday?.players.length || st.recap.on_this_day.length);
+  if (k === "feed") return b.recent.length > 0;
+  if (k === "news") return (st.banners?.items || []).length > 0;
+  return false;
+}
+function tvLeadersHtml() {
+  const rows = st.leaders?.players || [];
+  const boards = TV_BOARDS.map(([k, title, f]) => {
+    const top = rows.filter((r) => r[k] > 0).sort((a, b) => b[k] - a[k]).slice(0, 5);
+    if (!top.length) return "";
+    return `<div class="tv-board glass"><h3>${esc(title)}</h3><ol>${top.map((r, i) => `<li><span class="rank">${i + 1}</span>${faceHtml(r, 36)}<b>${esc(r.name)}</b><span class="val">${esc(f(r[k]))}</span></li>`).join("")}</ol></div>`;
+  }).filter(Boolean).slice(0, 6);
+  return `<div class="tv-boards">${boards.join("")}</div>`;
+}
+function tvRecapHtml() {
+  const r = st.recap;
+  if (!r) return "";
+  const busy = (x) => x && (x.players.length || x.advancements.length);
+  return `<div class="tv-recap"><div class="tv-recap-days">${recapCardHtml(r.recap, "Today so far", { big: true, max: 5 })}${busy(r.yesterday) ? recapCardHtml(r.yesterday, "Yesterday", { big: true, max: 4 }) : ""}</div>
+    ${r.on_this_day.length ? `<div class="glass tv-otd">${onThisDayHtml(r.on_this_day, { big: true })}</div>` : ""}</div>`;
+}
+function tvNewsHtml() {
+  const items = st.banners?.items || [];
+  return `<div class="tv-news">${items.map((it) => `<div class="tv-news-item glass bn-${esc(it.style)}">
+    <span class="tv-news-emoji">${esc(it.emoji || "📣")}</span><div><h2>${esc(it.text)}</h2>${it.detail ? `<p>${esc(it.detail)}</p>` : ""}</div>
+    ${it.countdown ? `<span class="bn-cd big" data-cd="${it.countdown}"></span>` : ""}</div>`).join("")}</div>`;
+}
+function renderTv(b) {
+  const main = $("#sp-main");
+  if (main.dataset.sid !== b.id || main.dataset.mode !== "tv") {
+    main.dataset.sid = b.id; main.dataset.mode = "tv";
+    main.innerHTML = `<div class="tv-stage">${TV_SLIDES.map(([k, title]) => `<section class="tv-slide" data-slide="${k}" aria-hidden="true">
+        <h2 class="tv-title">${esc(title)}<span class="tv-sub" data-sub="${k}"></span></h2><div class="tv-scroll"><div class="tv-inner" id="tv-${k}"></div></div></section>`).join("")}</div>
+      <nav class="tv-dots" id="tv-dots" aria-hidden="true"></nav>`;
+    st.map = null; tv.idx = -1; tv.shown = null; tv.loops = 0;
+  }
+  setHtml($("#tv-now"), heroHtml(b) + playersHtml(b));
+  const hasPos = b.players.some((p) => p.position);
+  setHtml($("#tv-map"), hasPos ? `<div class="sp-map tv-map" id="sp-map"></div><span class="muted" id="sp-map-dim"></span>` : "");
+  if (hasPos && tv.shown === "map") mountMap($("#sp-map"), b, st.map);
+  setHtml($("#tv-leaders"), tvLeadersHtml());
+  setHtml($("#tv-recap"), tvRecapHtml());
+  setHtml($("#tv-feed"), b.recent.length ? `<div class="glass tv-feed">${feedHtml(b)}</div>` : "");
+  setHtml($("#tv-news"), tvNewsHtml());
+  const sub = $('[data-sub="now"]');
+  if (sub) sub.textContent = ` on ${b.name}`;
+  if (tv.idx < 0) tvNext();
+  tvDots(b);
+}
+function tvDots(b) {
+  const dots = $("#tv-dots");
+  if (!dots) return;
+  const html = TV_SLIDES.filter(([k]) => tvAvailable(k, b)).map(([k, t]) => `<span class="${k === tv.shown ? "on" : ""}"><i style="--dur:${st.tvCfg.seconds}s"></i>${esc(t)}</span>`).join("");
+  setHtml(dots, html);
+}
+function tvNext() {
+  clearTimeout(tv.timer);
+  const b = st.board;
+  if (!b || !st.tv) return;
+  const keys = TV_SLIDES.map(([k]) => k);
+  let next = tv.idx;
+  for (let i = 0; i < keys.length; i++) {
+    next = (next + 1) % keys.length;
+    if (next === 0 && tv.idx >= 0) tv.loops++;
+    if (tvAvailable(keys[next], b)) break;
+  }
+  // Every server in turn: after a full loop, move on (skipping ones that are off).
+  if (st.tvCfg.rotate && tv.loops > 0 && st.servers.length > 1) {
+    const order = st.servers.filter((x) => x.running !== false || x.id === st.sid);
+    const at = order.findIndex((x) => x.id === st.sid);
+    const to = order[(at + 1) % order.length];
+    tv.loops = 0;
+    if (to && to.id !== st.sid) { switchServer(to.id, false); return; }
+  }
+  tv.idx = next; tv.shown = keys[next];
+  document.querySelectorAll(".tv-slide").forEach((el) => {
+    const on = el.dataset.slide === tv.shown;
+    el.classList.toggle("on", on); el.setAttribute("aria-hidden", String(!on));
+  });
+  if (tv.shown === "map" && b.players.some((p) => p.position)) { st.map = null; mountMap($("#sp-map"), b, null); }
+  tvScroll($(`.tv-slide[data-slide="${tv.shown}"] .tv-scroll`));
+  tvDots(b);
+  tv.timer = setTimeout(tvNext, st.tvCfg.seconds * 1000);
+}
+// Too tall for the screen: hold, glide down to the end, hold.
+function tvScroll(box) {
+  if (!box) return;
+  const inner = box.firstElementChild;
+  inner.getAnimations?.().forEach((a) => a.cancel());
+  const over = inner.scrollHeight - box.clientHeight;
+  if (over <= 8 || !inner.animate) return;
+  const ms = st.tvCfg.seconds * 1000;
+  inner.animate([{ transform: "translateY(0)", offset: 0 }, { transform: "translateY(0)", offset: 0.18 },
+    { transform: `translateY(${-over}px)`, offset: 0.88 }, { transform: `translateY(${-over}px)`, offset: 1 }], { duration: ms, easing: "ease-in-out", fill: "forwards" });
+}
+function setTvMode(on) {
+  st.tv = on;
+  document.body.classList.toggle("tv", on);
+  clearTimeout(tv.timer); tv.idx = -1; tv.shown = null;
+  const url = new URL(location.href);
+  if (on) url.searchParams.set("tv", "1"); else url.searchParams.delete("tv");
+  history.replaceState(null, "", url);
+  renderServerTabs();
+  delete $("#sp-main").dataset.sid;
+  st.leadersAt = 0;
+  st.banners?.render();
+  if (st.board) render(st.board);
+  if (on) document.documentElement.requestFullscreen?.().catch(() => {});
+}
+$("#sp-tv")?.addEventListener("click", () => setTvMode(!st.tv));
+// The wall clock, and a hidden cursor when nobody's touching it.
+let tvIdle = 0;
+addEventListener("pointermove", () => { document.body.classList.remove("tv-idle"); clearTimeout(tvIdle); tvIdle = setTimeout(() => document.body.classList.add("tv-idle"), 3000); });
+setInterval(() => {
+  const c = $("#tv-clock");
+  if (c && st.tv) c.textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  document.querySelectorAll(".tv-news [data-cd]").forEach((el) => { const left = Number(el.dataset.cd) - Date.now() / 1000; el.textContent = left > 0 ? fmtCountdown(left) : "Now!"; });
+}, 1000);
+
 // ------------------------------------------------------------------ big-screen niceties
 $("#sp-full")?.addEventListener("click", () => {
   if (document.fullscreenElement) document.exitFullscreen?.();
@@ -364,6 +531,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     st.bar = startShowBar(st.scene, { key: "solstone-sky-status", defaultOn: true, hide: true, skyServer: () => st.sid || "",
       onEvent: (item) => { if (item.text && item.server_id === st.sid) toast(esc(item.text)); } });
   }
+  st.banners = startBoard($("#sp-board"), { where: "status", sid: () => st.sid || "", scene: () => st.scene, max: innerWidth < 700 ? 1 : 3, ticker: () => st.tv });
+  if (st.tv) document.body.classList.add("tv");
   keepAwake();
   await loadServers();
   poll();

@@ -21,6 +21,7 @@
         <a class="rail-btn" id="btn-fwe" href="#/fireworks">🎆 <span>Fireworks</span></a>
         <a class="rail-btn" id="btn-status" href="/status" target="_blank" rel="noopener" hidden>📺 <span>Live status</span></a>
         <button class="rail-btn admin-only" id="btn-notify" type="button">🔔 <span>Notifications</span></button>
+        <a class="rail-btn admin-only" id="btn-announce" href="#/announcements">📣 <span>Announcements</span></a>
         <a class="rail-btn admin-only" id="btn-admin" href="#/admin">👥 <span>Users &amp; activity</span></a>
         <div class="account">
           <button class="rail-btn" id="btn-account" type="button" aria-haspopup="menu" aria-expanded="false">👤 <span id="account-name"></span></button>
@@ -33,7 +34,10 @@
         <span id="build-channel" class="channel" hidden></span>
       </div>
     </nav>
-    <main id="view" tabindex="-1"></main>
+    <div class="main-col">
+      <div id="app-board" class="board-stack" hidden></div>
+      <main id="view" tabindex="-1"></main>
+    </div>
   </div>
   <div id="login-root" hidden></div>
   <div id="tooltip" class="mc-tooltip" role="tooltip" hidden></div>
@@ -43,10 +47,13 @@
   <script src="/static/showbar.js" defer></script>
   <script src="/static/login.js" defer></script>
   <script src="/static/hud.js" defer></script>
+  <script src="/static/board.js" defer></script>
+  <script src="/static/recap.js" defer></script>
   <script src="/static/app.js" defer></script>
   <script src="/static/history.js" defer></script>
   <script src="/static/control.js" defer></script>
   <script src="/static/editor.js" defer></script>
   <script src="/static/fwsettings.js" defer></script>
+  <script src="/static/announce.js" defer></script>
 </body>
 </html>

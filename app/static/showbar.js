@@ -243,12 +243,10 @@ function startShowBar(scene, opts = {}) {
     }
   }
 
-  // ---- director: game events, holidays, finales
-  const banner = document.createElement("div");
-  banner.className = "fw-banner glass"; banner.hidden = true;
+  // ---- director: game events, holidays, finales (the holiday banner itself is in board.js)
   const count = document.createElement("div");
   count.className = "fw-countdown"; count.hidden = true;
-  document.body.append(banner, count); els.push(banner, count);
+  document.body.append(count); els.push(count);
   let last = -1, pollT = 0, tickT = 0, done = new Set();
   const runShow = (show) => {
     const n = Math.max(1, Math.min(5, show.count || 1));
@@ -277,9 +275,7 @@ function startShowBar(scene, opts = {}) {
     pollT = setTimeout(poll, 4000);
   };
   const tick = () => {
-    const now = Date.now() / 1000, th = FW.theme;
-    const holidayText = th && (th.message || th.name) ? `${th.emoji || ""} ${th.message || th.name}`.trim() : "";
-    banner.hidden = !holidayText; banner.textContent = holidayText;
+    const now = Date.now() / 1000;
     let cd = null;
     for (const f of FW.finales || []) {
       if (f.countdown && f.start - now <= 10 && f.start - now > 0) cd = Math.ceil(f.start - now);

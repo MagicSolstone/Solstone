@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import backups, db, fwshow, guard, notify
+from . import backups, board, db, fwshow, guard, notify, recap
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -92,7 +92,8 @@ class Recorder:
         self._tasks = [asyncio.create_task(self._loop(self.poll_all, POLL_INTERVAL)),
                        asyncio.create_task(self._loop(self.tail_all, LOG_INTERVAL)),
                        asyncio.create_task(self._loop(self.prune, 6 * 3600)),
-                       asyncio.create_task(self._loop(self.guard, GUARD_INTERVAL))]
+                       asyncio.create_task(self._loop(self.guard, GUARD_INTERVAL)),
+                       asyncio.create_task(self._loop(self.recaps, 3600))]
 
     async def stop(self) -> None:
         for t in self._tasks:
@@ -111,7 +112,24 @@ class Recorder:
 
     async def guard(self) -> None:
         await S.registry.refresh()
-        await guard.tick([s for s in S.registry.servers.values() if not s.settings.get("hidden")])
+        visible = [s for s in S.registry.servers.values() if not s.settings.get("hidden")]
+        await guard.tick(visible)
+        await board.tick(visible)
+
+    async def recaps(self) -> None:
+        """Summarise finished days, and once per server read its old logs for the days before Solstone."""
+        await asyncio.sleep(20)            # let the first poll and log read land first
+        await S.registry.refresh()
+        for srv in list(S.registry.servers.values()):
+            try:
+                await asyncio.to_thread(recap.finalize, srv.id)
+                if srv.is_java and db.alert_once(f"recap-backfill:{srv.id}"):
+                    known = {p["name"].lower(): u for u, p in S.known_players(srv).items()}
+                    n = await asyncio.to_thread(recap.backfill, srv.id, srv.dir, known)
+                    if n:
+                        log.info("Filled in %d days of history for %s from old logs", n, srv.id)
+            except Exception:
+                log.exception("recap failed for %s", srv.id)
 
     async def prune(self) -> None:
         db.prune(METRICS_DAYS, EVENTS_DAYS)
@@ -270,6 +288,8 @@ class Recorder:
                 # File reading happens in a thread; notifications need the event loop, so send them here.
                 for etype, message in await asyncio.to_thread(self.tail_server, srv):
                     maybe_notify(etype, srv.display_name, message)
+                    if etype == "join":
+                        await board.greet(srv, message.split(" ", 1)[0])
             except Exception:
                 log.exception("log tail failed for %s", srv.id)
 

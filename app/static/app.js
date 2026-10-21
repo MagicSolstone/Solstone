@@ -26,7 +26,7 @@ const post = (path, body = {}, method = "POST") => api(path, { method, body: JSO
 
 // ================================================================ accounts
 const me = { user: null };
-const appSky = { scene: null, bar: null };  // the night sky behind the signed-in app
+const appSky = { scene: null, bar: null, board: null };  // the night sky behind the signed-in app
 const isAdmin = () => me.user?.role === "admin";
 
 function showLogin(message = "") {
@@ -34,10 +34,11 @@ function showLogin(message = "") {
   me.user = null;
   document.body.classList.add("logged-out");
   if (appSky.scene) { appSky.scene.stop(); appSky.bar?.remove(); FWMusic.stop(); appSky.scene = appSky.bar = null; }
+  appSky.board?.remove(); appSky.board = null;
   const root = $("#login-root");
   root.hidden = false;
   root.innerHTML = `<canvas id="login-sky" aria-hidden="true"></canvas>
-    <div class="login-wrap"><form class="login-card" id="login-form" autocomplete="on">
+    <div class="login-wrap"><div id="login-board" class="board-stack" hidden></div><form class="login-card" id="login-form" autocomplete="on">
       <img src="/static/solstone.svg" alt="" width="56" height="56">
       <div class="login-title"><h1>Solstone</h1><p class="tagline">Server explorer for Minecraft</p></div>
       <label>Username<input class="input" name="username" autocomplete="username" autocapitalize="off" required></label>
@@ -79,6 +80,7 @@ async function signedIn(user) {
       onEvent: (item) => { if (item.text) showToast(`🎆 ${esc(item.text)}${item.server && item.server !== "Test" ? ` <span class="muted">· ${esc(item.server)}</span>` : ""}`, 4000); } });
   }
   const root = $("#login-root"); root.hidden = true; root.innerHTML = "";
+  if (!appSky.board) appSky.board = startBoard($("#app-board"), { where: "app", sid: () => curSid || "", scene: () => appSky.scene, dismiss: true, max: innerWidth < 700 ? 1 : 2 });
   $("#account-name").textContent = user.username;
   $("#account-role").textContent = user.role === "admin" ? "Admin" : "Viewer (read-only)";
   fetch("/api/public/status").then((r) => r.json()).then((d) => { $("#btn-status").hidden = !d.enabled; }).catch(() => {});
@@ -519,14 +521,39 @@ async function viewOverview(sid) {
   setView(serverHeader(s, "overview") + `<div class="overview">
       <aside class="ov-side" aria-label="Players"><div class="section-head"><h2>Players</h2><span class="muted">${data.players.length} joined</span></div>
         <div id="players-body">${playersListHtml(data)}</div></aside>
-      <div class="ov-main" id="ov-activity"></div></div>`);
+      <div class="ov-main"><section class="rc-wrap" id="ov-recap" aria-label="Daily recap"></section><div id="ov-activity"></div></div></div>`);
   wireHeader(s);
+  const refreshRecap = mountRecap($("#ov-recap"), sid);
   const refreshActivity = mountActivity($("#ov-activity"), sid, data.players.map((p) => p.name));
   every(10000, async () => {
     const d = await api(`/api/servers/${sid}/players`).catch(() => null);
     if (d && $("#players-body")) $("#players-body").innerHTML = playersListHtml(d);
   });
   every(30000, refreshActivity);
+  every(120000, refreshRecap);
+}
+
+// Today so far, yesterday, any day back to the first one on record, and "on this day".
+function mountRecap(el, sid) {
+  let day = null, data = null;
+  const load = async () => {
+    try { data = await api(`/api/servers/${encodeURIComponent(sid)}/recap${day ? `?day=${day}` : ""}`); } catch { return; }
+    if (!el.isConnected) return;
+    const isToday = data.day === data.today;
+    const title = isToday ? "Today so far" : recapDate(data.day);
+    const y = isToday && data.yesterday;
+    const cards = recapCardHtml(data.recap, title) + (y && (y.players.length || y.advancements.length) ? recapCardHtml(y, "Yesterday") : "");
+    el.innerHTML = `<div class="section-head"><h2>Recap</h2>
+        <div class="rc-nav"><button class="btn sm" data-go="${esc(data.prev || "")}" ${data.prev ? "" : "disabled"} title="Earlier day with play">‹</button>
+          <input class="input sm" type="date" value="${esc(data.day)}" min="${esc(data.first || data.today)}" max="${esc(data.today)}" aria-label="Pick a day">
+          <button class="btn sm" data-go="${esc(data.next || "")}" ${data.next ? "" : "disabled"} title="Later day with play">›</button>
+          ${isToday ? "" : `<button class="btn sm" data-go="${esc(data.today)}">Today</button>`}</div></div>
+      <div class="rc-cards">${cards}</div>${onThisDayHtml(data.on_this_day)}`;
+  };
+  el.addEventListener("click", (e) => { const b = e.target.closest("[data-go]"); if (b?.dataset.go) { day = b.dataset.go === data?.today ? null : b.dataset.go; load(); } });
+  el.addEventListener("change", (e) => { if (e.target.type === "date" && e.target.value) { day = e.target.value; load(); } });
+  load();
+  return () => { if (!day) load(); };
 }
 
 // ---------------------------------------------------------------- player page
@@ -884,6 +911,7 @@ async function route() {
   try {
     if (!me.user) return;
     if (parts[0] === "admin") { await viewAdmin(); return; }
+    if (parts[0] === "announcements") { await viewAnnouncements(); return; }
     if (parts[0] === "fireworks" && parts[1] === "settings") { await viewFireworkSettings(); return; }
     if (parts[0] === "fireworks") { await viewFireworkEditor(parts[1]); return; }
     if (parts[0] === "s" && parts[1]) {
@@ -902,7 +930,11 @@ async function route() {
     console.error(e);
   }
 }
-addEventListener("hashchange", async () => { await route(); view().focus({ preventScroll: true }); scrollTo(0, 0); appSky.bar?.skyChanged(); });
+let boardSid = null;
+addEventListener("hashchange", async () => {
+  await route(); view().focus({ preventScroll: true }); scrollTo(0, 0); appSky.bar?.skyChanged();
+  if ((curSid || "") !== boardSid) { boardSid = curSid || ""; appSky.board?.refresh(); }   // bedtime banners follow the server in view
+});
 document.addEventListener("DOMContentLoaded", async () => {
   $("#btn-notify")?.addEventListener("click", openNotifications);
   wireAccountMenu();
