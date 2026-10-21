@@ -264,3 +264,22 @@ def test_upside_down_sections_are_found():
     stats = {}
     rgb, h = worldmap.render_chunk(worldmap.read_chunk(buf.getvalue()), worldmap.Colors(None), False, stats)
     assert stats["layouts"] == {"yzx-ydown": 1} and (h[0] == [4 + x // 2 for x in range(16)]).all()
+
+
+def test_mixed_palette_26_1():
+    """26.1+: a palette mixing plain names and blocks with properties stores every entry as a
+    compound, {"": "deepslate"} for plain ones and {id: ..., properties: ...} for the rest."""
+    from app import worldmap
+    c = _chunk(0, 0, lambda x, z: [(y, "minecraft:stone") for y in range(0, 60)] + [(60, "minecraft:glow_lichen" if x == 0 else "minecraft:grass_block")])
+    for s in c["sections"]:
+        bs = s["block_states"]
+        bs["palette"] = List[Compound]([Compound({"id": String(p["Name"].split(":")[1]), "properties": Compound({"up": String("true")})})
+                                        if "lichen" in p["Name"] else Compound({"": String(p["Name"].split(":")[1])}) for p in bs["palette"]])
+    c["yPos"] = Int(-4)
+    c["Heightmaps"] = Compound({"WORLD_SURFACE": _hm([[60] * 16 for _ in range(16)])})
+    buf = io.BytesIO(); nbtlib.File(c).write(buf)
+    stats = {}
+    rgb, h = worldmap.render_chunk(worldmap.read_chunk(buf.getvalue()), worldmap.Colors(None), False, stats)
+    assert (h == 60).all() and stats["agree"] == 1.0
+    assert worldmap._block_name({"": "deepslate"}) == "minecraft:deepslate"
+    assert worldmap._block_name({"id": "glow_lichen", "properties": {}}) == "minecraft:glow_lichen"

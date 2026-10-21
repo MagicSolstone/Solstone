@@ -33,7 +33,7 @@ _WATERY = {"water", "bubble_column", "kelp", "kelp_plant", "seagrass", "tall_sea
 # Region chunks are big; only the block palettes, packed block data and section heights
 # are needed, so everything else is skipped without being decoded.
 _WANT = {"sections", "Sections", "Level", "block_states", "BlockStates", "blocks", "palette", "Palette", "data", "Data", "Y", "y",
-         "Name", "name", "yPos", "xPos", "zPos", "Heightmaps", "WORLD_SURFACE"}
+         "Name", "name", "id", "", "yPos", "xPos", "zPos", "Heightmaps", "WORLD_SURFACE"}
 
 
 class _R:
@@ -287,10 +287,12 @@ def _short(name: str) -> str:
 
 
 def _block_name(p) -> str:
-    """One palette entry: {Name: "minecraft:stone", Properties: …}, or just the name as text
-    (possibly "minecraft:oak_log[axis=y]")."""
+    """One palette entry, in any of the layouts Minecraft has used:
+    {Name: "minecraft:stone", Properties: …} (1.13-1.21), plain text "minecraft:stone"
+    (possibly "minecraft:oak_log[axis=y]"), or, in a list mixing both kinds (26.1+),
+    {id: "glow_lichen", properties: …} and {"": "deepslate"} for the plain ones."""
     if isinstance(p, dict):
-        n = p.get("Name") or p.get("name") or "minecraft:air"
+        n = p.get("Name") or p.get("name") or p.get("id") or p.get("") or "minecraft:air"
     elif isinstance(p, str):
         n = p
     else:
@@ -650,7 +652,7 @@ def regions(world: Path, dim: str) -> list[list[int]]:
     return out
 
 
-RENDER_VERSION = 5          # bump when the drawing changes: older cached tiles are redrawn
+RENDER_VERSION = 6          # bump when the drawing changes: older cached tiles are redrawn
 
 
 def _tile_path(sid: str, dim: str, rx: int, rz: int) -> Path:
