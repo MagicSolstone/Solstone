@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import backups, board, db, fwshow, guard, music, notify, recap
+from . import backups, board, challenges, db, fwshow, guard, music, notify, recap
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -118,6 +118,7 @@ class Recorder:
         visible = [s for s in S.registry.servers.values() if not s.settings.get("hidden")]
         await guard.tick(visible)
         await board.tick(visible)
+        await challenges.tick(visible)
 
     async def music_scan(self) -> None:
         """Keep the external music library's index up to date (new albums, changed tags)."""
@@ -247,6 +248,7 @@ class Recorder:
         # clock is off (each join sets off one firework, whichever notices first).
         if self._running_state.get(srv.id) is not None:
             for n in joined:
+                await challenges.on_join(srv, n)        # prizes won while away
                 if not fwshow.pushed_recently(srv.id, "join", n):
                     fwshow.push(srv.id, srv.display_name, "join", n, f"{n} joined the game")
 

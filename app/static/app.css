@@ -1455,3 +1455,64 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .mu-selbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 96px; z-index: 60; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
   padding: 10px 14px; border-radius: var(--radius-m); border: 1px solid var(--gold-deep); background: rgba(16, 20, 32, .92); max-width: calc(100vw - 32px); }
 @media (max-width: 640px) { .mu-rows.pickable .mu-row { grid-template-columns: 22px 36px minmax(0, 1fr) auto; } .mu-selbar { bottom: 84px; } }
+
+/* ------------------------------------------------------------ chat */
+.chat-wrap { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; gap: 10px; height: clamp(320px, calc(100dvh - 400px), 760px); padding: 12px; margin-bottom: 96px; }
+.chat-log { overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding-right: 4px; }
+.cm { display: grid; grid-template-columns: 64px 22px auto minmax(0, 1fr); gap: 8px; align-items: baseline; padding: 3px 6px; border-radius: 6px; }
+.cm time { color: var(--faint); font-size: .78rem; font-variant-numeric: tabular-nums; }
+.cm .face { align-self: center; }
+.cm b { white-space: nowrap; }
+.cm > span:last-child { overflow-wrap: anywhere; }
+.cm.web { background: rgba(77, 116, 214, .14); }
+.cm.web b { color: #8fb0ff; }
+.cm.dm b { color: #d79bff; }
+.cm.sys { grid-template-columns: 64px 22px minmax(0, 1fr); color: var(--muted); font-size: .88rem; }
+.cm-from { text-align: center; }
+.cm-day { text-align: center; color: var(--faint); font-size: .8rem; margin: 10px 0 4px; }
+.chat-send { display: flex; gap: 8px; }
+.chat-send select { max-width: 40%; }
+.chat-note { margin: 0; }
+@media (max-width: 640px) {
+  .chat-wrap { height: clamp(300px, calc(100dvh - 330px), 640px); margin-bottom: 84px; }
+  .cm { grid-template-columns: 22px auto minmax(0, 1fr); }
+  .cm time { display: none; }
+  .cm.sys { grid-template-columns: 22px minmax(0, 1fr); }
+  .chat-send { flex-wrap: wrap; } .chat-send select { max-width: none; flex: 1 1 100%; }
+}
+
+/* ------------------------------------------------------------ challenges */
+.ch-intro { margin: -4px 0 18px; max-width: 760px; }
+.ch-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 14px; }
+.ch-card { display: grid; gap: 10px; }
+.ch-card.ch-running { border-color: var(--gold-deep); }
+.ch-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.ch-head h3 { margin: 0; }
+.ch-emoji { font-size: 1.8rem; }
+.ch-acts { display: flex; gap: 6px; align-items: center; }
+.ch-live { color: var(--gold); font-weight: 700; }
+.ch-prize { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ch-prize .item, .ch-pick .item, .ch-gift .item { width: 26px; height: 26px; }
+.ch-result { margin: 0; font-weight: 700; }
+.ch-scores { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ch-scores li { display: grid; grid-template-columns: 20px 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.ch-scores li.win .val, .ch-scores li.win .rank { color: var(--gold); }
+.ch-scores .rank { color: var(--faint); text-align: right; }
+.ch-scores .val { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ch-form { display: grid; gap: 14px; }
+.ch-form h3 { margin: 0; }
+.ch-kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.ch-kind { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; padding: 8px 10px; border-radius: var(--radius-m); border: 1px solid var(--line); background: var(--well); cursor: pointer; }
+.ch-kind input { position: absolute; opacity: 0; pointer-events: none; }
+.ch-kind span { grid-row: span 2; font-size: 1.4rem; }
+.ch-kind small { color: var(--muted); }
+.ch-kind.on { border-color: var(--gold); background: rgba(242, 193, 78, .12); }
+.ch-kind:focus-within { outline: 2px solid var(--lapis); }
+.ch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px 18px; align-items: start; }
+.ch-grid label { display: grid; gap: 4px; }
+.ch-when, .ch-prizes { display: grid; gap: 6px; }
+.ch-when label.check { display: flex; align-items: center; gap: 8px; }
+.ch-form .lbl { font-weight: 700; font-size: .92rem; }
+.ch-pick { display: inline-flex; align-items: center; gap: 8px; justify-self: start; }
+.ch-second { display: flex; gap: 6px; align-items: center; }
+.ch-gift { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 0; }

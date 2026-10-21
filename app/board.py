@@ -166,7 +166,10 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
     if th and (th.get("message") or th.get("name")):
         out.append({"id": f"h-{th['id']}-{now.date()}", "kind": "holiday", "emoji": th.get("emoji") or "🎉", "style": "party",
                     "text": th.get("message") or th["name"], "detail": "", "countdown": None})
-    order = {"bedtime": 0, "note": 1, "birthday": 2, "holiday": 3, "birthday-soon": 4}
+    if names:
+        from . import challenges
+        out += challenges.banners(sid)
+    order = {"bedtime": 0, "challenge": 0.5, "note": 1, "birthday": 2, "holiday": 3, "birthday-soon": 4}
     out.sort(key=lambda x: (order.get(x["kind"], 5), x.get("countdown") or 1e12))
     return out
 

@@ -442,18 +442,19 @@ const GIVE_RECENT = "solstone-give-recent";
 function giveRecent() { try { return JSON.parse(localStorage.getItem(GIVE_RECENT) || "[]").slice(0, 10); } catch { return []; } }
 function giveRemember(id) { try { localStorage.setItem(GIVE_RECENT, JSON.stringify([id, ...giveRecent().filter((x) => x !== id)].slice(0, 10))); } catch { /* private window */ } }
 
-async function openGiveItem(sid, player) {
+// opts.pick(item, count): choose an item for something else (a challenge prize) instead of giving it.
+async function openGiveItem(sid, player, opts = {}) {
   const list = await itemCatalog(sid);
   const byId = new Map(list.map((x) => [x.id, x]));
   let pick = null;
-  openModal(`<h2>Give items to ${esc(player)}</h2>
+  openModal(`<h2>${opts.pick ? esc(opts.title || "Choose an item") : `Give items to ${esc(player)}`}</h2>
     <input class="input" id="gv-q" type="search" placeholder="Search items, like diamond or torch" autocomplete="off" aria-label="Search items">
     <div class="gv-label muted small" id="gv-label"></div>
     <div class="gv-grid" id="gv-grid" role="listbox" aria-label="Items"></div>
     <div class="gv-pick" id="gv-pick" hidden></div>
-    <div class="gv-amount"><label>How many <input class="input sm num-in" id="gv-n" type="number" min="1" max="6400" value="1"></label>
+    <div class="gv-amount"><label>How many <input class="input sm num-in" id="gv-n" type="number" min="1" max="6400" value="${Number(opts.count) || 1}"></label>
       <span class="gv-chips">${[1, 8, 16, 32, 64].map((n) => `<button type="button" class="chip" data-n="${n}">${n}</button>`).join("")}</span></div>
-    <div class="actions"><button type="button" class="btn" data-close>Done</button><button type="button" class="btn primary" id="gv-go" disabled>Give</button></div>`, (m) => {
+    <div class="actions"><button type="button" class="btn" data-close>${opts.pick ? "Cancel" : "Done"}</button><button type="button" class="btn primary" id="gv-go" disabled>${opts.pick ? "Use this" : "Give"}</button></div>`, (m) => {
     m.classList.add("gv-modal");
     const q = $("#gv-q", m), grid = $("#gv-grid", m), label = $("#gv-label", m), go = $("#gv-go", m), num = $("#gv-n", m);
     const cell = (x) => `<button type="button" class="gv-item ${pick?.id === x.id ? "on" : ""}" data-id="${esc(x.id)}" role="option" aria-selected="${pick?.id === x.id}" title="${esc(x.name)}">${itemIcon({ id: x.id })}<span>${esc(x.name)}</span></button>`;
@@ -482,20 +483,22 @@ async function openGiveItem(sid, player) {
       const pk = $("#gv-pick", m); pk.hidden = false;
       pk.innerHTML = `${itemIcon({ id: x.id })}<div><b>${esc(x.name)}</b><div class="muted small">${esc(x.id)}</div></div>`;
       grid.querySelectorAll(".gv-item").forEach((b) => { const on = b.dataset.id === x.id; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
-      go.textContent = `Give ${Math.max(1, +num.value || 1)}`;
+      go.textContent = opts.pick ? "Use this" : `Give ${Math.max(1, +num.value || 1)}`;
     };
     grid.addEventListener("click", (e) => { const b = e.target.closest(".gv-item"); if (b) choose(byId.get(b.dataset.id) || { id: b.dataset.id, name: b.dataset.id }); });
     grid.addEventListener("dblclick", (e) => { if (e.target.closest(".gv-item")) go.click(); });
     q.addEventListener("input", draw);
     q.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); const first = grid.querySelector(".gv-item"); if (first && !pick) first.click(); else if (pick) go.click(); } });
     const chips = () => m.querySelectorAll("[data-n]").forEach((c) => c.classList.toggle("on", c.dataset.n === String(+num.value)));
-    m.querySelectorAll("[data-n]").forEach((b) => b.addEventListener("click", () => { num.value = b.dataset.n; chips(); if (pick) go.textContent = `Give ${b.dataset.n}`; }));
-    num.addEventListener("input", () => { chips(); if (pick) go.textContent = `Give ${Math.max(1, +num.value || 1)}`; });
+    const goLabel = () => { if (pick) go.textContent = opts.pick ? "Use this" : `Give ${Math.max(1, +num.value || 1)}`; };
+    m.querySelectorAll("[data-n]").forEach((b) => b.addEventListener("click", () => { num.value = b.dataset.n; chips(); goLabel(); }));
+    num.addEventListener("input", () => { chips(); goLabel(); });
     chips();
     $("[data-close]", m).addEventListener("click", closeModal);
     go.addEventListener("click", async () => {
       if (!pick) return;
       const n = Math.max(1, Math.min(6400, Math.round(+num.value || 1)));
+      if (opts.pick) { giveRemember(pick.id); closeModal(); opts.pick(pick, n); return; }
       go.disabled = true;
       try {
         const r = await post(`/api/servers/${encodeURIComponent(sid)}/control/player/${encodeURIComponent(player)}/give`, { item: pick.id, count: n });
@@ -596,6 +599,7 @@ function serverHeader(s, tab) {
   const java = !s.game || s.game === "minecraft-java";
   const tabs = [["overview", "Overview", base], ["performance", "Performance", `${base}/performance`],
     ...(java ? [["world", "World", `${base}/world`], ["leaderboards", "Leaderboards", `${base}/leaderboards`], ["mods", "Mods", `${base}/mods`]] : []),
+    ...(isAdmin() && java ? [["chat", "Chat", `${base}/chat`], ["challenges", "Challenges", `${base}/challenges`]] : []),
     ...(isAdmin() ? [["control", "Control", `${base}/control`]] : [])];
   return `<header class="server-head">
       <div class="big-icon">${s.has_icon ? `<img src="/api/servers/${encodeURIComponent(s.id)}/icon.png" alt="">` : esc((s.name || "?")[0])}</div>
@@ -717,6 +721,18 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
   };
   renderTab();
   $("#hero").addEventListener("click", (e) => { if (e.target.closest("[data-give]")) openGiveItem(sid, p.name); });
+  $("#hero").addEventListener("change", async (e) => {
+    const sel = e.target.closest("[data-tp]");
+    if (!sel?.value) return;
+    const [action, target] = sel.value.split(":");
+    const text = sel.selectedOptions[0].textContent;
+    sel.value = "";
+    try {
+      const r = await post(`/api/servers/${encodeURIComponent(sid)}/control/player/${encodeURIComponent(p.name)}/${action}`, { target });
+      const bad = (r.results || []).find((x) => x.ok === false);
+      showToast(bad ? esc((bad.output || "The game said no").slice(0, 160)) : `${esc(text)}: done`, bad ? 5000 : 2500);
+    } catch (err) { showToast(esc(err.message), 5000); }
+  });
   if (p.online) {
     let last = JSON.stringify(p.data);
     every(4000, async () => {
@@ -734,7 +750,16 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
 }
 
 // Giving needs the player in the game, and only admins can do it.
-const giveBtn = (p) => (isAdmin() && p.online ? `<div class="btn-row hero-actions"><button class="btn sm" type="button" data-give>🎁 Give items</button></div>` : "");
+// Teleporting likewise; "others" are the other players online now.
+const giveBtn = (p) => {
+  if (!isAdmin() || !p.online) return "";
+  const others = (state.servers.find((x) => x.id === curSid)?.online || []).filter((n) => n.toLowerCase() !== p.name.toLowerCase());
+  return `<div class="btn-row hero-actions"><button class="btn sm" type="button" data-give>🎁 Give items</button>
+    <select class="input sm" data-tp aria-label="Teleport ${esc(p.name)}"><option value="">📍 Teleport…</option>
+      <option value="tp_spawn">Send to spawn</option><option value="tp_bed">Send to their bed</option>
+      ${others.map((n) => `<option value="tp_to_player:${esc(n)}">Send to ${esc(n)}</option>`).join("")}
+      ${others.map((n) => `<option value="bring:${esc(n)}">Bring ${esc(n)} here</option>`).join("")}</select></div>`;
+};
 
 function playerHero(p) {
   const d = p.data;
@@ -1075,6 +1100,8 @@ async function route() {
       else if (parts[2] === "world") await viewWorld(sid);
       else if (parts[2] === "activity") location.replace(`#/s/${encodeURIComponent(sid)}`);
       else if (parts[2] === "control") await viewControl(sid);
+      else if (parts[2] === "chat") await viewChat(sid);
+      else if (parts[2] === "challenges") await viewChallenges(sid);
       else if (parts[2] === "performance") await viewPerformance(sid);
       else if (parts[2] === "leaderboards") await viewLeaderboards(sid);
       else if (parts[2] === "mods") await viewMods(sid);

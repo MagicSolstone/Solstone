@@ -99,7 +99,7 @@ def main() -> int:
                 "home": "#/", "overview": f"#/s/{sid}", "player": f"#/s/{sid}/p/{puuid}",
                 "player-stats": f"#/s/{sid}/p/{puuid}/stats", "player-history": f"#/s/{sid}/p/{puuid}/history",
                 "player-advancements": f"#/s/{sid}/p/{puuid}/advancements", "world": f"#/s/{sid}/world",
-                "control": f"#/s/{sid}/control", "performance": f"#/s/{sid}/performance",
+                "control": f"#/s/{sid}/control", "chat": f"#/s/{sid}/chat", "challenges": f"#/s/{sid}/challenges", "performance": f"#/s/{sid}/performance",
                 "leaderboards": f"#/s/{sid}/leaderboards", "mods": f"#/s/{sid}/mods",
                 "fireworks-editor": "#/fireworks", "fireworks-settings": "#/fireworks/settings",
                 "music": "#/music", "announcements": "#/announcements", "admin": "#/admin",

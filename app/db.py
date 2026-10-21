@@ -244,6 +244,18 @@ def add_event(server_id: str, ts: float, etype: str, message: str, player: str |
              (server_id, ts, etype, player, uuid, message))
 
 
+def events_after(server_id: str, types: list[str], after_id: int = 0, limit: int = 200) -> list[dict]:
+    """Newest `limit` events of these types (after_id=0), or everything newer than after_id; oldest first."""
+    marks = ",".join("?" * len(types))
+    if after_id:
+        rows = q(f"SELECT * FROM events WHERE server_id=? AND type IN ({marks}) AND id > ? ORDER BY id LIMIT ?",
+                 (server_id, *types, after_id, min(limit, 500)))
+        return [dict(r) for r in rows]
+    rows = q(f"SELECT * FROM events WHERE server_id=? AND type IN ({marks}) ORDER BY ts DESC, id DESC LIMIT ?",
+             (server_id, *types, min(limit, 500)))
+    return [dict(r) for r in reversed(rows)]
+
+
 def events(server_id: str, types: list[str] | None = None, player: str | None = None,
            limit: int = 100, before: float | None = None) -> list[dict]:
     sql = "SELECT * FROM events WHERE server_id=?"

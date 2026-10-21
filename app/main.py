@@ -18,7 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, backups, board, control, db, fireworks, fwshow, guard, music, notify, recap, skins, worldmap
+from . import auth, backups, board, challenges, control, db, fireworks, fwshow, guard, music, notify, recap, skins, worldmap
 from . import servers as S
 from . import settings_store
 from .recorder import recorder
@@ -271,7 +271,7 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
                     row["armor"] = [_public_item(inv["armor"][k], lang) for k in ("head", "chest", "legs", "feet")]
             board["players"].append(row)
     if cfg["show_activity"]:
-        evs = db.events(srv.id, ["join", "leave", "death", "advancement", "level", "server"], None, 14)
+        evs = db.events(srv.id, ["join", "leave", "death", "advancement", "level", "server", "challenge"], None, 14)
         board["recent"] = [{"ts": e["ts"], "type": e["type"], "player": e["player"], "message": e["message"]} for e in evs]
     online_l = {n.lower() for n in summ["online"]}
     if srv.is_java:
@@ -1633,6 +1633,92 @@ async def control_broadcast(sid: str, request: Request):
                       lambda srv, u: control.broadcast(srv, msg, u.username, bool(body.get("on_screen"))))
 
 
+# ---- challenges: timed contests with prizes
+@app.get("/api/servers/{sid}/challenges")
+async def get_challenges(sid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    return {"kinds": challenges.kinds(), "items": challenges.list_for(srv.id), "gifts": challenges.gifts_for(srv.id),
+            "rcon": bool(srv.rcon_conf()), "now": time.time()}
+
+
+@app.post("/api/servers/{sid}/challenges")
+async def add_challenge(sid: str, request: Request):
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    try:
+        c = challenges.create(srv.id, await _body(request))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    auth.audit(user, srv.id, "challenge", f"{c['name']} at {datetime.fromtimestamp(c['start'], db.tz()):%Y-%m-%d %H:%M}")
+    return c
+
+
+@app.put("/api/servers/{sid}/challenges/{cid}")
+async def edit_challenge(sid: str, cid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    try:
+        return challenges.update(srv.id, cid, await _body(request))
+    except KeyError:
+        raise HTTPException(404, "Challenge not found") from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.delete("/api/servers/{sid}/challenges/{cid}")
+async def delete_challenge(sid: str, cid: str, request: Request):
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    if not await challenges.cancel(srv, cid):
+        raise HTTPException(404, "Challenge not found")
+    auth.audit(user, srv.id, "challenge", f"cancelled {cid}")
+    return {"ok": True}
+
+
+# ---- chat: what's said in the game, and messages from here
+CHAT_TYPES = ["chat", "webchat", "webdm", "join", "leave", "death", "advancement", "challenge"]
+
+
+@app.get("/api/servers/{sid}/chat")
+async def get_chat(sid: str, request: Request, after: int = 0):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    rows = db.events_after(srv.id, CHAT_TYPES, max(0, after), 300 if not after else 200)
+    out = []
+    for e in rows:
+        row = {"id": e["id"], "ts": e["ts"], "type": e["type"], "player": e["player"], "message": e["message"]}
+        if e["type"] == "webdm":
+            to, _, text = (e["message"] or "").partition("\x1f")
+            row.update(to=to, message=text)
+        out.append(row)
+    names, _src = await S.online_players(srv) if srv.is_java else ([], "")
+    return {"items": out, "online": names, "can_send": bool(srv.rcon_conf() or srv.crafty)}
+
+
+@app.post("/api/servers/{sid}/chat")
+async def send_chat(sid: str, request: Request):
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    body = await _body(request)
+    text = control.clean_text(str(body.get("message") or ""))
+    if not text:
+        raise HTTPException(400, "Type a message")
+    to = str(body.get("to") or "").strip()
+    if to:
+        to = control.check_name(to)
+        cmd = f"tellraw {to} {control.component([(f'{user.username} whispers to you: ', 'light_purple'), (text, 'light_purple')])}"
+    else:
+        cmd = f"tellraw @a {control.component([('<', None), (user.username, 'aqua'), ('> ', None), (text, None)])}"
+    r = await control.run(srv, cmd)
+    if r.get("ok") is False:
+        raise HTTPException(409, (r.get("output") or "The game said no")[:200])
+    if to and r.get("output") and "no player" in r["output"].lower():
+        raise HTTPException(409, f"{to} isn't online")
+    eid = db.add_event(srv.id, time.time(), "webdm" if to else "webchat", f"{to}\x1f{text}" if to else text, user.username)
+    return {"ok": True, "id": eid}
+
+
 @app.post("/api/servers/{sid}/control/player/{player}/{action}")
 async def control_player(sid: str, player: str, action: str, request: Request):
     body = await _body(request)
@@ -1673,7 +1759,7 @@ async def spa(full_path: str):
     return HTMLResponse(_page("index.html"), headers={"Cache-Control": "no-cache"})
 
 
-ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "editor.js", "fwsettings.js", "announce.js", "music.js", "status.js")
+ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "music.js", "status.js")
 
 
 def _asset_stamp() -> str:
