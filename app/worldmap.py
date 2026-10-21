@@ -62,7 +62,8 @@ def _skip(r: _R, t: int) -> None:
     if t in _SIZES:
         r.i += _SIZES[t]
     elif t == 7:
-        r.i += r.i32()
+        n = r.i32()                     # read first: `r.i += r.i32()` would lose the 4-byte length
+        r.i += n
     elif t == 8:
         r.i += struct.unpack_from(">H", r.b, r.i)[0] + 2
     elif t == 9:
@@ -80,9 +81,11 @@ def _skip(r: _R, t: int) -> None:
             r.i += struct.unpack_from(">H", r.b, r.i)[0] + 2
             _skip(r, ct)
     elif t == 11:
-        r.i += 4 * r.i32()
+        n = r.i32()
+        r.i += 4 * n
     elif t == 12:
-        r.i += 8 * r.i32()
+        n = r.i32()
+        r.i += 8 * n
 
 
 def _val(r: _R, t: int):
@@ -245,6 +248,11 @@ def _unpack(data: np.ndarray | None, n_palette: int, count: int = 4096) -> np.nd
         return np.zeros(count, dtype=np.int32)
     bits = max(4, int(np.ceil(np.log2(n_palette))))
     per = 64 // bits
+    if len(data) != -(-count // per) and len(data) * 64 >= count * bits:
+        # 1.13-1.15: values run straight across long boundaries
+        bitarr = np.unpackbits(data.astype(">u8").view(np.uint8).reshape(-1, 8)[:, ::-1], axis=1, bitorder="little").reshape(-1)
+        bitarr = bitarr[:count * bits].reshape(count, bits)
+        return (bitarr.astype(np.int32) << np.arange(bits, dtype=np.int32)).sum(axis=1).astype(np.int32)
     shifts = (np.arange(per, dtype=np.uint64) * np.uint64(bits))
     vals = (data.view(np.uint64)[:, None] >> shifts[None, :]) & np.uint64((1 << bits) - 1)
     return vals.reshape(-1)[:count].astype(np.int32)
@@ -359,6 +367,7 @@ def render_region(path: Path, colors: Colors, nether: bool = False) -> Image.Ima
     rgb = np.zeros((TILE, TILE, 3), dtype=np.float32)
     heights = np.full((TILE, TILE), -9999, dtype=np.int32)
     alpha = np.zeros((TILE, TILE), dtype=np.uint8)
+    failed, first_err = 0, ""
     for i in range(1024):
         loc = struct.unpack_from(">I", data, i * 4)[0]
         if not loc:
@@ -382,7 +391,8 @@ def render_region(path: Path, colors: Colors, nether: bool = False) -> Image.Ima
                 continue                            # stored in a separate file: skip that chunk
             got = render_chunk(read_chunk(raw), colors, nether)
         except Exception as e:
-            log.debug("chunk %d in %s: %s", i, path.name, e)
+            failed += 1
+            first_err = first_err or f"chunk {i}: {e!r}"
             continue
         if not got:
             continue
@@ -391,6 +401,8 @@ def render_region(path: Path, colors: Colors, nether: bool = False) -> Image.Ima
         rgb[cz * 16:cz * 16 + 16, cx * 16:cx * 16 + 16] = c_rgb
         heights[cz * 16:cz * 16 + 16, cx * 16:cx * 16 + 16] = c_h
         alpha[cz * 16:cz * 16 + 16, cx * 16:cx * 16 + 16] = np.where(c_h != -9999, 255, 0)
+    if failed:
+        log.warning("map %s: %d chunks couldn't be read (first: %s)", path.name, failed, first_err)
     if not alpha.any():
         return None
     out = _shade(rgb, heights).astype(np.uint8)
@@ -421,8 +433,11 @@ def regions(world: Path, dim: str) -> list[list[int]]:
     return out
 
 
+RENDER_VERSION = 2          # bump when the drawing changes: older cached tiles are redrawn
+
+
 def _tile_path(sid: str, dim: str, rx: int, rz: int) -> Path:
-    return config.data_dir / "maptiles" / sid / dim.replace(":", "_").replace("/", "_") / f"{rx}.{rz}.png"
+    return config.data_dir / "maptiles" / f"v{RENDER_VERSION}" / sid / dim.replace(":", "_").replace("/", "_") / f"{rx}.{rz}.png"
 
 
 _queue: list[tuple] = []
@@ -459,10 +474,29 @@ def _work() -> None:
                 _queued.discard(key)
 
 
+_tidied = False
+
+
+def _tidy_old_tiles() -> None:
+    """Drop tiles drawn by an older renderer (once per start)."""
+    global _tidied
+    if _tidied:
+        return
+    _tidied = True
+    root = config.data_dir / "maptiles"
+    if not root.is_dir():
+        return
+    import shutil
+    for d in root.iterdir():
+        if d.is_dir() and d.name != f"v{RENDER_VERSION}":
+            shutil.rmtree(d, ignore_errors=True)
+
+
 def tile(sid: str, world: Path, dim: str, rx: int, rz: int, assets) -> tuple[str, Path | None]:
     """('ready', path) when there's a picture (maybe slightly old), ('working', None) while it's
     being drawn for the first time, ('none', None) when that region doesn't exist."""
     global _worker
+    _tidy_old_tiles()
     d = region_dir(world, dim)
     src = d / f"r.{rx}.{rz}.mca" if d else None
     if not src or not src.is_file():

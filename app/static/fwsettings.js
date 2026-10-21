@@ -407,13 +407,16 @@ function showEditHtml(sh, i) {
     <div class="fws-grid"><label>Name<input class="input" name="name" maxlength="40" value="${esc(sh.name)}"></label>
       <label class="inl">Pause before it repeats <input class="input sm num-in" type="number" name="gap" min="0" max="30" step="0.5" value="${sh.loop_gap ?? 2}"> s</label></div>
     ${timelineHtml(sh)}
-    <div class="fws-steps"><div class="fws-step fws-head muted small"><span>At (s)</span><span>Launch</span><span>How many</span><span>Where</span><span></span></div>
+    <div class="fws-steps"><div class="fws-step fws-head muted small"><span></span><span>At (s)</span><span>Launch</span><span>How many</span><span>Where</span><span></span><span></span></div>
       ${sh.steps.map((x, k) => `<div class="fws-step" data-k="${k}">
-        <input class="input sm" type="number" min="0" max="600" step="0.25" value="${x.at}" data-f="at" aria-label="Seconds">
+        <span class="fws-grip" data-grip title="Drag to move this launch earlier or later" aria-hidden="true">⠿</span>
+        <input class="input sm" type="number" min="0" max="600" step="any" value="${x.at}" data-f="at" aria-label="Seconds" title="Arrow keys: 1 s · with Shift: ¼ s">
         <select class="input sm" data-f="what">${opts(x.what)}</select>
         <input class="input sm" type="number" min="1" max="12" value="${x.count}" data-f="count" aria-label="How many">
         <select class="input sm" data-f="where">${SHOW_WHERE.map(([v, l]) => `<option value="${v}" ${x.where === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+        <button type="button" class="chip-x fws-dup" data-dup aria-label="Copy this step" title="Copy (adds one a second later)">⧉</button>
         <button type="button" class="chip-x" data-rm aria-label="Remove step">×</button></div>`).join("")}</div>
+    ${sh.steps.length > 1 ? `<p class="muted small fws-hint">Drag ⠿ to swap what launches when; the times stay put.</p>` : ""}
     <div class="btn-row"><button type="button" class="btn sm" data-add>+ Add a step</button><button type="button" class="btn sm" data-add-pause>+ Step after a 3 s pause</button></div>
     <div class="btn-row"><button class="btn primary" type="submit">Save</button><button type="button" class="btn" data-cancel>Cancel</button>
       <button type="button" class="btn" data-preview>▶ Watch it</button><button type="button" class="btn danger" data-del>Delete</button></div>
@@ -428,8 +431,36 @@ function wireShowEdit(el, i) {
       at: +row.querySelector('[data-f="at"]').value || 0, what: row.querySelector('[data-f="what"]').value,
       count: Math.max(1, Math.min(12, +row.querySelector('[data-f="count"]').value || 1)), where: row.querySelector('[data-f="where"]').value }));
   };
-  const redraw = () => { read(); draft.steps.sort((a, b) => a.at - b.at); fws.data.shows[i] = draft; renderShows(el); };
-  form.querySelectorAll('[data-f="at"]').forEach((inp) => inp.addEventListener("change", redraw));
+  // A time change re-sorts the rows, but not when it happens because a button was pressed:
+  // re-drawing then would swallow that click (Save, Copy, …), which redraws anyway.
+  let pressing = false;
+  form.addEventListener("pointerdown", (e) => { if (e.target.closest("button, [data-grip]")) { pressing = true; setTimeout(() => { pressing = false; }, 600); } }, true);
+  const redraw = () => { if (pressing || !form.isConnected) return; read(); draft.steps.sort((a, b) => a.at - b.at); fws.data.shows[i] = draft; renderShows(el); };
+  form.querySelectorAll('[data-f="at"]').forEach((inp) => {
+    let nudged = false;
+    inp.addEventListener("change", redraw);
+    // Arrows move whole seconds (Shift: a quarter); typing decimals still works.
+    inp.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault();
+      const d = (e.shiftKey ? 0.25 : 1) * (e.key === "ArrowUp" ? 1 : -1);
+      inp.value = String(Math.max(0, Math.min(600, Math.round(((+inp.value || 0) + d) * 100) / 100)));
+      nudged = true;
+    });
+    inp.addEventListener("blur", () => { if (nudged) { nudged = false; redraw(); } });
+  });
+  form.querySelectorAll("[data-dup]").forEach((b) => b.addEventListener("click", () => {
+    read(); const k = +b.closest("[data-k]").dataset.k, src = draft.steps[k];
+    draft.steps.splice(k + 1, 0, { ...src, at: Math.min(600, src.at + 1) });
+    draft.steps.sort((a, b2) => a.at - b2.at); fws.data.shows[i] = draft; renderShows(el);
+  }));
+  wireStepDrag(form, (from, to) => {
+    // the launch moves; the list of times stays the same, so it takes the slot it was dropped on
+    read(); const times = draft.steps.map((x) => x.at);
+    const [moved] = draft.steps.splice(from, 1); draft.steps.splice(to, 0, moved);
+    draft.steps.forEach((x, k) => { x.at = times[k]; });
+    fws.data.shows[i] = draft; renderShows(el);
+  });
   form.querySelectorAll("[data-rm]").forEach((b) => b.addEventListener("click", () => { read(); draft.steps.splice(+b.closest("[data-k]").dataset.k, 1); fws.data.shows[i] = draft; renderShows(el); }));
   const add = (gap) => { read(); const last = draft.steps.length ? Math.max(...draft.steps.map((x) => x.at)) : 0; draft.steps.push({ at: draft.steps.length ? last + gap : 0, what: "random", count: 1, where: "random" }); fws.data.shows[i] = draft; renderShows(el); };
   form.querySelector("[data-add]").addEventListener("click", () => add(1));
@@ -442,10 +473,39 @@ function wireShowEdit(el, i) {
     fws.editingShow = null; await fwsSave({ shows: next }, "Deleted"); renderShows(el);
   });
   form.addEventListener("submit", async (e) => {
-    e.preventDefault(); read();
+    e.preventDefault(); read(); draft.steps.sort((a, b) => a.at - b.at);
     const next = fweCopy(fws.data.shows); next[i] = draft;
     fws.editingShow = null; await fwsSave({ shows: next }); renderShows(el);
   });
+}
+
+// Drag a step by its grip (mouse or finger): a line shows where it will land.
+function wireStepDrag(form, onMove) {
+  const box = form.querySelector(".fws-steps");
+  box.querySelectorAll("[data-grip]").forEach((grip) => grip.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    const row = grip.closest("[data-k]"), from = +row.dataset.k;
+    const rows = [...box.querySelectorAll(".fws-step[data-k]")];
+    const line = document.createElement("div"); line.className = "fws-drop"; box.append(line);
+    row.classList.add("dragging"); grip.setPointerCapture?.(e.pointerId);
+    let to = from;
+    const move = (ev) => {
+      const y = ev.clientY;
+      let slot = rows.length;
+      for (let k = 0; k < rows.length; k++) { const r = rows[k].getBoundingClientRect(); if (y < r.top + r.height / 2) { slot = k; break; } }
+      const ref = rows[Math.min(slot, rows.length - 1)].getBoundingClientRect(), top = box.getBoundingClientRect().top;
+      line.style.top = `${(slot < rows.length ? ref.top : ref.bottom) - top - 2}px`;
+      to = slot > from ? slot - 1 : slot;
+    };
+    const end = () => {
+      grip.removeEventListener("pointermove", move); line.remove(); row.classList.remove("dragging");
+      if (to !== from) onMove(from, to);
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", end, { once: true });
+    grip.addEventListener("pointercancel", () => { to = from; end(); }, { once: true });
+    move(e);
+  }));
 }
 
 // ---------------------------------------------------------------- preview window

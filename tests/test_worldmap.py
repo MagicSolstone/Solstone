@@ -149,3 +149,33 @@ def test_lz4_compressed_chunks(tmp_path):
     (tmp_path / "r.0.0.mca").write_bytes(bytes(header) + blob)
     img = worldmap.render_region(tmp_path / "r.0.0.mca", worldmap.Colors(None))
     assert img is not None and np.asarray(img)[12, 12, 3] == 255
+
+
+def test_real_chunk_arrays_are_skipped():
+    """Real chunks carry heightmaps (long arrays), light (byte arrays) and int arrays before the
+    sections; skipping them must step over their length too."""
+    from nbtlib import ByteArray, IntArray
+
+    from app import worldmap
+    c = _chunk(0, 0, _land)
+    c["Heightmaps"] = Compound({"WORLD_SURFACE": LongArray([1] * 37)})
+    c["Biomes"] = IntArray([1] * 64)
+    for s in c["sections"]:
+        s["BlockLight"] = ByteArray([0] * 2048)
+    ordered = Compound({"Heightmaps": c.pop("Heightmaps"), "Biomes": c.pop("Biomes"), **c})
+    buf = io.BytesIO(); nbtlib.File(ordered).write(buf)
+    nbt = worldmap.read_chunk(buf.getvalue())
+    assert len(nbt["sections"]) > 0
+    assert worldmap.render_chunk(nbt, worldmap.Colors(None), False) is not None
+
+
+def test_spanning_block_states():
+    """1.13-1.15 pack block indices straight across long boundaries."""
+    from app import worldmap
+    bits, vals = 5, [(i * 7) % 17 for i in range(4096)]
+    big = 0
+    for k, v in enumerate(vals):
+        big |= v << (k * bits)
+    longs = [(big >> (64 * j)) & ((1 << 64) - 1) for j in range(4096 * bits // 64)]
+    data = np.array([x - (1 << 64) if x >= 1 << 63 else x for x in longs], dtype=np.int64)
+    assert worldmap._unpack(data, 17).tolist() == vals
