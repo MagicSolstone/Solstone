@@ -39,6 +39,8 @@ function clockText(t) {
   const hour = Math.floor((t / 1000 + 6) % 24), min = Math.floor(((t % 1000) / 1000) * 60);
   return new Date(2000, 0, 1, hour, min).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
+// The in-game time now: the server's reading plus however long ago it was taken (20 ticks a second while people play).
+function nowTod(w) { return st.board?.online_count ? Math.floor(w.time_of_day + (w.age || 0) * 20) % 24000 : w.time_of_day; }
 function phaseOf(t) { return t < 12000 ? "Daytime" : t < 13000 ? "Sunset" : t < 23000 ? "Night" : "Sunrise"; }
 function tpsInfo(tps) {
   if (tps == null) return null;
@@ -115,7 +117,7 @@ async function poll() {
     st.fetchedAt = Date.now();
     noticeChanges(b);
     st.board = b;
-    if (b.world) { st.tod = b.world.time_of_day; st.todAt = Date.now(); } else st.tod = null;
+    if (b.world) { st.tod = b.world.time_of_day; st.todAt = Date.now() - (b.world.age || 0) * 1000; } else st.tod = null;
     render(b);
   } catch (e) {
     if (e.status === 404) { location.reload(); return; }   // turned off, or the server went away
@@ -188,7 +190,7 @@ function heroHtml(b) {
   const weather = w ? (w.thundering ? "Thunderstorm" : w.raining ? "Raining" : w.raining === false ? "Clear skies" : "") : "";
   const tiles = [
     `<div class="sp-tile"><div class="v">${on ? `${b.online_count}<small> / ${b.max ?? "?"}</small>` : "–"}</div><div class="k">Playing now</div></div>`,
-    w ? `<div class="sp-tile sky-tile ${w.time_of_day >= 13000 && w.time_of_day < 23000 ? "night" : ""}"><div class="v">Day ${w.day.toLocaleString()}</div><div class="k"><span id="sp-clock">${esc(clockText(w.time_of_day))}</span> · <span id="sp-phase">${esc(phaseOf(w.time_of_day))}</span>${weather ? ` · ${esc(weather)}` : ""}</div></div>` : "",
+    w ? `<div class="sp-tile sky-tile ${w.time_of_day >= 13000 && w.time_of_day < 23000 ? "night" : ""}"><div class="v">Day ${w.day.toLocaleString()}</div><div class="k"><span id="sp-clock">${esc(clockText(nowTod(w)))}</span> · <span id="sp-phase">${esc(phaseOf(nowTod(w)))}</span>${weather ? ` · ${esc(weather)}` : ""}</div></div>` : "",
     tps ? `<div class="sp-tile"><div class="v">${b.tps.toFixed(1)}<small> TPS</small></div><div class="k status ${tps.cls}">${tps.label}</div></div>` : "",
     b.version ? `<div class="sp-tile"><div class="v sm">${b.java ? "Minecraft " : ""}${esc(b.version)}</div><div class="k">${esc(b.loader || b.game || "")}</div></div>` : "",
     on && b.started ? `<div class="sp-tile"><div class="v sm" id="sp-uptime" data-since="${esc(b.started)}"></div><div class="k">Server up</div></div>` : "",
@@ -286,6 +288,30 @@ function mountMap(el, b, prev) {
     if (!map.shown[p.name]) map.shown[p.name] = { ...p.position };
   }
   const ctx = cv.getContext("2d");
+  // The real map under everything: region pictures drawn by Solstone from the world files.
+  map.tiles ||= {}; map.regionSets ||= {};
+  const dimId = dims[dim].id || "minecraft:overworld";
+  const rs = map.regionSets[dimId];
+  if (!rs || Date.now() - rs.at > 300000) {
+    map.regionSets[dimId] = { at: Date.now(), set: rs?.set || null };
+    fetch(`/api/public/map/${encodeURIComponent(b.id)}/regions?dim=${encodeURIComponent(dimId)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null)).then((d) => { if (d) { map.regionSets[dimId] = { at: Date.now(), set: new Set(d.regions.map(([x, z]) => `${x},${z}`)) }; map.redraw?.(); } }).catch(() => {});
+  }
+  const tileFor = (rx, rz) => {
+    const key = `${dimId}|${rx},${rz}`;
+    let t = map.tiles[key];
+    if (t && (t.state === "loading" || t.state === "none" || (t.state === "wait" && Date.now() < t.retry))) return t;
+    if (t && t.state === "ready" && Date.now() - t.at < 180000) return t;            // fresh enough; redrawn every few minutes
+    t = map.tiles[key] = { ...(t || {}), state: t?.img ? "ready" : "loading", loading: true };
+    fetch(`/api/public/map/${encodeURIComponent(b.id)}/tile?dim=${encodeURIComponent(dimId)}&x=${rx}&z=${rz}&t=${Math.floor(Date.now() / 60000)}`, { cache: "no-store" })
+      .then(async (r) => {
+        if (r.status === 202) { t.state = t.img ? "ready" : "wait"; t.retry = Date.now() + 3000; t.at = t.img ? Date.now() - 170000 : 0; setTimeout(() => map.redraw?.(), 3100); return; }
+        if (!r.ok) { t.state = "none"; return; }
+        const bmp = await createImageBitmap(await r.blob());
+        t.img = bmp; t.state = "ready"; t.at = Date.now(); map.redraw?.();
+      }).catch(() => { t.state = "wait"; t.retry = Date.now() + 10000; });
+    return t;
+  };
   const colors = { overworld: ["#14261c", "#0c1712"], the_nether: ["#2a1212", "#170a0a"], the_end: ["#211a33", "#120e1d"], other: ["#18202e", "#0e131c"] }[dim];
 
   function targetBounds() {
@@ -314,6 +340,22 @@ function mountMap(el, b, prev) {
     const g = ctx.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, Math.max(w, h) * 0.7);
     g.addColorStop(0, colors[0]); g.addColorStop(1, colors[1]);
     ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    // the world itself, one region picture (512 x 512 blocks) at a time
+    const set = map.regionSets[dimId]?.set;
+    if (set) {
+      const x0 = bnd.cx - w / 2 / scale, x1 = bnd.cx + w / 2 / scale, z0 = bnd.cz - h / 2 / scale, z1 = bnd.cz + h / 2 / scale;
+      let n = 0;
+      ctx.imageSmoothingEnabled = scale < 1;
+      for (let rx = Math.floor(x0 / 512); rx <= Math.floor(x1 / 512) && n < 36; rx++) {
+        for (let rz = Math.floor(z0 / 512); rz <= Math.floor(z1 / 512) && n < 36; rz++) {
+          if (!set.has(`${rx},${rz}`)) continue;
+          n++;
+          const t = tileFor(rx, rz);
+          if (t.img) ctx.drawImage(t.img, Math.round(sx(rx * 512)), Math.round(sz(rz * 512)), Math.ceil(512 * scale) + 1, Math.ceil(512 * scale) + 1);
+        }
+      }
+      ctx.fillStyle = "rgba(6, 10, 18, .18)"; ctx.fillRect(0, 0, w, h);          // a touch darker, so names and heads stand out
+    }
     // grid with block coordinates
     const step = niceStep(Math.max(w, h) / scale);
     ctx.strokeStyle = "rgba(255,255,255,.07)"; ctx.lineWidth = 1;
@@ -352,6 +394,7 @@ function mountMap(el, b, prev) {
     return t < 1;
   }
   const loop = () => { if (draw()) requestAnimationFrame(loop); };
+  map.redraw = () => { if (cv.isConnected) draw(); };
   if (!map.bounds) map.bounds = targetBounds();
   requestAnimationFrame(loop);
   if (!map.resizeBound) { map.resizeBound = true; addEventListener("resize", () => st.map === map && draw()); }

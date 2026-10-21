@@ -836,7 +836,7 @@ async function viewWorld(sid) {
     ? `<iframe class="map-frame" src="${esc(s.map_url)}" title="World map" loading="lazy"></iframe><p class="muted" style="margin-top:8px;font-size:.9rem"><a href="${esc(s.map_url)}" target="_blank" rel="noopener">Open the map full screen</a></p>`
     : `<div class="empty"><h3>Add a live map</h3><p>Install the <b>BlueMap</b> or <b>squaremap</b> Fabric mod on this server, then paste its web address (for example <code>http://your-server:8100</code>) in server settings. The map will show here.</p><p style="margin-top:12px"><button class="btn primary" id="btn-map">Add map address</button></p></div>`;
   setView(serverHeader(s, "world") + `
-    <div class="world-top">${skyHtml(w)}
+    <div class="world-top"><div id="world-sky" class="world-sky">${skyHtml(w)}</div>
       <div class="panel"><dl class="kv">
         <dt>World</dt><dd>${esc(w.level_name)}</dd>
         <dt>Seed</dt><dd>${w.seed ? `<span class="num">${esc(w.seed)}</span><button class="copy" data-copy="${esc(w.seed)}">Copy</button>` : "Unknown"}</dd>
@@ -861,6 +861,24 @@ async function viewWorld(sid) {
     </section>
     ${w.datapacks.enabled.length ? `<section class="section"><div class="section-head"><h2>Data packs</h2></div><div class="chips">${w.datapacks.enabled.map((d) => `<span class="chip">${esc(d.replace(/^file\//, ""))}</span>`).join("")}</div></section>` : ""}`);
   wireHeader(s);
+  // The clock moves on its own (20 ticks a second while people play) and checks back with
+  // the server every 20 seconds, so the time, sun and weather stay current.
+  let wd = w, readAt = Date.now() - (w.age || 0) * 1000;
+  const paintSky = () => {
+    const el = $("#world-sky");
+    if (!el || wd.time_of_day == null) return;
+    const playing = (s.online?.length || 0) > 0 && wd.time_source === "live";
+    const total = wd.time_of_day + (playing ? ((Date.now() - readAt) / 1000) * 20 : 0);
+    const html = skyHtml({ ...wd, time_of_day: Math.floor(total) % 24000, day: wd.day + Math.floor(total / 24000) });
+    if (el._html !== html) { el._html = html; el.innerHTML = html; }
+  };
+  every(1000, paintSky);
+  every(20000, async () => {
+    const [nw, ns] = await Promise.all([api(`/api/servers/${sid}/world`).catch(() => null), api(`/api/servers/${encodeURIComponent(sid)}`).catch(() => null)]);
+    if (nw) { wd = nw; readAt = Date.now() - (nw.age || 0) * 1000; }
+    if (ns) s.online = ns.online;
+    paintSky();
+  });
   $("#btn-map")?.addEventListener("click", () => openSettings(s));
   $$("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "Copied"; } catch { b.textContent = "Select it"; }

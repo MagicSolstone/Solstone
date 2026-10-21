@@ -230,3 +230,26 @@ def test_memory_bytes_from_crafty():
     # The start-up fix-up converts values stored in bytes by earlier builds
     db.conn().execute("UPDATE metrics SET mem_mb = ROUND(mem_mb / 1048576.0, 1) WHERE mem_mb > 100000")
     assert db.metrics("mem-fix", "6h")["latest"]["mem_mb"] == 1569.9
+
+
+def test_log_in_another_time_zone_still_counts_as_now(client, sid):
+    """Crafty's container on UTC, Solstone on Chicago time: the log's clock is hours off.
+    Joins written just now must still count as now (fireworks, notifications)."""
+    from app import fwshow
+    from app.recorder import recorder
+    srv = _server(client, sid)
+    logs = srv.dir / "logs"
+    logs.mkdir(exist_ok=True)
+    ahead = datetime.now(db.tz()) + timedelta(hours=5)                       # the log is 5 h ahead
+    (logs / "latest.log").write_text(f"[{ahead.strftime('%H:%M:%S')}] [Server thread/INFO]: MomCrafts joined the game\n")
+    db.x("DELETE FROM log_state WHERE server_id=?", (sid,))
+    recorder._offsets.pop(sid, None)
+    last = fwshow.feed_since(-1, True)["last"]
+    assert recorder.tail_server(srv) == [("join", "MomCrafts joined the game")]
+    ev = db.events(sid, types=["join"], player="MomCrafts", limit=1)[0]
+    assert abs(ev["ts"] - time.time()) < 120
+    pushed = [i for i in fwshow.feed_since(last, True)["items"] if i["event"] == "join" and i["player"] == "MomCrafts"]
+    assert len(pushed) == 1
+    # the online check noticing the same join doesn't set off a second firework
+    assert fwshow.pushed_recently(sid, "join", "momcrafts")
+    recorder._offsets.pop(sid, None)

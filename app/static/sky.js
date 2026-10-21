@@ -1261,7 +1261,7 @@ function startSkyScene(cv, opts = {}) {
     stopShow() { runner = null; },
     // In-game time and weather: {time_of_day, moon, raining, thundering, ticking} or null for night.
     setGameSky(info) {
-      gsky = info && info.time_of_day != null ? { tod: info.time_of_day, ref: performance.now(), ticking: !!info.ticking, moon: info.moon || 0,
+      gsky = info && info.time_of_day != null ? { tod: info.time_of_day, ref: performance.now() - (info.age || 0) * 1000, ticking: !!info.ticking, moon: info.moon || 0,
         raining: !!info.raining, thundering: !!info.thundering } : null;
       if (!running) step();
       ambientTick();

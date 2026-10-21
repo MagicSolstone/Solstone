@@ -34,6 +34,7 @@ MAX_READ = 4 * 1024 * 1024
 
 _MEM = re.compile(r"([\d.]+)\s*([KMGT]i?B)", re.I)
 _TICK_TARGET = re.compile(r"Target tick rate:\s*([\d.]+)", re.I)
+_CLOCK = re.compile(r"^\[(\d{2}):(\d{2}):(\d{2})")
 _TICK_AVG = re.compile(r"Average time per tick:\s*([\d.]+)\s*ms", re.I)
 
 
@@ -85,6 +86,7 @@ class Recorder:
         self.started: float | None = None
         self._levels: dict[tuple[str, str], int] = {}  # (server, player) -> last seen level
         self._night: dict[str, bool] = {}
+        self._offsets: dict[str, float] = {}     # server id -> seconds its log clock is ahead
 
     def start(self) -> None:
         self.started = time.time()
@@ -234,6 +236,12 @@ class Recorder:
                 self._event(srv, now, "join", f"{n} joined the game", n, online.get(n))
             for n in left:
                 self._event(srv, now, "leave", f"{n} left the game", n, name_to_uuid.get(n.lower()))
+        # Join fireworks from the online check too, in case the log line was missed or its
+        # clock is off (each join sets off one firework, whichever notices first).
+        if self._running_state.get(srv.id) is not None:
+            for n in joined:
+                if not fwshow.pushed_recently(srv.id, "join", n):
+                    fwshow.push(srv.id, srv.display_name, "join", n, f"{n} joined the game")
 
         if running and names and srv.is_java and srv.rcon_conf():
             await self._watch_game(srv, names)
@@ -299,6 +307,26 @@ class Recorder:
             except Exception:
                 log.exception("log tail failed for %s", srv.id)
 
+    def _log_offset(self, sid: str, text: str, mtime: float, now: datetime) -> float:
+        """The server may write its log in another time zone than Solstone's (Crafty's container
+        on UTC, say). The newest line was written when the file last changed, so the gap between
+        its clock and the file's time is that difference, rounded to a quarter of an hour."""
+        if time.time() - mtime < 120:
+            last = None
+            for line in reversed(text.splitlines()[-50:]):
+                m = _CLOCK.match(line)
+                if m:
+                    last = m
+                    break
+            if last:
+                h, mi, se = (int(x) for x in last.groups())
+                t = now.replace(hour=h, minute=mi, second=se, microsecond=0)
+                if t > now + timedelta(seconds=60):
+                    t -= timedelta(days=1)
+                gap = t.timestamp() - mtime
+                self._offsets[sid] = round(gap / 900) * 900 if abs(gap) >= 600 else 0
+        return self._offsets.get(sid, 0)
+
     def tail_server(self, srv: S.Server) -> list[tuple[str, str]]:
         """Read new log lines into events. Returns (type, message) pairs to notify about."""
         if not srv.is_java:
@@ -344,8 +372,10 @@ class Recorder:
         names = set(known)
         zone = db.tz()
         now = datetime.now(zone)
+        text = chunk.decode("utf-8", errors="replace")
+        offset = self._log_offset(srv.id, text, st.st_mtime, now)
         pending: list[tuple[str, str]] = []
-        for raw in chunk.decode("utf-8", errors="replace").splitlines():
+        for raw in text.splitlines():
             ev = parse_line(raw, names)
             if not ev or ev.type == "server":  # start/stop comes from Crafty's state instead
                 continue
@@ -354,7 +384,7 @@ class Recorder:
             ts_dt = now.replace(hour=ev.hour, minute=ev.minute, second=ev.second, microsecond=0)
             if ts_dt > now + timedelta(seconds=60):
                 ts_dt -= timedelta(days=1)
-            ts = ts_dt.timestamp()
+            ts = ts_dt.timestamp() - offset
             fresh = time.time() - ts < NOTIFY_MAX_AGE
             uuid = known.get(ev.player.lower()) if ev.player else None
             db.add_event(srv.id, ts, ev.type, ev.message, ev.player, uuid)
@@ -362,7 +392,8 @@ class Recorder:
                 pending.append((ev.type, ev.message))
             if fresh and time.time() - ts < 90:            # fireworks only for things happening now
                 if ev.type == "join":
-                    fwshow.push(srv.id, srv.display_name, "join", ev.player, ev.message)
+                    if not fwshow.pushed_recently(srv.id, "join", ev.player):
+                        fwshow.push(srv.id, srv.display_name, "join", ev.player, ev.message)
                 elif ev.type == "advancement":
                     fwshow.push(srv.id, srv.display_name, fwshow.advancement_kind(ev.message), ev.player, ev.message)
                 elif ev.type == "death":

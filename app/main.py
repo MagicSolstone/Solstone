@@ -18,7 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, backups, board, control, db, fireworks, fwshow, guard, music, notify, recap, skins
+from . import auth, backups, board, control, db, fireworks, fwshow, guard, music, notify, recap, skins, worldmap
 from . import servers as S
 from . import settings_store
 from .recorder import recorder
@@ -212,7 +212,7 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
                 w.update(await S.live_world(srv))
             if w.get("time_of_day") is not None:
                 board["world"] = {"day": w["day"], "time_of_day": w["time_of_day"], "phase": _phase(w["time_of_day"]),
-                                  "raining": w.get("raining"), "thundering": w.get("thundering")}
+                                  "raining": w.get("raining"), "thundering": w.get("thundering"), "as_of": w.get("as_of")}
             if cfg["show_positions"] and w.get("spawn"):
                 board["spawn"] = {k: w["spawn"][k] for k in ("x", "y", "z")}
         except Exception as e:
@@ -300,6 +300,8 @@ async def public_status():
 async def public_board(sid: str):
     cfg = _require_status()
     board = await _board(await _public_server(sid), cfg)
+    if board.get("world") and board["world"].get("as_of"):
+        board = {**board, "world": {**board["world"], "age": round(max(0.0, time.time() - board["world"]["as_of"]), 1)}}
     return JSONResponse(board, headers={"Cache-Control": "no-store"})
 
 
@@ -451,6 +453,36 @@ async def put_board(request: Request):
     cfg = board.save(body)
     auth.audit(user, None, "announcements", f"{len(cfg['items'])} announcements, {len(cfg['birthdays'])} birthdays")
     return await get_board(request)
+
+
+# ---- the world map, drawn from region files (status page, TV mode)
+async def _map_server(request: Request, sid: str) -> S.Server:
+    if request.state.user is not None:
+        srv = await _server(sid)
+    else:
+        if not _require_status()["show_positions"]:
+            raise HTTPException(404, "The map is hidden on the status page")
+        srv = await _public_server(sid)
+    if not srv.is_java:
+        raise HTTPException(404)
+    return srv
+
+
+@app.get("/api/public/map/{sid}/regions")
+async def map_regions(sid: str, request: Request, dim: str = "minecraft:overworld"):
+    srv = await _map_server(request, sid)
+    return {"dim": dim, "size": worldmap.TILE, "regions": await asyncio.to_thread(worldmap.regions, srv.world_dir, dim)}
+
+
+@app.get("/api/public/map/{sid}/tile")
+async def map_tile(sid: str, request: Request, x: int, z: int, dim: str = "minecraft:overworld"):
+    srv = await _map_server(request, sid)
+    state, path = await asyncio.to_thread(worldmap.tile, srv.id, srv.world_dir, dim, x, z, _assets(srv))
+    if state == "none":
+        raise HTTPException(404)
+    if state == "working":
+        return Response(status_code=202, headers={"Retry-After": "3", "Cache-Control": "no-store"})
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "max-age=60"})
 
 
 @app.get("/api/public/icon/{sid}.png")
@@ -663,7 +695,7 @@ async def public_sky(sid: str = ""):
         return {"mode": "night"}
     hit = _sky_cache.get(srv.id)
     if hit and time.monotonic() - hit[0] < 10:
-        return hit[1]
+        return _with_age(hit[1])
     out: dict = {"mode": "game", "server": srv.id}
     try:
         w = await asyncio.to_thread(S.world_info, srv, False)
@@ -674,14 +706,19 @@ async def public_sky(sid: str = ""):
         if w.get("time_of_day") is not None:
             day = w.get("day") or 1
             out.update(time_of_day=w["time_of_day"], day=day, moon=(day - 1) % 8, raining=bool(w.get("raining")),
-                       thundering=bool(w.get("thundering")), ticking=bool(online), as_of=time.time())
+                       thundering=bool(w.get("thundering")), ticking=bool(online), as_of=w.get("as_of") or time.time())
         else:
             out = {"mode": "night"}
     except Exception as e:
         log.debug("sky info failed for %s: %s", srv.id, e)
         out = {"mode": "night"}
     _sky_cache[srv.id] = (time.monotonic(), out)
-    return out
+    return _with_age(out)
+
+
+def _with_age(sky: dict) -> dict:
+    """How old the time reading is, so the page can count on from it instead of jumping back."""
+    return {**sky, "age": round(max(0.0, time.time() - sky["as_of"]), 1)} if sky.get("as_of") else sky
 
 
 @app.get("/api/players/skins")
@@ -1218,6 +1255,8 @@ async def get_world(sid: str):
         info.update(await S.live_world(srv))
     if info.get("time_source") == "unknown":
         info["debug"] = await asyncio.to_thread(S.world_debug, srv)
+    if info.get("as_of"):
+        info["age"] = round(max(0.0, time.time() - info["as_of"]), 1)
     return info
 
 

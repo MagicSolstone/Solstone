@@ -113,6 +113,14 @@ def push(server_id: str, server: str, event: str, player: str | None = None, tex
                       "player": player, "text": text[:160], "show": show})
 
 
+def pushed_recently(server_id: str, event: str, player: str | None, within: float = 120) -> bool:
+    """Was this already set off a moment ago (the log and the online check can both notice a join)?"""
+    cutoff = time.time() - within
+    with _feed_lock:
+        return any(i["server_id"] == server_id and i["event"] == event and (i["player"] or "").lower() == (player or "").lower()
+                   and i["ts"] >= cutoff for i in _feed)
+
+
 def feed_since(since: int, names: bool) -> dict:
     with _feed_lock:
         items = list(_feed)

@@ -616,6 +616,8 @@ async def live_world(srv: Server) -> dict:
         _live_world_raw[srv.id] = raw
         return {}
     _live_world_raw[srv.id] = raw
+    if out.get("time_of_day") is not None:
+        out["as_of"] = time.time()          # when the server said it, so pages can count on from there
     _live_world_cache[srv.id] = (time.monotonic(), out)
     return out
 
