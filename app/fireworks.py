@@ -18,8 +18,16 @@ COLOR_MODES = ("mix", "alternate", "change", "rainbow")
 LAUNCHES = ("rocket", "fountain", "wheel")           # from the sky, or set up on the hill
 ROCKET_STYLES = ("normal", "sparkly", "corkscrew", "colored", "invisible")
 STAGE_ACTIONS = ("burst", "pieces", "shatter", "implode")
-LAUNCH_SOUNDS = ("whoosh", "whistle", "none")
-BURST_SOUNDS = ("boom", "pop", "thud", "crack", "none")
+LAUNCH_SOUNDS = ("whoosh", "whistle", "custom", "none")
+BURST_SOUNDS = ("boom", "pop", "thud", "crack", "custom", "none")
+# "Make your own" sounds, bfxr style: a wave, an envelope, pitch moves, filters and effects.
+SFX_WAVES = ("square", "saw", "triangle", "sine", "noise")
+SFX_NUMBERS = {
+    "freq": (20, 5000, 440), "slide": (-1, 1, 0), "vib": (0, 1, 0), "vib_speed": (0, 30, 6), "jump": (-12, 12, 0), "jump_at": (0, 1, 0.5),
+    "duty": (0.05, 0.5, 0.5), "attack": (0, 1, 0), "sustain": (0, 2, 0.1), "punch": (0, 1, 0), "decay": (0, 3, 0.5),
+    "lp": (0, 1, 1), "lp_sweep": (-1, 1, 0), "res": (0, 1, 0), "hp": (0, 1, 0), "crunch": (0, 1, 0), "drive": (0, 1, 0),
+    "repeat": (1, 8, 1), "repeat_gap": (0.02, 0.5, 0.08), "echo": (0, 1, 0), "echo_delay": (0.05, 0.6, 0.25), "volume": (0, 1, 0.6),
+}
 MAX_STAGES = 3
 
 # name: (min, max, default)
@@ -93,6 +101,10 @@ def sanitize(d: dict) -> dict:
     out["mirror"] = bool(d.get("mirror"))
     out["sound_launch"] = d.get("sound_launch") if d.get("sound_launch") in LAUNCH_SOUNDS else "whoosh"
     out["sound_burst"] = d.get("sound_burst") if d.get("sound_burst") in BURST_SOUNDS else "boom"
+    if out["sound_launch"] == "custom":
+        out["sfx_launch"] = _sfx(d.get("sfx_launch"))
+    if out["sound_burst"] == "custom":
+        out["sfx_burst"] = _sfx(d.get("sfx_burst"))
     out["sound_crackle"] = d.get("sound_crackle", True) is not False
     out["sound_fizzle"] = bool(d.get("sound_fizzle", False))
     out["picture"] = _picture(d.get("picture"))
@@ -100,6 +112,19 @@ def sanitize(d: dict) -> dict:
     out["stages"] = [_stage(st) for st in (d.get("stages") or [])[:MAX_STAGES] if isinstance(st, dict)]
     if out["pattern"] == "picture" and not any(c != "." for r in out["picture"] for c in r):
         out["pattern"] = "ball"            # an empty picture would launch nothing
+    return out
+
+
+def _sfx(p) -> dict:
+    p = p if isinstance(p, dict) else {}
+    out: dict = {"wave": p.get("wave") if p.get("wave") in SFX_WAVES else "noise"}
+    for k, (lo, hi, default) in SFX_NUMBERS.items():
+        out[k] = _num(p.get(k, default), lo, hi, default, k == "repeat")
+    total = out["attack"] + out["sustain"] + out["decay"]
+    if total > 5:                          # keep any one sound short
+        f = 5 / total
+        for k in ("attack", "sustain", "decay"):
+            out[k] = round(out[k] * f, 3)
     return out
 
 

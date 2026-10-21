@@ -426,7 +426,7 @@ function startSkyScene(cv, opts = {}) {
     const r = { x, y: groundY + 4, vx: Math.sin(lean) * v, vy: -Math.cos(lean) * v, shape: "custom", design: d, colors: d.colors,
       style: d.rocket_style || "normal", hang: Math.round(dv(d, "hang", 0) * 60), t: 0, mirrored };
     rockets.push(r);
-    if (d.sound_launch !== "none") snd("launch", { x, style: d.sound_launch || "whoosh" });
+    if (d.sound_launch !== "none") snd("launch", { x, style: d.sound_launch || "whoosh", sfx: d.sound_launch === "custom" ? d.sfx_launch : null });
     return r;
   }
 
@@ -441,7 +441,7 @@ function startSkyScene(cv, opts = {}) {
     const d = r.design, g = newGroup(d, r.x, r.y);
     if (d.flash > 0) flashBurst(r.x, r.y, d.flash);
     smoke(r.x, r.y, d.colors, Math.min(2, d.size || 1.2));
-    if ((d.sound_burst || "boom") !== "none") snd("burst", { x: r.x, kind: d.sound_burst || "boom", size: d.size || 1.2 });
+    if ((d.sound_burst || "boom") !== "none") snd("burst", { x: r.x, kind: d.sound_burst || "boom", size: d.size || 1.2, sfx: d.sound_burst === "custom" ? d.sfx_burst : null });
     if (d.sound_crackle !== false && (d.sparkle > 0 || d.strobe > 0 || d.glitter > 0 || d.second > 0)) snd("crackle", { x: r.x, delay: d.second > 0 ? dv(d, "second_delay", 0.5) : 0.5, dur: Math.min(3, (d.life || 1.4) * 0.8) });
     if (d.sound_fizzle) snd("fizzle", { x: r.x, delay: (d.life || 1.4) * 0.75 });
     burst(g, r.x, r.y, { pattern: d.pattern, size: d.size || 1.2, sparks: d.sparks || 48, colors: colorsOf(d), mirrored: r.mirrored });
@@ -580,7 +580,10 @@ function startSkyScene(cv, opts = {}) {
     const d = g.d, cols = colorsOf(d, st.colors);
     const list = piecesOf(g);
     const c = centreOf(g, list);
-    if (d.sound_burst !== "none") snd("burst", { x: c.x, kind: st.action === "pieces" ? "crack" : st.action === "shatter" ? "pop" : d.sound_burst || "boom", size: st.size });
+    if (d.sound_burst !== "none") {
+      const kind = st.action === "pieces" ? "crack" : st.action === "shatter" ? "pop" : d.sound_burst || "boom";
+      snd("burst", { x: c.x, kind: kind === "custom" ? "boom" : kind, size: st.size, sfx: kind === "custom" ? d.sfx_burst : null });
+    }
     if (st.action === "burst") {
       if (d.flash > 0) flashBurst(c.x, c.y, d.flash * 0.7);
       release(g);

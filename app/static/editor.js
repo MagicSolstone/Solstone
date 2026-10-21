@@ -171,9 +171,11 @@ async function viewFireworkEditor(editId) {
       <div class="fwe-controls" id="fwe-controls"></div>
     </div>`);
   ed.scene?.stop();
-  ed.scene = startSkyScene($("#fwe-sky"), { fit: true, auto: false, sound: (t, i) => FWAudio.play(t, i) });
+  // Only the preview makes sound here, so you hear just the firework you're making.
+  ed.scene = startSkyScene($("#fwe-sky"), { fit: true, auto: false, sound: (t, i) => FWAudio.play(t, { ...i, solo: true }) });
+  FWAudio.solo = true;
   document.body.classList.add("on-editor");
-  state.cleanups.push(() => { ed.scene?.stop(); ed.scene = null; document.body.classList.remove("on-editor"); });
+  state.cleanups.push(() => { ed.scene?.stop(); ed.scene = null; FWAudio.solo = false; document.body.classList.remove("on-editor"); });
   renderControls();
   renderGallery();
   $("#fwe-launch").addEventListener("click", () => fweLaunch());
@@ -257,18 +259,29 @@ function renderControls() {
     then: isRocket(d) ? sec("Then…", stagesHtml(d), "fwe-stages") : "",
     motion: sec("Motion", sliders("Motion")),
     effects: sec("Effects", sliders("Effects")),
-    sound: sec("Sound", `<div class="fwe-row"><span>Going up</span><div class="seg" role="group">${[["whoosh", "Whoosh"], ["whistle", "Whistle"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_launch" data-v="${k}" aria-pressed="${(d.sound_launch || "whoosh") === k}">${l}</button>`).join("")}</div></div>
-      <div class="fwe-row"><span>The burst</span><div class="seg" role="group">${[["boom", "Boom"], ["pop", "Pop"], ["thud", "Thud"], ["crack", "Crack"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_burst" data-v="${k}" aria-pressed="${(d.sound_burst || "boom") === k}">${l}</button>`).join("")}</div></div>
+    sound: sec("Sound", `<div class="fwe-row"><span>Going up</span><div class="seg" role="group">${[["whoosh", "Whoosh"], ["whistle", "Whistle"], ["custom", "🎛 Make your own"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_launch" data-v="${k}" aria-pressed="${(d.sound_launch || "whoosh") === k}">${l}</button>`).join("")}</div></div>
+      ${d.sound_launch === "custom" ? sfxPanelHtml("launch") : ""}
+      <div class="fwe-row"><span>The burst</span><div class="seg" role="group">${[["boom", "Boom"], ["pop", "Pop"], ["thud", "Thud"], ["crack", "Crack"], ["custom", "🎛 Make your own"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_burst" data-v="${k}" aria-pressed="${(d.sound_burst || "boom") === k}">${l}</button>`).join("")}</div></div>
+      ${d.sound_burst === "custom" ? sfxPanelHtml("burst") : ""}
       <label class="check"><input type="checkbox" data-sndck="sound_crackle" ${d.sound_crackle !== false ? "checked" : ""}> Crackling (when it has crackle, glitter, strobe or bursts again)</label>
       <label class="check"><input type="checkbox" data-sndck="sound_fizzle" ${d.sound_fizzle ? "checked" : ""}> Fizzle as it fades</label>
-      <p class="muted small">Sounds play for people who turn them on with 🔊 (here, or in the corner of any page).</p>`),
+      <p class="muted small">Sounds play for people who turn them on with 🔊 (here, or in the corner of any page). While you're in the editor only this preview makes sound.</p>`),
   };
   const tabs = FWE_TABS.filter(([k]) => panels[k]);
   if (!panels[ed.tab]) ed.tab = tabs[0][0];
   el.innerHTML = `<nav class="fwe-tabs" role="tablist" aria-label="Firework settings">${tabs.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${ed.tab === k}">${l}</button>`).join("")}</nav>
     <div class="fwe-panel" role="tabpanel">${panels[ed.tab]}</div>`;
   el.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => { ed.tab = b.dataset.tab; renderControls(); }));
-  el.querySelectorAll("[data-snd]").forEach((b) => b.addEventListener("click", () => { d[b.dataset.snd] = b.dataset.v; renderControls(); if (!FWAudio.on) showToast("Turn on 🔊 to hear it", 2000); fweLaunch(); }));
+  el.querySelectorAll("[data-snd]").forEach((b) => b.addEventListener("click", () => {
+    d[b.dataset.snd] = b.dataset.v;
+    if (b.dataset.v === "custom") {                 // start from something that sounds right for the slot
+      const slot = b.dataset.snd === "sound_launch" ? "launch" : "burst";
+      d[`sfx_${slot}`] ||= SFX_MAKERS[slot === "launch" ? "whoosh" : "boom"]();
+      renderControls(); FWAudio.preview(d[`sfx_${slot}`]); return;
+    }
+    renderControls(); if (!FWAudio.on) showToast("Turn on 🔊 to hear it", 2000); fweLaunch();
+  }));
+  wireSfx(el);
   el.querySelectorAll("[data-sndck]").forEach((c) => c.addEventListener("change", () => { d[c.dataset.sndck] = c.checked; fweLaunch(); }));
   if (isRocket(d) && d.pattern === "picture") wirePainter();
   const rerender = (launchNow = true) => { renderControls(); if (launchNow) fweLaunch(); };
@@ -280,7 +293,7 @@ function renderControls() {
     if (d.pattern === "picture" && !d.picture?.length) { ed.frame = 1; stampPicture("Heart"); }
     rerender();
   }));
-  el.querySelectorAll("input[type=range]").forEach((inp) => inp.addEventListener("input", () => {
+  el.querySelectorAll("input[type=range][data-k]").forEach((inp) => inp.addEventListener("input", () => {
     const k = inp.dataset.k, si = inp.dataset.stage;
     const def = (si != null ? FWE_STAGE_SLIDERS : Object.values(FWE_SLIDERS).flat()).find((x) => x[0] === k);
     const target = si != null ? d.stages[+si] : d;
@@ -548,4 +561,89 @@ function quantize(points, k) {
     sums.forEach((sm, i) => { if (sm[3]) centres[i] = [sm[0] / sm[3], sm[1] / sm[3], sm[2] / sm[3]]; });
   }
   return centres;
+}
+
+// ---------------------------------------------------------------- make your own sound
+// bfxr-style: a wave, an envelope, pitch moves, tone and character, with a waveform to see it.
+const SFX_MAKER_BTNS = [["boom", "💥 Boom"], ["pop", "🫧 Pop"], ["thud", "🥁 Thud"], ["crackle", "✨ Crackle"], ["whistle", "🎵 Whistle"], ["whoosh", "💨 Whoosh"],
+  ["zap", "⚡ Zap"], ["sparkle", "🪙 Sparkle"], ["thunder", "⛈ Thunder"], ["chip", "👾 Chiptune"], ["random", "🎲 Random"]];
+const SFX_WAVE_BTNS = [["square", "Square"], ["saw", "Saw"], ["triangle", "Triangle"], ["sine", "Sine"], ["noise", "Noise"]];
+const sfxSec = (v) => `${(+v).toFixed(2)} s`, sfxPct = (v) => `${Math.round(v * 100)}%`, sfxSigned = (v) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}`;
+const SFX_GROUPS = [
+  ["Envelope", [["attack", "Attack", sfxSec], ["sustain", "Sustain", sfxSec], ["punch", "Punch", sfxPct], ["decay", "Decay", sfxSec]]],
+  ["Pitch", [["freq", "Start pitch", (v) => `${Math.round(v)} Hz`], ["slide", "Slide", sfxSigned], ["vib", "Vibrato depth", sfxPct], ["vib_speed", "Vibrato speed", (v) => `${(+v).toFixed(1)} Hz`],
+    ["jump", "Pitch jump", (v) => `${v > 0 ? "+" : ""}${Math.round(v)} semitones`], ["jump_at", "Jump at", sfxPct]]],
+  ["Tone", [["duty", "Square width", sfxPct, (p) => p.wave === "square"], ["lp", "Low-pass", sfxPct], ["lp_sweep", "Low-pass sweep", sfxSigned], ["res", "Resonance", sfxPct], ["hp", "High-pass", sfxPct]]],
+  ["Character", [["crunch", "Crunch (bit-crush)", sfxPct], ["drive", "Drive (compression)", sfxPct], ["repeat", "Repeats", (v) => `×${Math.round(v)}`],
+    ["repeat_gap", "Repeat gap", sfxSec, (p) => p.repeat > 1], ["echo", "Echo", sfxPct], ["echo_delay", "Echo delay", sfxSec, (p) => p.echo > 0], ["volume", "Volume", sfxPct]]],
+];
+// Pitch is easier to set on a log scale.
+const sfxToSlider = (k, v) => k === "freq" ? Math.round(Math.log(v / 20) / Math.log(250) * 1000) : v;
+const sfxFromSlider = (k, v) => k === "freq" ? Math.round(20 * 250 ** (v / 1000)) : v;
+function sfxPanelHtml(slot) {
+  const p = { ...SFX_DEFAULT, ...ed.d[`sfx_${slot}`] };
+  const slider = ([k, label, fmt, when]) => {
+    if (when && !when(p)) return "";
+    const [lo, hi, step] = SFX_RANGES[k];
+    const attrs = k === "freq" ? `min="0" max="1000" step="1"` : `min="${lo}" max="${hi}" step="${step}"`;
+    return `<label class="fwe-slider"><span>${esc(label)}</span><b data-sfx-out="${k}">${esc(fmt(p[k]))}</b>
+      <input type="range" ${attrs} value="${sfxToSlider(k, p[k])}" data-sfx="${k}"></label>`;
+  };
+  return `<div class="sfx" data-slot="${slot}">
+    <div class="sfx-top"><canvas class="sfx-wave" aria-label="What the sound looks like"></canvas>
+      <div class="sfx-play"><button class="btn primary" type="button" data-sfx-play>▶ Play</button><span class="muted small" data-sfx-len></span></div></div>
+    <div class="sfx-makers" role="group" aria-label="Start from">${SFX_MAKER_BTNS.map(([k, l]) => `<button type="button" class="btn sm" data-sfx-make="${k}">${l}</button>`).join("")}
+      <button type="button" class="btn sm" data-sfx-mutate title="Nudge everything a little">🧬 Mutate</button></div>
+    <div class="fwe-row"><span>Wave</span><div class="seg" role="group">${SFX_WAVE_BTNS.map(([k, l]) => `<button type="button" data-sfx-wave="${k}" aria-pressed="${p.wave === k}">${l}</button>`).join("")}</div></div>
+    <div class="sfx-groups">${SFX_GROUPS.map(([title, list]) => `<fieldset class="sfx-group"><legend>${title}</legend><div class="fwe-sliders">${list.map(slider).join("")}</div></fieldset>`).join("")}</div>
+  </div>`;
+}
+function wireSfx(root) {
+  root.querySelectorAll(".sfx").forEach((box) => {
+    const slot = box.dataset.slot, key = `sfx_${slot}`;
+    const p = () => (ed.d[key] = { ...SFX_DEFAULT, ...ed.d[key] });
+    const play = () => FWAudio.preview(p());
+    const redraw = () => sfxDraw(box, p());
+    const rebuild = (hear = true) => { renderControls(); if (hear) play(); };
+    box.querySelector("[data-sfx-play]").addEventListener("click", play);
+    box.querySelectorAll("[data-sfx-make]").forEach((b) => b.addEventListener("click", () => { ed.d[key] = SFX_MAKERS[b.dataset.sfxMake](); rebuild(); }));
+    box.querySelector("[data-sfx-mutate]").addEventListener("click", () => { ed.d[key] = sfxMutate(p()); rebuild(); });
+    box.querySelectorAll("[data-sfx-wave]").forEach((b) => b.addEventListener("click", () => { p().wave = b.dataset.sfxWave; rebuild(); }));
+    box.querySelectorAll("[data-sfx]").forEach((inp) => {
+      const k = inp.dataset.sfx, fmt = SFX_GROUPS.flatMap(([, l]) => l).find((x) => x[0] === k)[2];
+      inp.addEventListener("input", () => {
+        p()[k] = sfxFromSlider(k, +inp.value);
+        box.querySelector(`[data-sfx-out="${k}"]`).textContent = fmt(p()[k]);
+        redraw();
+      });
+      // Hear it when the slider is let go; some sliders show or hide others.
+      inp.addEventListener("change", () => { if (["repeat", "echo"].includes(k)) rebuild(); else play(); });
+    });
+    redraw();
+  });
+}
+function sfxDraw(box, p) {
+  clearTimeout(box._drawT);                       // one timer per panel (launch and burst can both be open)
+  box._drawT = setTimeout(async () => {
+    const cv = box.querySelector(".sfx-wave"), data = await sfxRender(p).catch(() => null);
+    if (!cv?.isConnected || !data) return;
+    const w = cv.clientWidth, h = cv.clientHeight, dpr = devicePixelRatio || 1;
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    const c = cv.getContext("2d");
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, w, h);
+    c.strokeStyle = "rgba(255,255,255,.08)"; c.beginPath(); c.moveTo(0, h / 2 + 0.5); c.lineTo(w, h / 2 + 0.5); c.stroke();
+    let peak = 0.0001;
+    for (let i = 0; i < data.length; i += 4) peak = Math.max(peak, Math.abs(data[i]));
+    const per = data.length / w, g = c.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, "#f2c14e"); g.addColorStop(0.5, "#ffe9a8"); g.addColorStop(1, "#f2c14e");
+    c.fillStyle = g;
+    for (let x = 0; x < w; x++) {
+      let lo = 0, hi = 0;
+      for (let i = Math.floor(x * per); i < Math.floor((x + 1) * per); i++) { const v = data[i] / peak; if (v < lo) lo = v; if (v > hi) hi = v; }
+      c.fillRect(x, h / 2 - hi * h * 0.45, 1, Math.max(1, (hi - lo) * h * 0.45));
+    }
+    const len = box.querySelector("[data-sfx-len]");
+    if (len) len.textContent = `${(data.length / 11025).toFixed(1)} s`;
+  }, 60);
 }

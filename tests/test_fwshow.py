@@ -145,3 +145,19 @@ def test_sky_and_player_skins(client, viewer, anon):
     skins = viewer.get("/api/players/skins").json()
     assert skins and {"name", "uuid"} <= set(skins[0])
     assert anon.get("/api/players/skins").status_code == 401
+
+
+def test_custom_sounds_are_cleaned(client):
+    from app import fireworks
+    d = fireworks.sanitize({"sound_launch": "custom", "sound_burst": "custom",
+                            "sfx_launch": {"wave": "laser", "freq": 99999, "repeat": 3.6, "attack": 1, "sustain": 2, "decay": 3, "bogus": 1},
+                            "sfx_burst": "nope"})
+    s = d["sfx_launch"]
+    assert s["wave"] == "noise" and s["freq"] == 5000 and s["repeat"] == 4 and "bogus" not in s
+    assert round(s["attack"] + s["sustain"] + s["decay"], 2) <= 5.0
+    assert d["sfx_burst"]["volume"] == 0.6                       # junk -> defaults
+    plain = fireworks.sanitize({"sound_burst": "pop", "sfx_burst": {"freq": 100}})
+    assert "sfx_burst" not in plain and "sfx_launch" not in plain   # only kept when used
+    r = client.post("/api/fireworks", json={"name": "Synth", "sound_burst": "custom", "sfx_burst": {"wave": "square", "duty": 0.25}}).json()
+    assert r["sfx_burst"]["wave"] == "square" and r["sfx_burst"]["duty"] == 0.25
+    client.delete(f"/api/fireworks/{r['id']}")
