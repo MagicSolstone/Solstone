@@ -291,7 +291,8 @@ def test_public_status_page(anon, client, viewer, monkeypatch):
     S.registry.servers[helpers.SID]._rcon = None
 
     # Off by default: nothing public except "it's off".
-    assert anon.get("/api/public/status").json() == {"enabled": False, "servers": []}
+    off = anon.get("/api/public/status").json()
+    assert off["enabled"] is False and off["servers"] == [] and off["build"]          # the build lets open pages notice an update
     assert anon.get(f"/api/public/status/{helpers.SID}").status_code == 404
     assert anon.get(f"/api/public/icon/{helpers.SID}.png").status_code == 404
     assert anon.get("/status").status_code == 404 and "Status page is off" in anon.get("/status").text

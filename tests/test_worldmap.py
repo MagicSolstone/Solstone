@@ -127,3 +127,25 @@ def test_old_chunk_format_and_nether(tmp_path):
     buf = io.BytesIO(); nbtlib.File(nether).write(buf)
     rgb, h = worldmap.render_chunk(worldmap.read_chunk(buf.getvalue()), worldmap.Colors(None), True)
     assert tuple(rgb[0, 0].astype(int)) == worldmap._FALLBACK["netherrack"]
+
+
+def test_lz4_compressed_chunks(tmp_path):
+    """region-file-compression=lz4: lz4-java "LZ4Block" frames."""
+    import lz4.block
+
+    from app import worldmap
+    buf = io.BytesIO(); nbtlib.File(_chunk(0, 0, _land)).write(buf)
+    raw = buf.getvalue()
+    half = len(raw) // 2
+    frames = b""
+    for part in (raw[:half], raw[half:]):
+        comp = lz4.block.compress(part, store_size=False)
+        frames += b"LZ4Block" + bytes([0x20 | 6]) + struct.pack("<iii", len(comp), len(part), 0) + comp
+    frames += b"LZ4Block" + bytes([0x10]) + struct.pack("<iii", 0, 0, 0)
+    blob = struct.pack(">IB", len(frames) + 1, 4) + frames
+    blob += b"\0" * (-len(blob) % 4096)
+    header = bytearray(8192)
+    struct.pack_into(">I", header, 0, (2 << 8) | (len(blob) // 4096))
+    (tmp_path / "r.0.0.mca").write_bytes(bytes(header) + blob)
+    img = worldmap.render_region(tmp_path / "r.0.0.mca", worldmap.Colors(None))
+    assert img is not None and np.asarray(img)[12, 12, 3] == 255

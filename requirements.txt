@@ -6,3 +6,4 @@ pillow>=10
 numpy>=1.26
 tzdata>=2024.1
 mutagen>=1.47
+lz4>=4

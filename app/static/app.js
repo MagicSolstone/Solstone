@@ -26,7 +26,8 @@ const post = (path, body = {}, method = "POST") => api(path, { method, body: JSO
 
 // ================================================================ accounts
 const me = { user: null };
-const appSky = { scene: null, bar: null, board: null };  // the night sky behind the signed-in app
+const appSky = { scene: null, bar: null, board: null };
+let appBuild = null;  // the night sky behind the signed-in app
 const isAdmin = () => me.user?.role === "admin";
 
 function showLogin(message = "") {
@@ -83,7 +84,12 @@ async function signedIn(user) {
   if (!appSky.board) appSky.board = startBoard($("#app-board"), { where: "app", sid: () => curSid || "", scene: () => appSky.scene, dismiss: true, max: innerWidth < 700 ? 1 : 2 });
   $("#account-name").textContent = user.username;
   $("#account-role").textContent = user.role === "admin" ? "Admin" : "Viewer (read-only)";
-  fetch("/api/public/status").then((r) => r.json()).then((d) => { $("#btn-status").hidden = !d.enabled; }).catch(() => {});
+  fetch("/api/public/status").then((r) => r.json()).then((d) => { $("#btn-status").hidden = !d.enabled; appBuild = d.build; }).catch(() => {});
+  // Left open for a while? Say when Solstone has been updated (a reload loads it).
+  clearInterval(state.buildCheck);
+  state.buildCheck = setInterval(async () => {
+    try { const d = await (await fetch("/api/public/status")).json(); if (appBuild && d.build && d.build !== appBuild) { showToast('Solstone has been updated. <a href="" onclick="location.reload();return false">Reload to get the new version</a>', 0); clearInterval(state.buildCheck); } } catch { /* offline for a moment */ }
+  }, 5 * 60 * 1000);
   await loadServers();
   route();
 }

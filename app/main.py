@@ -279,9 +279,9 @@ async def public_status():
     global _list_cache
     cfg = _status_cfg()
     if not cfg["enabled"]:
-        return {"enabled": False, "servers": []}
+        return {"enabled": False, "servers": [], "build": _asset_stamp()}
     if _list_cache and time.monotonic() - _list_cache[0] < 15:
-        return {"enabled": True, "servers": _list_cache[1], "tv": _tv_cfg()}
+        return {"enabled": True, "servers": _list_cache[1], "tv": _tv_cfg(), "build": _asset_stamp()}
     await S.registry.refresh()
     out = []
     for srv in _public_servers_list():
@@ -293,7 +293,7 @@ async def public_status():
         out.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "crashed": summ["crashed"],
                     "online": len(summ["online"]), "max": summ["max_players"], "has_icon": summ["has_icon"]})
     _list_cache = (time.monotonic(), out)
-    return {"enabled": True, "servers": out, "tv": _tv_cfg()}
+    return {"enabled": True, "servers": out, "tv": _tv_cfg(), "build": _asset_stamp()}
 
 
 @app.get("/api/public/status/{sid}")
@@ -1590,10 +1590,14 @@ async def spa(full_path: str):
 ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "editor.js", "fwsettings.js", "announce.js", "music.js", "status.js")
 
 
+def _asset_stamp() -> str:
+    files = [STATIC / n for n in ASSET_NAMES]
+    return format(int(max(f.stat().st_mtime for f in files if f.exists())), "x")
+
+
 def _page(name: str) -> str:
     """An HTML page with ?v= on the CSS/JS links so browsers pick up new versions after an update."""
-    files = [STATIC / n for n in ASSET_NAMES]
-    stamp = format(int(max(f.stat().st_mtime for f in files if f.exists())), "x")
+    stamp = _asset_stamp()
     html = (STATIC / name).read_text(encoding="utf-8")
     for n in ASSET_NAMES:
         html = html.replace(f"/static/{n}\"", f"/static/{n}?v={stamp}\"")

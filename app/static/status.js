@@ -67,7 +67,13 @@ function sidFromPath() {
   return m ? decodeURIComponent(m[1]) : null;
 }
 async function loadServers() {
-  try { const d = await getJSON("/api/public/status"); st.servers = d.servers || []; if (d.tv) st.tvCfg = d.tv; } catch { /* keep the last list */ }
+  try {
+    const d = await getJSON("/api/public/status");
+    // A wall screen stays open for days: when Solstone has been updated, load the new version.
+    if (d.build && st.build && d.build !== st.build) { location.reload(); return; }
+    st.build = d.build || st.build;
+    st.servers = d.servers || []; if (d.tv) st.tvCfg = d.tv;
+  } catch { /* keep the last list */ }
   if (!st.sid || !st.servers.some((s) => s.id === st.sid)) {
     const want = sidFromPath();
     const pick = st.servers.find((s) => s.id === want)
@@ -295,7 +301,7 @@ function mountMap(el, b, prev) {
   if (!rs || Date.now() - rs.at > 300000) {
     map.regionSets[dimId] = { at: Date.now(), set: rs?.set || null };
     fetch(`/api/public/map/${encodeURIComponent(b.id)}/regions?dim=${encodeURIComponent(dimId)}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null)).then((d) => { if (d) { map.regionSets[dimId] = { at: Date.now(), set: new Set(d.regions.map(([x, z]) => `${x},${z}`)) }; map.redraw?.(); } }).catch(() => {});
+      .then((r) => (r.ok ? r.json() : null)).then((d) => { if (d) { map.regionSets[dimId] = { at: Date.now(), set: new Set(d.regions.map(([x, z]) => `${x},${z}`)) }; map.redraw?.(); } else map.regionSets[dimId].failed = true; }).catch(() => { map.regionSets[dimId].failed = true; });
   }
   const tileFor = (rx, rz) => {
     const key = `${dimId}|${rx},${rz}`;
@@ -344,18 +350,20 @@ function mountMap(el, b, prev) {
     const set = map.regionSets[dimId]?.set;
     if (set) {
       const x0 = bnd.cx - w / 2 / scale, x1 = bnd.cx + w / 2 / scale, z0 = bnd.cz - h / 2 / scale, z1 = bnd.cz + h / 2 / scale;
-      let n = 0;
+      let n = 0, waiting = 0;
       ctx.imageSmoothingEnabled = scale < 1;
       for (let rx = Math.floor(x0 / 512); rx <= Math.floor(x1 / 512) && n < 36; rx++) {
         for (let rz = Math.floor(z0 / 512); rz <= Math.floor(z1 / 512) && n < 36; rz++) {
           if (!set.has(`${rx},${rz}`)) continue;
           n++;
           const t = tileFor(rx, rz);
+          if (!t.img && t.state !== "none") waiting++;
           if (t.img) ctx.drawImage(t.img, Math.round(sx(rx * 512)), Math.round(sz(rz * 512)), Math.ceil(512 * scale) + 1, Math.ceil(512 * scale) + 1);
         }
       }
       ctx.fillStyle = "rgba(6, 10, 18, .18)"; ctx.fillRect(0, 0, w, h);          // a touch darker, so names and heads stand out
-    }
+      map.note = waiting ? "Drawing the map…" : n ? "" : "No map here yet: this part of the world hasn't been saved";
+    } else map.note = map.regionSets[dimId]?.failed ? "The map isn't available" : "Loading the map…";
     // grid with block coordinates
     const step = niceStep(Math.max(w, h) / scale);
     ctx.strokeStyle = "rgba(255,255,255,.07)"; ctx.lineWidth = 1;
@@ -364,6 +372,7 @@ function mountMap(el, b, prev) {
     for (let x = Math.ceil(wx0 / step) * step; sx(x) < w; x += step) { ctx.beginPath(); ctx.moveTo(Math.round(sx(x)) + 0.5, 0); ctx.lineTo(Math.round(sx(x)) + 0.5, h); ctx.stroke(); ctx.fillText(String(x), sx(x) + 4, h - 6); }
     for (let z = Math.ceil(wz0 / step) * step; sz(z) < h; z += step) { ctx.beginPath(); ctx.moveTo(0, Math.round(sz(z)) + 0.5); ctx.lineTo(w, Math.round(sz(z)) + 0.5); ctx.stroke(); ctx.fillText(String(z), 4, sz(z) - 4); }
     ctx.fillStyle = "rgba(255,255,255,.5)"; ctx.font = "bold 12px 'Atkinson Hyperlegible', system-ui"; ctx.fillText("N ↑", w - 34, 18);
+    if (map.note) { ctx.font = "12px 'Atkinson Hyperlegible', system-ui"; const tw = ctx.measureText(map.note).width + 14; ctx.fillStyle = "rgba(8,10,18,.65)"; ctx.fillRect(8, 8, tw, 20); ctx.fillStyle = "rgba(235,230,217,.85)"; ctx.fillText(map.note, 15, 22); }
     if (map.spawn) {
       const x = sx(map.spawn.x), y = sz(map.spawn.z);
       ctx.fillStyle = "#f2c14e"; ctx.beginPath(); ctx.moveTo(x, y - 7); ctx.lineTo(x + 7, y); ctx.lineTo(x, y + 7); ctx.lineTo(x - 7, y); ctx.closePath(); ctx.fill();

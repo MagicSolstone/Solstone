@@ -333,6 +333,22 @@ def _shade(rgb: np.ndarray, heights: np.ndarray) -> np.ndarray:
     return out
 
 
+def _lz4(body: bytes) -> bytes:
+    """Minecraft's LZ4 chunks: lz4-java "LZ4Block" frames (magic, token, sizes, checksum, data)."""
+    import lz4.block
+    out, i = bytearray(), 0
+    while i + 21 <= len(body) and body[i:i + 8] == b"LZ4Block":
+        token = body[i + 8]
+        clen, dlen = struct.unpack_from("<ii", body, i + 9)
+        i += 21
+        if dlen == 0:
+            break
+        chunk = body[i:i + clen]
+        i += clen
+        out += chunk if token & 0xF0 == 0x10 else lz4.block.decompress(chunk, uncompressed_size=dlen)
+    return bytes(out)
+
+
 def render_region(path: Path, colors: Colors, nether: bool = False) -> Image.Image | None:
     try:
         data = path.read_bytes()
@@ -360,8 +376,10 @@ def render_region(path: Path, colors: Colors, nether: bool = False) -> Image.Ima
                 raw = gzip.decompress(body)
             elif ctype == 3:
                 raw = body
+            elif ctype == 4:
+                raw = _lz4(body)                    # region-file-compression=lz4 (1.20.5+)
             else:
-                continue                            # LZ4 or an external file: skip that chunk
+                continue                            # stored in a separate file: skip that chunk
             got = render_chunk(read_chunk(raw), colors, nether)
         except Exception as e:
             log.debug("chunk %d in %s: %s", i, path.name, e)
