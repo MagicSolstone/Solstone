@@ -413,7 +413,7 @@ function openMapCheck(sid, dims) {
         const ok = rows.filter((x) => x.drawn > 0).length;
         $("#mc-sum", m).innerHTML = r.error ? `<b>${esc(r.error)}</b>`
           : `<div>${r.regions} region files. Checked ${rows.length}: <b>${ok} drew fine</b>${rows.length - ok ? `, <b class="warn">${rows.length - ok} came out empty</b>` : ""}.</div>`
-            + rows.map((x) => `<div class="small">${esc(x.file)}: ${x.drawn} of ${x.chunks} chunks drawn${x.failed ? `, ${x.failed} unreadable` : ""}${x.error ? ` — ${esc(x.error)}` : ""}${x.layout?.checked ? ` · matches the game's height map ${Math.round(x.layout.agree * 100)}%` : ""}${x.layout?.narrow_sections ? ` · ${x.layout.narrow_sections} narrow-packed sections` : ""}${x.layout?.turned ? ` · ${x.layout.turned} chunks turned` : ""}${x.layout?.moved ? ` · ${x.layout.moved} chunks moved` : ""}</div>`).join("");
+            + rows.map((x) => `<div class="small">${esc(x.file)}: ${x.drawn} of ${x.chunks} chunks drawn${x.failed ? `, ${x.failed} unreadable` : ""}${x.error ? ` — ${esc(x.error)}` : ""}${x.layout?.checked ? ` · matches the game's height map ${Math.round(x.layout.agree * 100)}%` : ""}${x.layout?.narrow_sections ? ` · ${x.layout.narrow_sections} narrow-packed sections` : ""}${x.layout?.layouts && Object.keys(x.layout.layouts).some((k) => k !== "yzx") ? ` · block layout: ${Object.entries(x.layout.layouts).map(([k, n]) => `${k} ×${n}`).join(", ")}` : ""}${x.layout?.moved ? ` · ${x.layout.moved} chunks moved` : ""}</div>`).join("");
         $("#mc-out", m).textContent = JSON.stringify(r, null, 1); $("#mc-out", m).hidden = false; $("#mc-copy", m).hidden = false;
       } catch (e) { $("#mc-sum", m).textContent = e.message; }
     };

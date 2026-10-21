@@ -322,17 +322,55 @@ def _surface_from_heightmap(lvl: dict, min_y: int) -> np.ndarray | None:
     return np.where(vals > 0, vals - 1 + min_y, -9999)
 
 
+# Ways a section's 4096 block indices could be laid out: an axis order for the stored (a, b, c)
+# relative to (y, z, x), and whether y runs downwards. The first is Minecraft's; the rest are
+# only tried when a chunk doesn't match the game's own height map.
+_LAYOUTS = [((0, 1, 2), False)] + [((a, b, c), f) for (a, b, c) in
+            [(0, 2, 1), (1, 0, 2), (1, 2, 0), (2, 0, 1), (2, 1, 0), (0, 1, 2)] for f in (False, True)
+            if ((a, b, c), f) != ((0, 1, 2), False)]
+
+
+def _layout_name(lay) -> str:
+    (a, b, c), flip = lay
+    axes = "yzx"
+    order = "".join(axes[[a, b, c].index(i)] for i in range(3))
+    return order + ("-ydown" if flip else "")
+
+
+def _volume(layers, top_y: int, height: int, lay, gids: dict[str, int] | None) -> np.ndarray:
+    """Top-down volume [height, z, x] of block ids (0 = air) for one layout."""
+    perm, flip = lay
+    vol = np.zeros((height, 16, 16), dtype=np.int32)
+    for y0, names, idx in layers:
+        if gids is None:
+            table = np.array([0 if _short(n) in _AIR else 1 for n in names], dtype=np.int32)
+        else:
+            table = np.array([0 if _short(n) in _AIR else gids.setdefault(n, len(gids) + 1) for n in names], dtype=np.int32)
+        a = np.transpose(idx, np.argsort(perm)) if perm != (0, 1, 2) else idx      # -> y, z, x
+        if flip:
+            a = a[::-1]
+        start = top_y - (y0 * 16 + 15)
+        vol[start:start + 16] = table[a][::-1]
+    return vol
+
+
+def _tops(vol: np.ndarray, top_y: int) -> np.ndarray:
+    solid = vol != 0
+    has = solid.any(axis=0)
+    return np.where(has, top_y - solid.argmax(axis=0), -9999)
+
+
 def render_chunk(nbt: dict, colors: Colors, nether: bool, stats: dict | None = None) -> tuple[np.ndarray, np.ndarray] | None:
     """16x16 colours and heights for one chunk (None if it has no block data)."""
     stats = stats if stats is not None else {}
     lvl = nbt.get("Level") if isinstance(nbt.get("Level"), dict) else nbt
     sections = lvl.get("sections") or lvl.get("Sections") or []
-    layers = []                                   # (y, names, idx[16,16,16])
+    layers = []                                   # (y, names, idx[16,16,16] as stored)
     for s in sections:
         names, data = _section_blocks(s)
         if not names or all(_short(n) in _AIR for n in names):
             continue
-        idx = _unpack(data, len(names), stats=stats).reshape(16, 16, 16)          # y, z, x
+        idx = _unpack(data, len(names), stats=stats).reshape(16, 16, 16)          # y, z, x in Minecraft's layout
         layers.append((int(s.get("Y", s.get("y", 0))), names, idx))
     if not layers:
         return None
@@ -340,13 +378,33 @@ def render_chunk(nbt: dict, colors: Colors, nether: bool, stats: dict | None = N
     top_y = layers[0][0] * 16 + 15
     bottom_y = layers[-1][0] * 16
     height = top_y - bottom_y + 1
-    # one column of names per block, top down: build a palette-wide id table
+
+    # Which layout? Check against the game's own height map (the top block of every column).
+    # The region's last winner is tried first; the others only when it doesn't fit.
+    lay = stats.get("layout_pref") or _LAYOUTS[0]
+    if not nether:
+        hm = _surface_from_heightmap(lvl, int(lvl.get("yPos", 0)) * 16)   # before 1.18 (no yPos) the world starts at 0
+        if hm is not None:
+            def score(cand) -> float | None:
+                t = _tops(_volume(layers, top_y, height, cand, None), top_y)
+                ok = (hm != -9999) & (t != -9999)
+                return float((np.abs(t - hm)[ok] <= 1).mean()) if ok.sum() >= 32 else None
+            best = score(lay)
+            if best is not None:
+                if best < 0.9:
+                    for cand in _LAYOUTS:
+                        if cand == lay:
+                            continue
+                        sc = score(cand)
+                        if sc is not None and sc >= 0.9 and sc > best + 0.15:
+                            best, lay = sc, cand
+                stats["checked"] = stats.get("checked", 0) + 1
+                stats["agree"] = stats.get("agree", 0.0) + best
+                stats.setdefault("layouts", {})
+                stats["layouts"][_layout_name(lay)] = stats["layouts"].get(_layout_name(lay), 0) + 1
+                stats["layout_pref"] = lay
     gids: dict[str, int] = {}
-    vol = np.zeros((height, 16, 16), dtype=np.int32)                # 0 = air
-    for y0, names, idx in layers:
-        table = np.array([0 if _short(n) in _AIR else gids.setdefault(n, len(gids) + 1) for n in names], dtype=np.int32)
-        start = top_y - (y0 * 16 + 15)
-        vol[start:start + 16] = table[idx][::-1]
+    vol = _volume(layers, top_y, height, lay, gids)
     names_by_id = {v: k for k, v in gids.items()}
     solid = vol != 0
     if nether:                                     # look under the bedrock ceiling: start at y 100
@@ -384,21 +442,6 @@ def render_chunk(nbt: dict, colors: Colors, nether: bool, stats: dict | None = N
             rgb = np.where(top_is_water[..., None], rgb * shade, rgb)
     rgb[~has] = 0
     heights[~has] = -9999
-    # Check against the game's own height map. If the picture only matches it turned on its
-    # side, the blocks were laid out x/z the other way round: turn it.
-    if not nether:
-        min_y = int(lvl.get("yPos", 0)) * 16          # before 1.18 (no yPos) the world starts at 0
-        hm = _surface_from_heightmap(lvl, min_y)
-        if hm is not None and has.any():
-            ok = (hm != -9999) & has
-            if ok.sum() >= 32:
-                same = float((np.abs(heights - hm)[ok] <= 1).mean())
-                turned = float((np.abs(heights.T - hm)[ok.T & ok] <= 1).mean()) if (ok.T & ok).any() else 0.0
-                stats["checked"] = stats.get("checked", 0) + 1
-                stats["agree"] = stats.get("agree", 0.0) + max(same, turned)
-                if turned > same + 0.2:
-                    stats["turned"] = stats.get("turned", 0) + 1
-                    return np.ascontiguousarray(np.transpose(rgb, (1, 0, 2))), np.ascontiguousarray(heights.T)
     return rgb, heights
 
 
@@ -569,6 +612,7 @@ def render_region(path: Path, colors: Colors, nether: bool = False, info: dict |
         rgb[cz * 16:cz * 16 + 16, cx * 16:cx * 16 + 16] = c_rgb
         heights[cz * 16:cz * 16 + 16, cx * 16:cx * 16 + 16] = c_h
         alpha[cz * 16:cz * 16 + 16, cx * 16:cx * 16 + 16] = np.where(c_h != -9999, 255, 0)
+    layout.pop("layout_pref", None)
     if layout.get("checked"):
         layout["agree"] = round(layout["agree"] / layout["checked"], 3)
     info["layout"] = layout
@@ -606,7 +650,7 @@ def regions(world: Path, dim: str) -> list[list[int]]:
     return out
 
 
-RENDER_VERSION = 4          # bump when the drawing changes: older cached tiles are redrawn
+RENDER_VERSION = 5          # bump when the drawing changes: older cached tiles are redrawn
 
 
 def _tile_path(sid: str, dim: str, rx: int, rz: int) -> Path:

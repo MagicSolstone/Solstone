@@ -235,7 +235,7 @@ def test_narrow_packing_and_heightmap_check():
     stats = {}
     rgb, h = worldmap.render_chunk(worldmap.read_chunk(buf.getvalue()), worldmap.Colors(None), False, stats)
     assert (h[0] == np.arange(9, 25)).all()
-    assert stats["narrow_sections"] >= 1 and stats["checked"] == 1 and stats["agree"] == 1.0 and "turned" not in stats
+    assert stats["narrow_sections"] >= 1 and stats["checked"] == 1 and stats["agree"] == 1.0 and stats["layouts"] == {"yzx": 1}
 
 
 def test_turned_chunk_is_put_right():
@@ -246,4 +246,21 @@ def test_turned_chunk_is_put_right():
     buf = io.BytesIO(); nbtlib.File(c).write(buf)
     stats = {}
     rgb, h = worldmap.render_chunk(worldmap.read_chunk(buf.getvalue()), worldmap.Colors(None), False, stats)
-    assert stats.get("turned") == 1 and (h[:, 0] == np.arange(9, 25)).all()
+    assert stats["layouts"] == {"yxz": 1} and (h[:, 0] == np.arange(9, 25)).all()
+
+
+def test_upside_down_sections_are_found():
+    """A layout where y runs top-down inside each section is spotted from the height map."""
+    from app import worldmap
+    c = _chunk(0, 0, lambda x, z: [(y, "minecraft:stone") for y in range(0, 5 + x // 2)])
+    for sec in c["sections"]:                                           # store every section upside down
+        bs = sec["block_states"]
+        n = len(bs["palette"])
+        idx = worldmap._unpack(np.array([int(v) for v in bs["data"]], dtype=np.int64), n).reshape(16, 16, 16)[::-1].reshape(-1)
+        bs["data"] = LongArray(_pack([int(v) for v in idx], max(4, (n - 1).bit_length())))
+    c["yPos"] = Int(-4)
+    c["Heightmaps"] = Compound({"WORLD_SURFACE": _hm([[4 + x // 2 for x in range(16)] for z in range(16)])})
+    buf = io.BytesIO(); nbtlib.File(c).write(buf)
+    stats = {}
+    rgb, h = worldmap.render_chunk(worldmap.read_chunk(buf.getvalue()), worldmap.Colors(None), False, stats)
+    assert stats["layouts"] == {"yzx-ydown": 1} and (h[0] == [4 + x // 2 for x in range(16)]).all()
