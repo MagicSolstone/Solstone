@@ -774,6 +774,33 @@ async def list_fireworks(request: Request):
     return [{**d, "mine": d.get("author") == user.username, "can_edit": _can_edit(user, d)} for d in fireworks.all_designs()]
 
 
+@app.get("/api/sounds")
+async def list_sounds(request: Request):
+    user = request.state.user
+    return [{**x, "can_delete": user.role == "admin" or x.get("author") == user.username} for x in fireworks.sounds()]
+
+
+@app.post("/api/sounds")
+async def save_sound(request: Request):
+    user = request.state.user
+    body = await _body(request)
+    try:
+        item = fireworks.add_sound(body.get("name"), body.get("sfx"), user.username)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    auth.audit(user, None, "sound_save", item["name"])
+    return item
+
+
+@app.delete("/api/sounds/{sound_id}")
+async def remove_sound(sound_id: str, request: Request):
+    user = request.state.user
+    if not fireworks.delete_sound(sound_id, user.username, user.role == "admin"):
+        raise HTTPException(404, "No such sound, or it isn't yours")
+    auth.audit(user, None, "sound_delete", sound_id)
+    return {"ok": True}
+
+
 @app.post("/api/fireworks")
 async def create_firework(request: Request):
     user = request.state.user

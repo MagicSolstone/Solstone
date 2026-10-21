@@ -20,6 +20,7 @@ ROCKET_STYLES = ("normal", "sparkly", "corkscrew", "colored", "invisible")
 STAGE_ACTIONS = ("burst", "pieces", "shatter", "implode")
 LAUNCH_SOUNDS = ("whoosh", "whistle", "custom", "none")
 BURST_SOUNDS = ("boom", "pop", "thud", "crack", "custom", "none")
+GROUND_SOUNDS = ("hiss", "crackle", "custom", "none")      # fountains and wheels
 # "Make your own" sounds, bfxr style: a wave, an envelope, pitch moves, filters and effects.
 SFX_WAVES = ("square", "saw", "triangle", "sine", "noise")
 SFX_NUMBERS = {
@@ -105,6 +106,9 @@ def sanitize(d: dict) -> dict:
         out["sfx_launch"] = _sfx(d.get("sfx_launch"))
     if out["sound_burst"] == "custom":
         out["sfx_burst"] = _sfx(d.get("sfx_burst"))
+    out["sound_ground"] = d.get("sound_ground") if d.get("sound_ground") in GROUND_SOUNDS else "hiss"
+    if out["sound_ground"] == "custom":
+        out["sfx_ground"] = _sfx(d.get("sfx_ground"))
     out["sound_crackle"] = d.get("sound_crackle", True) is not False
     out["sound_fizzle"] = bool(d.get("sound_fizzle", False))
     out["picture"] = _picture(d.get("picture"))
@@ -113,6 +117,40 @@ def sanitize(d: dict) -> dict:
     if out["pattern"] == "picture" and not any(c != "." for r in out["picture"] for c in r):
         out["pattern"] = "ball"            # an empty picture would launch nothing
     return out
+
+
+# ------------------------------------------------------------------ saved sounds
+# Sounds made in the editor can be saved with a name and used again in any firework.
+MAX_SOUNDS = 200
+MAX_SOUNDS_PER_USER = 40
+
+
+def sounds() -> list[dict]:
+    items = settings_store.load().get("sounds")
+    return [{**x, "sfx": _sfx(x.get("sfx"))} for x in (items if isinstance(items, list) else []) if isinstance(x, dict) and x.get("id")]
+
+
+def add_sound(name: str, sfx: dict, author: str) -> dict:
+    name = re.sub(r"\s+", " ", str(name or "")).strip()[:32] or "My sound"
+    with _lock:
+        items = sounds()
+        if len(items) >= MAX_SOUNDS:
+            raise ValueError("There are already too many saved sounds; delete some first")
+        if sum(1 for x in items if x.get("author") == author) >= MAX_SOUNDS_PER_USER:
+            raise ValueError(f"You can save up to {MAX_SOUNDS_PER_USER} sounds")
+        item = {"id": secrets.token_hex(5), "name": name, "author": author, "sfx": _sfx(sfx), "created": time.time()}
+        settings_store.save_section("sounds", [*items, item])
+    return item
+
+
+def delete_sound(sid: str, user: str, admin: bool) -> bool:
+    with _lock:
+        items = sounds()
+        keep = [x for x in items if not (x["id"] == sid and (admin or x.get("author") == user))]
+        if len(keep) == len(items):
+            return False
+        settings_store.save_section("sounds", keep)
+    return True
 
 
 def _sfx(p) -> dict:

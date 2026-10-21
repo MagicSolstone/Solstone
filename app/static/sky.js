@@ -172,8 +172,11 @@ function startSkyScene(cv, opts = {}) {
   let stars = [], land = null, groundY = 0, cardBox = null, hill = [], watcher = { x: 0, y: 0 };
   const rockets = [], sparks = [], figures = [], trees = [];
   const SPARK_SOFT = 2200, SPARK_HARD = 3600;        // effects thin out past these
-  // Sound: the page passes opts.sound(type, info); pan is -1 (left) to 1 (right).
-  const snd = (type, info = {}) => { try { opts.sound?.(type, { ...info, pan: info.x != null && W ? Math.max(-1, Math.min(1, (info.x / W) * 2 - 1)) : 0 }); } catch { /* sound is optional */ } };
+  // Sound: the page passes opts.sound(type, info); pan is -1 (left) to 1 (right). Every scene
+  // has its own sound channel, cut when the sky is cleared or stopped.
+  const soundBus = `sky${(window.__skySeq = (window.__skySeq || 0) + 1)}`;
+  const hush = () => { try { window.FWAudio?.silence(soundBus); } catch { /* sound is optional */ } };
+  const snd = (type, info = {}) => { try { opts.sound?.(type, { ...info, bus: soundBus, pan: info.x != null && W ? Math.max(-1, Math.min(1, (info.x / W) * 2 - 1)) : 0 }); } catch { /* sound is optional */ } };
   let boostUntil = 0;                                // a scheduled show or event: lively for a while
   const boosting = () => performance.now() < boostUntil;
 
@@ -382,7 +385,7 @@ function startSkyScene(cv, opts = {}) {
       fade: Math.random() < 0.35 ? pick(fwPalette()) : null, trail: Math.random() < 0.4, twinkle: Math.random() < 0.35 };
     if (shape === "dud") { r.vy *= 0.55; r.dud = true; r.colors = ["#8a8f98"]; }
     if (shape === "creeper") r.colors = ["#7dff5c", "#5fe04a"];
-    if (!at?.quiet) snd("launch", { x, style: shape === "dud" ? "whoosh" : Math.random() < 0.18 ? "whistle" : "whoosh" });
+    if (!at?.quiet) snd("launch", { x, style: "whoosh" });        // whistles are for fireworks made in the editor
     if (shape === "heart") r.colors = [pick(["#ff5a7a", "#ff8fc0", "#ff4f4f"])];
     rockets.push(r);
     return r;
@@ -620,7 +623,11 @@ function startSkyScene(cv, opts = {}) {
     const y = kind === "comet" ? 0 : surfaceAt(x);
     const e = { kind, d, x, y, t: 0, dur: Math.round(dv(d, "duration", 4) * 60), acc: 0, ang: 0, g: newGroup(d, x, y), ...extra };
     emitters.push(e);
-    if (kind !== "comet") snd("hiss", { x: kind === "sparkler" ? watcher.x : x, dur: e.dur / 60, soft: kind === "sparkler" });
+    const gs = d?.sound_ground || "hiss", sx = kind === "sparkler" ? watcher.x : x;
+    if (kind === "comet" || gs === "none") { /* silent */ }
+    else if (gs === "custom" && d.sfx_ground) snd("ground", { x: sx, dur: e.dur / 60, sfx: d.sfx_ground });
+    else if (gs === "crackle") snd("crackle", { x: sx, dur: Math.min(8, e.dur / 60) });
+    else snd("hiss", { x: sx, dur: e.dur / 60, soft: kind === "sparkler" });
     return e;
   }
   function updateEmitters() {
@@ -1224,6 +1231,7 @@ function startSkyScene(cv, opts = {}) {
   else step();
   return {
     stop() {
+      hush();
       stopped = true; running = false; ro?.disconnect(); clearTimeout(ambient); cancelAnimationFrame(raf); clearTimeout(timer);
       removeEventListener("resize", onResize); document.removeEventListener("visibilitychange", onVis);
     },
@@ -1260,7 +1268,10 @@ function startSkyScene(cv, opts = {}) {
     // Is anything still in the air (including stages and fountains still to come)?
     get busy() { return !!(rockets.length || sparks.length || figures.length || trees.length || emitters.length || events.length); },
     // Empty the sky at once (the editor uses this so previews never pile up).
+    // Cut this sky's sounds without touching what's on screen.
+    hush,
     clear() {
+      hush();
       rockets.length = 0; sparks.length = 0; figures.length = 0; trees.length = 0; emitters.length = 0; events.length = 0; groups.length = 0; runner = null;
       if (!running) { frame = 0; step(); }
     },

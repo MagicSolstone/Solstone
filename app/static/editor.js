@@ -13,7 +13,7 @@ const FWE_DEFAULT = {
   duration: 4, rate: 0.5, power: 0.8, angle: 0.3, wheel_spin: 0.6,
   sparkle: 0, trail: 0, glitter: 0, flash: 0.4, blink: 0, strobe: 0, breathe: 0, piece: 1, grow: 0, wobble: 0, fizzle: 0,
   second: 0, second_delay: 0.5, second_size: 0.6, in_show: true,
-  sound_launch: "whoosh", sound_burst: "boom", sound_crackle: true, sound_fizzle: false,
+  sound_launch: "whoosh", sound_burst: "boom", sound_ground: "hiss", sound_crackle: true, sound_fizzle: false,
 };
 const FWE_TABS = [["launch", "Launch"], ["shape", "Shape"], ["colours", "Colours"], ["then", "Then…"], ["motion", "Motion"], ["effects", "Effects"], ["sound", "Sound"]];
 const FWE_LAUNCHES = [["rocket", "Sky rocket", "🚀"], ["fountain", "Fountain", "⛲"], ["wheel", "Spinning wheel", "🎡"]];
@@ -143,14 +143,16 @@ async function viewFireworkEditor(editId) {
   curSid = null;
   document.title = "Firework editor · Solstone";
   $("#rail-servers").innerHTML = railHtml(null);
-  ed.list = await api("/api/fireworks").catch(() => []);
+  [ed.list, ed.sounds] = await Promise.all([api("/api/fireworks").catch(() => []), api("/api/sounds").catch(() => [])]);
   const found = editId && ed.list.find((x) => x.id === editId && x.can_edit);
   ed.d = found ? { ...fweCopy(FWE_DEFAULT), ...fweCopy(found) } : ed.d && !editId ? ed.d : fweCopy(FWE_DEFAULT);
   ed.id = found ? found.id : editId ? null : ed.id;
   ed.grids = {}; ed.frame = 1;
+  if (found || ed.base == null) fweMarkSaved();
   setView(`<div class="fwe-head"><h1>Fireworks</h1>
       <nav class="tabs" aria-label="Fireworks"><a href="#/fireworks" aria-current="page">Editor</a>${isAdmin() ? '<a href="#/fireworks/settings">Show settings</a>' : ""}</nav>
       <p class="muted">Design a firework, watch it go off, and save it. Fireworks marked <b>In the show</b> join the sky on every page of Solstone, including the sign-in and status pages.</p></div>
+    <div class="fwe-mode" id="fwe-mode" aria-live="polite"></div>
     <div class="fwe">
       <div class="fwe-left">
         <div class="fwe-preview glass"><canvas id="fwe-sky" aria-label="Preview sky"></canvas>
@@ -161,10 +163,7 @@ async function viewFireworkEditor(editId) {
         <form class="panel fwe-save" id="fwe-save" autocomplete="off">
           <label>Name<input class="input" name="name" maxlength="40" placeholder="My firework" value="${esc(ed.d.name || "")}"></label>
           <label class="check"><input type="checkbox" name="in_show" ${ed.d.in_show !== false ? "checked" : ""}> In the show</label>
-          <div class="btn-row"><button class="btn primary" type="submit">${ed.id ? "Save changes" : "Save"}</button>
-            ${ed.id ? `<button class="btn" type="button" id="fwe-saveas">Save as new</button>` : ""}
-            <button class="btn" type="button" id="fwe-new">Start over</button></div>
-          <p class="muted small" id="fwe-editing">${ed.id ? `Editing a saved firework.` : "Not saved yet."}</p>
+          <p class="muted small">Save, save as new or leave from the bar at the top.</p>
         </form>
         <section class="fwe-gallery"><div class="section-head"><h2>Saved fireworks</h2><span class="muted">${ed.list.length}</span></div><div id="fwe-list"></div></section>
       </div>
@@ -186,8 +185,19 @@ async function viewFireworkEditor(editId) {
     fweLaunch();
   });
   $("#fwe-surprise").addEventListener("click", () => { ed.d = { ...fweSurprise(), name: ed.d.name, in_show: ed.d.in_show }; ed.grids = {}; ed.frame = 1; renderControls(); fweLaunch(); });
-  $("#fwe-new").addEventListener("click", () => { ed.d = fweCopy(FWE_DEFAULT); ed.id = null; ed.grids = {}; ed.frame = 1; location.hash = "#/fireworks"; viewFireworkEditor(); });
-  $("#fwe-saveas")?.addEventListener("click", () => fweSave(true));
+  $("#fwe-mode").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-m]");
+    if (!b) return;
+    const m = b.dataset.m;
+    if (m === "save") fweSave(false);
+    else if (m === "saveas") fweSave(true);
+    else if (m === "exit" || m === "reset") {
+      if (fweDirty() && !(await confirmBox(m === "exit" ? "Leave without saving?" : "Start over?", m === "exit" ? "Your changes to this firework will be thrown away." : "What you've made so far will be cleared.", m === "exit" ? "Leave without saving" : "Start over"))) return;
+      fweNew();
+    }
+  });
+  renderMode();
+  every(700, renderMode);
   $("#fwe-save").addEventListener("submit", (e) => { e.preventDefault(); fweSave(false); });
   $("#fwe-save").addEventListener("input", (e) => {
     if (e.target.name === "name") ed.d.name = e.target.value;
@@ -205,9 +215,32 @@ async function viewFireworkEditor(editId) {
   setTimeout(() => fweLaunch(), 400);
 }
 
-// Every preview starts on a clear sky, so previews never pile up and slow things down.
+// What's being edited: a new firework, or a saved one (with or without unsaved changes).
+const fweSnap = (d) => JSON.stringify(d);
+function fweMarkSaved() { ed.base = fweSnap(ed.d); }
+function fweDirty() { return ed.base != null && fweSnap(ed.d) !== ed.base; }
+function fweNew() {
+  ed.d = fweCopy(FWE_DEFAULT); ed.id = null; ed.grids = {}; ed.frame = 1; ed.base = null;
+  if (location.hash !== "#/fireworks") location.hash = "#/fireworks"; else viewFireworkEditor();
+}
+function renderMode() {
+  const el = $("#fwe-mode");
+  if (!el) return;
+  const dirty = fweDirty(), name = (ed.d.name || "").trim() || "My firework";
+  document.querySelector(".fwe")?.classList.toggle("editing", !!ed.id);
+  const html = ed.id
+    ? `<div class="fwe-mode-bar editing"><span class="fwe-mode-what">✏️ Editing <b>“${esc(name)}”</b>${dirty ? ' <span class="fwe-dirty">● unsaved changes</span>' : ' <span class="muted">· no changes yet</span>'}</span>
+        <span class="fwe-mode-btns"><button class="btn primary" type="button" data-m="save" ${dirty ? "" : "disabled"}>Save changes</button>
+        <button class="btn" type="button" data-m="saveas">Save as new</button><button class="btn" type="button" data-m="exit">${dirty ? "Exit without saving" : "Done, make a new one"}</button></span></div>`
+    : `<div class="fwe-mode-bar"><span class="fwe-mode-what">✨ <b>New firework</b>${dirty ? ' <span class="fwe-dirty">● not saved yet</span>' : ""}</span>
+        <span class="fwe-mode-btns"><button class="btn primary" type="button" data-m="save">Save</button>${dirty ? `<button class="btn" type="button" data-m="reset">Start over</button>` : ""}</span></div>`;
+  if (el._html !== html) { el._html = html; el.innerHTML = html; }
+}
+// Every preview starts on a clear sky, so previews never pile up and slow things down,
+// and only the newest one makes sound.
 function fweLaunch(d = ed.d) {
   if (!ed.scene) return;
+  FWAudio.silence("sfx-preview");
   ed.scene.clear();
   ed.scene.launchDesign(fweCopy(d));
 }
@@ -259,12 +292,14 @@ function renderControls() {
     then: isRocket(d) ? sec("Then…", stagesHtml(d), "fwe-stages") : "",
     motion: sec("Motion", sliders("Motion")),
     effects: sec("Effects", sliders("Effects")),
-    sound: sec("Sound", `<div class="fwe-row"><span>Going up</span><div class="seg" role="group">${[["whoosh", "Whoosh"], ["whistle", "Whistle"], ["custom", "🎛 Make your own"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_launch" data-v="${k}" aria-pressed="${(d.sound_launch || "whoosh") === k}">${l}</button>`).join("")}</div></div>
+    sound: sec("Sound", `${isRocket(d) ? `<div class="fwe-row"><span>Going up</span><div class="seg" role="group">${[["whoosh", "Whoosh"], ["whistle", "Whistle"], ["custom", "🎛 Make your own"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_launch" data-v="${k}" aria-pressed="${(d.sound_launch || "whoosh") === k}">${l}</button>`).join("")}</div></div>
       ${d.sound_launch === "custom" ? sfxPanelHtml("launch") : ""}
       <div class="fwe-row"><span>The burst</span><div class="seg" role="group">${[["boom", "Boom"], ["pop", "Pop"], ["thud", "Thud"], ["crack", "Crack"], ["custom", "🎛 Make your own"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_burst" data-v="${k}" aria-pressed="${(d.sound_burst || "boom") === k}">${l}</button>`).join("")}</div></div>
       ${d.sound_burst === "custom" ? sfxPanelHtml("burst") : ""}
       <label class="check"><input type="checkbox" data-sndck="sound_crackle" ${d.sound_crackle !== false ? "checked" : ""}> Crackling (when it has crackle, glitter, strobe or bursts again)</label>
-      <label class="check"><input type="checkbox" data-sndck="sound_fizzle" ${d.sound_fizzle ? "checked" : ""}> Fizzle as it fades</label>
+      <label class="check"><input type="checkbox" data-sndck="sound_fizzle" ${d.sound_fizzle ? "checked" : ""}> Fizzle as it fades</label>`
+      : `<div class="fwe-row"><span>On the ground</span><div class="seg" role="group">${[["hiss", "Hiss"], ["crackle", "Crackle"], ["custom", "🎛 Make your own"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_ground" data-v="${k}" aria-pressed="${(d.sound_ground || "hiss") === k}">${l}</button>`).join("")}</div></div>
+      ${d.sound_ground === "custom" ? `<p class="muted small">Your sound repeats for as long as the ${d.launch === "wheel" ? "wheel spins" : "fountain runs"}.</p>${sfxPanelHtml("ground")}` : ""}`}
       <p class="muted small">Sounds play for people who turn them on with 🔊 (here, or in the corner of any page). While you're in the editor only this preview makes sound.</p>`),
   };
   const tabs = FWE_TABS.filter(([k]) => panels[k]);
@@ -275,9 +310,9 @@ function renderControls() {
   el.querySelectorAll("[data-snd]").forEach((b) => b.addEventListener("click", () => {
     d[b.dataset.snd] = b.dataset.v;
     if (b.dataset.v === "custom") {                 // start from something that sounds right for the slot
-      const slot = b.dataset.snd === "sound_launch" ? "launch" : "burst";
-      d[`sfx_${slot}`] ||= SFX_MAKERS[slot === "launch" ? "whoosh" : "boom"]();
-      renderControls(); FWAudio.preview(d[`sfx_${slot}`]); return;
+      const slot = b.dataset.snd.replace("sound_", "");
+      d[`sfx_${slot}`] ||= SFX_MAKERS[{ launch: "whoosh", burst: "boom", ground: "crackle" }[slot]]();
+      renderControls(); ed.scene?.hush(); FWAudio.preview(d[`sfx_${slot}`]); return;
     }
     renderControls(); if (!FWAudio.on) showToast("Turn on 🔊 to hear it", 2000); fweLaunch();
   }));
@@ -463,7 +498,7 @@ async function fweSave(asNew) {
   const body = { ...ed.d, name: (ed.d.name || "").trim() || "My firework" };
   try {
     const saved = ed.id && !asNew ? await post(`/api/fireworks/${ed.id}`, body, "PUT") : await post("/api/fireworks", body);
-    ed.id = saved.id; ed.d = { ...fweCopy(FWE_DEFAULT), ...saved };
+    ed.id = saved.id; ed.d = { ...fweCopy(FWE_DEFAULT), ...saved }; fweMarkSaved();
     showToast(`Saved “${esc(saved.name)}”${saved.in_show ? " · it's in the show" : ""}`, 2500);
     await fweRefresh();
     location.hash = `#/fireworks/${saved.id}`;
@@ -492,8 +527,15 @@ function renderGallery() {
   el.querySelectorAll(".fwe-card").forEach((card) => {
     const f = ed.list.find((x) => x.id === card.dataset.id);
     card.querySelector('[data-act="play"]').addEventListener("click", () => fweLaunch({ ...FWE_DEFAULT, ...f }));
+    card.querySelector('a.btn[href^="#/fireworks/"]')?.addEventListener("click", async (e) => {
+      if (!fweDirty() || f.id === ed.id) return;
+      e.preventDefault();
+      if (await confirmBox(`Edit “${f.name}” instead?`, "What you're working on now hasn't been saved and will be thrown away.", "Throw it away")) {
+        ed.base = null; location.hash = `#/fireworks/${f.id}`;
+      }
+    });
     card.querySelector('[data-act="copy"]')?.addEventListener("click", () => {
-      ed.d = { ...fweCopy(FWE_DEFAULT), ...fweCopy(f), name: `${f.name} (copy)` }; ed.id = null; ed.grids = {}; ed.frame = 1;
+      ed.d = { ...fweCopy(FWE_DEFAULT), ...fweCopy(f), name: `${f.name} (copy)` }; ed.id = null; ed.grids = {}; ed.frame = 1; ed.base = fweSnap(fweCopy(FWE_DEFAULT));
       location.hash = "#/fireworks"; viewFireworkEditor();
     });
     card.querySelector('[data-act="show"]')?.addEventListener("change", async (e) => {
@@ -504,7 +546,7 @@ function renderGallery() {
       if (!(await confirmBox(`Delete “${f.name}”?`, "It will stop appearing in the show.", "Delete"))) return;
       try {
         await api(`/api/fireworks/${f.id}`, { method: "DELETE" });
-        if (ed.id === f.id) { ed.id = null; }
+        if (ed.id === f.id) { ed.id = null; ed.base = fweSnap(fweCopy(FWE_DEFAULT)); }
         await fweRefresh();
       } catch (err) { showToast(esc(err.message), 4000); }
     });
@@ -592,6 +634,11 @@ function sfxPanelHtml(slot) {
   return `<div class="sfx" data-slot="${slot}">
     <div class="sfx-top"><canvas class="sfx-wave" aria-label="What the sound looks like"></canvas>
       <div class="sfx-play"><button class="btn primary" type="button" data-sfx-play>▶ Play</button><span class="muted small" data-sfx-len></span></div></div>
+    <div class="sfx-lib">
+      <select class="input sm" data-sfx-lib aria-label="Saved sounds"><option value="">📂 Saved sounds (${(ed.sounds || []).length})…</option>${(ed.sounds || []).map((x) => `<option value="${esc(x.id)}">${esc(x.name)} · ${esc(x.author)}</option>`).join("")}</select>
+      <input class="input sm" data-sfx-name maxlength="32" placeholder="Name this sound" aria-label="Name for this sound">
+      <button class="btn sm" type="button" data-sfx-save>💾 Save sound</button>
+      <button class="btn sm danger" type="button" data-sfx-del hidden>Delete saved</button></div>
     <div class="sfx-makers" role="group" aria-label="Start from">${SFX_MAKER_BTNS.map(([k, l]) => `<button type="button" class="btn sm" data-sfx-make="${k}">${l}</button>`).join("")}
       <button type="button" class="btn sm" data-sfx-mutate title="Nudge everything a little">🧬 Mutate</button></div>
     <div class="fwe-row"><span>Wave</span><div class="seg" role="group">${SFX_WAVE_BTNS.map(([k, l]) => `<button type="button" data-sfx-wave="${k}" aria-pressed="${p.wave === k}">${l}</button>`).join("")}</div></div>
@@ -602,12 +649,37 @@ function wireSfx(root) {
   root.querySelectorAll(".sfx").forEach((box) => {
     const slot = box.dataset.slot, key = `sfx_${slot}`;
     const p = () => (ed.d[key] = { ...SFX_DEFAULT, ...ed.d[key] });
-    const play = () => FWAudio.preview(p());
+    const play = () => { ed.scene?.hush(); FWAudio.preview(p()); };      // only this sound, nothing else
     const redraw = () => sfxDraw(box, p());
     const rebuild = (hear = true) => { renderControls(); if (hear) play(); };
     box.querySelector("[data-sfx-play]").addEventListener("click", play);
     box.querySelectorAll("[data-sfx-make]").forEach((b) => b.addEventListener("click", () => { ed.d[key] = SFX_MAKERS[b.dataset.sfxMake](); rebuild(); }));
     box.querySelector("[data-sfx-mutate]").addEventListener("click", () => { ed.d[key] = sfxMutate(p()); rebuild(); });
+    const lib = box.querySelector("[data-sfx-lib]"), del = box.querySelector("[data-sfx-del]");
+    lib.addEventListener("change", () => {
+      const x = (ed.sounds || []).find((o) => o.id === lib.value);
+      del.hidden = !x?.can_delete;
+      if (!x) return;
+      ed.d[key] = { ...x.sfx };
+      const keep = lib.value; rebuild(); const again = $(`.sfx[data-slot="${slot}"] [data-sfx-lib]`); if (again) { again.value = keep; again.dispatchEvent(new Event("pick")); }
+    });
+    lib.addEventListener("pick", () => { const x = (ed.sounds || []).find((o) => o.id === lib.value); del.hidden = !x?.can_delete; });
+    box.querySelector("[data-sfx-save]").addEventListener("click", async () => {
+      const name = box.querySelector("[data-sfx-name]").value.trim();
+      if (!name) { showToast("Give the sound a name first", 2500); box.querySelector("[data-sfx-name]").focus(); return; }
+      try {
+        await post("/api/sounds", { name, sfx: p() });
+        ed.sounds = await api("/api/sounds");
+        showToast(`Saved “${esc(name)}”. It's in Saved sounds for every firework now.`, 3000);
+        renderControls();
+      } catch (err) { showToast(esc(err.message), 4000); }
+    });
+    del.addEventListener("click", async () => {
+      const x = (ed.sounds || []).find((o) => o.id === lib.value);
+      if (!x || !(await confirmBox(`Delete the sound “${x.name}”?`, "Fireworks already using it keep their own copy.", "Delete"))) return;
+      try { await api(`/api/sounds/${x.id}`, { method: "DELETE" }); ed.sounds = await api("/api/sounds"); renderControls(); }
+      catch (err) { showToast(esc(err.message), 4000); }
+    });
     box.querySelectorAll("[data-sfx-wave]").forEach((b) => b.addEventListener("click", () => { p().wave = b.dataset.sfxWave; rebuild(); }));
     box.querySelectorAll("[data-sfx]").forEach((inp) => {
       const k = inp.dataset.sfx, fmt = SFX_GROUPS.flatMap(([, l]) => l).find((x) => x[0] === k)[2];

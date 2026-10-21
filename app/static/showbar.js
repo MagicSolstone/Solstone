@@ -12,7 +12,7 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } ca
 
 // ================================================================ firework sounds
 const FWAudio = {
-  ctx: null, out: null, noise: null, solo: false, on: lsGet("solstone-fw-sound", false), volume: lsGet("solstone-fw-volume", 0.7), recent: {},
+  ctx: null, out: null, noise: null, solo: false, buses: {}, dest: null, on: lsGet("solstone-fw-sound", false), volume: lsGet("solstone-fw-volume", 0.7), recent: {},
   ensure() {
     if (!this.ctx) {
       const C = window.AudioContext || window.webkitAudioContext;
@@ -44,8 +44,9 @@ const FWAudio = {
   chain(pan, t0) {
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(0, t0);
-    if (this.ctx.createStereoPanner) { const p = this.ctx.createStereoPanner(); p.pan.value = pan * 0.8; g.connect(p).connect(this.out); }
-    else g.connect(this.out);
+    const out = this.dest || this.out;
+    if (this.ctx.createStereoPanner) { const p = this.ctx.createStereoPanner(); p.pan.value = pan * 0.8; g.connect(p).connect(out); }
+    else g.connect(out);
     return g;
   },
   noiseSrc(t0, dur, rate = 1) {
@@ -55,13 +56,35 @@ const FWAudio = {
     return s;
   },
   filter(type, freq, q = 0.8) { const f = this.ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q; return f; },
+  // Each sky has its own channel. Cutting it silences everything it started at once,
+  // including sounds already scheduled for later (a fountain's hiss, an echo).
+  bus(id) {
+    if (!id) return this.out;
+    if (!this.buses[id]) { const g = this.ctx.createGain(); g.connect(this.out); this.buses[id] = g; }
+    return this.buses[id];
+  },
+  silence(id) {
+    const g = this.buses[id];
+    if (!g) return;
+    delete this.buses[id];
+    try { g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.015); setTimeout(() => g.disconnect(), 120); } catch { g.disconnect(); }
+  },
   play(type, info = {}) {
     if (!this.on || document.hidden || !this.ensure()) return;
+    this.dest = this.bus(info.bus);
+    try { this.playNow(type, info); } finally { this.dest = null; }
+  },
+  playNow(type, info) {
     if (this.solo && !info.solo) return;            // the firework editor: only the preview makes sound
-    const budget = { thunder: [1, 4000], launch: [5, 600], burst: [6, 500], crackle: [3, 900], fizzle: [3, 800], hiss: [3, 1500] }[type] || [4, 500];
+    const budget = { thunder: [1, 4000], launch: [5, 600], burst: [6, 500], crackle: [3, 900], fizzle: [3, 800], hiss: [3, 1500], ground: [3, 1500] }[type] || [4, 500];
     if (!this.allow(type, ...budget)) return;
     const ctx = this.ctx, t0 = ctx.currentTime + (info.delay || 0) + 0.01, pan = info.pan || 0;
-    if (info.sfx) { sfxPlay(ctx, this.out, this.noise, info.sfx, t0, pan, type === "launch" ? 0.7 : Math.min(1.3, 0.7 + (info.size || 1) * 0.25)); return; }
+    if (info.sfx && type === "ground") {          // a made-up sound, repeated while a fountain or wheel runs
+      const one = Math.max(0.12, sfxLength({ ...info.sfx, echo: 0 }) * 0.9), dur = Math.min(12, info.dur || 4);
+      for (let t = 0, n = 0; t < dur && n < 40; t += one, n++) sfxPlay(ctx, this.dest, this.noise, info.sfx, t0 + t, pan, 0.6);
+      return;
+    }
+    if (info.sfx) { sfxPlay(ctx, this.dest, this.noise, info.sfx, t0, pan, type === "launch" ? 0.7 : Math.min(1.3, 0.7 + (info.size || 1) * 0.25)); return; }
     if (type === "launch" && info.style === "whistle") {
       const o = ctx.createOscillator(), g = this.chain(pan, t0);
       o.type = "triangle"; o.frequency.setValueAtTime(900, t0); o.frequency.exponentialRampToValueAtTime(2600, t0 + 1.1);
@@ -204,7 +227,8 @@ function sfxVoice(ctx, dest, noise, p, ts, dur, level) {
 // The editor's ▶: play one sound now (even with sounds off, because someone asked).
 FWAudio.preview = function (p) {
   if (!this.ensure()) return;
-  sfxPlay(this.ctx, this.out, this.noise, p, this.ctx.currentTime + 0.02, 0, 1);
+  this.silence("sfx-preview");
+  sfxPlay(this.ctx, this.bus("sfx-preview"), this.noise, p, this.ctx.currentTime + 0.02, 0, 1);
 };
 // Draw what a sound looks like (rendered offline, so nothing plays).
 async function sfxRender(p, sampleRate = 11025) {

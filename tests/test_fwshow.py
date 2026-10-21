@@ -161,3 +161,21 @@ def test_custom_sounds_are_cleaned(client):
     r = client.post("/api/fireworks", json={"name": "Synth", "sound_burst": "custom", "sfx_burst": {"wave": "square", "duty": 0.25}}).json()
     assert r["sfx_burst"]["wave"] == "square" and r["sfx_burst"]["duty"] == 0.25
     client.delete(f"/api/fireworks/{r['id']}")
+
+
+def test_ground_sounds_and_sound_library(client, viewer, anon):
+    from app import fireworks
+    g = fireworks.sanitize({"launch": "fountain", "sound_ground": "custom", "sfx_ground": {"wave": "sine", "repeat": 2}})
+    assert g["sound_ground"] == "custom" and g["sfx_ground"]["wave"] == "sine"
+    assert fireworks.sanitize({"sound_ground": "kazoo"})["sound_ground"] == "hiss"
+    assert anon.get("/api/sounds").status_code == 401
+    s = viewer.post("/api/sounds", json={"name": "  Big   boom ", "sfx": {"wave": "noise", "decay": 9}}).json()
+    assert s["name"] == "Big boom" and s["author"] == "kiddo" and s["sfx"]["decay"] <= 3
+    listed = client.get("/api/sounds").json()
+    assert any(x["id"] == s["id"] and x["can_delete"] for x in listed)                      # admins can remove anyone's
+    assert not next(x for x in viewer.get("/api/sounds").json() if x["id"] == s["id"])["can_delete"] is False
+    other = client.post("/api/sounds", json={"name": "Admin's", "sfx": {}}).json()
+    assert viewer.delete(f"/api/sounds/{other['id']}").status_code == 404                     # not theirs
+    assert viewer.delete(f"/api/sounds/{s['id']}").json() == {"ok": True}
+    assert client.delete(f"/api/sounds/{other['id']}").json() == {"ok": True}
+    assert client.get("/api/sounds").json() == []

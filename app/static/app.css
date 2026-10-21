@@ -1151,3 +1151,16 @@ body:not(.tv) .tv-stage, body:not(.tv) .tv-dots { display: none; }
 .pv-foot { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 .pv-foot .muted { flex: 1; }
 @media (max-width: 640px) { .pv { padding: 8px; } .pv-box { padding: 12px; } .pv-stage { height: 55vh; } .pv-foot .muted { display: none; } }
+
+/* editor: new firework vs editing a saved one */
+.fwe-mode { margin: 0 0 14px; }
+.fwe-mode-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px 16px; padding: 10px 14px;
+  border-radius: 12px; border: 1px solid var(--glass-edge); background: rgba(20, 25, 40, .6); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); }
+.fwe-mode-bar.editing { border-color: var(--gold); background: linear-gradient(90deg, rgba(120, 86, 20, .45), rgba(20, 25, 40, .6)); box-shadow: 0 0 0 1px rgba(242, 193, 78, .25); }
+.fwe-mode-what { font-size: 1.05rem; }
+.fwe-dirty { color: var(--gold); font-weight: 700; font-size: .92rem; }
+.fwe-mode-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.fwe.editing .fwe-preview { box-shadow: 0 0 0 2px rgba(242, 193, 78, .55); }
+.sfx-lib { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sfx-lib select { flex: 1 1 180px; min-width: 0; }
+.sfx-lib input { flex: 1 1 140px; min-width: 0; }
