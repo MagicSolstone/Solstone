@@ -294,42 +294,119 @@ function sfxMutate(p) {
 }
 
 // ================================================================ music player
+// The music keeps its place: the track and position are saved every second, so a reload or
+// another Solstone page picks up where it left off. Only one tab plays at a time. With the
+// browser's go-ahead (any click) it runs through an equalizer and a little visualizer.
+const MUSIC_EQ = {
+  flat: ["Flat", 0, 0, 0, 0], bass: ["Bass boost", 8, 0, -1, 0], warm: ["Warm", 4, -1, -4, 0.1], bright: ["Bright", -1, 1, 6, 0],
+  vocal: ["Voices", -3, 5, 2, 0], lofi: ["Lo-fi", 3, -2, -10, 0.12], radio: ["Old radio", -10, 6, -8, 0], hall: ["Big hall", 1, 0, 1, 0.5],
+};
 const FWMusic = {
-  audio: null, tracks: [], idx: lsGet("solstone-music-idx", 0), shuffle: lsGet("solstone-music-shuffle", false),
-  volume: lsGet("solstone-music-volume", 0.5), loaded: false, onchange: () => {},
+  audio: null, tracks: [], idx: 0, shuffle: lsGet("solstone-music-shuffle", false),
+  volume: lsGet("solstone-music-volume", 0.5), muted: lsGet("solstone-music-muted", false), loaded: false,
+  eq: { preset: "flat", bass: 0, mid: 0, treble: 0, space: 0, ...lsGet("solstone-music-eq", {}) },
+  graph: null, pendingSeek: null, waiting: false, listeners: new Set(), lastSave: 0,
+  tab: Math.random().toString(36).slice(2), channel: "BroadcastChannel" in window ? new BroadcastChannel("solstone-music") : null,
+  on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); },
+  emit(what = "state") { this.listeners.forEach((fn) => { try { fn(what); } catch { /* a view went away */ } }); },
+  set onchange(fn) { this.on(fn); },
   async load() {
     try { const r = await fetch("/api/public/music", { credentials: "same-origin" }); this.tracks = r.ok ? await r.json() : []; } catch { this.tracks = []; }
     this.loaded = true;
-    if (this.idx >= this.tracks.length) this.idx = 0;
-    this.onchange();
+    const saved = lsGet("solstone-music-state", null);
+    const at = saved ? this.tracks.findIndex((t) => t.id === saved.id) : -1;
+    this.idx = at >= 0 ? at : Math.min(lsGet("solstone-music-idx", 0), Math.max(0, this.tracks.length - 1));
+    if (at >= 0 && saved.t > 0) this.pendingSeek = saved.t;
+    if (this.tracks.length) { this.el(); this.setSrc(); }        // loads just the length, so the bar can show it
+    if (!this.listening) this.listening = true, this.channel?.addEventListener("message", (e) => { if (e.data?.playing && e.data.playing !== this.tab && this.playing) { this.audio.pause(); this.emit(); } });
+    this.emit();
   },
   el() {
     if (!this.audio) {
-      this.audio = new Audio();
-      this.audio.preload = "none";
-      this.audio.volume = this.volume;
-      this.audio.addEventListener("ended", () => this.next());
-      ["play", "pause", "error"].forEach((e) => this.audio.addEventListener(e, () => this.onchange()));
+      const a = this.audio = new Audio();
+      a.preload = "metadata";
+      a.addEventListener("ended", () => this.next());
+      ["play", "pause", "error"].forEach((e) => a.addEventListener(e, () => { this.save(); this.emit(); }));
+      a.addEventListener("loadedmetadata", () => {
+        if (this.pendingSeek != null && this.pendingSeek < a.duration - 1) a.currentTime = this.pendingSeek;
+        this.pendingSeek = null; this.emit("time");
+      });
+      a.addEventListener("timeupdate", () => { this.emit("time"); if (Date.now() - this.lastSave > 1000) this.save(); });
+      addEventListener("pagehide", () => this.save());
+      this.applyVolume();
     }
     return this.audio;
   },
+  setSrc() {
+    const url = `/api/public/music/${encodeURIComponent(this.current.id)}`;
+    if (!this.audio.src.endsWith(url)) this.audio.src = url;
+  },
+  save() {
+    if (!this.audio || !this.current) return;
+    this.lastSave = Date.now();
+    lsSet("solstone-music-state", { id: this.current.id, t: Math.round(this.audio.currentTime * 10) / 10, playing: this.playing });
+  },
+  // The equalizer needs the page's audio engine, which a browser only starts after a click.
+  wire() {
+    if (this.graph || !this.audio || !FWAudio.ensure() || FWAudio.ctx.state !== "running") return;
+    const ctx = FWAudio.ctx, src = ctx.createMediaElementSource(this.audio);
+    const f = (type, freq, q) => { const n = ctx.createBiquadFilter(); n.type = type; n.frequency.value = freq; if (q) n.Q.value = q; return n; };
+    const bass = f("lowshelf", 180), mid = f("peaking", 1200, 0.8), treble = f("highshelf", 4200);
+    const gain = ctx.createGain(), dry = ctx.createGain(), wet = ctx.createGain(), conv = ctx.createConvolver(), an = ctx.createAnalyser();
+    const len = Math.round(ctx.sampleRate * 2.4), ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2.6; }
+    conv.buffer = ir; an.fftSize = 128; an.smoothingTimeConstant = 0.75;
+    src.connect(bass).connect(mid).connect(treble);
+    treble.connect(dry).connect(gain); treble.connect(conv).connect(wet).connect(gain);
+    gain.connect(an); gain.connect(ctx.destination);
+    this.graph = { bass, mid, treble, gain, dry, wet, an };
+    this.audio.volume = 1;
+    this.applyEq(); this.applyVolume();
+    this.emit();
+  },
+  applyEq() {
+    lsSet("solstone-music-eq", this.eq);
+    const g = this.graph;
+    if (!g) return;
+    g.bass.gain.value = this.eq.bass; g.mid.gain.value = this.eq.mid; g.treble.gain.value = this.eq.treble;
+    g.wet.gain.value = this.eq.space * 0.9; g.dry.gain.value = 1 - this.eq.space * 0.4;
+  },
+  setPreset(k) { const p = MUSIC_EQ[k]; if (!p) return; Object.assign(this.eq, { preset: k, bass: p[1], mid: p[2], treble: p[3], space: p[4] }); this.applyEq(); this.emit(); },
+  applyVolume() {
+    const v = this.muted ? 0 : this.volume;
+    if (this.graph) { this.graph.gain.gain.value = v; this.audio.volume = 1; }
+    else if (this.audio) this.audio.volume = v;
+  },
   get playing() { return !!this.audio && !this.audio.paused; },
   get current() { return this.tracks[this.idx]; },
+  get time() { return this.audio?.currentTime || this.pendingSeek || 0; },
+  get duration() { const d = this.audio?.duration; return Number.isFinite(d) ? d : this.current?.duration || 0; },
   play(i = this.idx) {
     if (!this.tracks.length) return;
+    const changed = i !== this.idx;
     this.idx = (i + this.tracks.length) % this.tracks.length; lsSet("solstone-music-idx", this.idx);
-    const a = this.el(), url = `/api/public/music/${encodeURIComponent(this.current.id)}`;
-    if (!a.src.endsWith(url)) a.src = url;
-    a.play().catch(() => {});
-    lsSet("solstone-music-on", true);
-    this.onchange();
+    if (changed) this.pendingSeek = null;
+    this.el(); this.setSrc(); this.wire();
+    this.waiting = false;
+    this.channel?.postMessage({ playing: this.tab });
+    this.audio.play().catch((e) => { if (e?.name === "NotAllowedError") this.waitForClick(); });
+    this.emit();
   },
-  pause() { this.audio?.pause(); lsSet("solstone-music-on", false); this.onchange(); },
-  toggle() { this.playing ? this.pause() : this.play(); },
+  // A reload can't start sound by itself; carry on at the first click or key press.
+  waitForClick() {
+    if (this.waiting) return;
+    this.waiting = true; this.emit();
+    const go = () => { document.removeEventListener("pointerdown", go, true); document.removeEventListener("keydown", go, true); if (this.waiting) this.play(); };
+    document.addEventListener("pointerdown", go, true); document.addEventListener("keydown", go, true);
+  },
+  pause() { this.waiting = false; this.audio?.pause(); this.save(); this.emit(); },
+  toggle() { this.playing || this.waiting ? this.pause() : this.play(); },
   next() { this.play(this.shuffle && this.tracks.length > 2 ? this.idx + 1 + Math.floor(Math.random() * (this.tracks.length - 1)) : this.idx + 1); },
   prev() { if (this.audio && this.audio.currentTime > 4) { this.audio.currentTime = 0; return; } this.play(this.idx - 1); },
-  setVolume(v) { this.volume = v; lsSet("solstone-music-volume", v); if (this.audio) this.audio.volume = v; },
-  stop() { if (this.audio) { this.audio.pause(); this.audio.removeAttribute("src"); this.audio.load(); } this.onchange(); },
+  seek(t) { if (!this.audio) return; if (this.audio.readyState >= 1) this.audio.currentTime = t; else this.pendingSeek = t; this.save(); this.emit("time"); },
+  setVolume(v) { this.volume = v; lsSet("solstone-music-volume", v); if (v > 0 && this.muted) this.setMuted(false); this.applyVolume(); this.emit("volume"); },
+  setMuted(m) { this.muted = m; lsSet("solstone-music-muted", m); this.applyVolume(); this.emit("volume"); },
+  stop() { if (this.audio) { this.save(); this.audio.pause(); lsSet("solstone-music-state", { ...lsGet("solstone-music-state", {}), playing: false }); } this.emit(); },
 };
 
 // ================================================================ the bar
@@ -338,89 +415,222 @@ const FWMusic = {
 function startShowBar(scene, opts = {}) {
   const els = [];
   const cleanup = [];
+  let musicChanged = () => {};
   if (opts.controls !== false) {
     let on = lsGet(opts.key || "solstone-sky", null);
     if (on == null) on = !!opts.defaultOn && !matchMedia("(prefers-reduced-motion: reduce)").matches;
     scene.setAuto(on);
+    // The sky's controls: in the page's sidebar when there is one (opts.dock), otherwise
+    // floating in the corner. The floating set also appears while the page is hidden.
+    const ctlHtml = (docked) => `<button type="button" class="sky-launch" data-sky="launch" title="Launch a firework" aria-label="Launch a firework">🎆${docked ? "<span>Launch</span>" : ""}</button>
+      <button type="button" class="sky-auto" data-sky="auto" aria-pressed="${on}" title="Keep launching fireworks"><span class="sky-sw"></span><span>Show</span></button>
+      <button type="button" class="sky-sound" data-sky="volume" title="Sound and music volume" aria-label="Sound and music volume" aria-haspopup="dialog">${FWAudio.on ? "🔊" : "🔇"}${docked ? "<span>Sound</span>" : ""}</button>
+      ${opts.hide ? `<button type="button" class="sky-hide" data-sky="hide" title="Hide the page and just watch (Esc to come back)" aria-label="Hide the page">👁${docked ? "<span>Watch</span>" : ""}</button>` : ""}`;
     const box = document.createElement("div");
-    box.className = "sky-ctl glass";
-    box.innerHTML = `<button type="button" class="sky-launch" title="Launch a firework" aria-label="Launch a firework">🎆</button>
-      <button type="button" class="sky-auto" aria-pressed="${on}" title="Keep launching fireworks"><span class="sky-sw"></span><span>Show</span></button>
-      <button type="button" class="sky-sound" aria-pressed="${FWAudio.on}" title="Firework sounds" aria-label="Firework sounds">${FWAudio.on ? "🔊" : "🔇"}</button>
-      <button type="button" class="sky-music" title="Music" aria-label="Music" hidden>🎵</button>
-      ${opts.hide ? `<button type="button" class="sky-hide" title="Hide the page and just watch (Esc to come back)" aria-label="Hide the page">👁</button>` : ""}`;
+    box.className = `sky-ctl glass${opts.dock ? " has-dock" : ""}`;
+    box.innerHTML = ctlHtml(false);
     document.body.append(box); els.push(box);
-    const pop = document.createElement("div");
-    pop.className = "music-pop glass"; pop.hidden = true;
-    document.body.append(pop); els.push(pop);
-
-    const autoBtn = box.querySelector(".sky-auto"), soundBtn = box.querySelector(".sky-sound"), musicBtn = box.querySelector(".sky-music");
-    box.querySelector(".sky-launch").addEventListener("click", () => { FWAudio.on && FWAudio.ensure(); scene.launch(); });
-    autoBtn.addEventListener("click", () => { on = !on; scene.setAuto(on); autoBtn.setAttribute("aria-pressed", String(on)); lsSet(opts.key || "solstone-sky", on); });
-    soundBtn.addEventListener("click", () => {
-      FWAudio.setOn(!FWAudio.on);
-      soundBtn.setAttribute("aria-pressed", String(FWAudio.on)); soundBtn.textContent = FWAudio.on ? "🔊" : "🔇";
-      if (FWAudio.on) scene.launch();                // a firework so you hear it straight away
+    const holders = [box];
+    if (opts.dock) { opts.dock.innerHTML = `<div class="sky-dock" role="group" aria-label="Fireworks and sound">${ctlHtml(true)}</div>`; holders.push(opts.dock); cleanup.push(() => { opts.dock.innerHTML = ""; }); }
+    const sync = () => holders.forEach((h) => {
+      h.querySelectorAll('[data-sky="auto"]').forEach((b) => b.setAttribute("aria-pressed", String(on)));
+      h.querySelectorAll('[data-sky="volume"]').forEach((b) => { b.firstChild.textContent = FWAudio.on || FWMusic.playing ? (FWAudio.on ? "🔊" : "🎵") : "🔇"; });
     });
 
-    // ---- music
+    // ---- one popover for volume, the playlist and the equalizer
+    const pop = document.createElement("div");
+    pop.className = "music-pop glass"; pop.hidden = true; pop.setAttribute("role", "dialog");
+    document.body.append(pop); els.push(pop);
+    let popMode = null, popAnchor = null;
+    const fmt = (t) => { t = Math.max(0, Math.floor(t || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+    const pct = (v) => `${Math.round(v * 100)}%`;
     const renderPop = () => {
-      const t = FWMusic.current;
-      pop.innerHTML = !FWMusic.tracks.length
-        ? `<p class="muted small">No music yet.${typeof me !== "undefined" && me.user?.role === "admin" ? ` Add some under <a href="#/fireworks/settings">Firework settings → Music</a>.` : ""}</p>`
-        : `<div class="mp-now"><b>${esc(t?.title || "")}</b><span class="muted small">${FWMusic.idx + 1} of ${FWMusic.tracks.length}</span></div>
-          <div class="mp-ctl"><button type="button" data-mp="prev" aria-label="Previous">⏮</button>
-            <button type="button" data-mp="toggle" class="mp-play" aria-label="${FWMusic.playing ? "Pause" : "Play"}">${FWMusic.playing ? "⏸" : "▶"}</button>
-            <button type="button" data-mp="next" aria-label="Next">⏭</button>
-            <button type="button" data-mp="shuffle" aria-pressed="${FWMusic.shuffle}" title="Shuffle" aria-label="Shuffle">🔀</button></div>
-          <label class="mp-vol">🔈<input type="range" min="0" max="1" step="0.05" value="${FWMusic.volume}" data-mp-vol aria-label="Music volume"></label>
-          <label class="mp-vol">💥<input type="range" min="0" max="1" step="0.05" value="${FWAudio.volume}" data-fx-vol aria-label="Firework sound volume"></label>
-          <ol class="mp-list">${FWMusic.tracks.map((x, i) => `<li><button type="button" data-mp-i="${i}" ${i === FWMusic.idx ? 'aria-current="true"' : ""}>${esc(x.title)}</button></li>`).join("")}</ol>`;
-      musicBtn.classList.toggle("playing", FWMusic.playing);
+      if (pop.hidden) return;
+      if (popMode === "volume") {
+        pop.setAttribute("aria-label", "Volume");
+        pop.innerHTML = `<h4>Volume</h4>
+          <div class="vol-row"><button type="button" data-vol-mute="fx" aria-pressed="${!FWAudio.on}" title="${FWAudio.on ? "Mute" : "Turn on"} firework sounds">${FWAudio.on ? "💥" : "🔇"}</button>
+            <span>Firework sounds</span><input type="range" min="0" max="1" step="0.05" value="${FWAudio.volume}" data-vol="fx" aria-label="Firework sound volume" ${FWAudio.on ? "" : "disabled"}><b>${FWAudio.on ? pct(FWAudio.volume) : "Off"}</b></div>
+          ${FW.music && FWMusic.tracks.length ? `<div class="vol-row"><button type="button" data-vol-mute="music" aria-pressed="${FWMusic.muted}" title="${FWMusic.muted ? "Unmute" : "Mute"} music">${FWMusic.muted ? "🔇" : "🎵"}</button>
+            <span>Music</span><input type="range" min="0" max="1" step="0.05" value="${FWMusic.volume}" data-vol="music" aria-label="Music volume"><b>${FWMusic.muted ? "Muted" : pct(FWMusic.volume)}</b></div>` : ""}
+          <p class="muted small">The firework editor and the preview window have their own sound switches.</p>`;
+      } else if (popMode === "list") {
+        pop.setAttribute("aria-label", "Playlist");
+        pop.innerHTML = `<h4>Playlist <span class="muted small">${FWMusic.tracks.length} tracks</span></h4>
+          <ol class="mp-list">${FWMusic.tracks.map((x, i) => `<li><button type="button" data-mp-i="${i}" ${i === FWMusic.idx ? 'aria-current="true"' : ""}>${i === FWMusic.idx && FWMusic.playing ? "♪ " : ""}${esc(x.title)}</button></li>`).join("")}</ol>`;
+      } else if (popMode === "eq") {
+        pop.setAttribute("aria-label", "Equalizer");
+        const eq = FWMusic.eq, row = (k, label, min, max, step, show) => `<label class="eq-row"><span>${label}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${eq[k]}" data-eq="${k}"><b>${show(eq[k])}</b></label>`;
+        const db = (v) => `${v > 0 ? "+" : ""}${Math.round(v)} dB`;
+        pop.innerHTML = `<h4>Equalizer</h4>
+          <div class="eq-presets">${Object.entries(MUSIC_EQ).map(([k, p]) => `<button type="button" class="btn sm" data-eq-preset="${k}" aria-pressed="${eq.preset === k}">${p[0]}</button>`).join("")}</div>
+          ${row("bass", "Bass", -12, 12, 1, db)}${row("mid", "Middle", -12, 12, 1, db)}${row("treble", "Treble", -12, 12, 1, db)}${row("space", "Room echo", 0, 1, 0.05, pct)}
+          ${FWMusic.graph ? "" : `<p class="muted small">Press play to hear the equalizer.</p>`}`;
+      }
+      place();
     };
-    FWMusic.onchange = renderPop;
+    const place = () => {
+      if (!popAnchor || pop.hidden) return;
+      const r = popAnchor.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+      let left = Math.min(innerWidth - w - 10, Math.max(10, r.left + r.width / 2 - w / 2));
+      let top = r.top - h - 10;
+      const side = popAnchor.closest(".rail");            // from the sidebar: open beside it, not over it
+      if (side && innerWidth > 900) { left = side.getBoundingClientRect().right + 8; top = Math.max(10, Math.min(innerHeight - h - 10, r.bottom - h)); }
+      else if (top < 10) top = r.bottom + 10;
+      pop.style.left = `${left}px`; pop.style.top = `${top}px`;
+    };
+    const openPop = (mode, anchor) => {
+      if (!pop.hidden && popMode === mode && popAnchor === anchor) { pop.hidden = true; return; }
+      popMode = mode; popAnchor = anchor; pop.hidden = false; renderPop();
+    };
     pop.addEventListener("click", (e) => {
-      e.stopPropagation();                         // re-rendering replaces the button; don't let that count as "outside"
+      e.stopPropagation();
       const b = e.target.closest("button");
       if (!b) return;
-      if (b.dataset.mp === "shuffle") { FWMusic.shuffle = !FWMusic.shuffle; lsSet("solstone-music-shuffle", FWMusic.shuffle); renderPop(); }
-      else if (b.dataset.mp) FWMusic[b.dataset.mp]();
+      if (b.dataset.volMute === "fx") { FWAudio.setOn(!FWAudio.on); if (FWAudio.on) scene.launch(); sync(); }
+      else if (b.dataset.volMute === "music") FWMusic.setMuted(!FWMusic.muted);
       else if (b.dataset.mpI) FWMusic.play(+b.dataset.mpI);
+      else if (b.dataset.eqPreset) FWMusic.setPreset(b.dataset.eqPreset);
+      renderPop();
     });
     pop.addEventListener("input", (e) => {
-      if (e.target.matches("[data-mp-vol]")) FWMusic.setVolume(+e.target.value);
-      if (e.target.matches("[data-fx-vol]")) FWAudio.setVolume(+e.target.value);
+      const t = e.target, out = t.parentElement.querySelector("b");
+      if (t.dataset.vol === "fx") { FWAudio.setVolume(+t.value); if (out) out.textContent = pct(+t.value); }
+      if (t.dataset.vol === "music") { FWMusic.setVolume(+t.value); if (out) out.textContent = pct(+t.value); }
+      if (t.dataset.eq) {
+        FWMusic.eq[t.dataset.eq] = +t.value; FWMusic.eq.preset = "custom"; FWMusic.applyEq();
+        if (out) out.textContent = t.dataset.eq === "space" ? pct(+t.value) : `${+t.value > 0 ? "+" : ""}${t.value} dB`;
+        pop.querySelectorAll("[data-eq-preset]").forEach((x) => x.setAttribute("aria-pressed", "false"));
+      }
     });
-    musicBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      pop.hidden = !pop.hidden;
-      if (!pop.hidden) { renderPop(); const r = box.getBoundingClientRect(); pop.style.right = `${innerWidth - r.right}px`; pop.style.bottom = `${innerHeight - r.top + 8}px`; }
-    });
-    const closePop = (e) => { if (!pop.hidden && !pop.contains(e.target) && e.target !== musicBtn) pop.hidden = true; };
+    pop.addEventListener("change", (e) => { if (e.target.dataset.vol === "fx" && FWAudio.on) scene.launch(); });   // hear the new level
+    const closePop = (e) => { if (!pop.hidden && !pop.contains(e.target) && !e.target.closest?.("[data-sky='volume'], [data-mb='list'], [data-mb='eq'], [data-mb='vol']")) pop.hidden = true; };
     document.addEventListener("click", closePop); cleanup.push(() => document.removeEventListener("click", closePop));
+    addEventListener("resize", place); cleanup.push(() => removeEventListener("resize", place));
+
+    holders.forEach((h) => h.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-sky]");
+      if (!b) return;
+      const k = b.dataset.sky;
+      if (k === "launch") { if (FWAudio.on) FWAudio.ensure(); scene.launch(); }
+      else if (k === "auto") { on = !on; scene.setAuto(on); lsSet(opts.key || "solstone-sky", on); sync(); }
+      else if (k === "volume") { e.stopPropagation(); openPop("volume", b); }
+      else if (k === "hide") setHidden(!document.body.classList.contains("ui-hidden"));
+    }));
+
+    // ---- the music bar, along the bottom in the middle
+    let bar = null, vizRaf = 0, seeking = false;
+    const minKey = "solstone-music-bar-min";
+    const buildBar = () => {
+      bar = document.createElement("div");
+      bar.className = "mbar glass"; bar.setAttribute("role", "region"); bar.setAttribute("aria-label", "Music");
+      document.body.append(bar); els.push(bar);
+      document.body.classList.add("has-mbar"); cleanup.push(() => document.body.classList.remove("has-mbar"));
+      bar.innerHTML = `<div class="mb-btns"><button type="button" data-mb="prev" title="Back (or to the start)" aria-label="Previous track">⏮</button>
+          <button type="button" data-mb="toggle" class="mb-play" aria-label="Play">▶</button>
+          <button type="button" data-mb="next" title="Skip ahead" aria-label="Next track">⏭</button></div>
+        <canvas class="mb-viz" aria-hidden="true"></canvas>
+        <div class="mb-mid"><div class="mb-title"><b></b><span class="mb-sub"></span></div>
+          <div class="mb-seek"><span class="mb-t">0:00</span><input type="range" min="0" max="1000" step="1" value="0" aria-label="Position in the track"><span class="mb-d">0:00</span></div></div>
+        <div class="mb-btns mb-extra"><button type="button" data-mb="shuffle" title="Shuffle" aria-label="Shuffle">🔀</button>
+          <button type="button" data-mb="list" title="Playlist" aria-label="Playlist">☰</button>
+          <button type="button" data-mb="eq" title="Equalizer" aria-label="Equalizer">🎚</button>
+          <button type="button" data-mb="vol" title="Volume" aria-label="Volume">🔊</button>
+          <button type="button" data-mb="min" class="mb-min" title="Make it small" aria-label="Make the music bar small">⌄</button></div>`;
+      bar.classList.toggle("mini", lsGet(minKey, false));
+      bar.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-mb]");
+        if (!b) return;
+        const k = b.dataset.mb;
+        if (k === "toggle") FWMusic.toggle();
+        else if (k === "prev") FWMusic.prev();
+        else if (k === "next") FWMusic.next();
+        else if (k === "shuffle") { FWMusic.shuffle = !FWMusic.shuffle; lsSet("solstone-music-shuffle", FWMusic.shuffle); renderBar(); }
+        else if (k === "list" || k === "eq") { e.stopPropagation(); openPop(k, b); }
+        else if (k === "vol") { e.stopPropagation(); openPop("volume", b); }
+        else if (k === "min") { const m = !bar.classList.contains("mini"); bar.classList.toggle("mini", m); lsSet(minKey, m); renderBar(); }
+      });
+      const range = bar.querySelector('input[type="range"]');
+      range.addEventListener("input", () => { seeking = true; bar.querySelector(".mb-t").textContent = fmt((range.value / 1000) * FWMusic.duration); });
+      range.addEventListener("change", () => { seeking = false; FWMusic.seek((range.value / 1000) * FWMusic.duration); });
+      cleanup.push(FWMusic.on((what) => { if (what === "time") renderTime(); else { renderBar(); renderPop(); sync(); } }));
+      cleanup.push(() => cancelAnimationFrame(vizRaf));
+      renderBar();
+    };
+    const renderTime = () => {
+      if (!bar) return;
+      const d = FWMusic.duration, t = FWMusic.time;
+      if (!seeking) {
+        bar.querySelector(".mb-t").textContent = fmt(t);
+        const r = bar.querySelector('input[type="range"]'); r.value = d ? Math.round((t / d) * 1000) : 0;
+        r.style.setProperty("--p", `${d ? (t / d) * 100 : 0}%`);
+      }
+      bar.querySelector(".mb-d").textContent = fmt(d);
+    };
+    const renderBar = () => {
+      if (!bar) return;
+      const t = FWMusic.current, playing = FWMusic.playing;
+      bar.classList.toggle("playing", playing);
+      const pb = bar.querySelector(".mb-play");
+      pb.textContent = playing ? "⏸" : "▶"; pb.setAttribute("aria-label", playing ? "Pause" : "Play");
+      bar.querySelector(".mb-title b").textContent = t?.title || "";
+      bar.querySelector(".mb-sub").textContent = FWMusic.waiting ? "Click anywhere to carry on" : `${FWMusic.idx + 1} of ${FWMusic.tracks.length}`;
+      bar.querySelector('[data-mb="shuffle"]').setAttribute("aria-pressed", String(FWMusic.shuffle));
+      bar.querySelector('[data-mb="vol"]').textContent = FWMusic.muted ? "🔇" : "🔊";
+      const mini = bar.classList.contains("mini"), mb = bar.querySelector(".mb-min");
+      mb.textContent = mini ? "⌃" : "⌄"; mb.title = mini ? "Show the whole player" : "Make it small";
+      renderTime();
+      cancelAnimationFrame(vizRaf);
+      drawViz();
+    };
+    // A small spectrum: bars that dance while music plays (flat when it isn't).
+    const drawViz = () => {
+      const cv = bar?.querySelector(".mb-viz");
+      if (!cv || !cv.isConnected) return;
+      const w = cv.clientWidth, h = cv.clientHeight, dpr = devicePixelRatio || 1;
+      if (!w) return;
+      if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+      const c = cv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+      const n = 14, gap = 2, bw = (w - gap * (n - 1)) / n, an = FWMusic.graph?.an;
+      const data = an ? new Uint8Array(an.frequencyBinCount) : null;
+      if (an) an.getByteFrequencyData(data);
+      for (let i = 0; i < n; i++) {
+        const v = data ? data[Math.min(data.length - 1, Math.floor(1 + i ** 1.35))] / 255 : (FWMusic.playing ? 0.25 + 0.2 * Math.sin(performance.now() / 300 + i) : 0.08);
+        const bh = Math.max(2, Math.round(v * h));
+        c.fillStyle = `hsl(${42 - i * 2}, 85%, ${55 + v * 20}%)`;
+        c.fillRect(Math.round(i * (bw + gap)), h - bh, Math.max(1, Math.floor(bw)), bh);
+      }
+      if (FWMusic.playing && !document.hidden) vizRaf = requestAnimationFrame(drawViz);
+    };
+    musicChanged = () => {
+      if (!bar && FW.music && FWMusic.tracks.length) buildBar();
+      else if (bar && !FWMusic.tracks.length) { bar.remove(); bar = null; document.body.classList.remove("has-mbar"); }
+      else renderBar();
+      sync();
+    };
     loadFireworkSettings().then(async () => {
       if (!FW.music) return;
       if (!FWMusic.loaded) await FWMusic.load();
-      musicBtn.hidden = false; renderPop();
-      // Carry on with music if it was playing last time (the browser may need a click first).
-      if (lsGet("solstone-music-on", false) && FWMusic.tracks.length && !FWMusic.playing) {
-        FWMusic.play();
-        const resume = () => { if (lsGet("solstone-music-on", false) && !FWMusic.playing) FWMusic.play(); };
-        document.addEventListener("pointerdown", resume, { once: true });
-      }
+      if (!FWMusic.tracks.length) return;
+      buildBar(); sync();
+      // Carry on where it left off (same track, same spot). The browser may need a click first.
+      if (lsGet("solstone-music-state", {}).playing && !FWMusic.playing) FWMusic.play();
     });
 
     // ---- hide the page, keep the sky
+    let setHidden = () => {};
     if (opts.hide) {
       let wasOn = on, idle = 0;
-      const set = (hidden) => {
+      setHidden = (hidden) => {
         document.body.classList.toggle("ui-hidden", hidden);
         if (hidden) { wasOn = on; if (!on) scene.setAuto(true); } else if (!wasOn) scene.setAuto(on);
         poke();
       };
-      const poke = () => { box.classList.remove("faded"); clearTimeout(idle); if (document.body.classList.contains("ui-hidden")) idle = setTimeout(() => box.classList.add("faded"), 2500); };
-      box.querySelector(".sky-hide").addEventListener("click", () => set(!document.body.classList.contains("ui-hidden")));
-      const onKey = (e) => { if (e.key === "Escape" && document.body.classList.contains("ui-hidden")) set(false); };
+      const poke = () => {
+        box.classList.remove("faded"); bar?.classList.remove("faded"); clearTimeout(idle);
+        if (document.body.classList.contains("ui-hidden")) idle = setTimeout(() => { box.classList.add("faded"); bar?.classList.add("faded"); pop.hidden = true; }, 2500);
+      };
+      const onKey = (e) => { if (e.key === "Escape" && document.body.classList.contains("ui-hidden")) setHidden(false); };
       document.addEventListener("keydown", onKey); addEventListener("pointermove", poke);
       cleanup.push(() => { document.removeEventListener("keydown", onKey); removeEventListener("pointermove", poke); document.body.classList.remove("ui-hidden"); });
     }
@@ -498,6 +708,7 @@ function startShowBar(scene, opts = {}) {
   loadFireworkSettings().then(() => { poll(); tick(); pollSky(); });
   return {
     skyChanged,
+    musicChanged: () => musicChanged(),
     remove() {
       clearTimeout(pollT); clearTimeout(tickT); clearInterval(refresh); clearTimeout(skyT);
       cleanup.forEach((f) => f()); els.forEach((e) => e.remove());

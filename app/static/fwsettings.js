@@ -320,7 +320,7 @@ function renderMusic(el) {
         <span class="row-actions"><button type="button" class="icon-btn" data-play title="Play">▶</button><button type="button" class="icon-btn" data-up ${i === 0 ? "disabled" : ""} title="Move up">▲</button>
         <button type="button" class="icon-btn" data-down ${i === m.tracks.length - 1 ? "disabled" : ""} title="Move down">▼</button><button type="button" class="btn sm danger" data-del>Delete</button></span></li>`).join("")}</ol>`
       : `<p class="muted" style="margin-top:12px">No music yet.</p>`}</section>`;
-  const reload = async () => { fws.data = await api("/api/fireworks/show"); FWMusic.loaded = false; await FWMusic.load(); $(".sky-music") && ($(".sky-music").hidden = false); renderMusic(el); };
+  const reload = async () => { fws.data = await api("/api/fireworks/show"); FWMusic.loaded = false; await FWMusic.load(); appSky.bar?.musicChanged(); renderMusic(el); };
   $("#fws-music-public").addEventListener("change", async (e) => { await post("/api/music", { public: e.target.checked }, "PUT").catch((err) => showToast(esc(err.message), 3000)); showToast("Saved", 1500); });
   $("#fws-file").addEventListener("change", async (e) => {
     const files = [...e.target.files];
