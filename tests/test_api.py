@@ -128,3 +128,18 @@ def test_spa_fallback(client):
     r = client.get("/s/whatever")
     assert r.status_code == 200 and "<title>Solstone</title>" in r.text
     assert client.get("/api/does-not-exist").status_code == 404
+
+
+def test_one_leaderboard_list_for_app_and_status_page(client, anon, sid):
+    from app import servers as S
+    mine = client.get(f"/api/servers/{sid}/leaderboard").json()
+    keys = [b["key"] for b in mine["boards"]]
+    assert keys == [k for k, _t, _f in S.LEADERBOARDS] and len(keys) >= 20
+    assert all(set(keys) <= set(p) for p in mine["players"])
+    assert {b["kind"] for b in mine["boards"]} <= {"ticks", "count", "cm", "hearts"}
+    client.put("/api/settings/status", json={"enabled": True})
+    try:
+        public = anon.get(f"/api/public/leaderboard/{sid}").json()
+        assert public["boards"] == mine["boards"]                    # same boards, same order, no drift
+    finally:
+        client.put("/api/settings/status", json={"enabled": False})

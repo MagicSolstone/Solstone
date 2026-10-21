@@ -886,11 +886,60 @@ async def player_detail(srv: Server, uuid: str) -> dict | None:
     }
 
 
+# The one list of leaderboards, in display order. The app's Leaderboards tab and the status
+# page's TV view both draw exactly these, so they can't drift apart.
+# (key, title, kind) -- kind tells the pages how to show the number:
+#   ticks -> a duration, cm -> a distance, hearts -> damage in hearts, count -> a plain number
+LEADERBOARDS = [
+    ("play_time", "Time played", "ticks"),
+    ("xp_level", "Highest level", "count"),
+    ("advancements", "Advancements", "count"),
+    ("mob_kills", "Mobs defeated", "count"),
+    ("blocks_mined", "Blocks mined", "count"),
+    ("diamonds_mined", "Diamonds mined", "count"),
+    ("distance_cm", "Distance travelled", "cm"),
+    ("items_crafted", "Items crafted", "count"),
+    ("deaths", "Most deaths", "count"),
+    ("time_since_death", "Longest alive right now", "ticks"),
+    ("jumps", "Jumps", "count"),
+    ("fish_caught", "Fish caught", "count"),
+    ("animals_bred", "Animals bred", "count"),
+    ("traded", "Villager trades", "count"),
+    ("creepers_defeated", "Creepers defeated", "count"),
+    ("damage_dealt", "Damage dealt", "hearts"),
+    ("sleep", "Nights slept", "count"),
+    ("flown_cm", "Distance flown", "cm"),
+    ("swum_cm", "Distance swum", "cm"),
+    ("chests_opened", "Chests opened", "count"),
+    ("cake_eaten", "Cake slices eaten", "count"),
+    ("raids_won", "Raids won", "count"),
+]
+
+
+def leaderboard_stats(stats: dict) -> dict:
+    """headline_stats plus the extra numbers only the leaderboards use."""
+    custom = stats.get("minecraft:custom") or {}
+    mined = stats.get("minecraft:mined") or {}
+    killed = stats.get("minecraft:killed") or {}
+    return {
+        **headline_stats(stats),
+        "diamonds_mined": int(mined.get("minecraft:diamond_ore", 0) + mined.get("minecraft:deepslate_diamond_ore", 0)),
+        "creepers_defeated": int(killed.get("minecraft:creeper", 0)),
+        "flown_cm": int(custom.get("minecraft:aviate_one_cm", 0)),
+        "swum_cm": int(custom.get("minecraft:swim_one_cm", 0)),
+        "chests_opened": int(custom.get("minecraft:open_chest", 0)),
+        "cake_eaten": int(custom.get("minecraft:eat_cake_slice", 0)),
+        "raids_won": int(custom.get("minecraft:raid_win", 0)),
+    }
+
+
 async def leaderboard(srv: Server) -> dict:
     rows = []
     for uuid, p in known_players(srv).items():
         data, _ = player_file_data(srv, uuid)
-        h = headline_stats(player_stats(srv, uuid))
+        h = leaderboard_stats(player_stats(srv, uuid))
         h["xp_level"] = data["xp_level"] if data else 0
-        rows.append({"uuid": uuid, "name": p["name"], **h})
-    return {"players": rows}
+        adv = player_advancements(srv, uuid)
+        h["advancements"] = sum(1 for k, a in adv.items() if a["done"] and "/recipes/" not in k and ":recipes/" not in k)
+        rows.append({"uuid": uuid, "name": p["name"], **{k: h.get(k, 0) for k, _t, _f in LEADERBOARDS}})
+    return {"boards": [{"key": k, "title": t, "kind": f} for k, t, f in LEADERBOARDS], "players": rows}

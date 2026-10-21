@@ -71,6 +71,20 @@ function motdHtml(text) {
 }
 
 
+// ================================================================ leaderboard numbers
+// One way to show a leaderboard value, used by the app and the status page alike.
+function fmtStat(kind, v) {
+  v = Number(v) || 0;
+  const n = (x, d = 0) => new Intl.NumberFormat([], { maximumFractionDigits: d }).format(x);
+  if (kind === "ticks") {
+    const s = Math.floor(v / 20), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+    return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : m ? `${m}m` : `${s}s`;
+  }
+  if (kind === "cm") { const m = v / 100; return m >= 1000 ? `${n(m / 1000, m >= 100000 ? 0 : 1)} km` : `${Math.round(m)} m`; }
+  if (kind === "hearts") return `${n(v / 20)} ♥`;
+  return n(v);
+}
+
 // ================================================================ player heads
 // Heads are cut from the player's skin file: Solstone's own copy straight from Mojang
 // first, with mc-heads (looked up by name) underneath as a backup. The face and the hat

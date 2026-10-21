@@ -440,10 +440,8 @@ function recapPanelHtml() {
 // One slide at a time, big, for a screen on the wall. Slides with nothing to show are skipped;
 // long ones scroll gently while they're up.
 const TV_SLIDES = [["now", "Playing now"], ["map", "Where everyone is"], ["leaders", "Leaderboards"], ["recap", "Today on the server"], ["feed", "Recent activity"], ["news", "Announcements"]];
-const tv = { idx: -1, timer: 0, shown: null, loops: 0 };
-const TV_BOARDS = [["play_time", "Time played", (t) => fmtSpan(t / 20)], ["xp_level", "Highest level", (n) => nf(n)], ["mob_kills", "Mobs defeated", (n) => nf(n)],
-  ["blocks_mined", "Blocks mined", (n) => nf(n)], ["distance_cm", "Distance travelled", (cm) => `${nf(cm / 100000)} km`], ["fish_caught", "Fish caught", (n) => nf(n)],
-  ["animals_bred", "Animals bred", (n) => nf(n)], ["deaths", "Most deaths", (n) => nf(n)]];
+const tv = { idx: -1, timer: 0, shown: null, loops: 0, lbPage: -1 };
+const TV_LB_PAGE = 6;                         // leaderboards per visit to the slide; each visit shows the next six
 function nf(n) { return new Intl.NumberFormat([], { maximumFractionDigits: n < 10 ? 1 : 0 }).format(n || 0); }
 
 function tvAvailable(k, b) {
@@ -458,12 +456,16 @@ function tvAvailable(k, b) {
 }
 function tvLeadersHtml() {
   const rows = st.leaders?.players || [];
-  const boards = TV_BOARDS.map(([k, title, f]) => {
+  // Same boards, same order as the app's Leaderboards tab (the server sends the list).
+  const boards = (st.leaders?.boards || []).map(({ key: k, title, kind }) => {
     const top = rows.filter((r) => r[k] > 0).sort((a, b) => b[k] - a[k]).slice(0, 5);
     if (!top.length) return "";
-    return `<div class="tv-board glass"><h3>${esc(title)}</h3><ol>${top.map((r, i) => `<li><span class="rank">${i + 1}</span>${faceHtml(r, 36)}<b>${esc(r.name)}</b><span class="val">${esc(f(r[k]))}</span></li>`).join("")}</ol></div>`;
-  }).filter(Boolean).slice(0, 6);
-  return `<div class="tv-boards">${boards.join("")}</div>`;
+    return `<div class="tv-board glass"><h3>${esc(title)}</h3><ol>${top.map((r, i) => `<li><span class="rank">${i + 1}</span>${faceHtml(r, 36)}<b>${esc(r.name)}</b><span class="val">${esc(fmtStat(kind, r[k]))}</span></li>`).join("")}</ol></div>`;
+  }).filter(Boolean);
+  const pages = Math.max(1, Math.ceil(boards.length / TV_LB_PAGE)), page = ((tv.lbPage % pages) + pages) % pages;
+  const sub = $('[data-sub="leaders"]');
+  if (sub) sub.textContent = pages > 1 ? ` · ${page + 1} of ${pages}` : "";
+  return `<div class="tv-boards">${boards.slice(page * TV_LB_PAGE, page * TV_LB_PAGE + TV_LB_PAGE).join("")}</div>`;
 }
 function tvRecapHtml() {
   const r = st.recap;
@@ -580,6 +582,7 @@ function tvShow(key) {
   if (!b || !st.tv) return;
   const keys = TV_SLIDES.map(([k]) => k);
   tv.idx = keys.indexOf(key); tv.shown = key;
+  if (key === "leaders") { tv.lbPage++; setHtml($("#tv-leaders"), tvLeadersHtml()); }
   document.querySelectorAll(".tv-slide").forEach((el) => {
     const on = el.dataset.slide === tv.shown;
     el.classList.toggle("on", on); el.setAttribute("aria-hidden", String(!on));

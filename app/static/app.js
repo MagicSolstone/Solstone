@@ -914,21 +914,15 @@ function treeOrder(list) {
 }
 
 // ---------------------------------------------------------------- leaderboards
-const BOARDS = [
-  ["play_time", "Time played", fmtDuration], ["xp_level", "Highest level", fmtNum], ["mob_kills", "Mobs defeated", fmtNum],
-  ["blocks_mined", "Blocks mined", fmtNum], ["distance_cm", "Distance travelled", fmtDistance], ["items_crafted", "Items crafted", fmtNum],
-  ["deaths", "Most deaths", fmtNum], ["jumps", "Jumps", fmtNum], ["fish_caught", "Fish caught", fmtNum],
-  ["animals_bred", "Animals bred", fmtNum], ["traded", "Villager trades", fmtNum], ["time_since_death", "Longest alive right now", fmtDuration],
-];
 async function viewLeaderboards(sid) {
   const s = await serverFrame(sid, "leaderboards");
   const data = await api(`/api/servers/${sid}/leaderboard`);
-  const boards = BOARDS.map(([k, title, f]) => {
+  const boards = (data.boards || []).map(({ key: k, title, kind }) => {
     const rows = data.players.filter((r) => r[k] > 0).sort((a, b) => b[k] - a[k]).slice(0, 8);
     if (!rows.length) return "";
     const max = rows[0][k];
     return `<div class="board"><h3>${esc(title)}</h3><ol>${rows.map((r, i) => `<li>
-      <span class="rank">${i + 1}</span>${miniHead(r)}<a href="#/s/${encodeURIComponent(sid)}/p/${r.uuid}">${esc(r.name)}</a><span class="val">${esc(f(r[k]))}</span>
+      <span class="rank">${i + 1}</span>${miniHead(r)}<a href="#/s/${encodeURIComponent(sid)}/p/${r.uuid}">${esc(r.name)}</a><span class="val">${esc(fmtStat(kind, r[k]))}</span>
       <span></span><span></span><div class="bar-bg"><span style="width:${(r[k] / max) * 100}%"></span></div></li>`).join("")}</ol></div>`;
   }).join("");
   setView(serverHeader(s, "leaderboards") + (boards ? `<div class="boards">${boards}</div>` : `<div class="empty"><h3>No scores yet</h3><p>Leaderboards appear once players have some statistics.</p></div>`));
