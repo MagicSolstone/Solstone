@@ -225,24 +225,7 @@ def scan() -> int:
                 except OSError:
                     continue
                 rel = full.relative_to(root).as_posix()
-                prev = old.get(rel)
-                if prev and prev.get("mtime") == int(st.st_mtime) and prev.get("size") == st.st_size:
-                    t = prev
-                else:
-                    tags = _tags(full)
-                    parts = rel.split("/")
-                    t = {"path": rel, "mtime": int(st.st_mtime), "size": st.st_size, "ext": ext,
-                         "title": tags.get("title") or re.sub(r"^\d+[\s._-]+", "", name.rsplit(".", 1)[0]),
-                         "artist": tags.get("artist") or (parts[-3] if len(parts) >= 3 else ""),
-                         "album": tags.get("album") or (parts[-2] if len(parts) >= 2 else ""),
-                         "albumartist": tags.get("albumartist", ""), "disc": tags.get("disc", 0),
-                         "track": tags.get("track") or int((re.match(r"^(\d{1,3})(?!\d)", name) or [0, 0])[1]),
-                         "year": tags.get("year", ""), "duration": tags.get("duration", 0)}
-                folder = str(Path(rel).parent)
-                if folder not in covers:
-                    c = _folder_cover(full.parent)
-                    covers[folder] = c.relative_to(root).as_posix() if c else None
-                t["cover"] = covers[folder]
+                t = _entry(root, full, rel, st, old.get(rel), covers)
                 tracks[_xid(rel)] = t
                 _scan["done"] += 1
         data = {"root": str(root), "scanned": time.time(), "tracks": tracks}
@@ -261,15 +244,259 @@ def scan() -> int:
         _scan["running"] = False
 
 
+def _entry(root: Path, full: Path, rel: str, st, prev: dict | None, covers: dict) -> dict:
+    """One index entry: tags (or folder names), length and the album's cover."""
+    name = full.name
+    ext = name.rsplit(".", 1)[-1].lower()
+    up = upload_root()
+    mine = bool(up) and full.resolve().is_relative_to(up.resolve())
+    if prev and prev.get("mtime") == int(st.st_mtime) and prev.get("size") == st.st_size:
+        t = dict(prev)
+    else:
+        tags = _tags(full)
+        # Folder names stand in for missing tags: Artist/Album/Song (inside the Solstone folder for uploads)
+        parts = full.resolve().relative_to(up.resolve()).as_posix().split("/") if mine else rel.split("/")
+        folder_artist = parts[-3] if len(parts) >= 3 else ""
+        folder_album = parts[-2] if len(parts) >= 2 and parts[-2] != _UNSORTED else ""
+        t = {"path": rel, "mtime": int(st.st_mtime), "size": st.st_size, "ext": ext,
+             "title": tags.get("title") or re.sub(r"^\d+[\s._-]+", "", name.rsplit(".", 1)[0]),
+             "artist": tags.get("artist") or folder_artist, "album": tags.get("album") or (folder_album if folder_album != "Singles" or folder_artist else ""),
+             "albumartist": tags.get("albumartist", ""), "disc": tags.get("disc", 0),
+             "track": tags.get("track") or int((re.match(r"^(\d{1,3})(?!\d)", name) or [0, 0])[1]),
+             "year": tags.get("year", ""), "duration": tags.get("duration", 0)}
+    folder = str(Path(rel).parent)
+    if folder not in covers:
+        c = _folder_cover(full.parent)
+        covers[folder] = c.relative_to(root).as_posix() if c else None
+    t["cover"] = covers[folder]
+    t["up"] = mine
+    return t
+
+
 def _ext_track(tid: str, t: dict) -> dict:
     return {"id": tid, "title": t["title"], "artist": t.get("artist", ""), "album": t.get("album", ""), "albumartist": t.get("albumartist", ""),
             "track": t.get("track", 0), "disc": t.get("disc", 0), "year": t.get("year", ""), "duration": t.get("duration", 0),
-            "ext": t["ext"], "size": t.get("size", 0), "source": "external", "art": True}
+            "ext": t["ext"], "size": t.get("size", 0), "source": "external", "art": True, "uploaded": bool(t.get("up"))}
+
+
+# ------------------------------------------------------------------ uploads filed into the library
+# With a library set up, music uploaded in Solstone goes into one folder inside it (the only
+# place Solstone may write), sorted the way Jellyfin likes: Artist/Album/01 - Title.ext.
+_UNSORTED = "Unsorted"
+
+
+_up_cache: list = [0.0, None, ""]
+
+
+def upload_root() -> Path | None:
+    """The writable Solstone folder, checked (with a test write) at most once a minute."""
+    key = f"{config.music_library_dir}|{config.music_upload_dir}"
+    if time.time() - _up_cache[0] < 60 and _up_cache[2] == key:
+        return _up_cache[1]
+    _up_cache[:] = [time.time(), _find_upload_root(), key]
+    return _up_cache[1]
+
+
+def _find_upload_root() -> Path | None:
+    lib = external_root()
+    want = config.music_upload_dir.strip() or (str(lib / "Solstone") if lib else "")
+    if not want:
+        return None
+    p = Path(want)
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+        probe = p / f".solstone-write-{secrets.token_hex(3)}"
+        probe.write_bytes(b""); probe.unlink()
+        return p
+    except OSError:
+        return None
+
+
+def _safe(part: str, limit: int = 80) -> str:
+    part = re.sub(r'[\x00-\x1f<>:"/\\|?*]', "", str(part or "")).strip().strip(".")
+    return re.sub(r"\s+", " ", part)[:limit].strip() or ""
+
+
+def _filed_path(up: Path, info: dict, ext: str) -> Path:
+    artist = _safe(info.get("albumartist") or info.get("artist"))
+    album = _safe(info.get("album"))
+    title = _safe(info.get("title")) or "Untitled"
+    num = f"{int(info['track']):02d} - " if info.get("track") else ""
+    folder = up / artist / (album or "Singles") if artist else up / _UNSORTED
+    base = f"{num}{title}"
+    dest = folder / f"{base}.{ext}"
+    n = 2
+    while dest.exists():
+        dest = folder / f"{base} ({n}).{ext}"; n += 1
+    return dest
+
+
+def find_duplicate(info: dict) -> dict | None:
+    want = (_key(info.get("artist")), _key(info.get("title")))
+    if not want[1]:
+        return None
+    for tid, t in _index.get("tracks", {}).items():
+        if (_key(t.get("artist")), _key(t.get("title"))) == want and (not info.get("album") or _key(t.get("album")) == _key(info.get("album"))):
+            return _ext_track(tid, t)
+    return None
+
+
+def _index_put(full: Path) -> str | None:
+    """Add (or refresh) one file in the index without walking the whole library."""
+    root = external_root()
+    if not root:
+        return None
+    rel = full.resolve().relative_to(root.resolve()).as_posix()
+    st = full.stat()
+    with _lock:
+        _index.setdefault("tracks", {})
+        _index["root"] = str(root)
+        tid = _xid(rel)
+        _index["tracks"][tid] = _entry(root, full, rel, st, None, {})
+        _save_index()
+    return tid
+
+
+def _index_drop(tid: str) -> None:
+    with _lock:
+        _index.get("tracks", {}).pop(tid, None)
+        _save_index()
+
+
+def _save_index() -> None:
+    tmp = INDEX.with_suffix(".tmp")
+    tmp.write_text(json.dumps(_index, separators=(",", ":")))
+    tmp.replace(INDEX)
+
+
+def file_upload(tmp: Path, ext: str, title: str, force: bool = False) -> dict:
+    """Read the upload's tags, refuse a song that's already there, and file it."""
+    up = upload_root()
+    named = tmp.with_name(tmp.name + "." + ext)              # tag readers go by the extension
+    tmp.replace(named)
+    try:
+        tags = _tags(named)
+        info = {**tags, "title": tags.get("title") or title}
+        dup = None if force else find_duplicate(info)
+        if dup:
+            raise FileExistsError(f"Already in the library: {dup['title']}" + (f" by {dup['artist']}" if dup["artist"] else ""))
+        dest = _filed_path(up, info, ext)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        named.replace(dest)
+    finally:
+        named.unlink(missing_ok=True)
+    tid = _index_put(dest)
+    return get(tid, include_hidden=True) or {"id": tid}
+
+
+def _uploaded_path(tid: str) -> Path | None:
+    up, root = upload_root(), external_root()
+    raw = _index.get("tracks", {}).get(tid)
+    if not (up and root and raw):
+        return None
+    p = (root / raw["path"]).resolve()
+    return p if p.is_relative_to(up.resolve()) and p.is_file() else None
+
+
+def delete_uploaded(tid: str) -> bool:
+    p = _uploaded_path(tid)
+    if not p:
+        return False
+    up = upload_root().resolve()
+    p.unlink()
+    folder = p.parent
+    while folder != up and folder.is_relative_to(up):        # tidy up empty album/artist folders
+        try:
+            if any(x for x in folder.iterdir() if not x.name.startswith(".") and x.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp")):
+                break
+            for x in folder.iterdir():
+                x.unlink()
+            folder.rmdir()
+        except OSError:
+            break
+        folder = folder.parent
+    _index_drop(tid)
+    return True
+
+
+def retag_uploaded(tid: str, title: str, artist: str, album: str) -> dict | None:
+    """Fix a song's title, artist and album (written into the file's tags) and re-file it."""
+    p = _uploaded_path(tid)
+    if not p:
+        return None
+    try:
+        import mutagen
+        f = mutagen.File(p, easy=True)
+        if f is not None:
+            if f.tags is None and hasattr(f, "add_tags"):
+                f.add_tags()
+            for k, v in (("title", title), ("artist", artist), ("album", album)):
+                if v:
+                    f[k] = [v]
+            f.save()
+    except Exception as e:                                    # WAV and friends: the folder names carry it
+        log.debug("couldn't write tags to %s: %s", p, e)
+    raw = _index["tracks"][tid]
+    info = {"title": title or raw["title"], "artist": artist or raw.get("artist"), "album": album or raw.get("album"), "track": raw.get("track")}
+    dest = _filed_path(upload_root(), info, raw["ext"])
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    p.replace(dest)
+    _index_drop(tid)
+    new_id = _index_put(dest)
+    with _lock:                                               # keep it in playlists under its new id
+        items = playlists()
+        for pl in items:
+            pl["tracks"] = [new_id if x == tid else x for x in pl["tracks"]]
+        _save_playlists(items)
+    return get(new_id, include_hidden=True)
+
+
+def move_main_into_library() -> dict:
+    """One time: move music uploaded before the library was set up into the Solstone folder,
+    and keep it together as the "Minecraft music" playlist (the default radio, if none was set)."""
+    up = upload_root()
+    if not up:
+        raise ValueError("There's no writable Solstone folder in the music library yet")
+    moved, mapping = 0, {}
+    with _lock:
+        c = _main_cfg()
+        for t in list(c["tracks"]):
+            src = DIR / t["file"]
+            info = {"title": t["title"], "artist": t.get("artist"), "album": t.get("album"), "track": t.get("track")}
+            dest = _filed_path(up, info, t["ext"])
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                import shutil
+                shutil.copy2(src, dest)
+                new_id = _index_put(dest)
+                src.unlink(missing_ok=True)
+            except OSError as e:
+                log.warning("couldn't move %s: %s", src, e)
+                continue
+            mapping[t["id"]] = new_id
+            c["tracks"] = [x for x in c["tracks"] if x["id"] != t["id"]]
+            moved += 1
+        settings_store.save_section("music", c)
+        items = playlists()
+        for pl in items:
+            pl["tracks"] = [mapping.get(x, x) for x in pl["tracks"]]
+        if mapping:
+            mc = _clean_playlist({"name": "Minecraft music", "owner": "", "shared": True, "tracks": list(mapping.values())})
+            items.append(mc)
+            _save_playlists(items)
+            if not radio_settings()["default"]:
+                set_radio_default(mc["id"])
+        else:
+            _save_playlists(items)
+    return {"moved": moved}
 
 
 def external_status() -> dict:
     root = config.music_library_dir.strip()
+    up = upload_root()
     return {"configured": bool(root), "found": external_root() is not None, "root": root, "count": len(_index.get("tracks", {})),
+            "upload_dir": str(up) if up else (config.music_upload_dir.strip() or (f"{root}/Solstone" if root else "")), "upload_ok": up is not None,
+            "uploaded": sum(1 for t in _index.get("tracks", {}).values() if t.get("up")),
             "scanned": _index.get("scanned") or None, "scanning": _scan["running"], "progress": _scan["done"], "error": _scan["error"]}
 
 
@@ -316,7 +543,7 @@ def _status_of(t: dict, r: dict) -> str:
     b = r["blocked"]
     if t["id"] in b["tracks"] or album_key(t) in b["albums"] or _key(t.get("artist")) in b["artists"] or _key(t.get("albumartist")) in b["artists"]:
         return "blocked"
-    if t["source"] == "external" and r["mode"] == "approved":
+    if t["source"] == "external" and r["mode"] == "approved" and not t.get("uploaded"):
         a = r["approved"]
         if not (t["id"] in a["tracks"] or album_key(t) in a["albums"] or _key(t.get("artist")) in a["artists"] or _key(t.get("albumartist")) in a["artists"]):
             return "unapproved"
@@ -583,7 +810,8 @@ def radio(now: datetime | None = None) -> dict:
         tracks = by_id(p["tracks"])
         if tracks:
             return {"id": p["id"], "name": p["name"], "why": "Default", "tracks": tracks}
-    return {"id": "", "name": "Solstone radio", "why": "The main library", "tracks": [t for t in all_tracks() if t["source"] == "main"]}
+    return {"id": "", "name": "Solstone radio", "why": "The main library",
+            "tracks": [t for t in all_tracks() if t["source"] == "main" or t.get("uploaded")]}
 
 
 def _fmt_md(md: str) -> str:

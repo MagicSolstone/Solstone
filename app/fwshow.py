@@ -307,6 +307,45 @@ def today_state(now: datetime | None = None) -> dict:
     return {"theme": theme, "finales": finales, "now": now.timestamp()}
 
 
+def overlaps(now: datetime | None = None) -> dict[str, list[dict]]:
+    """For the year ahead: days two calendar entries share (the higher one in the list sets the
+    colours and message) and scheduled shows that start together. Small notes, not errors."""
+    zone = db.tz()
+    today = (now or datetime.now(zone)).date()
+    cal = [e for e in calendar() if e["enabled"]]
+    order = {e["id"]: i for i, e in enumerate(cal)}
+    days: dict[tuple[str, str], list[date]] = {}
+    shows: dict[tuple[str, str], list[date]] = {}
+    for i in range(366):
+        d = today + timedelta(days=i)
+        active, finales = [], []
+        for e in cal:
+            for s0 in _starts(e, d):
+                if s0 <= d < s0 + timedelta(days=e["days"]) and (e["colors"] or e["message"] or e["kinds"]) and e not in active:
+                    active.append(e)
+                f = e["finale"]
+                if f["on"] and s0 + timedelta(days=f["day"]) == d:
+                    hh, mm = (int(x) for x in f["time"].split(":"))
+                    finales.append((hh * 60 + mm, f["minutes"], e))
+        for a_i, a in enumerate(active):
+            for b in active[a_i + 1:]:
+                days.setdefault((a["id"], b["id"]), []).append(d)
+        finales.sort(key=lambda x: x[0])
+        for a_i, (sa, ma, a) in enumerate(finales):
+            for sb, _mb, b in finales[a_i + 1:]:
+                if sb < sa + ma and a["id"] != b["id"]:
+                    shows.setdefault((a["id"], b["id"]), []).append(d)
+    names = {e["id"]: e["name"] for e in cal}
+    out: dict[str, list[dict]] = {e["id"]: [] for e in cal}
+    for kind, pairs in (("day", days), ("show", shows)):
+        for (a, b), ds in pairs.items():
+            first, second = (a, b) if order[a] < order[b] else (b, a)
+            note = {"kind": kind, "dates": [x.isoformat() for x in ds[:3]], "count": len(ds)}
+            out[first].append({**note, "with": names[second], "wins": True})
+            out[second].append({**note, "with": names[first], "wins": False})
+    return out
+
+
 # ------------------------------------------------------------------ shows
 # A show is a timeline: at N seconds, launch something (a kind, a design, something
 # random or a show-piece), so many times, from somewhere. Base shows (day and night)

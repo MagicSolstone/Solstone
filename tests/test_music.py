@@ -118,3 +118,75 @@ def test_radio_date_ranges():
     assert not music._in_range(date(2026, 11, 30), "12-01", "12-26")[0]
     assert music._in_range(date(2027, 1, 2), "12-20", "01-05")[0]          # over New Year
     assert music._clean_mmdd("2-30") == "" and music._clean_mmdd("2-29") == "02-29"
+
+
+def test_uploads_are_filed_into_the_library(library, client, viewer, tmp_path):
+    music = library
+    root = music.external_root()
+    up = music.upload_root()
+    assert up == root / "Solstone"
+    data = io.BytesIO(); _wav(tmp_path / "x.wav", 0.5); data = (tmp_path / "x.wav").read_bytes()
+    hdr = {"Content-Type": "audio/wav"}
+    assert viewer.post("/api/music?filename=My%20Song.wav", content=data, headers=hdr).status_code == 403
+    t = client.post("/api/music?filename=My%20Song.wav", content=data, headers=hdr).json()
+    assert t["uploaded"] is True and (up / "Unsorted" / "My Song.wav").is_file()                 # no tags: Unsorted
+    assert client.post("/api/music?filename=My%20Song.wav", content=data, headers=hdr).status_code == 409   # already there
+    t2 = client.post("/api/music?filename=My%20Song.wav&force=true", content=data, headers=hdr).json()
+    assert (up / "Unsorted" / "My Song (2).wav").is_file()
+    # the radio falls back to the Solstone folder; approve-only mode still lets uploads through
+    client.put("/api/music/settings", json={"mode": "approved"})
+    assert t["id"] in [x["id"] for x in viewer.get("/api/public/music").json()["tracks"]]
+    client.put("/api/music/settings", json={"mode": "all"})
+    # fix the details: the file moves to Artist/Album and keeps its place in playlists
+    pl = client.post("/api/music/playlists", json={"name": "Mine", "tracks": [t["id"]]}).json()
+    fixed = client.put(f"/api/music/tracks/{t['id']}", json={"title": "Creeper Song", "artist": "Kid Band", "album": "Garage"}).json()
+    assert fixed["title"] == "Creeper Song" and (up / "Kid Band" / "Garage" / "Creeper Song.wav").is_file()
+    assert not (up / "Unsorted" / "My Song.wav").exists()
+    assert client.get(f"/api/music/playlists/{pl['id']}").json()["tracks"] == [fixed["id"]]
+    # only Solstone's own uploads can be deleted; the rest of the library can only be blocked
+    other = music.search("sweden")["tracks"][0]
+    assert client.delete(f"/api/music/{other['id']}").status_code == 404
+    assert client.put(f"/api/music/tracks/{other['id']}", json={"title": "x"}).status_code == 404
+    assert client.delete(f"/api/music/{fixed['id']}").json() == {"ok": True}
+    assert not (up / "Kid Band").exists()                                                          # empty folders tidied
+    client.delete(f"/api/music/{t2['id']}")
+    assert (root / "C418" / "Volume Alpha" / "01 - Sweden.wav").is_file()
+
+
+def test_unwritable_upload_folder_falls_back(library, client, monkeypatch, tmp_path):
+    from app.config import config
+    monkeypatch.setattr(config, "music_upload_dir", "/proc/solstone-cannot-write")
+    music = library
+    assert music.upload_root() is None
+    st = client.get("/api/music/settings").json()["external"]
+    assert st["upload_ok"] is False and st["upload_dir"] == "/proc/solstone-cannot-write"
+    _wav(tmp_path / "y.wav", 0.3)
+    t = client.post("/api/music?filename=Fallback.wav", content=(tmp_path / "y.wav").read_bytes(), headers={"Content-Type": "audio/wav"}).json()
+    assert t["source"] == "main"
+    # once the folder is writable, older uploads move in as the "Minecraft music" playlist
+    monkeypatch.setattr(config, "music_upload_dir", "")
+    r = client.post("/api/music/move-uploads").json()
+    assert r["moved"] >= 1
+    pls = client.get("/api/music/playlists").json()
+    mc = next(p for p in pls["playlists"] if p["name"] == "Minecraft music")
+    assert pls["radio_default"] == mc["id"] and client.get("/api/music/settings").json()["main"] == []
+    music.set_radio_default("")
+
+
+def test_calendar_overlap_notes(client):
+    from app import fwshow
+    saved = client.get("/api/fireworks/show").json()["calendar"]
+    try:
+        fin = {"on": True, "day": 0, "time": "19:00", "minutes": 10, "countdown": False}
+        client.put("/api/fireworks/show", json={"calendar": [
+            {"name": "Party A", "emoji": "🎉", "date": {"type": "fixed", "month": 7, "day": 4}, "days": 1, "colors": ["#ff0000"], "finale": fin, "enabled": True},
+            {"name": "Party B", "emoji": "🎈", "date": {"type": "fixed", "month": 7, "day": 4}, "days": 1, "colors": ["#00ff00"], "finale": {**fin, "time": "19:05"}, "enabled": True},
+            {"name": "Lonely", "emoji": "🌙", "date": {"type": "fixed", "month": 3, "day": 3}, "days": 1, "colors": ["#0000ff"], "enabled": True}]})
+        o = client.get("/api/fireworks/show").json()["overlaps"]
+        cal = {e["name"]: e["id"] for e in client.get("/api/fireworks/show").json()["calendar"]}
+        a, b = o[cal["Party A"]], o[cal["Party B"]]
+        assert {(x["kind"], x["wins"]) for x in a} == {("day", True), ("show", True)} and {(x["kind"], x["wins"]) for x in b} == {("day", False), ("show", False)}
+        assert a[0]["with"] == "Party B" and a[0]["count"] == 1 and o[cal["Lonely"]] == []
+        assert isinstance(fwshow.overlaps(), dict)
+    finally:
+        client.put("/api/fireworks/show", json={"calendar": saved})

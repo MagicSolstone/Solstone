@@ -183,13 +183,27 @@ function renderJoin(el) {
 }
 
 // ---------------------------------------------------------------- calendar
+// A small note when a day shares dates (or a show's start time) with another one; it's
+// allowed, this just says which one wins.
+const fwsDay = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString([], { day: "numeric", month: "short" }); };
+function fwsOverlapNote(id) {
+  const list = fws.data?.overlaps?.[id] || [];
+  if (!list.length) return "";
+  const when = (o) => (o.count === 1 ? fwsDay(o.dates[0]) : `${o.count} days`);
+  const text = (o) => o.kind === "show" ? `its show starts with ${o.with}'s on ${when(o)}`
+    : o.wins ? `shares ${when(o)} with ${o.with} (this one's colours show)` : `${o.with} takes over on ${when(o)}`;
+  const shown = list.slice(0, 2).map(text), more = list.length - shown.length;
+  const all = list.map((o) => `${text(o)}${o.count > 1 ? ` (${o.dates.map(fwsDay).join(", ")}${o.count > 3 ? "…" : ""})` : ""}`).join("\n");
+  return `<div class="fws-overlap" title="${esc(all)}">⚠ ${esc(shown.join(" · "))}${more > 0 ? ` · +${more} more` : ""}</div>`;
+}
+
 function renderCalendar(el) {
   const cal = fws.data.calendar;
   el.innerHTML = `<section class="panel"><p class="muted" style="margin-bottom:12px">On these days the fireworks take on the day's colours and favourite kinds, and a message shows on every page. A <b>scheduled show</b> fills the sky at a set time on every open page; the New Year one counts down from 10.</p>
     <div class="fws-cal">${cal.map((e, i) => fws.editing === i ? calEditHtml(e, i) : `<div class="fws-cal-row ${e.enabled ? "" : "off"}" data-i="${i}">
       <span class="fws-emoji">${esc(e.emoji)}</span>
       <div><b>${esc(e.name)}</b><div class="muted small">${esc(fwsDateText(e))}${e.finale.on ? ` · show at ${esc(fwsTime(e.finale.time))} for ${e.finale.minutes} min${e.finale.countdown ? " with a countdown" : ""}` : ""}</div>
-        <div class="fwe-dots">${e.colors.map((c) => `<i style="background:${c}"></i>`).join("")}</div></div>
+        ${fwsOverlapNote(e.id)}<div class="fwe-dots">${e.colors.map((c) => `<i style="background:${c}"></i>`).join("")}</div></div>
       <label class="check small"><input type="checkbox" data-en ${e.enabled ? "checked" : ""}> On</label>
       <button type="button" class="btn sm" data-edit>Edit</button></div>`).join("")}</div>
     <div class="btn-row" style="margin-top:12px"><button type="button" class="btn" id="fws-add">+ Add a date</button>
@@ -219,7 +233,7 @@ function calEditHtml(e, i) {
   const d = e.date, kinds = new Set(e.kinds);
   const num = (name, v, min, max, w = 64) => `<input class="input sm" type="number" name="${name}" min="${min}" max="${max}" value="${v}" style="width:${w}px">`;
   const sel = (name, opts, cur) => `<select class="input sm" name="${name}">${opts.map(([v, l]) => `<option value="${v}" ${String(v) === String(cur) ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
-  return `<form class="fws-cal-edit" data-i="${i}">
+  return `<form class="fws-cal-edit" data-i="${i}">${fwsOverlapNote(e.id)}
     <div class="fws-grid">
       <label>Name<input class="input" name="name" maxlength="40" value="${esc(e.name)}"></label>
       <label>Emoji<input class="input" name="emoji" maxlength="4" value="${esc(e.emoji)}" style="width:70px"></label>

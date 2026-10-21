@@ -1338,3 +1338,5 @@ body.tv .mbar:not(.playing) { display: none; }
   .mu-art.hero { width: 110px; height: 110px; }
 }
 .mu-artist.is-blocked { opacity: .5; }
+.fws-overlap, .mu-overlap { display: block; font-size: .78rem; color: #e8b85c; opacity: .85; margin-top: 2px; }
+.fws-cal-edit > .fws-overlap { margin: 0 0 4px; }

@@ -31,6 +31,9 @@ class Config:
     # Optional: a music library to share (e.g. Jellyfin's music folder, mounted read-only).
     # Solstone reads its tags and plays it alongside the music uploaded in the app.
     music_library_dir: str = os.getenv("MUSIC_LIBRARY_DIR", "")
+    # Where Solstone files music uploaded in the app: a folder inside the library that it may
+    # write to (mount just this one read-write). Defaults to <MUSIC_LIBRARY_DIR>/Solstone.
+    music_upload_dir: str = os.getenv("MUSIC_UPLOAD_DIR", "")
 
     # App data (settings + downloaded game assets)
     data_dir: Path = Path(os.getenv("DATA_DIR", "/data"))

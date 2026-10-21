@@ -60,6 +60,7 @@ function muRowsHtml(tracks, o = {}) {
       <span class="mu-acts">
         ${o.playlist ? `<button type="button" class="icon-btn" data-move="-1" ${i === 0 ? "disabled" : ""} title="Move up" aria-label="Move up">▲</button><button type="button" class="icon-btn" data-move="1" ${i === tracks.length - 1 ? "disabled" : ""} title="Move down" aria-label="Move down">▼</button>
           <button type="button" class="icon-btn" data-remove title="Take out of this playlist" aria-label="Remove">✕</button>` : `<button type="button" class="icon-btn" data-add title="Add to a playlist" aria-label="Add to a playlist">＋</button>`}
+        ${isAdmin() && t.uploaded ? `<button type="button" class="icon-btn" data-retag title="Fix the title, artist or album" aria-label="Edit">✎</button><button type="button" class="icon-btn" data-delete title="Delete (only for music uploaded here)" aria-label="Delete">🗑</button>` : ""}
         ${isAdmin() ? (t.status === "blocked" ? `<button type="button" class="btn sm" data-rule="blocked" data-on="0" title="Let people play it again">Unblock</button>`
           : `${t.status === "unapproved" ? `<button type="button" class="btn sm" data-rule="approved" data-on="1">Approve</button>` : ""}<button type="button" class="icon-btn mu-block" data-rule="blocked" data-on="1" title="Block: nobody can play it, anywhere" aria-label="Block">🚫</button>`) : ""}
       </span></li>`).join("")}</ol>`;
@@ -75,6 +76,12 @@ function muWireRows(el, tracks, src, o = {}) {
       muRender();
     }));
     li.querySelector("[data-remove]")?.addEventListener("click", () => o.onRemove?.(t.id));
+    li.querySelector("[data-retag]")?.addEventListener("click", () => muRetag(t));
+    li.querySelector("[data-delete]")?.addEventListener("click", async () => {
+      if (!(await confirmBox(`Delete “${t.title}”?`, "It was uploaded through Solstone, so the file is removed from the Solstone folder (and from Jellyfin).", "Delete"))) return;
+      try { await api(`/api/music/${encodeURIComponent(t.id)}`, { method: "DELETE" }); showToast("Deleted", 1500); muRender(); }
+      catch (e) { showToast(esc(e.message), 4000); }
+    });
     li.querySelectorAll("[data-move]").forEach((b) => b.addEventListener("click", () => o.onMove?.(+li.dataset.i, +b.dataset.move)));
   });
 }
@@ -119,6 +126,22 @@ function muAddMenu(anchor, ids) {
       }
       mu.lists = (await api("/api/music/playlists")).playlists;
     } catch (err) { showToast(esc(err.message), 4000); }
+  });
+}
+function muRetag(t) {
+  openModal(`<h2>Fix the details</h2><form id="mu-retag">
+      <label>Title<input class="input" name="title" value="${esc(t.title)}" maxlength="120" required></label>
+      <label>Artist<input class="input" name="artist" value="${esc(t.artist)}" maxlength="120"></label>
+      <label>Album<input class="input" name="album" value="${esc(t.album)}" maxlength="120"></label>
+      <p class="muted small">Written into the file's tags, and the file moves to Solstone/Artist/Album so Jellyfin files it the same way.</p>
+      <div class="actions"><button type="button" class="btn" id="mu-rt-no">Cancel</button><button class="btn primary" type="submit">Save</button></div></form>`, (m) => {
+    $("#mu-rt-no", m).addEventListener("click", closeModal);
+    $("#mu-retag", m).addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      try { await post(`/api/music/tracks/${encodeURIComponent(t.id)}`, { title: f.get("title"), artist: f.get("artist"), album: f.get("album") }, "PUT"); closeModal(); showToast("Saved and re-filed", 2000); muRender(); }
+      catch (err) { showToast(esc(err.message), 4000); }
+    });
   });
 }
 function muAsk(title, label, value) {
@@ -210,6 +233,24 @@ async function muArtist(el, name) {
 }
 
 // ---------------------------------------------------------------- playlists
+// Radio playlists whose dates overlap: which one plays on the shared days (the shorter range).
+function muOverlaps(p, lists) {
+  const s = p.schedule;
+  if (!s?.on) return [];
+  const days = (sc) => { const out = []; const d = new Date(2024, +sc.from.slice(0, 2) - 1, +sc.from.slice(3)); const end = `${sc.to}`;
+    for (let i = 0; i < 366; i++) { const md = `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; out.push(md); if (md === end) break; d.setDate(d.getDate() + 1); } return out; };
+  const mine = days(s), out = [];
+  for (const q of lists || []) {
+    if (q.id === p.id || !q.schedule?.on) continue;
+    const theirs = new Set(days(q.schedule)), shared = mine.filter((md) => theirs.has(md));
+    if (!shared.length) continue;
+    const wins = mine.length < theirs.size || (mine.length === theirs.size && (p.created || 0) < (q.created || 0));
+    const md = (x) => `${+x.slice(3)} ${muMonths[+x.slice(0, 2) - 1]}`;
+    out.push({ with: q.name, wins, when: shared.length === 1 ? md(shared[0]) : `${md(shared[0])} – ${md(shared[shared.length - 1])}` });
+  }
+  return out;
+}
+const muOverlapNote = (p, lists) => muOverlaps(p, lists).map((o) => `<small class="mu-overlap" title="When radio playlists overlap, the one with the shorter dates plays">⚠ ${o.wins ? `Plays instead of ${esc(o.with)} on ${esc(o.when)}` : `${esc(o.with)} plays instead on ${esc(o.when)}`}</small>`).join("");
 const muRange = (s) => s?.on ? `${+s.from.slice(3)} ${muMonths[+s.from.slice(0, 2) - 1]} – ${+s.to.slice(3)} ${muMonths[+s.to.slice(0, 2) - 1]}` : "";
 async function muPlaylists(el) {
   const d = await api("/api/music/playlists");
@@ -218,7 +259,7 @@ async function muPlaylists(el) {
   const list = d.playlists.filter((p) => !q || p.name.toLowerCase().includes(q));
   const card = (p) => `<a class="mu-pl" href="#/music/playlists/${encodeURIComponent(p.id)}"><span class="mu-pl-ic">${p.schedule?.on ? "🗓" : p.shared ? "👪" : "🎶"}</span>
     <span><b>${esc(p.name)}</b><small>${p.count} ${p.count === 1 ? "song" : "songs"} · ${p.mine ? "yours" : `by ${esc(p.owner)}`}${p.shared ? " · shared" : ""}</small>
-    ${p.schedule?.on ? `<small class="mu-sched">📻 Radio ${esc(muRange(p.schedule))}</small>` : ""}${d.radio_default === p.id ? `<small class="mu-sched">📻 Default radio</small>` : ""}</span></a>`;
+    ${p.schedule?.on ? `<small class="mu-sched">📻 Radio ${esc(muRange(p.schedule))}</small>${muOverlapNote(p, d.playlists)}` : ""}${d.radio_default === p.id ? `<small class="mu-sched">📻 Default radio</small>` : ""}</span></a>`;
   const mine = list.filter((p) => p.mine), others = list.filter((p) => !p.mine);
   el.innerHTML = `<div class="mu-bar"><button class="btn primary" type="button" id="mu-new">＋ New playlist</button></div>
     <h3 class="mu-sub">Yours</h3>${mine.length ? `<div class="mu-pls">${mine.map(card).join("")}</div>` : `<p class="muted">You haven't made any yet. Use ＋ on any song, or start one here.</p>`}
@@ -231,7 +272,8 @@ async function muPlaylists(el) {
   });
 }
 async function muPlaylist(el, id) {
-  const p = await api(`/api/music/playlists/${encodeURIComponent(id)}`);
+  const [p, all] = await Promise.all([api(`/api/music/playlists/${encodeURIComponent(id)}`), api("/api/music/playlists")]);
+  mu.lists = all.playlists; mu.radioDefault = all.radio_default;
   const total = p.items.reduce((a, t) => a + (t.duration || 0), 0), s = p.schedule || {};
   const mdSel = (name, v) => { const [mo, d] = (v || "12-01").split("-").map(Number);
     return `<span class="mu-md"><select class="input sm" data-md="${name}-m">${muMonths.map((m, i) => `<option value="${i + 1}" ${i + 1 === mo ? "selected" : ""}>${m}</option>`).join("")}</select>
@@ -245,6 +287,7 @@ async function muPlaylist(el, id) {
     ${isAdmin() ? `<section class="panel mu-radio-set"><h3 class="fws-sub">📻 Radio</h3>
       <p class="muted small">The radio is what plays by default: on the status page, and for everyone who hasn't picked something else. A playlist with dates takes over every year between them (the shortest range wins when they overlap).</p>
       <label class="check"><input type="checkbox" id="mu-sched" ${s.on ? "checked" : ""}> Play on the radio every year from ${mdSel("from", s.from || "12-01")} to ${mdSel("to", s.to || "12-26")}</label>
+      ${muOverlapNote(p, mu.lists)}
       <label class="check"><input type="checkbox" id="mu-default" ${mu.radioDefault === p.id ? "checked" : ""}> The default radio the rest of the year</label>
       <button class="btn sm" type="button" id="mu-sched-save">Save radio settings</button></section>` : ""}
     <div id="mu-pl-rows">${muRowsHtml(p.items, { playlist: p.can_edit, empty: "Empty for now. Find songs under Songs, Albums or Artists and press ＋." })}</div>`;
@@ -283,16 +326,21 @@ async function muLibrary(el) {
       <div class="fw-row" style="margin-top:12px"><span>Default radio</span><select class="input sm" id="mu-default-radio"><option value="">The main library (uploads)</option>${(mu.lists || []).filter((p) => p.shared || p.mine).map((p) => `<option value="${esc(p.id)}" ${s.radio_default === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></div>
       <p class="muted small">Dated playlists (Christmas, Halloween…) take over on their days; set dates on the playlist itself.</p></section>
 
-    <section class="panel"><h3 class="fws-sub">Main library <span class="muted small">music uploaded here, the curated Minecraft music</span></h3>
-      <div class="fws-upload"><label class="btn primary">Add music…<input type="file" accept="audio/*" multiple hidden id="mu-file"></label><span class="muted small" id="mu-up">MP3, OGG, M4A, WAV, FLAC or Opus, up to 60 MB each. Title, artist and album come from the file's tags.</span></div>
+    <section class="panel"><h3 class="fws-sub">Upload music</h3>
+      ${x.upload_ok ? `<p class="small">Uploads go into <code>${esc(x.upload_dir)}</code>, sorted as <i>Artist / Album / 01 - Title</i> from the file's tags, so Jellyfin sees them too. ${x.uploaded ? `${x.uploaded} ${x.uploaded === 1 ? "song" : "songs"} there so far.` : ""} Songs without tags go in <i>Unsorted</i>; use ✎ on a song to fix its details.</p>`
+        : x.configured ? `<div class="notice">Solstone can't write to <code>${esc(x.upload_dir)}</code>, so uploads stay in Solstone's own data folder for now. Mount just that folder read-write:<pre class="mu-code">- /mnt/user/media/music/Solstone:/music/Solstone</pre></div>`
+        : `<p class="muted small">Uploads are kept in Solstone's data folder. Set up a music library below to keep everything in one place.</p>`}
+      <div class="fws-upload"><label class="btn primary">Add music…<input type="file" accept="audio/*" multiple hidden id="mu-file"></label><span class="muted small" id="mu-up">MP3, OGG, M4A, WAV, FLAC or Opus, up to 60 MB each.</span></div>
+      ${s.main.length && x.upload_ok ? `<div class="notice" style="margin-top:12px">${s.main.length} ${s.main.length === 1 ? "song was" : "songs were"} uploaded before the library was set up. <button class="btn sm" type="button" id="mu-move">Move them into the Solstone folder</button><br><small class="muted">They're kept together as the “Minecraft music” playlist, which becomes the default radio if you haven't picked one.</small></div>` : ""}
       ${s.main.length ? `<ol class="fws-tracks">${s.main.map((t, i) => `<li data-id="${t.id}"><span class="num muted">${i + 1}</span>
         <input class="input sm" value="${esc(t.title)}" data-title aria-label="Title"><span class="muted small">${esc(t.artist || "")}${t.artist ? " · " : ""}${t.ext.toUpperCase()} · ${mb(t.size)}</span>
         <span class="row-actions"><button type="button" class="icon-btn" data-up ${i === 0 ? "disabled" : ""} title="Move up">▲</button>
-        <button type="button" class="icon-btn" data-down ${i === s.main.length - 1 ? "disabled" : ""} title="Move down">▼</button><button type="button" class="btn sm danger" data-del>Delete</button></span></li>`).join("")}</ol>` : `<p class="muted" style="margin-top:10px">Nothing uploaded yet.</p>`}</section>
+        <button type="button" class="icon-btn" data-down ${i === s.main.length - 1 ? "disabled" : ""} title="Move down">▼</button><button type="button" class="btn sm danger" data-del>Delete</button></span></li>`).join("")}</ol>` : ""}</section>
 
     <section class="panel"><h3 class="fws-sub">External library <span class="muted small">your own music folder, read-only</span></h3>
       ${!x.configured ? `<p class="muted">Point Solstone at a music folder (Jellyfin's, say) to add it here. Mount it read-only and set <code>MUSIC_LIBRARY_DIR</code>:</p>
-        <pre class="mu-code">volumes:\n  - /mnt/user/media/music:/music:ro\nenvironment:\n  MUSIC_LIBRARY_DIR: /music</pre>`
+        <pre class="mu-code">volumes:\n  - /mnt/user/media/music:/music:ro\n  - /mnt/user/media/music/Solstone:/music/Solstone\nenvironment:\n  MUSIC_LIBRARY_DIR: /music</pre>
+        <p class="muted small">The whole library is read-only; only the Solstone folder inside it can be written to, for uploads.</p>`
       : !x.found ? `<div class="notice">Can't find <code>${esc(x.root)}</code>. Check the folder is mounted into the container.</div>`
       : `<p><b>${x.count.toLocaleString()}</b> songs in <code>${esc(x.root)}</code>${x.scanned ? ` · read ${esc(fmtAgo(x.scanned))}` : ""}${x.scanning ? ` · <b>reading… ${x.progress.toLocaleString()} so far</b>` : ""}</p>
         ${x.error ? `<div class="notice">${esc(x.error)}</div>` : ""}
@@ -314,6 +362,12 @@ async function muLibrary(el) {
   const reload = async () => { await muLibrary(el); FWMusic.loaded = false; await FWMusic.load(); appSky.bar?.musicChanged(); };
   $("#mu-public").addEventListener("change", (e) => post("/api/music/settings", { public: e.target.checked }, "PUT").then(() => showToast("Saved", 1500)));
   $("#mu-default-radio").addEventListener("change", (e) => post("/api/music/settings", { radio_default: e.target.value }, "PUT").then(() => { showToast("Saved", 1500); mu.radioDefault = e.target.value; }));
+  $("#mu-move")?.addEventListener("click", async (e) => {
+    e.target.disabled = true;
+    try { const r = await post("/api/music/move-uploads"); showToast(`Moved ${r.moved} ${r.moved === 1 ? "song" : "songs"} into the Solstone folder`, 3000); }
+    catch (err) { showToast(esc(err.message), 4000); }
+    reload();
+  });
   $("#mu-rescan")?.addEventListener("click", async () => { await post("/api/music/rescan").catch((e) => showToast(esc(e.message), 4000)); showToast("Reading the music folder…", 2500); setTimeout(() => muLibrary(el), 2500); });
   $$("#mu-mode button").forEach((b) => b.addEventListener("click", async () => { await post("/api/music/settings", { mode: b.dataset.v }, "PUT"); muLibrary(el); }));
   el.querySelectorAll("[data-unblock]").forEach((b) => b.addEventListener("click", async () => { await muRule("blocked", b.dataset.unblock, b.dataset.v, false); muLibrary(el); }));
@@ -327,9 +381,15 @@ async function muLibrary(el) {
     const files = [...e.target.files];
     for (const [k, f] of files.entries()) {
       $("#mu-up").textContent = `Uploading ${k + 1} of ${files.length}: ${f.name}…`;
+      const send = (force) => fetch(`/api/music?filename=${encodeURIComponent(f.name)}${force ? "&force=true" : ""}`, { method: "POST", body: f, credentials: "same-origin",
+        headers: { "X-Solstone": "1", "Content-Type": f.type || "application/octet-stream" } });
       try {
-        const r = await fetch(`/api/music?filename=${encodeURIComponent(f.name)}`, { method: "POST", body: f, credentials: "same-origin",
-          headers: { "X-Solstone": "1", "Content-Type": f.type || "application/octet-stream" } });
+        let r = await send(false);
+        if (r.status === 409) {
+          const why = (await r.json().catch(() => ({}))).detail || "It's already in the library";
+          if (await confirmBox(`${f.name}`, `${esc(why)}. Upload another copy anyway?`, "Upload anyway", false)) r = await send(true);
+          else continue;
+        }
         if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
       } catch (err) { showToast(`${esc(f.name)}: ${esc(err.message)}`, 5000); }
     }

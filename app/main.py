@@ -586,7 +586,7 @@ async def get_firework_show(request: Request):
             "players": sorted(players.values(), key=str.lower), "today": fwshow.today_state(),
             "calendar_defaults": [fwshow._clean_entry(e) for e in fwshow.DEFAULT_CALENDAR],
             "creators": _creators_summary(),
-            "shows": fwshow.shows(), "base_shows": fwshow.base_shows(),
+            "shows": fwshow.shows(), "base_shows": fwshow.base_shows(), "overlaps": await asyncio.to_thread(fwshow.overlaps),
             "servers": [{"id": x.id, "name": x.display_name} for x in S.registry.servers.values() if x.is_java and not x.settings.get("hidden")],
             "music": {"tracks": music.main_tracks(), "public": music.public()}}
 
@@ -888,6 +888,30 @@ async def music_rule(request: Request):
     return r
 
 
+@app.put("/api/music/tracks/{tid}")
+async def music_retag(tid: str, request: Request):
+    """Fix the title, artist or album of a song uploaded through Solstone (and re-file it)."""
+    user = auth.require_admin(request)
+    body = await _body(request)
+    t = await asyncio.to_thread(music.retag_uploaded, tid, str(body.get("title") or "").strip()[:120],
+                                str(body.get("artist") or "").strip()[:120], str(body.get("album") or "").strip()[:120])
+    if not t:
+        raise HTTPException(404, "Only music uploaded through Solstone can be changed")
+    auth.audit(user, None, "music_retag", t["title"])
+    return t
+
+
+@app.post("/api/music/move-uploads")
+async def music_move_uploads(request: Request):
+    user = auth.require_admin(request)
+    try:
+        r = await asyncio.to_thread(music.move_main_into_library)
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+    auth.audit(user, None, "music_move_uploads", f"{r['moved']} songs")
+    return r
+
+
 @app.post("/api/music/rescan")
 async def music_rescan(request: Request):
     auth.require_admin(request)
@@ -898,7 +922,7 @@ async def music_rescan(request: Request):
 
 
 @app.post("/api/music")
-async def music_upload(request: Request, title: str = "", filename: str = ""):
+async def music_upload(request: Request, title: str = "", filename: str = "", force: bool = False):
     user = auth.require_admin(request)
     ext = music.ext_for(request.headers.get("content-type", ""), filename)
     if not ext:
@@ -915,7 +939,13 @@ async def music_upload(request: Request, title: str = "", filename: str = ""):
                 fh.write(chunk)
         if size == 0:
             raise HTTPException(400, "The file was empty")
-        t = await asyncio.to_thread(music.add, tmp, ext, title or re.sub(r"\.[^.]+$", "", filename), size)
+        name = title or re.sub(r"\.[^.]+$", "", filename)
+        if music.upload_root():           # into the library's Solstone folder, sorted by artist and album
+            t = await asyncio.to_thread(music.file_upload, tmp, ext, name, force)
+        else:
+            t = await asyncio.to_thread(music.add, tmp, ext, name, size)
+    except FileExistsError as e:
+        raise HTTPException(409, str(e)) from e
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     finally:
@@ -935,9 +965,10 @@ async def music_update(request: Request):
 
 @app.delete("/api/music/{tid}")
 async def music_delete(tid: str, request: Request):
+    """Uploaded music only: Solstone never deletes anything else in the library (block it instead)."""
     user = auth.require_admin(request)
-    if not music.delete(tid):
-        raise HTTPException(404)
+    if not music.delete(tid) and not await asyncio.to_thread(music.delete_uploaded, tid):
+        raise HTTPException(404, "Only music uploaded through Solstone can be deleted; block anything else")
     auth.audit(user, None, "music_delete", tid)
     return {"ok": True}
 
