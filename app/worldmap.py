@@ -32,7 +32,8 @@ _WATERY = {"water", "bubble_column", "kelp", "kelp_plant", "seagrass", "tall_sea
 # ------------------------------------------------------------------ a small NBT reader
 # Region chunks are big; only the block palettes, packed block data and section heights
 # are needed, so everything else is skipped without being decoded.
-_WANT = {"sections", "Sections", "Level", "block_states", "palette", "Palette", "data", "BlockStates", "Y", "Name", "yPos"}
+_WANT = {"sections", "Sections", "Level", "block_states", "BlockStates", "blocks", "palette", "Palette", "data", "Data", "Y", "y",
+         "Name", "name", "yPos"}
 
 
 class _R:
@@ -262,22 +263,42 @@ def _short(name: str) -> str:
     return name.split(":", 1)[-1]
 
 
+def _block_name(p) -> str:
+    """One palette entry: {Name: "minecraft:stone", Properties: …}, or just the name as text
+    (possibly "minecraft:oak_log[axis=y]")."""
+    if isinstance(p, dict):
+        n = p.get("Name") or p.get("name") or "minecraft:air"
+    elif isinstance(p, str):
+        n = p
+    else:
+        return "minecraft:air"
+    n = str(n).split("[", 1)[0].strip()
+    return n if ":" in n else f"minecraft:{n}"
+
+
+def _section_blocks(s: dict) -> tuple[list[str], np.ndarray | None]:
+    """(block names in the palette, packed indices) for one section, whatever the layout."""
+    bs = next((s[k] for k in ("block_states", "BlockStates", "blocks") if isinstance(s.get(k), dict)), None)
+    if bs is not None:
+        palette, data = bs.get("palette") or bs.get("Palette"), bs.get("data") if bs.get("data") is not None else bs.get("Data")
+    else:                                            # 1.13-1.17: straight on the section
+        palette, data = s.get("Palette"), s.get("BlockStates")
+    if not palette:
+        return [], None
+    return [_block_name(p) for p in palette], data
+
+
 def render_chunk(nbt: dict, colors: Colors, nether: bool) -> tuple[np.ndarray, np.ndarray] | None:
     """16x16 colours and heights for one chunk (None if it has no block data)."""
     lvl = nbt.get("Level") if isinstance(nbt.get("Level"), dict) else nbt
     sections = lvl.get("sections") or lvl.get("Sections") or []
     layers = []                                   # (y, names, idx[16,16,16])
     for s in sections:
-        bs = s.get("block_states")
-        palette = bs.get("palette") if isinstance(bs, dict) else s.get("Palette")
-        data = bs.get("data") if isinstance(bs, dict) else s.get("BlockStates")
-        if not palette:
-            continue
-        names = [p.get("Name", "minecraft:air") if isinstance(p, dict) else "minecraft:air" for p in palette]
-        if all(_short(n) in _AIR for n in names):
+        names, data = _section_blocks(s)
+        if not names or all(_short(n) in _AIR for n in names):
             continue
         idx = _unpack(data, len(names)).reshape(16, 16, 16)          # y, z, x
-        layers.append((int(s.get("Y", 0)), names, idx))
+        layers.append((int(s.get("Y", s.get("y", 0))), names, idx))
     if not layers:
         return None
     layers.sort(key=lambda x: -x[0])
@@ -373,6 +394,55 @@ def _top_keys(raw: bytes) -> list[str]:
     return out
 
 
+def _describe(raw: bytes) -> dict:
+    """The real layout of one chunk's sections (all tags, not just the ones the map reads), so
+    a format change can be seen from the map check."""
+    try:
+        import nbtlib
+        root = nbtlib.File.parse(io.BytesIO(raw))
+        lvl = root.get("Level", root)
+        secs = lvl.get("sections") or lvl.get("Sections") or []
+        out: dict = {"data_version": int(root.get("DataVersion", 0) or 0)}
+        solid = None
+        for sec in secs:                                 # the first section with more than air in it
+            names, _ = _section_blocks(_plain(sec))
+            if names and not all(_short(n) in _AIR for n in names):
+                solid = sec
+                break
+        sec = solid if solid is not None else (secs[len(secs) // 2] if secs else None)
+        if sec is None:
+            return out
+        out["section_tags"] = {k: type(v).__name__ for k, v in sec.items()}
+        bs = next((sec[k] for k in ("block_states", "BlockStates", "blocks") if hasattr(sec.get(k), "items")), None)
+        if bs is not None:
+            out["block_states_tags"] = {k: type(v).__name__ for k, v in bs.items()}
+            pal = bs.get("palette") if bs.get("palette") is not None else bs.get("Palette")
+            if pal is not None:
+                out["palette_size"] = len(pal)
+                out["palette_first"] = [str(p)[:80] for p in list(pal)[:4]]
+        out["names_seen"] = _section_blocks(_plain(sec))[0][:6]
+        return out
+    except Exception as e:                               # the description must never break the check
+        return {"describe_error": repr(e)[:200]}
+
+
+def _plain(tag):
+    """nbtlib tags -> plain dicts/lists/str/ints (enough for _section_blocks)."""
+    if hasattr(tag, "items"):
+        return {k: _plain(v) for k, v in tag.items()}
+    if isinstance(tag, str):
+        return str(tag)
+    if isinstance(tag, list):
+        return [_plain(v) for v in tag]
+    try:
+        import numpy as _np
+        if hasattr(tag, "dtype") or type(tag).__name__.endswith("Array"):
+            return _np.asarray(tag, dtype=_np.int64)
+    except Exception:
+        pass
+    return tag
+
+
 def _decompress(ctype: int, body: bytes, path: Path, i: int) -> bytes | None:
     if ctype & 0x80:                                # too big for the region file: in c.<x>.<z>.mcc beside it
         rx, rz = (int(v) for v in path.name.split(".")[1:3])
@@ -428,8 +498,7 @@ def render_region(path: Path, colors: Colors, nether: bool = False, info: dict |
                 lvl = nbt.get("Level") if isinstance(nbt.get("Level"), dict) else nbt
                 secs = lvl.get("sections") or lvl.get("Sections") or []
                 info["sample"]["sections"] = len(secs)
-                if secs:
-                    info["sample"]["section_keys"] = sorted(secs[len(secs) // 2].keys())
+                info["sample"].update(_describe(raw))
             got = render_chunk(nbt, colors, nether)
         except Exception as e:
             info["failed"] += 1
@@ -478,7 +547,7 @@ def regions(world: Path, dim: str) -> list[list[int]]:
     return out
 
 
-RENDER_VERSION = 2          # bump when the drawing changes: older cached tiles are redrawn
+RENDER_VERSION = 3          # bump when the drawing changes: older cached tiles are redrawn
 
 
 def _tile_path(sid: str, dim: str, rx: int, rz: int) -> Path:

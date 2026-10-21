@@ -192,3 +192,16 @@ def test_render_reports_what_happened(tmp_path):
     img = worldmap.render_region(tmp_path / "r.0.0.mca", worldmap.Colors(None), False, info)
     assert img is None and info["chunks"] == 2 and info["failed"] == 2 and "compression type 9" in info["error"]
     assert info["compression"] == {"9": 2}
+
+
+def test_palette_as_plain_names():
+    """Newer layouts may list block names as text (with [properties]) instead of compounds."""
+    from app import worldmap
+    c = _chunk(0, 0, lambda x, z: [(y, "minecraft:grass_block") for y in range(60, 64)])
+    for s in c["sections"]:
+        bs = s["block_states"]
+        bs["palette"] = List[String]([String(p["Name"] + ("[snowy=false]" if "grass" in p["Name"] else "")) for p in bs["palette"]])
+    buf = io.BytesIO(); nbtlib.File(c).write(buf)
+    got = worldmap.render_chunk(worldmap.read_chunk(buf.getvalue()), worldmap.Colors(None), False)
+    assert got is not None and (got[1] == 63).all()
+    assert worldmap._block_name({"name": "oak_log"}) == "minecraft:oak_log"
