@@ -450,28 +450,40 @@ function startShowBar(scene, opts = {}) {
     let on = lsGet(opts.key || "solstone-sky", null);
     if (on == null) on = !!opts.defaultOn && !matchMedia("(prefers-reduced-motion: reduce)").matches;
     scene.setAuto(on);
-    // The sky's controls: in the page's sidebar when there is one (opts.dock), otherwise
-    // floating in the corner. The floating set also appears while the page is hidden.
-    const ctlHtml = (docked) => `<button type="button" class="sky-launch" data-sky="launch" title="Launch a firework" aria-label="Launch a firework">🎆${docked ? "<span>Launch</span>" : ""}</button>
-      <button type="button" class="sky-auto" data-sky="auto" aria-pressed="${on}" title="Keep launching fireworks"><span class="sky-sw"></span><span>Show</span></button>
-      <button type="button" class="sky-sound" data-sky="volume" title="Sound and music volume" aria-label="Sound and music volume" aria-haspopup="dialog">${FWAudio.on ? "🔊" : "🔇"}${docked ? "<span>Sound</span>" : ""}</button>
-      ${opts.hide ? `<button type="button" class="sky-hide" data-sky="hide" title="Hide the page and just watch (Esc to come back)" aria-label="Hide the page">👁${docked ? "<span>Watch</span>" : ""}</button>` : ""}`;
-    const box = document.createElement("div");
-    box.className = `sky-ctl glass${opts.dock ? " has-dock" : ""}`;
-    box.innerHTML = ctlHtml(false);
-    document.body.append(box); els.push(box);
-    const holders = [box];
-    if (opts.dock) { opts.dock.innerHTML = `<div class="sky-dock" role="group" aria-label="Fireworks and sound">${ctlHtml(true)}</div>`; holders.push(opts.dock); cleanup.push(() => { opts.dock.innerHTML = ""; }); }
-    const sync = () => holders.forEach((h) => {
-      h.querySelectorAll('[data-sky="auto"]').forEach((b) => b.setAttribute("aria-pressed", String(on)));
-      h.querySelectorAll('[data-sky="volume"]').forEach((b) => { b.firstChild.textContent = FWAudio.on || FWMusic.playing ? (FWAudio.on ? "🔊" : "🎵") : "🔇"; });
-    });
 
-    // ---- one popover for volume, the playlist and the equalizer
+    // ---- one bar along the bottom: the music on the left, the sky's controls on the right
+    const bar = document.createElement("div");
+    bar.className = "mbar glass no-music"; bar.setAttribute("role", "region"); bar.setAttribute("aria-label", "Music and fireworks");
+    bar.innerHTML = `<div class="mb-music">
+        <div class="mb-btns"><button type="button" data-mb="prev" title="Back (or to the start)" aria-label="Previous track">⏮</button>
+          <button type="button" data-mb="toggle" class="mb-play" aria-label="Play">▶</button>
+          <button type="button" data-mb="next" title="Skip ahead" aria-label="Next track">⏭</button></div>
+        <span class="mb-art"><img alt="" hidden><canvas class="mb-viz" aria-hidden="true"></canvas></span>
+        <div class="mb-mid"><div class="mb-title"><b></b><span class="mb-sub"></span></div>
+          <div class="mb-seek"><span class="mb-t">0:00</span><input type="range" min="0" max="1000" step="1" value="0" aria-label="Position in the track"><span class="mb-d">0:00</span></div></div>
+        <div class="mb-btns"><button type="button" data-mb="list" title="Up next, playlists, shuffle and equalizer" aria-label="Up next">☰</button></div>
+      </div>
+      <div class="mb-sky" role="group" aria-label="Fireworks">
+        <button type="button" data-sky="launch" class="mb-launch" title="Launch a firework" aria-label="Launch a firework">🎆</button>
+        <button type="button" data-sky="auto" class="sky-auto" aria-pressed="${on}" title="Keep launching fireworks"><span class="sky-sw"></span><span>Show</span></button>
+        <button type="button" data-sky="volume" class="mb-vol" title="Firework and music volume" aria-label="Volume" aria-haspopup="dialog">🔊</button>
+        ${opts.hide ? `<button type="button" data-sky="hide" class="mb-hide" title="Hide the page and just watch (Esc to come back)" aria-label="Hide the page">👁</button>` : ""}
+      </div>`;
+    document.body.append(bar); els.push(bar);
+    document.body.classList.add("has-mbar"); cleanup.push(() => document.body.classList.remove("has-mbar"));
+    const sync = () => {
+      bar.querySelector('[data-sky="auto"]').setAttribute("aria-pressed", String(on));
+      const v = bar.querySelector('[data-sky="volume"]');
+      v.textContent = !FWAudio.on && (FWMusic.muted || !FWMusic.tracks.length) ? "🔇" : "🔊";
+      const h = bar.querySelector('[data-sky="hide"]');
+      if (h) { const hidden = document.body.classList.contains("ui-hidden"); h.textContent = hidden ? "🗔" : "👁"; h.title = hidden ? "Show the page again (Esc)" : "Hide the page and just watch (Esc to come back)"; }
+    };
+
+    // ---- one pop-up for volume, Up next (with shuffle) and the equalizer
     const pop = document.createElement("div");
     pop.className = "music-pop glass"; pop.hidden = true; pop.setAttribute("role", "dialog");
     document.body.append(pop); els.push(pop);
-    let popMode = null, popAnchor = null, popLists = null, popListsLoading = false, popFind = "";
+    let popMode = null, popAnchor = null, popLists = null, popListsLoading = false, popFind = "", popAnon = false;
     const fmt = (t) => { t = Math.max(0, Math.floor(t || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
     const pct = (v) => `${Math.round(v * 100)}%`;
     const renderPop = () => {
@@ -486,29 +498,33 @@ function startShowBar(scene, opts = {}) {
           <p class="muted small">The firework editor and the preview window have their own sound switches.</p>`;
       } else if (popMode === "list") {
         pop.setAttribute("aria-label", "Up next");
-        const signedIn = typeof me !== "undefined" && !!me.user && !document.body.classList.contains("status-page");
         const src = FWMusic.source, lists = popLists || [];
         const opts = [`<option value="radio:" ${src.type === "radio" ? "selected" : ""}>📻 ${esc(FWMusic.radio?.name || "Solstone radio")}${FWMusic.radio?.why && FWMusic.radio.why !== "The main library" ? ` (${esc(FWMusic.radio.why)})` : ""}</option>`];
-        if (signedIn) {
-          if (src.type !== "radio" && src.type !== "playlist") opts.push(`<option value="${esc(src.type)}:${esc(src.id || "")}" selected>🎧 ${esc(src.name || "Picked songs")}</option>`);
-          lists.forEach((l) => opts.push(`<option value="playlist:${esc(l.id)}" ${src.type === "playlist" && src.id === l.id ? "selected" : ""}>${l.schedule?.on ? "🗓" : l.mine ? "🎶" : "👪"} ${esc(l.name)} · ${l.count}</option>`));
-        }
-        pop.innerHTML = `<h4>Up next</h4>
-          ${opts.length > 1 ? `<select class="input sm mq-src" aria-label="What to play">${opts.join("")}</select>` : `<p class="muted small">${esc(FWMusic.radio?.name || "")}</p>`}
+        if (src.type !== "radio" && !(src.type === "playlist" && lists.some((l) => l.id === src.id))) opts.push(`<option value="${esc(src.type)}:${esc(src.id || "")}" selected>🎧 ${esc(src.name || "Picked songs")}</option>`);
+        lists.forEach((l) => opts.push(`<option value="playlist:${esc(l.id)}" ${src.type === "playlist" && src.id === l.id ? "selected" : ""}>${l.schedule?.on ? "🗓" : l.mine ? "🎶" : "👪"} ${esc(l.name)} · ${l.count}</option>`));
+        pop.innerHTML = `<div class="mq-head"><h4>Up next</h4>
+            <button type="button" class="mq-tool" data-mq="shuffle" aria-pressed="${FWMusic.shuffle}" title="Shuffle">🔀 Shuffle</button>
+            <button type="button" class="mq-tool" data-mq="eq" title="Equalizer">🎚 Equalizer</button></div>
+          <select class="input sm mq-src" aria-label="What to play">${opts.join("")}${popListsLoading ? `<option disabled>Loading playlists…</option>` : ""}</select>
           <input class="input sm mq-find" type="search" placeholder="Find a song in this list" aria-label="Find a song" value="${esc(popFind)}">
           <ol class="mp-list mq-list">${FWMusic.tracks.map((x, i) => ({ x, i })).filter(({ x }) => !popFind || `${x.title} ${x.artist} ${x.album}`.toLowerCase().includes(popFind.toLowerCase())).slice(0, 400).map(({ x, i }) => `<li><button type="button" data-mp-i="${i}" ${i === FWMusic.idx ? 'aria-current="true"' : ""}>
             <img src="${FWMusic.artUrl(x)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><span><b>${i === FWMusic.idx && FWMusic.playing ? "♪ " : ""}${esc(x.title)}</b><small>${esc([x.artist, x.album].filter(Boolean).join(" · "))}</small></span><i>${x.duration ? fmt(x.duration) : ""}</i></button></li>`).join("") || `<li class="muted small">Nothing matches.</li>`}</ol>
-          ${signedIn ? `<a class="mq-more" href="#/music">🎵 Open the music library</a>` : ""}`;
+          ${!popAnon && !document.body.classList.contains("status-page") ? `<a class="mq-more" href="#/music">🎵 Open the music library</a>` : ""}`;
         const cur = pop.querySelector('[aria-current="true"]');
         if (cur && !popFind) cur.scrollIntoView({ block: "center" });
-        if (signedIn && !popLists && !popListsLoading) {
+        if (popLists == null && !popListsLoading && !popAnon) {
           popListsLoading = true;
-          fetch("/api/music/playlists", { credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null)).then((d) => { popLists = d?.playlists || []; popListsLoading = false; renderPop(); }).catch(() => { popListsLoading = false; });
-        }      } else if (popMode === "eq") {
+          fetch("/api/music/playlists", { credentials: "same-origin" }).then(async (r) => {
+            popListsLoading = false;
+            if (r.status === 401) { popAnon = true; popLists = []; } else popLists = r.ok ? (await r.json()).playlists : [];
+            renderPop();
+          }).catch(() => { popListsLoading = false; popLists = []; renderPop(); });
+        }
+      } else if (popMode === "eq") {
         pop.setAttribute("aria-label", "Equalizer");
         const eq = FWMusic.eq, row = (k, label, min, max, step, show) => `<label class="eq-row"><span>${label}</span><input type="range" min="${min}" max="${max}" step="${step}" value="${eq[k]}" data-eq="${k}"><b>${show(eq[k])}</b></label>`;
         const db = (v) => `${v > 0 ? "+" : ""}${Math.round(v)} dB`;
-        pop.innerHTML = `<h4>Equalizer</h4>
+        pop.innerHTML = `<div class="mq-head"><button type="button" class="mq-tool" data-mq="list">← Up next</button><h4>Equalizer</h4></div>
           <div class="eq-presets">${Object.entries(MUSIC_EQ).map(([k, p]) => `<button type="button" class="btn sm" data-eq-preset="${k}" aria-pressed="${eq.preset === k}">${p[0]}</button>`).join("")}</div>
           ${row("bass", "Bass", -12, 12, 1, db)}${row("mid", "Middle", -12, 12, 1, db)}${row("treble", "Treble", -12, 12, 1, db)}${row("space", "Room echo", 0, 1, 0.05, pct)}
           ${FWMusic.graph ? "" : `<p class="muted small">Press play to hear the equalizer.</p>`}`;
@@ -518,12 +534,8 @@ function startShowBar(scene, opts = {}) {
     const place = () => {
       if (!popAnchor || pop.hidden) return;
       const r = popAnchor.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
-      let left = Math.min(innerWidth - w - 10, Math.max(10, r.left + r.width / 2 - w / 2));
-      let top = r.top - h - 10;
-      const side = popAnchor.closest(".rail");            // from the sidebar: open beside it, not over it
-      if (side && innerWidth > 900) { left = side.getBoundingClientRect().right + 8; top = Math.max(10, Math.min(innerHeight - h - 10, r.bottom - h)); }
-      else if (top < 10) top = r.bottom + 10;
-      pop.style.left = `${left}px`; pop.style.top = `${top}px`;
+      const left = Math.min(innerWidth - w - 10, Math.max(10, r.left + r.width / 2 - w / 2));
+      pop.style.left = `${left}px`; pop.style.top = `${Math.max(10, r.top - h - 10)}px`;
     };
     const openPop = (mode, anchor) => {
       if (!pop.hidden && popMode === mode && popAnchor === anchor) { pop.hidden = true; return; }
@@ -535,16 +547,20 @@ function startShowBar(scene, opts = {}) {
       const b = e.target.closest("button");
       if (!b) return;
       if (b.dataset.volMute === "fx") { FWAudio.setOn(!FWAudio.on); if (FWAudio.on) scene.launch(); sync(); }
-      else if (b.dataset.volMute === "music") FWMusic.setMuted(!FWMusic.muted);
+      else if (b.dataset.volMute === "music") { FWMusic.setMuted(!FWMusic.muted); sync(); }
       else if (b.dataset.mpI) FWMusic.play(+b.dataset.mpI);
       else if (b.dataset.eqPreset) FWMusic.setPreset(b.dataset.eqPreset);
+      else if (b.dataset.mq === "shuffle") { FWMusic.shuffle = !FWMusic.shuffle; lsSet("solstone-music-shuffle", FWMusic.shuffle); }
+      else if (b.dataset.mq === "eq" || b.dataset.mq === "list") { popMode = b.dataset.mq; }
       renderPop();
     });
     pop.addEventListener("change", async (e) => {
-      if (!e.target.matches(".mq-src")) return;
-      const [type, id] = e.target.value.split(":");
-      try { await FWMusic.playSource({ type, id, name: e.target.selectedOptions[0].textContent.replace(/^\S+\s/, "").replace(/ · \d+$/, "") }); } catch { /* keep what's playing */ }
-      renderPop();
+      if (e.target.matches(".mq-src")) {
+        const [type, id] = e.target.value.split(":");
+        try { await FWMusic.playSource({ type, id, name: e.target.selectedOptions[0].textContent.replace(/^\S+\s/, "").replace(/ · \d+$/, "") }); } catch { /* keep what's playing */ }
+        renderPop();
+      }
+      if (e.target.dataset.vol === "fx" && FWAudio.on) scene.launch();      // hear the new level
     });
     pop.addEventListener("input", (e) => {
       if (e.target.matches(".mq-find")) {
@@ -560,135 +576,99 @@ function startShowBar(scene, opts = {}) {
         pop.querySelectorAll("[data-eq-preset]").forEach((x) => x.setAttribute("aria-pressed", "false"));
       }
     });
-    pop.addEventListener("change", (e) => { if (e.target.dataset.vol === "fx" && FWAudio.on) scene.launch(); });   // hear the new level
-    const closePop = (e) => { if (!pop.hidden && !pop.contains(e.target) && !e.target.closest?.("[data-sky='volume'], [data-mb='list'], [data-mb='eq'], [data-mb='vol']")) pop.hidden = true; };
+    const closePop = (e) => { if (!pop.hidden && !pop.contains(e.target) && !e.target.closest?.("[data-sky='volume'], [data-mb='list']")) pop.hidden = true; };
     document.addEventListener("click", closePop); cleanup.push(() => document.removeEventListener("click", closePop));
     addEventListener("resize", place); cleanup.push(() => removeEventListener("resize", place));
 
-    holders.forEach((h) => h.addEventListener("click", (e) => {
-      const b = e.target.closest("[data-sky]");
-      if (!b) return;
-      const k = b.dataset.sky;
-      if (k === "launch") { if (FWAudio.on) FWAudio.ensure(); scene.launch(); }
-      else if (k === "auto") { on = !on; scene.setAuto(on); lsSet(opts.key || "solstone-sky", on); sync(); }
-      else if (k === "volume") { e.stopPropagation(); openPop("volume", b); }
-      else if (k === "hide") setHidden(!document.body.classList.contains("ui-hidden"));
-    }));
-
-    // ---- the music bar, along the bottom in the middle
-    let bar = null, vizRaf = 0, seeking = false;
-    const minKey = "solstone-music-bar-min";
-    const buildBar = () => {
-      bar = document.createElement("div");
-      bar.className = "mbar glass"; bar.setAttribute("role", "region"); bar.setAttribute("aria-label", "Music");
-      document.body.append(bar); els.push(bar);
-      document.body.classList.add("has-mbar"); cleanup.push(() => document.body.classList.remove("has-mbar"));
-      bar.innerHTML = `<div class="mb-btns"><button type="button" data-mb="prev" title="Back (or to the start)" aria-label="Previous track">⏮</button>
-          <button type="button" data-mb="toggle" class="mb-play" aria-label="Play">▶</button>
-          <button type="button" data-mb="next" title="Skip ahead" aria-label="Next track">⏭</button></div>
-        <span class="mb-art"><img alt="" hidden><canvas class="mb-viz" aria-hidden="true"></canvas></span>
-        <div class="mb-mid"><div class="mb-title"><b></b><span class="mb-sub"></span></div>
-          <div class="mb-seek"><span class="mb-t">0:00</span><input type="range" min="0" max="1000" step="1" value="0" aria-label="Position in the track"><span class="mb-d">0:00</span></div></div>
-        <div class="mb-btns mb-extra"><button type="button" data-mb="shuffle" title="Shuffle" aria-label="Shuffle">🔀</button>
-          <button type="button" data-mb="list" title="Up next: every song, and other playlists" aria-label="Up next">☰</button>
-          <button type="button" data-mb="eq" title="Equalizer" aria-label="Equalizer">🎚</button>
-          <button type="button" data-mb="vol" title="Volume" aria-label="Volume">🔊</button>
-          <button type="button" data-mb="min" class="mb-min" title="Make it small" aria-label="Make the music bar small">⌄</button></div>`;
-      bar.classList.toggle("mini", lsGet(minKey, false));
-      bar.addEventListener("click", (e) => {
-        const b = e.target.closest("[data-mb]");
-        if (!b) return;
-        const k = b.dataset.mb;
+    // ---- the bar's buttons
+    let seeking = false, vizRaf = 0;
+    bar.addEventListener("click", (e) => {
+      const s = e.target.closest("[data-sky]"), m = e.target.closest("[data-mb]");
+      if (s) {
+        const k = s.dataset.sky;
+        if (k === "launch") { if (FWAudio.on) FWAudio.ensure(); scene.launch(); }
+        else if (k === "auto") { on = !on; scene.setAuto(on); lsSet(opts.key || "solstone-sky", on); sync(); }
+        else if (k === "volume") { e.stopPropagation(); openPop("volume", s); }
+        else if (k === "hide") setHidden(!document.body.classList.contains("ui-hidden"));
+      } else if (m) {
+        const k = m.dataset.mb;
         if (k === "toggle") FWMusic.toggle();
         else if (k === "prev") FWMusic.prev();
         else if (k === "next") FWMusic.next();
-        else if (k === "shuffle") { FWMusic.shuffle = !FWMusic.shuffle; lsSet("solstone-music-shuffle", FWMusic.shuffle); renderBar(); }
-        else if (k === "list" || k === "eq") { e.stopPropagation(); openPop(k, b); }
-        else if (k === "vol") { e.stopPropagation(); openPop("volume", b); }
-        else if (k === "min") { const m = !bar.classList.contains("mini"); bar.classList.toggle("mini", m); lsSet(minKey, m); renderBar(); }
-      });
-      const range = bar.querySelector('input[type="range"]');
-      range.addEventListener("input", () => { seeking = true; bar.querySelector(".mb-t").textContent = fmt((range.value / 1000) * FWMusic.duration); });
-      range.addEventListener("change", () => { seeking = false; FWMusic.seek((range.value / 1000) * FWMusic.duration); });
-      cleanup.push(FWMusic.on((what) => { if (what === "time") renderTime(); else { renderBar(); renderPop(); sync(); } }));
-      cleanup.push(() => cancelAnimationFrame(vizRaf));
-      renderBar();
-    };
+        else if (k === "list") { e.stopPropagation(); openPop("list", m); }
+      }
+    });
+    const range = bar.querySelector('.mb-seek input');
+    range.addEventListener("input", () => { seeking = true; bar.querySelector(".mb-t").textContent = fmt((range.value / 1000) * FWMusic.duration); });
+    range.addEventListener("change", () => { seeking = false; FWMusic.seek((range.value / 1000) * FWMusic.duration); });
     const renderTime = () => {
-      if (!bar) return;
       const d = FWMusic.duration, t = FWMusic.time;
       if (!seeking) {
         bar.querySelector(".mb-t").textContent = fmt(t);
-        const r = bar.querySelector('input[type="range"]'); r.value = d ? Math.round((t / d) * 1000) : 0;
-        r.style.setProperty("--p", `${d ? (t / d) * 100 : 0}%`);
+        range.value = d ? Math.round((t / d) * 1000) : 0;
+        range.style.setProperty("--p", `${d ? (t / d) * 100 : 0}%`);
       }
       bar.querySelector(".mb-d").textContent = fmt(d);
     };
+    const hasMusic = () => !!(FW.music && FWMusic.tracks.length);
     const renderBar = () => {
-      if (!bar) return;
+      bar.classList.toggle("no-music", !hasMusic());
       const t = FWMusic.current, playing = FWMusic.playing;
       bar.classList.toggle("playing", playing);
       const pb = bar.querySelector(".mb-play");
       pb.textContent = playing ? "⏸" : "▶"; pb.setAttribute("aria-label", playing ? "Pause" : "Play");
-      bar.querySelector(".mb-title b").textContent = t?.title || "";
-      bar.querySelector(".mb-title b").title = [t?.title, t?.artist, t?.album].filter(Boolean).join(" · ");
+      const tb = bar.querySelector(".mb-title b");
+      tb.textContent = t?.title || ""; tb.title = [t?.title, t?.artist, t?.album].filter(Boolean).join(" · ");
       const img = bar.querySelector(".mb-art img"), url = FWMusic.artUrl(t);
       if (t && img.dataset.src !== url) { img.dataset.src = url; img.hidden = true; img.onload = () => { img.hidden = false; }; img.onerror = () => { img.hidden = true; }; img.src = url; }
-      bar.querySelector(".mb-sub").textContent = FWMusic.waiting ? "Click anywhere to carry on" : t?.artist ? `${t.artist}` : `${FWMusic.idx + 1} of ${FWMusic.tracks.length}`;
-      bar.querySelector('[data-mb="shuffle"]').setAttribute("aria-pressed", String(FWMusic.shuffle));
-      bar.querySelector('[data-mb="vol"]').textContent = FWMusic.muted ? "🔇" : "🔊";
-      const mini = bar.classList.contains("mini"), mb = bar.querySelector(".mb-min");
-      mb.textContent = mini ? "⌃" : "⌄"; mb.title = mini ? "Show the whole player" : "Make it small";
-      renderTime();
+      bar.querySelector(".mb-sub").textContent = FWMusic.waiting ? "Click anywhere to carry on" : t?.artist || (FWMusic.tracks.length ? `${FWMusic.idx + 1} of ${FWMusic.tracks.length}` : "");
+      renderTime(); sync();
       cancelAnimationFrame(vizRaf);
       drawViz();
     };
     // A small spectrum: bars that dance while music plays (flat when it isn't).
     const drawViz = () => {
-      const cv = bar?.querySelector(".mb-viz");
-      if (!cv || !cv.isConnected) return;
+      const cv = bar.querySelector(".mb-viz");
+      if (!cv.isConnected) return;
       const w = cv.clientWidth, h = cv.clientHeight, dpr = devicePixelRatio || 1;
       if (!w) return;
       if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
       const c = cv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
-      const n = 14, gap = 2, bw = (w - gap * (n - 1)) / n, an = FWMusic.graph?.an;
+      const n = 10, gap = 2, bw = (w - gap * (n - 1)) / n, an = FWMusic.graph?.an;
       const data = an ? new Uint8Array(an.frequencyBinCount) : null;
       if (an) an.getByteFrequencyData(data);
       for (let i = 0; i < n; i++) {
-        const v = data ? data[Math.min(data.length - 1, Math.floor(1 + i ** 1.35))] / 255 : (FWMusic.playing ? 0.25 + 0.2 * Math.sin(performance.now() / 300 + i) : 0.08);
+        const v = data ? data[Math.min(data.length - 1, Math.floor(1 + i ** 1.45))] / 255 : (FWMusic.playing ? 0.25 + 0.2 * Math.sin(performance.now() / 300 + i) : 0.08);
         const bh = Math.max(2, Math.round(v * h));
-        c.fillStyle = `hsl(${42 - i * 2}, 85%, ${55 + v * 20}%)`;
+        c.fillStyle = `hsl(${42 - i * 3}, 85%, ${55 + v * 20}%)`;
         c.fillRect(Math.round(i * (bw + gap)), h - bh, Math.max(1, Math.floor(bw)), bh);
       }
       if (FWMusic.playing && !document.hidden) vizRaf = requestAnimationFrame(drawViz);
     };
-    musicChanged = () => {
-      if (!bar && FW.music && FWMusic.tracks.length) buildBar();
-      else if (bar && !FWMusic.tracks.length) { bar.remove(); bar = null; document.body.classList.remove("has-mbar"); }
-      else renderBar();
-      sync();
-    };
+    cleanup.push(FWMusic.on((what) => { if (what === "time") renderTime(); else { renderBar(); renderPop(); } }));
+    cleanup.push(() => cancelAnimationFrame(vizRaf));
+    renderBar();
+    musicChanged = () => renderBar();
     loadFireworkSettings().then(async () => {
-      if (!FW.music) return;
+      if (!FW.music) { renderBar(); return; }
       if (!FWMusic.loaded) await FWMusic.load();
-      if (!FWMusic.tracks.length) return;
-      buildBar(); sync();
+      renderBar();
       // Carry on where it left off (same track, same spot). The browser may need a click first.
-      if (lsGet("solstone-music-state", {}).playing && !FWMusic.playing) FWMusic.play();
+      if (FWMusic.tracks.length && lsGet("solstone-music-state", {}).playing && !FWMusic.playing) FWMusic.play();
     });
 
-    // ---- hide the page, keep the sky
+    // ---- hide the page, keep the sky (the bar stays, and fades when the mouse is still)
     let setHidden = () => {};
     if (opts.hide) {
       let wasOn = on, idle = 0;
       setHidden = (hidden) => {
         document.body.classList.toggle("ui-hidden", hidden);
-        if (hidden) { wasOn = on; if (!on) scene.setAuto(true); } else if (!wasOn) scene.setAuto(on);
-        poke();
+        if (hidden) { wasOn = on; if (!on) { on = true; scene.setAuto(true); } } else if (!wasOn) { on = false; scene.setAuto(false); }
+        sync(); poke();
       };
       const poke = () => {
-        box.classList.remove("faded"); bar?.classList.remove("faded"); clearTimeout(idle);
-        if (document.body.classList.contains("ui-hidden")) idle = setTimeout(() => { box.classList.add("faded"); bar?.classList.add("faded"); pop.hidden = true; }, 2500);
+        bar.classList.remove("faded"); clearTimeout(idle);
+        if (document.body.classList.contains("ui-hidden")) idle = setTimeout(() => { if (pop.hidden) bar.classList.add("faded"); }, 3000);
       };
       const onKey = (e) => { if (e.key === "Escape" && document.body.classList.contains("ui-hidden")) setHidden(false); };
       document.addEventListener("keydown", onKey); addEventListener("pointermove", poke);

@@ -391,7 +391,9 @@ function painterHtml() {
       <button type="button" data-frame="1" aria-pressed="${ed.frame === 1}">Frame 1</button>
       <button type="button" data-frame="2" aria-pressed="${ed.frame === 2}">Frame 2${has2 ? "" : " (optional)"}</button></div>
     ${ed.frame === 2 ? `<p class="muted small">Paint a second picture and the firework swaps between the two while it holds, like a flip-book. <button type="button" class="link-btn" id="fwe-copyframe">Start from a copy of frame 1</button></p>` : ""}
-    <div class="fwe-tools">${brushes}<button type="button" class="fwe-brush eraser" data-brush="." aria-pressed="${ed.brush === "."}" aria-label="Eraser">⌫</button>
+    <div class="fwe-tools">${brushes}${ed.d.colors.length < 4 ? `<button type="button" class="fwe-brush add" id="fwe-brush-add" title="Add a colour" aria-label="Add a colour">＋</button>` : ""}
+      <button type="button" class="fwe-brush eraser" data-brush="." aria-pressed="${ed.brush === "."}" aria-label="Eraser">⌫</button>
+      <label class="fwe-brush-pick ${ed.brush === "." ? "off" : ""}" title="Change the selected colour">🎨<input type="color" id="fwe-brush-color" value="${esc(ed.d.colors[+ed.brush] || ed.d.colors[0])}" aria-label="Change the selected colour" ${ed.brush === "." ? "disabled" : ""}></label>
       <label class="check"><input type="checkbox" id="fwe-mirror" ${ed.mirror ? "checked" : ""}> Mirror</label>
       <button type="button" class="btn sm" id="fwe-clear">Clear</button></div>
     <div class="fwe-grid" id="fwe-grid" style="--n:${FWE_GRID}">${Array.from({ length: FWE_GRID * FWE_GRID }, (_, i) => `<span data-cell="${i}"></span>`).join("")}</div>
@@ -445,7 +447,28 @@ function wirePainter() {
   const stop = () => { if (ed.painting) { ed.painting = false; fweChanged(); } };
   g.addEventListener("pointerup", stop);
   g.addEventListener("pointercancel", stop);
-  $$(".fwe-brush").forEach((b) => b.addEventListener("click", () => { ed.brush = b.dataset.brush; $$(".fwe-brush").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); }));
+  // Pick a brush; click the picked one again (or 🎨) to change its colour.
+  const picker = $("#fwe-brush-color");
+  $$(".fwe-brush[data-brush]").forEach((b) => b.addEventListener("click", () => {
+    const again = ed.brush === b.dataset.brush;
+    ed.brush = b.dataset.brush;
+    $$(".fwe-brush[data-brush]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    const erasing = ed.brush === ".";
+    picker.disabled = erasing; picker.parentElement.classList.toggle("off", erasing);
+    if (!erasing) { picker.value = ed.d.colors[+ed.brush]; if (again) picker.click(); }
+  }));
+  picker?.addEventListener("input", () => {
+    if (ed.brush === ".") return;
+    const i = +ed.brush;
+    ed.d.colors[i] = picker.value;
+    const b = $(`.fwe-brush[data-brush="${i}"]`); if (b) b.style.setProperty("--c", picker.value);
+    refreshCells(); fweChanged();
+  });
+  $("#fwe-brush-add")?.addEventListener("click", () => {
+    const unused = FW_COLORS.find((c) => !ed.d.colors.includes(c)) || "#ffffff";
+    ed.d.colors.push(unused); ed.brush = String(ed.d.colors.length - 1);
+    renderControls(); fweChanged();
+  });
   $("#fwe-mirror").addEventListener("change", (e) => { ed.mirror = e.target.checked; });
   $("#fwe-clear").addEventListener("click", () => { fweSetPicture(Array.from({ length: FWE_GRID }, () => new Array(FWE_GRID).fill("."))); refreshCells(); fweChanged(); });
   $$("[data-stamp]").forEach((b) => b.addEventListener("click", () => { stampPicture(b.dataset.stamp); refreshCells(); fweLaunch(); }));
