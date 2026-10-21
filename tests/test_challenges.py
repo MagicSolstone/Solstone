@@ -135,7 +135,14 @@ def test_api(client, viewer, sid):
 def test_chat_api(client, viewer, sid):
     from app import db
     assert viewer.get(f"/api/servers/{sid}/chat").status_code == 403
-    db.add_event(sid, time.time(), "chat", "hello from the game", "Tyler")
+    eid = db.add_event(sid, time.time(), "chat", "hello from the game", "Tyler")
+    try:
+        _chat_checks(client, sid)
+    finally:
+        db.x("DELETE FROM events WHERE id=?", (eid,))            # other tests read the newest events
+
+
+def _chat_checks(client, sid):
     d = client.get(f"/api/servers/{sid}/chat").json()
     assert d["items"][-1]["message"] == "hello from the game" and "online" in d
     last = d["items"][-1]["id"]
