@@ -158,5 +158,5 @@ def test_firework_stages_launches_and_frames():
     assert d["rockets"] == 12 and d["interval"] == 0.05 and d["hang"] == 3
     assert d["picture2"] == ["1."] and len(d["stages"]) == MAX_STAGES
     st = d["stages"][0]
-    assert st == {"action": "implode", "pattern": "ball", "delay": 4, "size": 0.8, "sparks": 8, "colors": ["#ffffff"]}
+    assert st == {"action": "implode", "pattern": "ball", "delay": 4, "size": 0.8, "sparks": 8, "colors": ["#ffffff"], "sound": "auto"}
     assert sanitize({"launch": "cannon", "rocket_style": "laser"})["launch"] == "rocket"
