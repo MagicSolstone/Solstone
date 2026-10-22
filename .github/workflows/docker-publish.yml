@@ -42,7 +42,14 @@ jobs:
       - name: Lint
         run: ruff check .
       - name: Run tests
-        run: pytest -q
+        # Each failure is also posted as an annotation, so it can be read without the full log.
+        run: |
+          set -o pipefail
+          pytest -q -rf --tb=short 2>&1 | tee pytest-out.txt || {
+            grep -E "^(FAILED|ERROR) " pytest-out.txt | while read -r line; do echo "::error title=pytest::$line"; done
+            grep -E "^E  " pytest-out.txt | head -40 | while read -r line; do echo "::error title=pytest detail::$line"; done
+            exit 1
+          }
       - name: Frontend syntax check
         run: for f in app/static/*.js; do node --check "$f"; done
 
