@@ -233,3 +233,22 @@ def test_hit_tiers():
     from app import games
     assert games._tier(2)[2] == "" and games._tier(4)[2] == "Nice shot! " and games._tier(12)[2] == "AMAZING SHOT! " and games._tier(30)[2] == "LEGENDARY SHOT! "
     assert [games._multiplier(x) for x in (10, 20, 30, 50, 70)] == [2.0, 4.0, 6.8, 14.1, 23.5]
+
+
+def test_hot_zone_surface_tells_water_from_land():
+    from app import hotzone
+
+    class W:
+        mc_version = "26.3"
+
+        async def rcon(self, cmd):
+            if "data get entity @e[tag=" in cmd:
+                return "Marker has the following entity data: [10.5d, 63.0d, 4.5d]"
+            if "if block 10 62 4 minecraft:water" in cmd:
+                return "Test passed"
+            if "if block" in cmd:
+                return "Test failed"
+            return ""
+    w = W()
+    assert asyncio.run(hotzone.surface(w, "minecraft:overworld", 10, 4, "t")) == (63, "water")
+    assert asyncio.run(hotzone.surface(w, "minecraft:overworld", 11, 4, "t")) == (63, "land")

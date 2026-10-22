@@ -28,7 +28,7 @@ import zipfile
 
 PACK_ID = "solstone-pack"                     # one pack: fishing and the archery games
 PACK_FILE = f"{PACK_ID}.zip"
-VERSION = 8                                   # bump when the pack's content changes
+VERSION = 9                                   # bump when the pack's content changes
 
 # ------------------------------------------------------------------ the water
 _OCEAN = ["ocean", "deep_ocean", "cold_ocean", "deep_cold_ocean", "lukewarm_ocean", "deep_lukewarm_ocean",
@@ -250,6 +250,7 @@ function solfish:record
     "record": """
 data modify storage solstone:fish e set from entity @s Item.components."minecraft:custom_data".solfish
 data modify storage solstone:fish e.u set from storage solstone:fish who
+data modify storage solstone:fish e.pos set from entity @s Pos
 execute store result storage solstone:fish e.i int 1 run scoreboard players add #seq solfish_tmp 1
 execute store result storage solstone:fish e.t long 1 run time query gametime
 data modify storage solstone:fish catches append from storage solstone:fish e
@@ -388,7 +389,9 @@ def parse_catches(reply: str) -> list[dict]:
             uuid = "".join(f"{x:08x}" for x in u) if len(u) == 4 else ""
             uuid = f"{uuid[:8]}-{uuid[8:12]}-{uuid[12:16]}-{uuid[16:20]}-{uuid[20:]}" if uuid else ""
             out.append({"i": int(c["i"]), "species": str(c["s"]), "name": str(c["n"]), "quality": int(c["q"]), "quality_name": str(c["ql"]),
-                        "weight": int(c["w"]) / 10, "lb": str(c["lb"]), "points": int(c["p"]), "uuid": uuid})
+                        "weight": int(c["w"]) / 10, "lb": str(c["lb"]), "points": int(c["p"]), "uuid": uuid,
+                        # where the fish came out of the water (a fresh catch is still at the bobber); pack v9+
+                        "pos": [float(v) for v in c["pos"]] if c.get("pos") is not None and len(c["pos"]) == 3 else None})
         except (KeyError, ValueError, TypeError):
             continue
     return out

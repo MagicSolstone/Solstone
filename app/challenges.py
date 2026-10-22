@@ -11,14 +11,17 @@ Everything runs on the recorder's 10-second guard tick.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import math
+import random
 import re
 import secrets
 import time
 from datetime import datetime
 
-from . import bossbar, db, fwshow, settings_store
+from . import bossbar, db, fwshow, hotzone, settings_store
 from . import servers as S
 from .control import ITEM_RE, clean_text, component
 from .rcon import RconError
@@ -112,6 +115,8 @@ def clean(body: dict, server: str) -> dict:
     return {"server": server, "kind": kind, "name": clean_text(str(body.get("name") or KINDS[kind][0]), 40),
             "start": start, "minutes": minutes, "prize": first, "second": _prize(body.get("second")),
             "say": bool(body.get("say", True)),
+            "hot": bool(body.get("hot")) and kind == "fish_points", **hotzone.settings(body, 60, 30),
+            "hot_far": int(max(16, min(96, float(body.get("hot_far") or 40)))),
             "lure": int(body.get("lure") or 0) if kind in ROD_KINDS and str(body.get("lure") or 0) in ("0", "3", "5") else 0}
 
 
@@ -312,6 +317,8 @@ async def _tidy(srv, c: dict) -> None:
     """Remove this contest's objectives and countdown; the fishing pack's own objectives get
     their sidebar and name back."""
     await bossbar.hide(srv, c)
+    if c.get("hot"):
+        await hotzone.clear(srv, c)
     if c.get("rodded"):                              # the contest rods go back; whoever's away hands theirs in on joining
         online = {n.lower() for n in (await S.online_players(srv))[0]}
         for n in c["rodded"]:
@@ -349,7 +356,50 @@ async def cancel(srv, cid: str) -> bool:
     return True
 
 
+FISH_HOT_R = 5                         # a fishing hot zone: cast into water within this many blocks of its middle
+_lock = asyncio.Lock()                 # tick and on_catch both change the contest list
+
+
+async def _fish_hot(srv, c: dict, now: float) -> None:
+    """Fishing tournament hot zones: always on open water, somewhere near someone."""
+    from .races import _pos
+
+    async def pick():
+        names = (await S.online_players(srv))[0]
+        random.shuffle(names)
+        for n in names[:2]:
+            q = await _pos(srv, n)
+            if not q:
+                continue
+            m = re.search(r'"([a-z0-9_.-]+:[a-z0-9_/.-]+)"', await _rcon(srv, f"data get entity {n} Dimension"))
+            dim = m.group(1) if m else "minecraft:overworld"
+            for _ in range(3):
+                ang, far = random.uniform(0, 2 * math.pi), random.uniform(8, c.get("hot_far", 40))
+                x, z = int(math.floor(q[0] + math.cos(ang) * far)), int(math.floor(q[2] + math.sin(ang) * far))
+                top = await hotzone.surface(srv, dim, x, z, hotzone.tag(c) + "_m")
+                if not top or top[1] != "water":
+                    continue
+                # enough water around it to fish in, not a puddle
+                y = top[0] - 1
+                around = [await _rcon(srv, f"execute in {dim} if block {x + dx} {y} {z + dz} minecraft:water") for dx, dz in ((3, 0), (-3, 0), (0, 3), (0, -3))]
+                if sum(1 for a in around if "passed" in a.lower()) >= 3:
+                    from .races import _direction
+                    return x, top[0], z, dim, f"On the water {round(far)} blocks {_direction(x - q[0], z - q[2])} of {n}"
+        return None
+
+    await hotzone.tick(srv, c, now, c["started_at"], c["ends_at"], FISH_HOT_R, "Fish hooked inside", pick)
+    if c.get("hot_zone", {}).get("on"):
+        for n in (await S.online_players(srv))[0]:
+            text, in_it = hotzone.bar(c, await _pos(srv, n), FISH_HOT_R)
+            await _rcon(srv, f"title {n} actionbar {component([(text.rstrip(' ·') + ' (cast into it)' if not in_it else text.rstrip(' ·'), 'red' if in_it else 'gold')])}")
+
+
 async def tick(servers: list) -> None:
+    async with _lock:
+        await _tick(servers)
+
+
+async def _tick(servers: list) -> None:
     now = time.time()
     d = _load()
     if not d["items"]:
@@ -378,6 +428,11 @@ async def tick(servers: list) -> None:
                 if c["say"] and mins:
                     left = f"{mins} minute{'s' if mins > 1 else ''} left in {c['name']}!"
                     await _rcon(srv, f"tellraw @a {component([('★ ', 'gold'), (left, 'yellow')])}")
+            if c.get("hot") and now < c["ends_at"]:
+                try:
+                    await _fish_hot(srv, c, now)
+                except Exception:
+                    log.exception("fishing hot zone failed")
             changed = True
     if changed:
         _save(d)
@@ -387,6 +442,11 @@ async def on_catch(srv, player: str, catch: dict) -> bool:
     """A fish from the fishing pack. During a fishing contest everyone hears about it (with
     where it puts them), and the biggest fish per player is kept for the result. True if a
     fishing contest is on."""
+    async with _lock:
+        return await _on_catch(srv, player, catch)
+
+
+async def _on_catch(srv, player: str, catch: dict) -> bool:
     d = _load()
     c = next((x for x in d["items"] if x["server"] == srv.id and x["state"] == "running" and x["kind"] in FISH_KINDS), None)
     if not c:
@@ -397,7 +457,12 @@ async def on_catch(srv, player: str, catch: dict) -> bool:
     _save(d)
     colour = {0: "gray", 1: "white", 2: "green", 3: "aqua", 4: "gold"}.get(catch["quality"], "white")
     fish = catch["name"] if catch["quality"] == 1 else f"{catch['quality_name']} {catch['name']}"
-    if c["kind"] == "fish_points":
+    hot = c.get("hot") and catch.get("pos") and hotzone.inside(c, catch["pos"], time.time(), FISH_HOT_R)
+    if c["kind"] == "fish_points" and hot:
+        more = round(catch["points"] * (c["hot_bonus"] - 1))
+        await _rcon(srv, f"scoreboard players add {player} {FISH_KINDS['fish_points']} {more}")
+        extra = f" · ♨ ×{c['hot_bonus']:g} hot zone · +{catch['points'] + more} points"
+    elif c["kind"] == "fish_points":
         extra = f" · +{catch['points']} points"
     else:
         extra = " · new best!" if best[player]["weight"] == catch["weight"] else ""
@@ -440,7 +505,7 @@ def live(sid: str) -> list[dict]:
             continue
         _label, emoji, unit, _crit, _div = KINDS.get(c["kind"], ("", "🏆", ("", ""), [], 1))
         ranked = sorted(((n, v) for n, v in (c.get("scores") or {}).items()), key=lambda kv: (-kv[1], kv[0].lower()))
-        out.append({"id": f"ch-{c['id']}", "emoji": emoji, "title": c["name"], "sub": f"Most {unit[1]} wins", "ends_at": c["ends_at"],
+        out.append({"id": f"ch-{c['id']}", "emoji": emoji, "title": c["name"], "sub": f"Most {unit[1]} wins" + (f" · 🔥 hot zone open ×{c['hot_bonus']:g}" if (c.get("hot_zone") or {}).get("on") else ""), "ends_at": c["ends_at"],
                     "rows": [{"name": n, "value": _show(c, v)} for n, v in ranked[:10]], "empty": "Nobody has scored yet"})
     return out
 

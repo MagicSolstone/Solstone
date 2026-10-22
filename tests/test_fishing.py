@@ -188,3 +188,11 @@ def test_pack_written_for_26_3():
     assert rod["pools"][0]["entries"][2]["value"] == "solfish:fish"
     old = zipfile.ZipFile(io.BytesIO(fishpack.build_zip(False)))
     assert '"functions"' in old.read("data/solfish/loot_table/fish.json").decode()
+
+
+def test_catch_position_read_back():
+    from app import fishpack
+    reply = ('Storage solstone:fish has the following contents: [{s: "trout", n: "Rainbow Trout", q: 3, ql: "Trophy", w: 47, lb: "4.7", p: 42, '
+             'u: [I; 1, 2, 3, 4], i: 9, t: 100L, pos: [12.5d, 62.1d, -40.25d]}]')
+    assert fishpack.parse_catches(reply)[0]["pos"] == [12.5, 62.1, -40.25]
+    assert "e.pos set from entity @s Pos" in fishpack.FUNCTIONS["record"]

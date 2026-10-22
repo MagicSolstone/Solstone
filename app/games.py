@@ -28,7 +28,7 @@ import random
 import secrets
 import time
 
-from . import bossbar, challenges, db, fwshow, settings_store
+from . import bossbar, challenges, db, fwshow, hotzone, settings_store
 from . import servers as S
 from .control import check_name, component
 from .races import _direction, _fmt, _pos, _rcon
@@ -100,7 +100,7 @@ def create(server: str, body: dict) -> dict:
         r.update(target=_point(body.get("target"), "target"), place_target=bool(body.get("place_target")), mode=mode, word=word,
                  minutes=int(_num(body.get("minutes"), 2, 60, 10 if mode != "horse" else 30)), give_bow=bool(body.get("give_bow", True)),
                  spot_r=round(_num(body.get("spot_r"), 1, 5, 2), 1), min_ring=int(_num(body.get("min_ring"), 1, 15, 1)),
-                 hot=bool(body.get("hot")) and mode == "points", hot_bonus=round(_num(body.get("hot_bonus"), 1.5, 5, 2), 1),
+                 hot=bool(body.get("hot")) and mode == "points", **hotzone.settings(body),
                  hot_far=round(_num(body.get("hot_far"), 15, 80, 40)),
                  name={"bullseye": "Archery: longest bullseye", "points": "Archery: most points", "horse": f"Archery: {word}"}[mode])
     d = _load()
@@ -437,61 +437,30 @@ def _hit_parts(who: str, ring: int, d: float, mult: float, hot: float, pts: int,
     return parts
 
 
-HOT_R = 3                                     # how big a hot zone is (blocks from its middle)
-HOT_ON, HOT_OFF = 45, 20                      # seconds open, seconds between
+HOT_R = 3                                     # how big an archery hot zone is (blocks from its middle)
 
 
 def _hot_tag(r: dict) -> str:
-    return f"solhot_{r['id']}"
+    return hotzone.tag(r)
 
 
 def _in_hot(r: dict, pos, now: float) -> bool:
-    """Was this shot taken inside a hot zone (open now, or one that closed in the last few seconds)?"""
-    for z in (r.get("hot_zone"), r.get("hot_prev")):
-        if z and (z.get("on") or now - z.get("closed", 0) < 6) and math.hypot(pos[0] - z["x"], pos[2] - z["z"]) <= HOT_R + 0.5:
-            return True
-    return False
-
-
-async def _ground_y(srv, dim: str, x: int, z: int, tag: str, fallback: int) -> int:
-    from .races import _POS
-    await _rcon(srv, f"execute in {dim} positioned {x} 320 {z} positioned over motion_blocking_no_leaves run summon minecraft:marker ~ ~ ~ {{Tags:[\"{tag}\"]}}")
-    m = _POS.search(await _rcon(srv, f"data get entity @e[tag={tag},limit=1] Pos"))
-    await _rcon(srv, f"kill @e[tag={tag}]")
-    return int(float(m.group(2))) if m else fallback
+    return hotzone.inside(r, pos, now, HOT_R)
 
 
 async def _hot_tick(srv, r: dict, now: float) -> None:
-    """Open a hot zone somewhere around the target, keep it marked, close it, open the next."""
-    from .races import _text_nbt
-    z, dim, tag = r.get("hot_zone"), r["dim"], _hot_tag(r)
+    """Hot zones on the ground somewhere around the target."""
     tx, ty, tz = r["target_c"]
-    if z and z["on"] and now >= z["until"]:
-        await _rcon(srv, f"kill @e[tag={tag}]")
-        z.update(on=False, closed=now, until=now + HOT_OFF)
-        r["hot_prev"] = dict(z)
-        await _say(srv, [("♨ ", "red"), ("The hot zone has gone out. ", "gold"), ("Another opens soon...", "gray")])
-    elif (not z or not z["on"]) and now >= (z["until"] if z else r["started"] + 15) and r["phase_ends"] - now > 20:
+
+    async def pick():
         ang = random.uniform(0, 2 * math.pi)
         far = random.uniform(10, max(12, r.get("hot_far", 40)))
-        x, zz = int(math.floor(tx + math.cos(ang) * far)), int(math.floor(tz + math.sin(ang) * far))
-        y = await _ground_y(srv, dim, x, zz, tag + "_m", int(ty))
-        r["hot_zone"] = {"on": True, "x": x + 0.5, "y": y, "z": zz + 0.5, "until": now + HOT_ON, "far": round(far)}
-        # a dot on the locator bar (buried, as in races) and a sign above it
-        await _rcon(srv, f"execute in {dim} run summon minecraft:armor_stand {x + 0.5} {y - 2} {zz + 0.5} "
-                         f"{{Tags:[\"{tag}\",\"{tag}_wp\"],Small:1b,Marker:1b,NoGravity:1b,Invulnerable:1b,Silent:1b,"
-                         f"attributes:[{{id:\"minecraft:waypoint_transmit_range\",base:60000000d}}]}}")
-        await _rcon(srv, f"waypoint modify @e[tag={tag}_wp,limit=1] color red")
-        label = _text_nbt(srv, f"♨ HOT ZONE ×{r['hot_bonus']:g} ♨", "red")
-        await _rcon(srv, f"execute in {dim} run summon minecraft:text_display {x + 0.5} {y + 3} {zz + 0.5} "
-                         f"{{Tags:[\"{tag}\"],billboard:\"center\",see_through:1b,text:{label},transformation:{{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],translation:[0f,0f,0f],scale:[2.5f,2.5f,2.5f]}}}}")
-        where = _direction(x - tx, zz - tz)
-        await _say(srv, [("♨ ", "red"), ("HOT ZONE! ", "red!"), (f"{round(far)} blocks {where} of the target. Hits from inside score ×{r['hot_bonus']:g} for {HOT_ON} seconds.", "gold")],
-                   "♨ Hot zone!", f"{round(far)} blocks {where} of the target")
-    z = r.get("hot_zone")
-    if z and z["on"]:
-        await _rcon(srv, f"execute in {dim} run particle minecraft:flame {z['x']} {z['y'] + 0.3} {z['z']} {HOT_R / 2} 0.1 {HOT_R / 2} 0.01 40 force")
-        await _rcon(srv, f"execute in {dim} run particle minecraft:campfire_signal_smoke {z['x']} {z['y'] + 1} {z['z']} 0.3 2 0.3 0.01 4 force")
+        x, z = int(math.floor(tx + math.cos(ang) * far)), int(math.floor(tz + math.sin(ang) * far))
+        top = await hotzone.surface(srv, r["dim"], x, z, hotzone.tag(r) + "_m")
+        y = top[0] if top else int(ty)
+        return x, y, z, r["dim"], f"{round(far)} blocks {_direction(x - tx, z - tz)} of the target"
+
+    await hotzone.tick(srv, r, now, r["started"], r["phase_ends"], HOT_R, "Hits from inside", pick)
 
 
 async def _ar_start(srv, r: dict) -> None:
@@ -597,11 +566,8 @@ async def _ar_tick(srv, r: dict) -> None:
         s = f"{mine['points']} points" if r["mode"] == "points" else f"best bullseye {mine['best']:.1f} m" if mine["best"] else "no bullseye yet"
         hot_txt, color = "", "yellow"
         if hz and hz["on"]:
-            q = await _pos(srv, n)
-            if q and math.hypot(q[0] - hz["x"], q[2] - hz["z"]) <= HOT_R + 0.5:
-                hot_txt, color = f"♨ IN THE HOT ZONE ×{r['hot_bonus']:g} · ", "red"
-            elif q:
-                hot_txt = f"♨ hot zone {math.hypot(q[0] - hz['x'], q[2] - hz['z']):.0f} m {_direction(hz['x'] - q[0], hz['z'] - q[2])} · "
+            hot_txt, in_it = hotzone.bar(r, await _pos(srv, n), HOT_R)
+            color = "red" if in_it else color
         await _bar(srv, n, hot_txt + f"{s} · {_fmt(left)} left" + (f" · leader {lead[0]}" if lead and lead[0] != n else ""), color)
     if left <= 0:
         key = "points" if r["mode"] == "points" else "best"

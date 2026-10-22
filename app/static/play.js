@@ -76,7 +76,7 @@ async function viewChallenges(sid) {
   const base = `/api/servers/${encodeURIComponent(sid)}/challenges`;
   let [d, fish] = await Promise.all([api(base), api(`/api/servers/${encodeURIComponent(sid)}/fishing`).catch(() => null)]);
   const fishOn = () => !!fish?.status?.version;
-  const draft = { kind: "fish", name: "", when: "now", at: "", minutes: 10, prize: null, second: null, say: true, lure: 0 };
+  const draft = { kind: "fish", name: "", when: "now", at: "", minutes: 10, prize: null, second: null, say: true, lure: 0, hot: false, hot_bonus: 2, hot_on: 60, hot_off: 30, hot_far: 40 };
   const ROD_KINDS = ["fish", "fish_points", "fish_heaviest"];
   // default time for "later": the next 8 PM, or the next hour if that's already past today
   const next8 = () => { const t = new Date(); t.setHours(20, 0, 0, 0); if (t < new Date()) { t.setTime(Date.now() + 3600e3); t.setMinutes(0, 0, 0); } return t; };
@@ -121,6 +121,13 @@ async function viewChallenges(sid) {
         <div class="ch-prizes"><span class="lbl">Prize for the winner</span><button type="button" class="btn ch-pick" data-pick="prize">${prizeHtml(draft.prize)}</button>
           <span class="lbl">Second place <small class="muted">(optional)</small></span><span class="ch-second"><button type="button" class="btn ch-pick" data-pick="second">${prizeHtml(draft.second)}</button>${draft.second ? `<button type="button" class="icon-btn" data-clear-second aria-label="No second prize">✕</button>` : ""}</span></div>
       </div>
+      <div class="ch-hot" ${draft.kind === "fish_points" ? "" : "hidden"}>
+        <label class="check"><input type="checkbox" name="hot" ${draft.hot ? "checked" : ""}> Hot zones: a fiery patch of open water opens near someone now and then; fish hooked inside it score extra</label>
+        <div class="gm-row">
+          <label>Bonus <select class="input" name="hot_bonus">${[1.5, 2, 3].map((v) => `<option value="${v}" ${draft.hot_bonus === v ? "selected" : ""}>×${v}</option>`).join("")}</select></label>
+          ${hotTimes(draft)}
+          <label>Up to <select class="input" name="hot_far">${[24, 40, 64].map((v) => `<option value="${v}" ${draft.hot_far === v ? "selected" : ""}>${v} blocks from a player</option>`).join("")}</select></label>
+        </div></div>
       <label class="ch-lure" ${ROD_KINDS.includes(draft.kind) ? "" : "hidden"}>Faster bites <select class="input" name="lure">
         <option value="0" ${draft.lure === 0 ? "selected" : ""}>Off: everyone uses their own rod</option>
         <option value="3" ${draft.lure === 3 ? "selected" : ""}>Contest Rod with Lure III (bites within ~15 s)</option>
@@ -218,10 +225,11 @@ async function viewChallenges(sid) {
   }));
   const wire = () => {
     const form = $("#ch-form");
-    const sync = () => { const f = new FormData(form); draft.kind = f.get("kind"); draft.name = f.get("name"); draft.minutes = +f.get("minutes"); draft.when = f.get("when"); draft.at = f.get("at"); draft.say = !!f.get("say"); draft.lure = +(f.get("lure") || 0); };
+    const sync = () => { const f = new FormData(form); draft.kind = f.get("kind"); draft.name = f.get("name"); draft.minutes = +f.get("minutes"); draft.when = f.get("when"); draft.at = f.get("at"); draft.say = !!f.get("say"); draft.lure = +(f.get("lure") || 0);
+      draft.hot = !!f.get("hot"); for (const k of ["hot_bonus", "hot_on", "hot_off", "hot_far"]) if (f.get(k)) draft[k] = +f.get(k); };
     form.addEventListener("change", (e) => {
       sync();
-      if (e.target.name === "kind") { form.querySelectorAll(".ch-kind").forEach((l) => l.classList.toggle("on", l.querySelector("input").checked)); form.name.placeholder = kind(draft.kind).label; form.querySelector(".ch-lure").hidden = !ROD_KINDS.includes(draft.kind); }
+      if (e.target.name === "kind") { form.querySelectorAll(".ch-kind").forEach((l) => l.classList.toggle("on", l.querySelector("input").checked)); form.name.placeholder = kind(draft.kind).label; form.querySelector(".ch-lure").hidden = !ROD_KINDS.includes(draft.kind); form.querySelector(".ch-hot").hidden = draft.kind !== "fish_points"; }
       if (e.target.name === "at") { draft.when = "later"; form.querySelector('[name=when][value=later]').checked = true; }
       form.querySelector("[type=submit]").textContent = draft.when === "now" ? "Start the challenge" : "Schedule it";
     });
@@ -238,6 +246,7 @@ async function viewChallenges(sid) {
       const start = draft.when === "now" ? Date.now() / 1000 : new Date(draft.at).getTime() / 1000;
       try {
         const c = await post(base, { kind: draft.kind, name: draft.name, start, minutes: draft.minutes, say: draft.say, lure: ROD_KINDS.includes(draft.kind) ? draft.lure : 0,
+          hot: draft.kind === "fish_points" && draft.hot, hot_bonus: draft.hot_bonus, hot_on: draft.hot_on, hot_off: draft.hot_off, hot_far: draft.hot_far,
           prize: { item: draft.prize.item, count: draft.prize.count, name: draft.prize.label }, second: draft.second ? { item: draft.second.item, count: draft.second.count, name: draft.second.label } : null });
         showToast(draft.when === "now" ? `${esc(c.name)} starts in a few seconds` : `${esc(c.name)} is scheduled`, 3000);
         draft.name = ""; await reload();
@@ -250,7 +259,7 @@ async function viewChallenges(sid) {
         try { await api(`${base}/${encodeURIComponent(c.id)}`, { method: "DELETE" }); await reload(); } catch (err) { showToast(esc(err.message), 4000); }
       });
       el.querySelector("[data-again]")?.addEventListener("click", () => {
-        Object.assign(draft, { kind: c.kind, name: c.name, minutes: c.minutes, say: c.say, lure: c.lure || 0, when: "now",
+        Object.assign(draft, { kind: c.kind, name: c.name, minutes: c.minutes, say: c.say, lure: c.lure || 0, hot: !!c.hot, hot_bonus: c.hot_bonus || 2, hot_on: c.hot_on || 60, hot_off: c.hot_off || 30, hot_far: c.hot_far || 40, when: "now",
           prize: { ...c.prize, label: c.prize.name }, second: c.second ? { ...c.second, label: c.second.name } : null });
         render(); $("#ch-form").scrollIntoView({ behavior: "smooth", block: "center" });
       });
@@ -267,6 +276,13 @@ async function viewChallenges(sid) {
 }
 
 // Shown on all three pages while the server echoes RCON commands to operators.
+// How long each hot zone stays open, and the wait before the next (archery and the fishing tournament).
+function hotTimes(f) {
+  const opt = (vals, cur, fmt) => vals.map((v) => `<option value="${v}" ${cur === v ? "selected" : ""}>${fmt(v)}</option>`).join("");
+  const secs = (v) => (v < 60 ? `${v} seconds` : `${v / 60} minute${v > 60 ? "s" : ""}`);
+  return `<label>Open for <select class="input" name="hot_on">${opt([30, 45, 60, 90, 120], f.hot_on, secs)}</select></label>
+    <label>Next one after <select class="input" name="hot_off">${opt([10, 20, 30, 60, 120], f.hot_off, secs)}</select></label>`;
+}
 function rconEchoNote(d) {
   return d?.rcon_echo ? `<div class="notice small echo-note"><b>Ops will see a lot of "[Rcon: …]" lines in chat</b> while contests, races and games run: the server shows operators every command Solstone sends. To turn that off, set <code>broadcast-rcon-to-ops=false</code> in this server's <code>server.properties</code> (in Crafty: the server's Config tab) and restart it.</div>` : "";
 }
@@ -632,7 +648,7 @@ async function viewGames(sid) {
   const openSetup = (game) => {
     const f = { game, when: "now", at: "", center: null, radius: game === "treasure" ? 150 : 40, spot: null, target: null, place_target: false,
       hide_secs: 60, minutes: game === "treasure" ? 15 : game === "archery" ? 10 : 6, seeker: "", no_dig: true, marco: true, infect: true,
-      mode: "bullseye", word: "HORSE", give_bow: true, hint_after: 5, items: [], prize: null, hot: false, hot_bonus: 2, hot_far: 40 };
+      mode: "bullseye", word: "HORSE", give_bow: true, hint_after: 5, items: [], prize: null, hot: false, hot_bonus: 2, hot_far: 40, hot_on: 45, hot_off: 20 };
     const at = (() => { const t = new Date(Date.now() + 15 * 60e3); t.setSeconds(0, 0); return new Date(t.getTime() - t.getTimezoneOffset() * 60e3).toISOString().slice(0, 16); })();
     f.at = at;
     let map = null;
@@ -663,8 +679,9 @@ async function viewGames(sid) {
           <button type="button" class="btn sm" id="gm-additem">＋ Add treasure</button></div>`
       : `
         <label>Game <select class="input" name="mode"><option value="bullseye" ${f.mode === "bullseye" ? "selected" : ""}>Longest bullseye</option><option value="points" ${f.mode === "points" ? "selected" : ""}>Most points (ring × distance bonus: ×2 at 10 blocks, ×4 at 20, ×6.8 at 30, ×14 at 50, no cap)</option><option value="horse" ${f.mode === "horse" ? "selected" : ""}>HORSE (match the shot or take a letter)</option></select></label>
-        ${f.mode === "points" ? `<label class="check gm-wide"><input type="checkbox" name="hot" ${f.hot ? "checked" : ""}> Hot zones: a fiery spot opens somewhere around the target for 45 seconds at a time; hits from inside it score extra</label>
+        ${f.mode === "points" ? `<label class="check gm-wide"><input type="checkbox" name="hot" ${f.hot ? "checked" : ""}> Hot zones: a fiery spot opens somewhere around the target for a while; hits shot from inside it score extra</label>
           ${f.hot ? `<div class="gm-row"><label>Hot zone bonus <select class="input" name="hot_bonus">${[1.5, 2, 3].map((v) => `<option value="${v}" ${f.hot_bonus === v ? "selected" : ""}>×${v}</option>`).join("")}</select></label>
+          ${hotTimes(f)}
           <label>Opens up to <select class="input" name="hot_far">${[20, 30, 40, 60].map((v) => `<option value="${v}" ${f.hot_far === v ? "selected" : ""}>${v} blocks away</option>`).join("")}</select></label></div>` : ""}` : ""}
         ${f.mode === "horse" ? `<label>Word <input class="input" name="word" maxlength="10" value="${esc(f.word)}"></label>` : ""}
         <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30, 45].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>
@@ -683,7 +700,7 @@ async function viewGames(sid) {
     const sync = (m) => {
       const fm = $("#gm-form", m);
       for (const k of ["seeker", "mode", "word"]) if (fm[k]) f[k] = fm[k].value;
-      for (const k of ["hide_secs", "minutes", "hint_after", "radius", "hot_bonus", "hot_far"]) if (fm[k]) f[k] = +fm[k].value;
+      for (const k of ["hide_secs", "minutes", "hint_after", "radius", "hot_bonus", "hot_far", "hot_on", "hot_off"]) if (fm[k]) f[k] = +fm[k].value;
       for (const k of ["no_dig", "marco", "infect", "give_bow", "hot"]) if (fm[k]) f[k] = fm[k].checked;
       f.when = fm.when.value; f.at = fm.at.value;
     };
@@ -720,7 +737,7 @@ async function viewGames(sid) {
       $("#gm-map", m).addEventListener("pointerdown", (e) => { clickShift = e.shiftKey; }, true);
       const fm = $("#gm-form", m);
       fm.radius?.addEventListener("input", () => { f.radius = +fm.radius.value; $("#gm-r", m).textContent = f.radius; map.draw(); });
-      for (const k of ["hot", "hot_bonus", "hot_far"]) fm[k]?.addEventListener("change", () => { sync(m); show(); });
+      for (const k of ["hot", "hot_bonus", "hot_far", "hot_on", "hot_off"]) fm[k]?.addEventListener("change", () => { sync(m); show(); });
       fm.mode?.addEventListener("change", () => { sync(m); if (f.mode === "horse" && f.minutes < 30) f.minutes = 30; show(); });
       $("#gm-here", m)?.addEventListener("click", async () => {
         sync(m);
