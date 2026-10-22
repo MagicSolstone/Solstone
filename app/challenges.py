@@ -470,7 +470,8 @@ async def _on_catch(srv, player: str, catch: dict) -> bool:
     if player not in best or catch["weight"] > best[player]["weight"]:
         best[player] = {k: catch[k] for k in ("name", "lb", "weight", "quality_name", "points")}
     _save(d)
-    colour = {0: "gray", 1: "white", 2: "green", 3: "aqua", 4: "gold"}.get(catch["quality"], "white")
+    from .fishing import QUALITY_COLOR
+    colour = QUALITY_COLOR.get(catch["quality"], "white")
     fish = catch["name"] if catch["quality"] == 1 else f"{catch['quality_name']} {catch['name']}"
     hot = c.get("hot") and catch.get("pos") and hotzone.inside(c, catch["pos"], time.time(), FISH_HOT_R)
     if c["kind"] == "fish_points" and hot:

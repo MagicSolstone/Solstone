@@ -12,7 +12,7 @@ from .control import component
 from .rcon import RconError
 
 log = logging.getLogger("solstone.fishing")
-QUALITY_COLOR = {0: "gray", 1: "white", 2: "green", 3: "aqua", 4: "gold"}
+QUALITY_COLOR = {0: "gray", 1: "white", 2: "green", 3: "aqua", 4: "gold", 5: "light_purple"}
 _state: dict[str, dict] = {}            # server id -> {"version", "checked", "last", "error"}
 
 
@@ -277,13 +277,99 @@ async def poll(servers: list) -> None:
             # Trophy and Legendary get their own type so the status page's feed shows only those
             db.add_event(srv.id, time.time(), "bigfish" if c["quality"] >= 3 else "fish", describe(c, who), who if who != "Someone" else None)
             contest = await challenges.on_catch(srv, who, c)
-            if not contest and c["quality"] >= 3:               # Trophy and Legendary are news anyway
-                fish = f"{c['quality_name']} {c['name']}"
-                size = f" ({c['lb']} lb)!"
-                try:
-                    await _rcon(srv, f"tellraw @a {component([('★ ', 'gold'), (who, 'aqua'), (' caught a ', None), (fish, QUALITY_COLOR[c['quality']]), (size, None)])}")
-                except RuntimeError:
-                    pass
+            try:
+                await _celebrate(srv, who, c, contest)
+                if who != "Someone":
+                    await _journal(srv, who, c)
+            except RuntimeError:
+                pass
+
+
+async def _celebrate(srv, who: str, c: dict, contest: bool) -> None:
+    """Trophy and up are news (a contest already announces every catch); Legendary gets a sound
+    for everyone; Mythic (1 in 1000) stops the world: a title on every screen and fireworks."""
+    q, lb = c["quality"], c["lb"]
+    fish = f"{c['quality_name']} {c['name']}"
+    colour = QUALITY_COLOR.get(q, "white")
+    if q >= 3 and not contest:
+        stars = "★" * (q - 2) + " "
+        line = component([(stars, colour), (who, "aqua"), (" caught a ", None), (fish, colour + ("!" if q >= 4 else "")), (f" ({lb} lb)!", None)])
+        await _rcon(srv, f"tellraw @a {line}")
+    if q >= 4:
+        await _rcon(srv, "execute as @a at @s run playsound minecraft:ui.toast.challenge_complete master @s ~ ~ ~ 0.8 1")
+    if q >= 5:
+        sub = component([(f"{who} caught a {fish}! ({lb} lb)", "yellow")])
+        await _rcon(srv, "title @a times 10 70 20")
+        await _rcon(srv, f"title @a subtitle {sub}")
+        await _rcon(srv, f"title @a title {component([('✦ MYTHIC CATCH ✦', 'light_purple!')])}")
+        from . import fwshow
+        fwshow.push(srv.id, srv.display_name, "challenge", who, f"{who} caught a {fish}!")
+
+
+async def _journal(srv, who: str, c: dict) -> None:
+    """Into the fishing journal; a new species or a personal best gets a line for that player."""
+    j = db.add_catch(srv.id, time.time(), who, c)
+    total, have, lb = len(fishpack.SPECIES), j["species_caught"], c["lb"]
+    if j["new_species"]:
+        line = component([("✎ ", "gold"), ("New in your fishing journal: ", "yellow"), (c["name"], "aqua"), (f" ({have} of {total} species)", "gray")])
+        await _rcon(srv, f"tellraw {who} {line}")
+        if have == total:
+            await _rcon(srv, f"tellraw @a {component([('★ ', 'gold'), (who, 'aqua'), (f' has caught every one of the {total} kinds of fish!', 'gold!')])}")
+            db.add_event(srv.id, time.time(), "bigfish", f"{who} has caught every kind of fish ({total})", who)
+    elif j["personal_best"]:
+        line = component([("✎ ", "gold"), ("Personal best ", "yellow"), (c["name"], "aqua"), (f": {lb} lb", "yellow")])
+        await _rcon(srv, f"tellraw {who} {line}")
+
+
+_OLD_QUALITY = {"Poor": 0, "Normal": 1, "Quality": 2, "Fine": 2, "Prime": 3, "Trophy": 3, "Exquisite": 4, "Legendary": 4, "Mythic": 5}
+_CAUGHT = re.compile(r"^(?P<who>\S+) caught an? (?P<fish>.+?) · (?P<lb>[\d.]+) lb · (?P<p>\d+) points$")
+
+
+def _backfill(sid: str) -> None:
+    """Fill the journal from the activity feed once (catches from before it existed)."""
+    if db.q("SELECT 1 FROM fish_catches WHERE server_id=? LIMIT 1", (sid,)):
+        return
+    by_name = {v[0]: k for k, v in fishpack.SPECIES.items()}
+    for e in db.events(sid, ["fish", "bigfish"], None, 5000):
+        m = _CAUGHT.match(e["message"] or "")
+        if not m:
+            continue
+        fish, quality = m.group("fish"), 1
+        for qn, qi in _OLD_QUALITY.items():
+            if fish.startswith(qn + " ") and fish[len(qn) + 1:] in by_name:
+                fish, quality = fish[len(qn) + 1:], qi
+                break
+        if fish not in by_name:
+            continue
+        db.x("INSERT INTO fish_catches(server_id, ts, player, species, name, quality, quality_name, weight, points) VALUES (?,?,?,?,?,?,?,?,?)",
+             (sid, e["ts"], m.group("who"), by_name[fish], fish, quality, fishpack.QUALITIES[min(quality, len(fishpack.QUALITIES) - 1)][0],
+              float(m.group("lb")), int(m.group("p"))))
+
+
+def journal(sid: str) -> dict:
+    """Everyone's fishing journal: which species each player has caught, their best of each,
+    family records, and the latest catches."""
+    _backfill(sid)
+    rows = db.fish_catches(sid)
+    players: dict[str, dict] = {}
+    records: dict[str, dict] = {}
+    for r in rows:
+        p = players.setdefault(r["player"], {"name": r["player"], "species": {}, "total": 0, "points": 0, "qualities": [0] * len(fishpack.QUALITIES)})
+        p["total"] += 1
+        p["points"] += r["points"]
+        if 0 <= r["quality"] < len(p["qualities"]):
+            p["qualities"][r["quality"]] += 1
+        sp = p["species"].setdefault(r["species"], {"count": 0, "best_lb": 0, "best_quality": 0, "first": r["ts"]})
+        sp["count"] += 1
+        sp["best_lb"] = max(sp["best_lb"], r["weight"])
+        sp["best_quality"] = max(sp["best_quality"], r["quality"])
+        rec = records.get(r["species"])
+        if not rec or r["weight"] > rec["lb"]:
+            records[r["species"]] = {"player": r["player"], "lb": r["weight"], "quality": r["quality"], "ts": r["ts"]}
+    recent = [{"player": r["player"], "species": r["species"], "name": r["name"], "quality": r["quality"], "lb": r["weight"], "points": r["points"], "ts": r["ts"]}
+              for r in rows[-20:]][::-1]
+    return {"species": fishpack.guide(), "qualities": fishpack.qualities(), "players": sorted(players.values(), key=lambda p: (-len(p["species"]), -p["points"])),
+            "records": records, "recent": recent}
 
 
 def status(srv) -> dict:

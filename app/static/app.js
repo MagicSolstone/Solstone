@@ -598,7 +598,7 @@ function serverHeader(s, tab) {
   const base = `#/s/${encodeURIComponent(s.id)}`;
   const java = !s.game || s.game === "minecraft-java";
   const tabs = [["overview", "Overview", base], ["performance", "Performance", `${base}/performance`],
-    ...(java ? [["world", "World", `${base}/world`], ["leaderboards", "Leaderboards", `${base}/leaderboards`], ["mods", "Mods", `${base}/mods`]] : []),
+    ...(java ? [["world", "World", `${base}/world`], ["leaderboards", "Leaderboards", `${base}/leaderboards`], ["fishing", "Fishing", `${base}/fishing`], ["mods", "Mods", `${base}/mods`]] : []),
     ...(isAdmin() && java ? [["chat", "Chat", `${base}/chat`], ["challenges", "Challenges", `${base}/challenges`]] : []),
     ...(isAdmin() ? [["control", "Control", `${base}/control`]] : []),
     ...(isAdmin() && java ? [["check", "Check", `${base}/check`]] : [])];
@@ -1103,6 +1103,7 @@ async function route() {
       else if (parts[2] === "activity") location.replace(`#/s/${encodeURIComponent(sid)}`);
       else if (parts[2] === "control") await viewControl(sid);
       else if (parts[2] === "check") await viewCheck(sid);
+      else if (parts[2] === "fishing") await viewFishingJournal(sid, parts[3]);
       else if (parts[2] === "chat") await viewChat(sid);
       else if (parts[2] === "challenges" && parts[3] === "races") await viewRaces(sid);
       else if (parts[2] === "challenges" && parts[3] === "games") await viewGames(sid);

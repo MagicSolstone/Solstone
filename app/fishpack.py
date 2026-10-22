@@ -6,8 +6,8 @@ pack in the game can never disagree. Minecraft 1.21+ (one pack.mcmeta covers 1.2
 In the game
 - The fish loot table (gameplay/fishing/fish) is replaced: what you can catch depends on where
   the bobber lands (rivers and lakes, oceans, warm or cold water, swamps, jungle rivers, deep
-  ocean) and every catch has a species, a weight and one of five qualities: Poor, Normal
-  (shown without a label), Fine, Trophy, Legendary. Rarer quality = heavier fish = more points. The item keeps its
+  ocean) and every catch has a species, a weight and one of six qualities: Poor, Normal
+  (shown without a label), Fine, Trophy, Legendary, Mythic. Rarer quality = heavier fish = more points. The item keeps its
   vanilla kind (cod, salmon, tropical fish, pufferfish), so it can still be cooked or eaten;
   its name, colour and lore say what it is.
 - Scoring can't be gamed by dropping and picking up fish: an advancement fires when a fish is
@@ -28,7 +28,7 @@ import zipfile
 
 PACK_ID = "solstone-pack"                     # one pack: fishing and the archery games
 PACK_FILE = f"{PACK_ID}.zip"
-VERSION = 10                                   # bump when the pack's content changes
+VERSION = 11                                   # bump when the pack's content changes
 
 # ------------------------------------------------------------------ the water
 _OCEAN = ["ocean", "deep_ocean", "cold_ocean", "deep_cold_ocean", "lukewarm_ocean", "deep_lukewarm_ocean",
@@ -75,11 +75,12 @@ SPECIES: dict[str, tuple[str, str, float, int, list[str], int]] = {
 
 # (name, colour, size factor, points factor, how common)
 QUALITIES = [
-    ("Poor", "gray", 0.6, 0.5, 30),
-    ("Normal", "white", 1.0, 1.0, 40),
-    ("Fine", "green", 1.3, 1.5, 18),
-    ("Trophy", "aqua", 1.7, 2.5, 9),
-    ("Legendary", "gold", 2.3, 4.0, 3),
+    ("Poor", "gray", 0.6, 0.5, 300),           # (name, colour, size, points factor, chance in 1000)
+    ("Normal", "white", 1.0, 1.0, 480),
+    ("Fine", "green", 1.3, 1.5, 170),
+    ("Trophy", "aqua", 1.7, 2.5, 40),          # 1 in 25: worth showing off
+    ("Legendary", "gold", 2.3, 4.0, 9),        # about 1 in 110
+    ("Mythic", "light_purple", 3.0, 8.0, 1),   # 1 in 1000
 ]
 STEPS = (0.9, 1.0, 1.12)                       # a little spread inside each quality
 
@@ -111,7 +112,7 @@ def guide() -> list[dict]:
 
 def qualities() -> list[dict]:
     total = sum(q[4] for q in QUALITIES)
-    return [{"name": n, "color": c, "chance": round(qc * 100 / total)} for n, c, _s, _p, qc in QUALITIES]
+    return [{"name": n, "color": c, "chance": round(qc * 100 / total, 1), "one_in": round(total / qc)} for n, c, _s, _p, qc in QUALITIES]
 
 
 # ------------------------------------------------------------------ building the pack

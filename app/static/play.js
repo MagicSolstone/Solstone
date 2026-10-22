@@ -162,7 +162,7 @@ async function viewChallenges(sid) {
       : `<ol class="fish-steps"><li><a class="btn sm" href="/api/fishing/${esc(st.file)}?server=${encodeURIComponent(sid)}" download>⬇ Download ${esc(st.file)}</a></li>
           <li>Put the file (still zipped) in this world's <code>datapacks</code> folder: <code>${esc(st.folder.replace(/^\/servers\//, "…/crafty-4/servers/"))}</code></li>
           <li><button class="btn sm primary" type="button" data-fish="reload">Load it</button> <span class="muted small">(runs /reload in the game and checks)</span></li></ol>`;
-    const q = fish.qualities.map((x) => `<span class="fish-q fq-${x.color}">${esc(x.name)} <small>${x.chance}%</small></span>`).join("");
+    const q = fish.qualities.map((x) => `<span class="fish-q fq-${x.color}">${esc(x.name)} <small>${x.one_in <= 2 ? `${x.chance}%` : `1 in ${x.one_in}`}</small></span>`).join("");
     const rows = fish.guide.map((g) => `<tr><td>${itemIcon({ id: g.item })}<b>${esc(g.name)}</b></td><td>${esc(g.waters.join(", "))}</td><td>${g.min_lb}–${g.max_lb} lb</td><td>${g.min_points}–${g.max_points}</td><td class="muted">${esc(g.rarity)}</td></tr>`).join("");
     return `<section class="section" id="fish-sec"><div class="section-head"><h2>🎣 Solstone data pack</h2><span class="muted">${on ? `In the world${old ? " (an update is ready)" : " ✓"}` : "Not in this world yet"}</span></div>
       <div class="panel fish-panel">
@@ -732,14 +732,15 @@ async function viewGames(sid) {
         <div class="gm-items"><span class="lbl">In the chest</span>${f.items.map((it, i) => `<span class="chip">${itemIcon({ id: it.item })} ${it.count} × ${esc(it.name)} <button type="button" class="chip-x" data-rmitem="${i}" aria-label="Remove">×</button></span>`).join("")}
           <button type="button" class="btn sm" id="gm-additem">＋ Add treasure</button></div>`
       : `
-        <label>Game <select class="input" name="mode"><option value="bullseye" ${f.mode === "bullseye" ? "selected" : ""}>Longest bullseye</option><option value="points" ${f.mode === "points" ? "selected" : ""}>Most points (ring × distance bonus: ×2 at 10 blocks, ×4 at 20, ×6.8 at 30, ×14 at 50, no cap)</option><option value="horse" ${f.mode === "horse" ? "selected" : ""}>HORSE (match the shot or take a letter)</option></select></label>
+        <label>Game <select class="input" name="mode"><option value="bullseye" ${f.mode === "bullseye" ? "selected" : ""}>Longest bullseye</option><option value="points" ${f.mode === "points" ? "selected" : ""}>Most points (aim × distance from 15 blocks; repeat hits from one spot count half)</option><option value="horse" ${f.mode === "horse" ? "selected" : ""}>HORSE (match the shot or take a letter)</option></select></label>
         ${f.mode === "points" ? `<label class="check gm-wide"><input type="checkbox" name="hot" ${f.hot ? "checked" : ""}> Hot zones: a fiery spot opens somewhere around the target for a while; hits shot from inside it score extra</label>
           ${f.hot ? `<div class="gm-row"><label>Hot zone bonus <select class="input" name="hot_bonus">${[1.5, 2, 3].map((v) => `<option value="${v}" ${f.hot_bonus === v ? "selected" : ""}>×${v}</option>`).join("")}</select></label>
           ${hotTimes(f)}
           <label>Opens up to <select class="input" name="hot_far">${[20, 30, 40, 60].map((v) => `<option value="${v}" ${f.hot_far === v ? "selected" : ""}>${v} blocks away</option>`).join("")}</select></label></div>` : ""}` : ""}
+        ${f.mode === "points" ? `<p class="muted small gm-wide">Aim: an edge hit counts ×0.2, the middle rings about ×1, a dead-centre bullseye ×3. Distance: nothing under 15 blocks, ×1 at 15, ×2 at 25, ×4 at 35, ×14 at 65. Each further hit from within 3 blocks of an earlier one counts half, so moving around pays. Bullseyes from 30, 45 and 60+ blocks get Great, Amazing and Legendary in chat.</p>` : ""}
         ${f.mode === "horse" ? `<label>Word <input class="input" name="word" maxlength="10" value="${esc(f.word)}"></label>` : ""}
         <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30, 45].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>
-        <label class="check"><input type="checkbox" name="give_bow" ${f.give_bow ? "checked" : ""}> Give everyone a bow and 64 arrows</label>`;
+        <label class="check"><input type="checkbox" name="give_bow" ${f.give_bow ? "checked" : ""}> Give everyone a Match Bow (Infinity, one arrow; both taken back at the end, nobody's own bows or arrows touched)</label>`;
     const body = () => `<h2>${GAME_INFO[game][0]} ${esc(GAME_INFO[game][1])}</h2>
       <form id="gm-form" class="gm-form">
         <div class="gm-map" id="gm-map"></div>
@@ -874,6 +875,46 @@ async function viewCheck(sid) {
       catch (err) { showToast(esc(err.message), 5000); }
       busy = false; render();
     });
+  };
+  render();
+}
+
+// ================================================================ fishing journal
+// Every species each player has caught (with their best), family records, the latest catches.
+const FQ = ["gray", "white", "green", "aqua", "gold", "light_purple"];
+async function viewFishingJournal(sid, who) {
+  const s = await serverFrame(sid, "fishing");
+  const d = await api(`/api/servers/${encodeURIComponent(sid)}/fishing/journal`);
+  const qName = (i) => d.qualities[i]?.name || "";
+  let pick = who && d.players.find((p) => p.name === who) ? who : d.players[0]?.name || "";
+  const render = () => {
+    const p = d.players.find((x) => x.name === pick);
+    const total = d.species.length, have = p ? Object.keys(p.species).length : 0;
+    const card = (sp) => {
+      const mine = p?.species[sp.key], rec = d.records[sp.key];
+      const where = `${sp.waters.join(", ")} · ${sp.rarity}`;
+      return mine
+        ? `<div class="fj-card got"><div class="fj-top">${itemIcon({ id: sp.item })}<b>${esc(sp.name)}</b></div>
+            <span class="fj-best">Best <b>${mine.best_lb} lb</b> · <span class="fq-${FQ[mine.best_quality]}">${esc(mine.best_quality === 1 ? "Normal" : qName(mine.best_quality))}</span></span>
+            <span class="muted small">Caught ${mine.count}× · ${esc(where)}</span>
+            ${rec ? `<span class="small ${rec.player === pick ? "fj-mine" : "muted"}">${rec.player === pick ? "🏆 Family record" : `Record: ${rec.lb} lb by ${esc(rec.player)}`}${rec.player === pick ? `: ${rec.lb} lb` : ""}</span>` : ""}</div>`
+        : `<div class="fj-card"><div class="fj-top"><span class="fj-unknown" aria-hidden="true">?</span><b class="muted">???</b></div>
+            <span class="muted small">Not caught yet</span><span class="muted small">Look in: ${esc(where)}</span>
+            ${rec ? `<span class="muted small">${esc(rec.player)} has caught one</span>` : ""}</div>`;
+    };
+    setView(`${serverHeader(s, "fishing")}
+      <section class="section"><div class="section-head"><h2>🎣 Fishing journal</h2><span class="muted">Every fish from the Solstone data pack</span></div>
+        ${d.players.length ? `<div class="fj-players">${d.players.map((x) => `<button type="button" class="chip-btn ${x.name === pick ? "on" : ""}" data-fj="${esc(x.name)}">${faceHtml({ name: x.name }, 20)} ${esc(x.name)} <small>${Object.keys(x.species).length}/${total}</small></button>`).join("")}</div>` : `<p class="muted">Nobody has caught a Solstone fish yet.</p>`}
+        ${p ? `<div class="panel fj-head">
+            <div class="fj-progress"><span><b>${have} of ${total}</b> kinds of fish</span><div class="fj-bar"><i style="width:${(have / total) * 100}%"></i></div></div>
+            <div class="fj-stats"><span><b>${p.total}</b> caught</span><span><b>${p.points.toLocaleString()}</b> points</span></div>
+            <div class="fish-qs">${d.qualities.map((q, i) => `<span class="fish-q fq-${q.color}" title="1 in ${q.one_in} catches">${esc(q.name)} <small>${p.qualities[i] || 0}</small></span>`).join("")}</div></div>` : ""}
+        <div class="fj-grid">${d.species.map(card).join("")}</div></section>
+      ${d.recent.length ? `<section class="section"><div class="section-head"><h2>Latest catches</h2></div><ul class="panel fj-recent">${d.recent.map((c) => `<li>${faceHtml({ name: c.player }, 20)}<b>${esc(c.player)}</b>
+          <span class="fq-${FQ[c.quality]}">${esc(c.quality === 1 ? "" : `${qName(c.quality)} `)}${esc(c.name)}</span><span class="muted small">${c.lb} lb · ${c.points} pts · ${esc(fmtAgo(c.ts))}</span></li>`).join("")}</ul></section>` : ""}
+      <section class="section"><div class="section-head"><h2>How rare</h2></div><div class="fish-qs">${d.qualities.map((q) => `<span class="fish-q fq-${q.color}">${esc(q.name)} <small>${q.one_in <= 2 ? `${q.chance}%` : `1 in ${q.one_in}`}</small></span>`).join("")}</div></section>`);
+    wireHeader(s);
+    $$("[data-fj]").forEach((b) => b.addEventListener("click", () => { pick = b.dataset.fj; render(); }));
   };
   render();
 }

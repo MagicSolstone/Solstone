@@ -1751,6 +1751,13 @@ async def delete_challenge(sid: str, cid: str, request: Request):
 
 
 # ---- the Solstone Fishing data pack
+@app.get("/api/servers/{sid}/fishing/journal")
+async def fishing_journal(sid: str, request: Request):
+    """Everyone's fishing journal (anyone signed in)."""
+    srv = await _server(sid)
+    return await asyncio.to_thread(fishing.journal, srv.id)
+
+
 @app.get("/api/servers/{sid}/fishing")
 async def get_fishing(sid: str, request: Request):
     auth.require_admin(request)

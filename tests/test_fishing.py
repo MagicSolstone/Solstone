@@ -102,9 +102,14 @@ def test_catches_recorded_and_big_ones_announced(pond):
     evs = db.events(srv.id, ["fish", "bigfish"], None, 10)
     assert [e["type"] for e in evs] == ["bigfish", "fish"] and evs[0]["player"] == "Gimli_Jr"
     assert "Gimli_Jr caught an Exquisite Golden Koi · 6.9 lb · 480 points" == evs[0]["message"]
-    assert len(srv.said) == 1 and "Exquisite Golden Koi" in srv.said[0]                    # only the big one, outside a contest
+    to_all = [x for x in srv.said if x.startswith("tellraw @a")]
+    assert len(to_all) == 1 and "Exquisite Golden Koi" in to_all[0]                         # only the big one, outside a contest
+    journal = [x for x in srv.said if "fishing journal" in x]
+    assert len(journal) == 2 and all(x.startswith("tellraw Gimli_Jr") for x in journal) and "(2 of 22 species)" in journal[-1]
+    assert [c["species"] for c in db.fish_catches(srv.id, "Gimli_Jr")] == ["bass", "koi"]
     asyncio.run(fishing.poll([srv]))
     assert len(db.events(srv.id, ["fish", "bigfish"], None, 10)) == 2                     # nothing twice
+    assert len(db.fish_catches(srv.id)) == 2
 
 
 def test_biggest_catch_contest(pond):
@@ -197,3 +202,17 @@ def test_catch_position_read_back():
              'u: [I; 1, 2, 3, 4], i: 9, t: 100L, pos: [12.5d, 62.1d, -40.25d]}]')
     assert fishpack.parse_catches(reply)[0]["pos"] == [12.5, 62.1, -40.25]
     assert "e.pos set from entity @s Pos" in fishpack.FUNCTIONS["record"]
+
+
+def test_journal_and_backfill_from_old_feed():
+    from app import db, fishing
+    sid = "journal-srv"
+    db.add_event(sid, 100.0, "bigfish", "Gimli_Jr caught a Prime Rainbow Trout · 4.7 lb · 42 points", "Gimli_Jr")
+    db.add_event(sid, 101.0, "fish", "Gimli_Jr caught a Bluegill · 0.5 lb · 5 points", "Gimli_Jr")
+    db.add_event(sid, 102.0, "fish", "Tyler caught a Bluegill · 0.9 lb · 7 points", "Tyler")
+    j = fishing.journal(sid)                                            # old catches read from the feed once
+    g = next(p for p in j["players"] if p["name"] == "Gimli_Jr")
+    assert set(g["species"]) == {"trout", "bluegill"} and g["species"]["trout"]["best_quality"] == 3 and g["total"] == 2
+    assert j["records"]["bluegill"]["player"] == "Tyler" and j["records"]["bluegill"]["lb"] == 0.9
+    assert len(j["species"]) == 22 and j["qualities"][-1]["name"] == "Mythic" and j["qualities"][-1]["one_in"] == 1000
+    assert len(fishing.journal(sid)["recent"]) == 3                     # not filled twice

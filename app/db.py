@@ -68,6 +68,21 @@ CREATE TABLE IF NOT EXISTS recaps (
     PRIMARY KEY (server_id, day)
 );
 
+-- Every fish from the Solstone data pack, kept for good: the fishing journal.
+CREATE TABLE IF NOT EXISTS fish_catches (
+    id INTEGER PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    ts REAL NOT NULL,
+    player TEXT NOT NULL,
+    species TEXT NOT NULL,
+    name TEXT NOT NULL,
+    quality INTEGER NOT NULL,
+    quality_name TEXT NOT NULL,
+    weight REAL NOT NULL,
+    points INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_fish ON fish_catches(server_id, player, species);
+
 CREATE TABLE IF NOT EXISTS alerts (
     key TEXT PRIMARY KEY,
     ts REAL NOT NULL
@@ -475,3 +490,21 @@ def prune(metrics_days: int, events_days: int) -> None:
     now = time.time()
     x("DELETE FROM metrics WHERE ts < ?", (now - metrics_days * 86400,))
     x("DELETE FROM events WHERE ts < ?", (now - events_days * 86400,))
+
+
+def add_catch(server_id: str, ts: float, player: str, c: dict) -> dict:
+    """Record a fish; says whether it's new to this player's journal and a personal best."""
+    prev = q("SELECT COUNT(*) AS n, MAX(weight) AS best FROM fish_catches WHERE server_id=? AND player=? AND species=?",
+             (server_id, player, c["species"]))[0]
+    x("INSERT INTO fish_catches(server_id, ts, player, species, name, quality, quality_name, weight, points) VALUES (?,?,?,?,?,?,?,?,?)",
+      (server_id, ts, player, c["species"], c["name"], c["quality"], c["quality_name"], c["weight"], c["points"]))
+    kinds = q("SELECT COUNT(DISTINCT species) AS n FROM fish_catches WHERE server_id=? AND player=?", (server_id, player))[0]["n"]
+    return {"new_species": prev["n"] == 0, "personal_best": prev["n"] > 0 and c["weight"] > (prev["best"] or 0), "species_caught": kinds}
+
+
+def fish_catches(server_id: str, player: str | None = None) -> list[dict]:
+    if player:
+        rows = q("SELECT * FROM fish_catches WHERE server_id=? AND player=? ORDER BY ts", (server_id, player))
+    else:
+        rows = q("SELECT * FROM fish_catches WHERE server_id=? ORDER BY ts", (server_id,))
+    return [dict(r) for r in rows]

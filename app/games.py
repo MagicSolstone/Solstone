@@ -450,38 +450,60 @@ async def _th_tick(srv, r: dict) -> None:
 BULLSEYE = 13                                 # rings 13-15: dead centre (15) is near impossible from far away
 
 
+MIN_DIST = 15                                 # points mode: closer than this scores nothing
+SAME_SPOT = 3                                 # shots from within this of an earlier hit are "the same spot"
+
+
 def _multiplier(dist: float) -> float:
-    """A smooth curve with no cap, so every extra block counts: x1.3 at 5 blocks, x2 at 10,
-    x4 at 20, x6.8 at 30, x10.2 at 40, x14.1 at 50, x23.5 at 70."""
-    return round(1 + (dist / 10) ** 1.6, 1)
+    """Distance bonus from the 15-block line, smooth and uncapped: x1 at 15 blocks, x2 at 25,
+    x4 at 35, x6.8 at 45, x14.1 at 65. Closer than 15: nothing."""
+    if dist < MIN_DIST:
+        return 0.0
+    return round(1 + ((dist - MIN_DIST) / 10) ** 1.6, 1)
 
 
-def _ring_points(ring: int, dist: float) -> int:
-    return round(ring * _multiplier(dist))
+def _accuracy(ring: int) -> float:
+    """How much the ring counts: an edge hit (1) is a fifth of a middling one, a dead-centre
+    bullseye (15) three times: x0.2 at ring 1, x0.9 at 8, x2.2 at 13, x3 at 15."""
+    return round(0.2 + 2.8 * ((max(1, min(15, ring)) - 1) / 14) ** 2, 2)
 
 
-# How a hit is announced, by its total multiplier: (from, stars, words, colour, sound)
-_TIERS = [(15, "★★★★ ", "LEGENDARY SHOT! ", "red!", "minecraft:ui.toast.challenge_complete"),
-          (10, "★★★ ", "AMAZING SHOT! ", "light_purple!", "minecraft:entity.player.levelup"),
-          (6, "★★ ", "Great shot! ", "gold!", "minecraft:entity.firework_rocket.twinkle"),
-          (3, "★ ", "Nice shot! ", "green", "minecraft:entity.experience_orb.pickup"),
-          (0, "≫ ", "", "aqua", "")]
+def _spot_factor(r: dict, who: str, pos) -> tuple[float, int]:
+    """Hitting again and again from one spot halves each time: x1, x0.5, x0.25…"""
+    spots = r.setdefault("spots", {}).setdefault(who, [])
+    n = sum(1 for q in spots if math.hypot(q[0] - pos[0], q[2] - pos[2]) <= SAME_SPOT)
+    return 0.5 ** n, n
 
 
-def _tier(mult: float) -> tuple:
-    return next(t for t in _TIERS if mult >= t[0])
+def _ring_points(ring: int, dist: float, extra: float = 1.0) -> int:
+    return round(10 * _accuracy(ring) * _multiplier(dist) * extra)
 
 
-def _hit_parts(who: str, ring: int, d: float, mult: float, hot: float, pts: int, total: int) -> list:
-    _f, stars, words, color, _snd = _tier(mult * hot)
-    parts = [(stars, color), (words, color), (who, "aqua"), (f": ring {ring}", "white")]
-    if ring >= BULLSEYE:
-        parts.append((" BULLSEYE", "gold!"))
-    parts.append((f" from {d:.0f} blocks ", "white"))
-    parts.append((f"×{mult:g}", color if mult >= 3 else "gray"))
+# Bullseyes (rings 13-15) are announced by how far they came from: (from blocks, stars, words, colour, sound)
+_TIERS = [(60, "★★★★ ", "LEGENDARY SHOT! ", "red!", "minecraft:ui.toast.challenge_complete"),
+          (45, "★★★ ", "AMAZING SHOT! ", "light_purple!", "minecraft:entity.player.levelup"),
+          (30, "★★ ", "Great shot! ", "gold!", "minecraft:entity.firework_rocket.twinkle"),
+          (0, "★ ", "Bullseye! ", "green", "minecraft:entity.experience_orb.pickup")]
+_PLAIN = (0, "≫ ", "", "aqua", "")
+
+
+def _tier(ring: int, dist: float) -> tuple:
+    if ring < BULLSEYE:
+        return _PLAIN
+    return next(t for t in _TIERS if dist >= t[0])
+
+
+def _hit_parts(who: str, ring: int, d: float, pts: int, total: int, hot: float = 1, repeat: int = 0) -> list:
+    _f, stars, words, color, _snd = _tier(ring, d)
+    parts = [(stars, color), (words, color), (who, "aqua"), (f": ring {ring} from {d:.0f} blocks", "white")]
+    if d < MIN_DIST:
+        return parts + [(f"  too close (under {MIN_DIST} blocks): no points", "gray")]
+    parts.append((f"  ×{_accuracy(ring):g} aim ×{_multiplier(d):g} distance", "gray"))
     if hot > 1:
         parts.append((f" ×{hot:g} ♨", "red!"))
-    parts.append((f"  +{pts}", "yellow!" if mult * hot >= 6 else "yellow"))
+    if repeat:
+        parts.append((f" ×{0.5 ** repeat:g} same spot", "red"))
+    parts.append((f"  +{pts}", "yellow!" if ring >= BULLSEYE else "yellow"))
     parts.append((f" ({total})", "gray"))
     return parts
 
@@ -521,15 +543,17 @@ async def _ar_start(srv, r: dict) -> None:
     r["players"] = {n: {"letters": "", "best": 0.0, "points": 0, "hits": 0, "shots": 0} for n in names}
     r["target_c"] = [tx + 0.5, ty + 0.5, tz + 0.5]
     if r["give_bow"]:
-        await _rcon(srv, "give @a minecraft:bow 1")
-        await _rcon(srv, "give @a minecraft:arrow 64")
+        # a match bow with Infinity and one arrow: endless shots, nothing to pick up, and both
+        # (tagged) are taken back at the end without touching anyone's own bows and arrows
+        await _rcon(srv, f"give @a {_match_item(srv, 'bow')}")
+        await _rcon(srv, f"give @a {_match_item(srv, 'arrow')}")
     log_ = await _rcon(srv, "data get storage solstone:games log")
     from .fishpack import parse_game_log
     seen = parse_game_log(log_)
     r["seq"] = max((e["i"] for e in seen), default=0)
     r["pending"] = {}
     r["state"], r["phase_ends"] = "running", time.time() + r["minutes"] * 60
-    goal = {"bullseye": f"Longest bullseye (ring {BULLSEYE}-15) wins.", "points": "Points: the ring (1-15) times a distance bonus: x2 at 10 blocks, x4 at 20, x6.8 at 30, x14 at 50, and on up. Most points wins.",
+    goal = {"bullseye": f"Longest bullseye (ring {BULLSEYE}-15) wins.", "points": f"Points: aim (an edge hit x0.2, a dead-centre bullseye x3) times distance (x1 at {MIN_DIST} blocks, x2 at 25, x4 at 35, x14 at 65; closer than {MIN_DIST} scores nothing). Hits from the same spot count half each time: keep moving. Most points wins.",
             "horse": f"{r['word']}: make the setter's shot or take a letter."}[r["mode"]]
     await _say(srv, [("★ ", "gold"), (r["name"], "yellow"), (f" at the target at {tx}, {ty}, {tz}. {goal}", None)], "Archery!", goal[:40])
     if r["mode"] == "horse":
@@ -582,19 +606,20 @@ async def _ar_tick(srv, r: dict) -> None:
         if ring:
             st["hits"] += 1
             if r["mode"] == "points":
-                mult = _multiplier(d)
                 hot = r["hot_bonus"] if r.get("hot") and _in_hot(r, pos, now) else 1
-                pts = round(ring * mult * hot)
+                same, repeat = _spot_factor(r, who, pos) if d >= MIN_DIST else (1.0, 0)
+                pts = _ring_points(ring, d, hot * same)
                 st["points"] += pts
-                await _say(srv, _hit_parts(who, ring, d, mult, hot, pts, st["points"]))
-                _f, stars, words, _c, snd = _tier(mult * hot)
-                if snd:
+                if pts:
+                    r["spots"][who].append([round(pos[0], 1), round(pos[1], 1), round(pos[2], 1)])
+                await _say(srv, _hit_parts(who, ring, d, pts, st["points"], hot, repeat))
+                if repeat == 1:
+                    await _bar(srv, who, "Same spot again: each hit from here counts half. Move around!", "red")
+                _f, stars, words, _c, snd = _tier(ring, d)
+                if snd and d >= MIN_DIST:
                     await _rcon(srv, f"execute as @a at @s run playsound {snd} master @s ~ ~ ~ 1 1")
-                if mult * hot >= 10:                # the big ones go up on screen and into the activity feed
-                    await _rcon(srv, "title @a times 5 40 10")
-                    await _rcon(srv, f"title @a subtitle {component([(f'{who}: {d:.0f} blocks, +{pts}', 'yellow')])}")
-                    await _rcon(srv, f"title @a title {component([(stars + words.strip(), _c)])}")
-                    db.add_event(srv.id, now, "game", f"{who} {words.strip().lower().rstrip('!')}: ring {ring} from {d:.0f} blocks, ×{mult * hot:g} for {pts} points", who)
+                if ring >= BULLSEYE and d >= 45:              # the big ones go in the activity feed
+                    db.add_event(srv.id, now, "game", f"{who}: {words.strip().lower().rstrip('!')}, a bullseye from {d:.0f} blocks for {pts} points", who)
             elif ring >= BULLSEYE:
                 if d > st["best"]:
                     st["best"] = round(d, 1)
@@ -626,7 +651,25 @@ async def _ar_tick(srv, r: dict) -> None:
         await _ar_end(srv, r, result, winners)
 
 
+def _match_item(srv, what: str) -> str:
+    from .races import _new_text
+    name = {"bow": "Match Bow", "arrow": "Match Arrow"}[what]
+    label = f'"{name}"' if _new_text(srv) else f"'\"{name}\"'"
+    if what == "bow":
+        ench = '{"minecraft:infinity":1}' if _new_text(srv) else '{levels:{"minecraft:infinity":1}}'
+        return (f"minecraft:bow[minecraft:custom_data={{solmatch:1b}},minecraft:unbreakable={{}},"
+                f"minecraft:enchantments={ench},minecraft:item_name={label}] 1")
+    return f"minecraft:arrow[minecraft:custom_data={{solmatch:1b}},minecraft:item_name={label}] 1"
+
+
+async def _take_back_match_gear(srv) -> None:
+    for item in ("minecraft:bow", "minecraft:arrow"):
+        await _rcon(srv, f"clear @a {item}[minecraft:custom_data={{solmatch:1b}}]")
+
+
 async def _ar_end(srv, r: dict, result: str, winners: list[str]) -> None:
+    if r.get("give_bow"):
+        await _take_back_match_gear(srv)
     if r.get("hot"):
         await _rcon(srv, f"kill @e[tag={_hot_tag(r)}]")
     await _say(srv, [("★ ", "gold"), (result, "yellow")], "Game over", (" & ".join(winners) + " won")[:40] if winners else "")
@@ -831,6 +874,8 @@ async def _cancel(srv, rid: str) -> bool:
             await _rcon(srv, f"execute in {r['dim']} run setblock {c['x']} {c['y']} {c['z']} {'minecraft:water' if r.get('underwater_spot') else 'minecraft:air'}")
             await _rcon(srv, f"execute in {r['dim']} run forceload remove {c['x']} {c['z']}")
         elif r["game"] == "archery":
+            if r.get("give_bow"):
+                await _take_back_match_gear(srv)
             if r.get("hot"):
                 await _rcon(srv, f"kill @e[tag={_hot_tag(r)}]")
             if r.get("place_target"):

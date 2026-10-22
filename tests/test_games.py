@@ -161,23 +161,28 @@ def test_archery_points(game):
     games, srv = game
     games.create(srv.id, {"game": "archery", "mode": "points", "target": {"x": 0, "y": 65, "z": 0}, "place_target": True, "minutes": 5})
     asyncio.run(games.tick([srv]))
-    assert srv.blocks[(0, 65, 0)] == "target" and any(c == "give @a minecraft:arrow 64" for c in srv.cmds)
-    srv.add_log("shot", "Tyler", (0.5, 65.0, 20.5)); srv.add_log("hit", "Tyler", (0.5, 65, 20.5), 15)      # bullseye from 20 blocks
-    srv.add_log("shot", "Gimli_Jr", (0.5, 65.0, 10.5)); srv.add_log("hit", "Gimli_Jr", (0.5, 65, 10.5), 5)
+    assert srv.blocks[(0, 65, 0)] == "target"
+    assert any("bow[" in c and '"minecraft:infinity":1' in c and "solmatch:1b" in c for c in srv.cmds)        # a Match Bow, not 64 arrows
+    srv.add_log("shot", "Tyler", (0.5, 65.0, 20.5)); srv.add_log("hit", "Tyler", (0.5, 65, 20.5), 15)      # dead centre from 20 blocks
+    srv.add_log("shot", "Gimli_Jr", (0.5, 65.0, 10.5)); srv.add_log("hit", "Gimli_Jr", (0.5, 65, 10.5), 15)  # too close: nothing
     asyncio.run(games.tick([srv]))
     r = _run(games)
-    assert r["players"]["Tyler"]["points"] == 60 and r["players"]["Gimli_Jr"]["points"] == 10       # 15 x 4 (20 blocks), 5 x 2 (10)
+    assert r["players"]["Tyler"]["points"] == 39 and r["players"]["Gimli_Jr"]["points"] == 0     # 10 x3 aim x1.3 distance
+    assert any("too close" in c for c in srv.said)
+    srv.add_log("shot", "Tyler", (1.5, 65.0, 21.0)); srv.add_log("hit", "Tyler", (1.5, 65, 21.0), 15)      # again from the same spot: half
+    asyncio.run(games.tick([srv]))
+    assert _run(games)["players"]["Tyler"]["points"] == 39 + round(10 * 3 * games._multiplier(math.dist((1.5, 65.0, 21.0), (0.5, 65.5, 0.5))) * 0.5)
+    assert any("same spot" in c for c in srv.said)
     srv.add_log("shot", "MomCrafts", (5.0, 65.0, 5.0))                                                 # a miss: no hit follows
     asyncio.run(games.tick([srv]))
-    for s in _run(games)["pending"]["MomCrafts"]:
-        s["at"] -= 10
     d = games._load(); d["runs"][0]["pending"]["MomCrafts"][0]["at"] -= 10; games._save(d)
     asyncio.run(games.tick([srv]))
     assert _run(games)["players"]["MomCrafts"]["shots"] == 1 and _run(games)["players"]["MomCrafts"]["hits"] == 0
     _set(games, phase_ends=time.time() - 1)
     asyncio.run(games.tick([srv]))
     r = _run(games)
-    assert r["state"] == "done" and r["result"].startswith("Tyler won Archery: most points with 60 points") and srv.blocks[(0, 65, 0)] == "air"
+    assert r["state"] == "done" and r["result"].startswith("Tyler won Archery: most points") and srv.blocks[(0, 65, 0)] == "air"
+    assert "clear @a minecraft:bow[minecraft:custom_data={solmatch:1b}]" in srv.cmds and "clear @a minecraft:arrow[minecraft:custom_data={solmatch:1b}]" in srv.cmds
 
 
 def test_archery_horse(game):
@@ -229,10 +234,12 @@ def test_archery_hot_zone_and_big_shot_flair(game):
     z = _run(games)["hot_zone"]
     assert z["on"] and 10 <= math.hypot(z["x"] - 0.5, z["z"] - 0.5) <= 31
     assert any("waypoint modify @e[tag=solhot_" in c and "color red" in c for c in srv.cmds)
+    z = {**z, "x": 30.5, "z": 0.5}                                          # put it 30 blocks out
+    _set(games, hot_zone=z)
     srv.add_log("shot", "Tyler", (z["x"] + 1, 65.0, z["z"])); srv.add_log("hit", "Tyler", (z["x"], 65, z["z"]), 10)
     asyncio.run(games.tick([srv]))
     d = math.dist((z["x"] + 1, 65.0, z["z"]), (0.5, 65.5, 0.5))
-    assert _run(games)["players"]["Tyler"]["points"] == round(10 * games._multiplier(d) * 2)
+    assert _run(games)["players"]["Tyler"]["points"] == games._ring_points(10, d, 2)
     shout = next(c for c in srv.cmds if c.startswith("tellraw @a") and "ring 10" in c)
     assert "×2" in shout and "♨" in shout
     # close it: the marker and sign go, and the next one waits
@@ -243,8 +250,11 @@ def test_archery_hot_zone_and_big_shot_flair(game):
 
 def test_hit_tiers():
     from app import games
-    assert games._tier(2)[2] == "" and games._tier(4)[2] == "Nice shot! " and games._tier(12)[2] == "AMAZING SHOT! " and games._tier(30)[2] == "LEGENDARY SHOT! "
-    assert [games._multiplier(x) for x in (10, 20, 30, 50, 70)] == [2.0, 4.0, 6.8, 14.1, 23.5]
+    assert games._tier(10, 70)[2] == ""                                       # not a bullseye: plain, however far
+    assert [games._tier(15, d)[2].strip() for d in (20, 31, 50, 65)] == ["Bullseye!", "Great shot!", "AMAZING SHOT!", "LEGENDARY SHOT!"]
+    assert [games._multiplier(x) for x in (10, 15, 25, 35, 65)] == [0.0, 1.0, 2.0, 4.0, 14.1]
+    assert games._accuracy(1) == 0.2 and games._accuracy(15) == 3.0 and 0.8 < games._accuracy(8) < 1.0
+
 
 
 def test_hot_zone_surface_tells_water_from_land():

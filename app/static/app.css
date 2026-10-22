@@ -1672,3 +1672,24 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .ck-main { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .ck-main pre { white-space: pre-wrap; word-break: break-word; }
 .ck-fix { color: #ffd36b; }
+
+/* Fishing journal */
+.fq-light_purple { color: #ff55ff; }
+.fj-players { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.fj-players .chip-btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; background: var(--well); border: 1px solid var(--line); color: inherit; cursor: pointer; font-weight: 600; }
+.fj-players .chip-btn.on { border-color: var(--gold); background: rgba(255, 200, 80, .12); }
+.fj-head { display: grid; gap: 10px; margin-bottom: 14px; }
+.fj-progress { display: grid; gap: 6px; font-size: 1.05rem; }
+.fj-bar { height: 10px; border-radius: 999px; background: var(--well); overflow: hidden; }
+.fj-bar i { display: block; height: 100%; background: linear-gradient(90deg, #4fb0ff, #7dffb0); }
+.fj-stats { display: flex; gap: 18px; }
+.fj-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
+.fj-card { display: grid; gap: 4px; padding: 10px 12px; border-radius: 12px; background: var(--panel, rgba(20, 25, 40, .6)); border: 1px solid var(--line); }
+.fj-card:not(.got) { opacity: .7; border-style: dashed; }
+.fj-top { display: flex; align-items: center; gap: 8px; }
+.fj-unknown { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: var(--well); font-weight: 800; color: var(--muted); }
+.fj-mine { color: var(--gold); font-weight: 700; }
+.fj-recent { list-style: none; margin: 0; padding: 6px 0; }
+.fj-recent li { display: flex; align-items: center; gap: 8px; padding: 6px 14px; flex-wrap: wrap; }
+.fj-top > :first-child { width: 32px; height: 32px; flex: none; overflow: hidden; }
+.fj-top b { line-height: 1.2; }
