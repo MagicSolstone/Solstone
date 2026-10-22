@@ -201,14 +201,7 @@ async def test_catch(srv) -> dict:
         fish = await roll("fish", "minecraft:gameplay/fishing/fish")
         own = await roll("fish", "solfish:fish")
         probe = await roll("loot", "solfish:probe")
-        probes = {}
-        for k in fishpack.PROBES:
-            probes[k] = (await roll("loot", f"solfish:probe_{k}"))["item_reply"].split("data:", 1)[-1].strip()[:200]
-        # an item modifier applied to what's in the barrel (a plain stone put there first)
-        await _rcon(srv, f"{pre} run item replace block {x} {top} {z} container.0 with minecraft:stone")
-        mod = await _rcon(srv, f"{pre} run item modify block {x} {top} {z} container.0 solfish:probe")
-        got = await _rcon(srv, f"{pre} run data get block {x} {top} {z} Items")
-        probes["item_modifier"] = (mod[:120] + " → " + got.split("data:", 1)[-1].strip())[:300]
+        probes: dict = {}
         rod = [await roll("fish", "minecraft:gameplay/fishing") for _ in range(4)]
     finally:
         await _rcon(srv, f"{pre} run setblock {x} {top} {z} minecraft:air")

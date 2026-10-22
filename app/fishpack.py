@@ -27,7 +27,7 @@ import zipfile
 
 PACK_ID = "solstone-pack"                     # one pack: fishing and the archery games
 PACK_FILE = f"{PACK_ID}.zip"
-VERSION = 5                                   # bump when the pack's content changes
+VERSION = 6                                   # bump when the pack's content changes
 
 # ------------------------------------------------------------------ the water
 _OCEAN = ["ocean", "deep_ocean", "cold_ocean", "deep_cold_ocean", "lukewarm_ocean", "deep_lukewarm_ocean",
@@ -161,7 +161,9 @@ def _stone(**kw) -> dict:
 _THREE = [{"function": "minecraft:set_count", "count": 3}]
 # Small test tables, each trying item functions a different way, to find what this game version
 # applies (the answer decides how the fish table has to be written).
-PROBES = {
+# Not shipped: v5 included these and one stopped a 26.1 server from starting (registry loading
+# is strict there). Kept for reference until we know which.
+PROBES_UNSHIPPED = {
     "count": _stone(entry={"functions": _THREE}),                   # entry functions, the usual way
     "pool": _stone(pool={"functions": _THREE}),                     # on the pool
     "table": _stone(functions=_THREE),                              # on the whole table
@@ -295,8 +297,6 @@ def pack_files() -> dict[str, str]:
             {"function": "minecraft:set_name", "target": "item_name", "name": {"text": "Solstone probe"}},
             {"function": "minecraft:set_custom_data", "tag": "{solprobe:1b}"}]}]}]}),
         "data/minecraft/loot_table/gameplay/fishing.json": json.dumps(fishing_table()),
-        **{f"data/solfish/loot_table/probe_{k}.json": json.dumps(v) for k, v in PROBES.items()},
-        "data/solfish/item_modifier/probe.json": json.dumps({"function": "minecraft:set_count", "count": 3}),
         "data/minecraft/tags/function/load.json": json.dumps({"values": ["solfish:load", "solgames:load"]}),
         "data/minecraft/tags/function/tick.json": json.dumps({"values": ["solgames:tick"]}),
         "data/solfish/advancement/hooked.json": json.dumps({
