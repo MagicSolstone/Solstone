@@ -400,8 +400,9 @@ BULLSEYE = 13                                 # rings 13-15: dead centre (15) is
 
 
 def _multiplier(dist: float) -> float:
-    """Long shots should win: x2 at 10 blocks, x5 at 20, x10 at 30, x26 at 50."""
-    return 1 + (dist / 10) ** 2
+    """A smooth curve with no cap, so every extra block counts: x1.3 at 5 blocks, x2 at 10,
+    x4 at 20, x6.8 at 30, x10.2 at 40, x14.1 at 50, x23.5 at 70."""
+    return round(1 + (dist / 10) ** 1.6, 1)
 
 
 def _ring_points(ring: int, dist: float) -> int:
@@ -425,7 +426,7 @@ async def _ar_start(srv, r: dict) -> None:
     r["seq"] = max((e["i"] for e in seen), default=0)
     r["pending"] = {}
     r["state"], r["phase_ends"] = "running", time.time() + r["minutes"] * 60
-    goal = {"bullseye": f"Longest bullseye (ring {BULLSEYE}-15) wins.", "points": "Points: the ring (1-15) times a distance bonus: x2 at 10 blocks, x5 at 20, x10 at 30. Most points wins.",
+    goal = {"bullseye": f"Longest bullseye (ring {BULLSEYE}-15) wins.", "points": "Points: the ring (1-15) times a distance bonus: x2 at 10 blocks, x4 at 20, x6.8 at 30, x14 at 50, and on up. Most points wins.",
             "horse": f"{r['word']}: make the setter's shot or take a letter."}[r["mode"]]
     await _say(srv, [("★ ", "gold"), (r["name"], "yellow"), (f" at the target at {tx}, {ty}, {tz}. {goal}", None)], "Archery!", goal[:40])
     if r["mode"] == "horse":

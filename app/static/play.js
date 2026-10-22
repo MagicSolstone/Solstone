@@ -166,12 +166,16 @@ async function viewChallenges(sid) {
   const wireFish = () => $$("[data-fish]").forEach((b) => b.addEventListener("click", async () => {
     b.disabled = true;
     if (b.dataset.fish === "test") {
-      diag(`<p class="muted small">Casting a test line at spawn…</p>`);
+      diag(`<p class="muted small">Casting a few test lines…</p>`);
       try {
         const t = await post(`/api/servers/${encodeURIComponent(sid)}/fishing/test`, {});
-        diag(t.pack_fish
-          ? `<p class="fish-ok">✔ The pack's fish are working: a test cast caught a <b>${esc(t.pack_fish.quality)} ${esc(t.pack_fish.name)}</b> (${esc(t.pack_fish.lb)} lb, ${t.pack_fish.points} points).</p>`
-          : `<div class="notice small"><b>The test cast caught ${t.item ? `plain <code>${esc(t.item)}</code>` : "nothing readable"}</b>, so the game isn't using the pack's fish table. Press Reload to see the game's errors, or send these replies to get it fixed:<pre class="mc-out">${esc(`loot: ${t.command_reply}\nitem: ${t.item_reply}`)}</pre></div>`);
+        const what = (r) => r.pack_fish ? `${r.pack_fish.quality} ${r.pack_fish.name} (${r.pack_fish.lb} lb)` : r.item ? `plain ${r.item.replace("minecraft:", "")}` : "nothing";
+        const rodPack = t.rod.filter((r) => r.pack_fish).length, rodFish = t.rod.filter((r) => /cod|salmon|pufferfish|tropical/.test(r.item || "")).length;
+        const verdict = t.pack_fish && (rodPack || !rodFish) ? `<p class="fish-ok">✔ The pack's fish are working.</p>`
+          : t.pack_fish ? `<p class="notice small"><b>The pack's fish table is loaded, but the rod's table doesn't use it</b> (a mod, or the game's own fishing table changed).</p>`
+          : `<p class="notice small"><b>The pack's fish table isn't being used</b>: rolling it directly gives vanilla fish.</p>`;
+        diag(`${verdict}<pre class="mc-out">${esc([`Tested ${t.where}`, `fish table: ${what(t)}`, ...t.rod.map((r, i) => `rod roll ${i + 1}: ${what(r)}`),
+          ...(t.item ? [] : [`loot: ${t.command_reply}`, `item: ${t.item_reply}`])].join("\n"))}</pre><p class="muted small">Send this to get it fixed.</p>`);
       } catch (e) { diag(`<p class="notice small">${esc(e.message)}</p>`); }
       b.disabled = false;
       return;
@@ -629,7 +633,7 @@ async function viewGames(sid) {
         <div class="gm-items"><span class="lbl">In the chest</span>${f.items.map((it, i) => `<span class="chip">${itemIcon({ id: it.item })} ${it.count} × ${esc(it.name)} <button type="button" class="chip-x" data-rmitem="${i}" aria-label="Remove">×</button></span>`).join("")}
           <button type="button" class="btn sm" id="gm-additem">＋ Add treasure</button></div>`
       : `
-        <label>Game <select class="input" name="mode"><option value="bullseye" ${f.mode === "bullseye" ? "selected" : ""}>Longest bullseye</option><option value="points" ${f.mode === "points" ? "selected" : ""}>Most points (ring × distance bonus: ×2 at 10 blocks, ×5 at 20, ×10 at 30)</option><option value="horse" ${f.mode === "horse" ? "selected" : ""}>HORSE (match the shot or take a letter)</option></select></label>
+        <label>Game <select class="input" name="mode"><option value="bullseye" ${f.mode === "bullseye" ? "selected" : ""}>Longest bullseye</option><option value="points" ${f.mode === "points" ? "selected" : ""}>Most points (ring × distance bonus: ×2 at 10 blocks, ×4 at 20, ×6.8 at 30, ×14 at 50, no cap)</option><option value="horse" ${f.mode === "horse" ? "selected" : ""}>HORSE (match the shot or take a letter)</option></select></label>
         ${f.mode === "horse" ? `<label>Word <input class="input" name="word" maxlength="10" value="${esc(f.word)}"></label>` : ""}
         <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30, 45].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>
         <label class="check"><input type="checkbox" name="give_bow" ${f.give_bow ? "checked" : ""}> Give everyone a bow and 64 arrows</label>`;

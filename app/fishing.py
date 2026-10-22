@@ -102,20 +102,15 @@ async def reload(srv) -> dict:
     return st
 
 
-async def test_catch(srv) -> dict:
-    """Fish once from the real fishing table at spawn and say what came out: the plainest way to
-    see whether the pack's fish are being used."""
+async def _roll(srv, at: str, table: str) -> dict:
+    """Roll one loot table as a catch, six blocks above `at` (so only our item is there), and read it."""
     import nbtlib
 
-    w = await __import__("asyncio").to_thread(S.world_info, srv, False)
-    sp = w.get("spawn") or {"x": 0, "y": 64, "z": 0}
-    x, z = int(sp["x"]), int(sp["z"])
-    sel = f"@e[type=item,x={x}.5,y=330,z={z}.5,distance=..4]"
-    await _rcon(srv, f"kill {sel}")
-    out = await _rcon(srv, f"execute in minecraft:overworld run loot spawn {x}.5 330 {z}.5 fish minecraft:gameplay/fishing/fish {x} {int(sp.get('y', 64))} {z} minecraft:fishing_rod")
-    got = await _rcon(srv, f"data get entity {sel.replace(']', ',limit=1]')} Item")
-    await _rcon(srv, f"kill {sel}")
-    res = {"command_reply": out[:300], "item_reply": got[:600], "item": None, "pack_fish": None}
+    sel = "@e[type=item,distance=..2,sort=nearest,limit=1]"
+    out = await _rcon(srv, f"execute {at} positioned ~ ~6 ~ run loot spawn ~ ~ ~ fish {table} ~ ~-6 ~ minecraft:fishing_rod")
+    got = await _rcon(srv, f"execute {at} positioned ~ ~6 ~ run data get entity {sel} Item")
+    await _rcon(srv, f"execute {at} positioned ~ ~6 ~ run kill {sel}")
+    res = {"table": table, "command_reply": out[:300], "item_reply": got[:400], "item": None, "pack_fish": None}
     if "{" in got:
         try:
             item = nbtlib.parse_nbt(got[got.index("{"):].strip())
@@ -126,6 +121,31 @@ async def test_catch(srv) -> dict:
         except Exception as e:
             res["parse_error"] = str(e)[:200]
     return res
+
+
+async def test_catch(srv) -> dict:
+    """Fish from the real tables and say what came out: the fish table on its own, and the whole
+    fishing table a few times (which is what a rod uses). Done where a player is standing, so the
+    spot is loaded; with nobody on, at spawn with that chunk loaded for a moment."""
+    names, _src = await S.online_players(srv)
+    forced = None
+    if names:
+        at, where = f"at {names[0]}", f"at {names[0]}"
+    else:
+        w = await __import__("asyncio").to_thread(S.world_info, srv, False)
+        sp = w.get("spawn") or {"x": 0, "y": 64, "z": 0}
+        x, y, z = int(sp["x"]), int(sp.get("y", 64)), int(sp["z"])
+        forced = (x, z)
+        await _rcon(srv, f"execute in minecraft:overworld run forceload add {x} {z}")
+        at, where = f"in minecraft:overworld positioned {x}.5 {y} {z}.5", "at spawn"
+    try:
+        fish = await _roll(srv, at, "minecraft:gameplay/fishing/fish")
+        rod = [await _roll(srv, at, "minecraft:gameplay/fishing") for _ in range(4)]
+    finally:
+        if forced:
+            await _rcon(srv, f"execute in minecraft:overworld run forceload remove {forced[0]} {forced[1]}")
+    # kept flat for the page: the fish-table roll's fields, plus the whole-table rolls
+    return {**fish, "where": where, "rod": rod}
 
 
 def _names(srv) -> dict[str, str]:
