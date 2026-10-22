@@ -18,7 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, backups, board, challenges, control, db, fireworks, fwshow, guard, music, notify, recap, skins, worldmap
+from . import auth, backups, board, challenges, control, db, races, fireworks, fwshow, guard, music, notify, recap, skins, worldmap
 from . import servers as S
 from . import settings_store
 from .recorder import recorder
@@ -243,6 +243,8 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
                                   "raining": w.get("raining"), "thundering": w.get("thundering"), "as_of": w.get("as_of")}
             if cfg["show_positions"] and w.get("spawn"):
                 board["spawn"] = {k: w["spawn"][k] for k in ("x", "y", "z")}
+            if cfg["show_positions"]:
+                board["race"] = races.live_for_map(srv.id)
         except Exception as e:
             log.debug("status page world info failed for %s: %s", srv.id, e)
     if summ["running"] is not False and summ["online"]:
@@ -271,7 +273,7 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
                     row["armor"] = [_public_item(inv["armor"][k], lang) for k in ("head", "chest", "legs", "feet")]
             board["players"].append(row)
     if cfg["show_activity"]:
-        evs = db.events(srv.id, ["join", "leave", "death", "advancement", "level", "server", "challenge"], None, 14)
+        evs = db.events(srv.id, ["join", "leave", "death", "advancement", "level", "server", "challenge", "race"], None, 14)
         board["recent"] = [{"ts": e["ts"], "type": e["type"], "player": e["player"], "message": e["message"]} for e in evs]
     online_l = {n.lower() for n in summ["online"]}
     if srv.is_java:
@@ -1676,8 +1678,87 @@ async def delete_challenge(sid: str, cid: str, request: Request):
     return {"ok": True}
 
 
+# ---- races: courses of waypoints, run with markers in the game
+@app.get("/api/servers/{sid}/races")
+async def get_races(sid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    runs = races.runs_for(srv.id)
+    for r in runs:
+        r["standings"] = races.standings(r)
+    w = await asyncio.to_thread(S.world_info, srv, False) if srv.is_java else {}
+    return {"courses": races.courses_for(srv.id), "runs": runs, "rcon": bool(srv.rcon_conf()), "now": time.time(),
+            "spawn": w.get("spawn"), "version": srv.mc_version}
+
+
+@app.post("/api/servers/{sid}/races/courses")
+async def add_course(sid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    try:
+        return races.save_course(srv.id, await _body(request))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.put("/api/servers/{sid}/races/courses/{cid}")
+async def edit_course(sid: str, cid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    try:
+        return races.save_course(srv.id, await _body(request), cid)
+    except KeyError:
+        raise HTTPException(404, "Course not found") from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.delete("/api/servers/{sid}/races/courses/{cid}")
+async def remove_course(sid: str, cid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    if not races.delete_course(srv.id, cid):
+        raise HTTPException(404, "Course not found")
+    return {"ok": True}
+
+
+@app.post("/api/servers/{sid}/races/runs")
+async def start_race(sid: str, request: Request):
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    try:
+        r = races.schedule(srv.id, await _body(request))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    auth.audit(user, srv.id, "race", f"{r['name']} at {datetime.fromtimestamp(r['start'], db.tz()):%Y-%m-%d %H:%M}")
+    return r
+
+
+@app.delete("/api/servers/{sid}/races/runs/{rid}")
+async def stop_race(sid: str, rid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    if not await races.cancel(srv, rid):
+        raise HTTPException(404, "Race not found")
+    return {"ok": True}
+
+
+@app.get("/api/servers/{sid}/races/spot")
+async def race_spot(sid: str, request: Request, player: str = "", x: float = 0, z: float = 0, dim: str = "minecraft:overworld"):
+    """A point for a course: where a player is standing now, or the ground height at x, z."""
+    auth.require_admin(request)
+    srv = await _server(sid)
+    if player:
+        try:
+            return await races.player_spot(srv, player)
+        except ValueError as e:
+            raise HTTPException(409, str(e)) from e
+    y = await asyncio.to_thread(worldmap.surface_y, srv.world_dir, dim, x, z)
+    return {"x": round(x, 1), "y": y if y is not None else 64, "z": round(z, 1), "guessed": y is None}
+
+
 # ---- chat: what's said in the game, and messages from here
-CHAT_TYPES = ["chat", "webchat", "webdm", "join", "leave", "death", "advancement", "challenge"]
+CHAT_TYPES = ["chat", "webchat", "webdm", "join", "leave", "death", "advancement", "challenge", "race"]
 
 
 @app.get("/api/servers/{sid}/chat")

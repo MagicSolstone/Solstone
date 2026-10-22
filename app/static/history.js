@@ -173,7 +173,7 @@ function legendHtml(names) {
 }
 
 // ================================================================ activity feed
-const EVENT_ICON = { join: "→", leave: "←", chat: "💬", death: "☠", advancement: "★", server: "⚙", challenge: "🏆", webchat: "💬", webdm: "✉" };
+const EVENT_ICON = { join: "→", leave: "←", chat: "💬", death: "☠", advancement: "★", server: "⚙", challenge: "🏆", race: "🏁", webchat: "💬", webdm: "✉" };
 function dayLabel(ts) {
   const d = new Date(ts * 1000), today = new Date();
   const y = new Date(); y.setDate(today.getDate() - 1);

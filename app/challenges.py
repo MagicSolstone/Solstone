@@ -197,6 +197,20 @@ async def _give(srv, d: dict, player: str, prize: dict, why: str, online: set[st
     d["gifts"].append({"server": srv.id, "player": player, "item": prize["item"], "count": prize["count"], "why": why, "at": time.time()})
 
 
+async def award(srv, player: str, prize: dict, why: str) -> bool:
+    """Give a prize now if they're on, otherwise hold it for their next join. True if given now."""
+    d = _load()
+    online = {n.lower() for n in (await S.online_players(srv))[0]}
+    before = len(d["gifts"])
+    await _give(srv, d, player, prize, why, online)
+    _save(d)
+    return len(d["gifts"]) == before
+
+
+def clean_prize(p) -> dict | None:
+    return _prize(p)
+
+
 async def _finish(srv, c: dict, d: dict) -> None:
     await _read_scores(srv, c)
     label, _emoji, unit, _crit, _div = KINDS[c["kind"]]

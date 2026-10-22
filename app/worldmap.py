@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import math
 import struct
 import threading
 import time
@@ -626,6 +627,33 @@ def render_region(path: Path, colors: Colors, nether: bool = False, info: dict |
         return None
     out = _shade(rgb, heights).astype(np.uint8)
     return Image.fromarray(np.dstack([out, alpha]), "RGBA")
+
+
+def surface_y(world: Path, dim: str, x: float, z: float) -> int | None:
+    """The top block at a spot, read straight from its chunk (for placing race checkpoints)."""
+    d = region_dir(world, dim)
+    if not d:
+        return None
+    bx, bz = int(math.floor(x)), int(math.floor(z))
+    path = d / f"r.{bx >> 9}.{bz >> 9}.mca"
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    i = ((bz >> 4) & 31) * 32 + ((bx >> 4) & 31)
+    loc = struct.unpack_from(">I", data, i * 4)[0] if len(data) >= 8192 else 0
+    if not loc:
+        return None
+    off = (loc >> 8) * 4096
+    try:
+        length, ctype = struct.unpack_from(">IB", data, off)
+        got = render_chunk(read_chunk(_decompress(ctype, data[off + 5: off + 4 + length], path, i)), Colors(None), dim.endswith("the_nether"))
+    except Exception:
+        return None
+    if not got:
+        return None
+    h = int(got[1][bz & 15, bx & 15])
+    return None if h == -9999 else h + 1
 
 
 # ------------------------------------------------------------------ files, cache and the queue

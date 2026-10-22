@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import backups, board, challenges, db, fwshow, guard, music, notify, recap
+from . import backups, board, challenges, db, fwshow, guard, music, notify, races, recap
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -96,7 +96,8 @@ class Recorder:
                        asyncio.create_task(self._loop(self.prune, 6 * 3600)),
                        asyncio.create_task(self._loop(self.guard, GUARD_INTERVAL)),
                        asyncio.create_task(self._loop(self.recaps, 3600)),
-                       asyncio.create_task(self._loop(self.music_scan, 6 * 3600))]
+                       asyncio.create_task(self._loop(self.music_scan, 6 * 3600)),
+                       asyncio.create_task(self._loop(self.race_tick, 1))]
 
     async def stop(self) -> None:
         for t in self._tasks:
@@ -119,6 +120,13 @@ class Recorder:
         await guard.tick(visible)
         await board.tick(visible)
         await challenges.tick(visible)
+
+    async def race_tick(self) -> None:
+        """Races need a once-a-second look at where everyone is; nothing happens otherwise."""
+        if not races.busy():
+            return
+        await S.registry.refresh()
+        await races.tick([s for s in S.registry.servers.values() if not s.settings.get("hidden")])
 
     async def music_scan(self) -> None:
         """Keep the external music library's index up to date (new albums, changed tags)."""

@@ -155,7 +155,7 @@ function toast(html) {
 }
 
 // ------------------------------------------------------------------ rendering
-const EVENT_ICON = { join: "→", leave: "←", death: "☠", advancement: "★", level: "⬆", server: "⏻", challenge: "🏆" };
+const EVENT_ICON = { join: "→", leave: "←", death: "☠", advancement: "★", level: "⬆", server: "⏻", challenge: "🏆", race: "🏁" };
 
 // Sections are only replaced when their content changes, so the web map iframe and the
 // position canvas aren't rebuilt on every refresh.
@@ -291,6 +291,7 @@ function mountMap(el, b, prev) {
   map.dim = dim;
   map.players = dims[dim].players;
   map.away = people.away;
+  map.race = b.race && (b.race.dim || "minecraft:overworld") === (dims[dim].id || "minecraft:overworld") ? b.race : null;
   map.spawn = dim === "overworld" ? b.spawn : null;
   map.anim = performance.now();
   $("#sp-map-dim").textContent = order.length === 1 ? dimName(dims[dim].id) : "";
@@ -336,6 +337,7 @@ function mountMap(el, b, prev) {
   function targetBounds() {
     const pts = map.players.map((p) => p.position);
     if (map.spawn) pts.push(map.spawn);
+    if (map.race) pts.push(...map.race.points);              // keep the whole course in view during a race
     let x0 = Math.min(...pts.map((p) => p.x)), x1 = Math.max(...pts.map((p) => p.x));
     let z0 = Math.min(...pts.map((p) => p.z)), z1 = Math.max(...pts.map((p) => p.z));
     const span = Math.max(map.players.length ? 96 : 384, (x1 - x0) * 1.3, (z1 - z0) * 1.3);
@@ -388,6 +390,19 @@ function mountMap(el, b, prev) {
     for (let z = Math.ceil(wz0 / step) * step; sz(z) < h; z += step) { ctx.beginPath(); ctx.moveTo(0, Math.round(sz(z)) + 0.5); ctx.lineTo(w, Math.round(sz(z)) + 0.5); ctx.stroke(); ctx.fillText(String(z), 4, sz(z) - 4); }
     ctx.fillStyle = "rgba(255,255,255,.5)"; ctx.font = "bold 12px 'Atkinson Hyperlegible', system-ui"; ctx.fillText("N ↑", w - 34, 18);
     if (map.note) { ctx.font = "12px 'Atkinson Hyperlegible', system-ui"; const tw = ctx.measureText(map.note).width + 14; ctx.fillStyle = "rgba(8,10,18,.65)"; ctx.fillRect(8, 8, tw, 20); ctx.fillStyle = "rgba(235,230,217,.85)"; ctx.fillText(map.note, 15, 22); }
+    if (map.race) {                                        // the course: dashed route, S / 1..n / F
+      const rp = map.race.points, last = rp.length - 1;
+      ctx.lineWidth = 3; ctx.strokeStyle = "rgba(242,193,78,.85)"; ctx.setLineDash([8, 6]);
+      ctx.beginPath(); rp.forEach((p, i) => (i ? ctx.lineTo(sx(p.x), sz(p.z)) : ctx.moveTo(sx(p.x), sz(p.z)))); ctx.stroke(); ctx.setLineDash([]);
+      ctx.font = "bold 12px 'Atkinson Hyperlegible', system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      rp.forEach((p, i) => {
+        const x = sx(p.x), y = sz(p.z);
+        ctx.fillStyle = i === 0 ? "#ebe6d9" : i === last ? "#f2c14e" : "#4cd964";
+        ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2); ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "rgba(0,0,0,.6)"; ctx.stroke();
+        ctx.fillStyle = "#101826"; ctx.fillText(i === 0 ? "S" : i === last ? "F" : String(i), x, y + 0.5);
+      });
+      ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
+    }
     if (map.spawn) {
       const x = sx(map.spawn.x), y = sz(map.spawn.z);
       ctx.fillStyle = "#f2c14e"; ctx.beginPath(); ctx.moveTo(x, y - 7); ctx.lineTo(x + 7, y); ctx.lineTo(x, y + 7); ctx.lineTo(x - 7, y); ctx.closePath(); ctx.fill();
@@ -410,7 +425,9 @@ function mountMap(el, b, prev) {
       }
       else { ctx.fillStyle = "#4d74d6"; ctx.fillRect(x - s / 2, y - s / 2, s, s); }
       ctx.globalAlpha = 1;
-      const label = map.away && p.last_seen ? `${p.name} · ${fmtAgo(p.last_seen)}` : p.name;
+      const rr = map.race?.racers?.[p.name];
+      const label = map.away && p.last_seen ? `${p.name} · ${fmtAgo(p.last_seen)}`
+        : rr ? `${p.name} · ${rr.finished != null ? "🏁" : `${rr.next - 1}/${map.race.points.length - 1}`}` : p.name;
       const tw = ctx.measureText(label).width + 10;
       ctx.fillStyle = "rgba(8,10,18,.7)"; ctx.fillRect(x - tw / 2, y + s / 2 + 5, tw, 18);
       ctx.fillStyle = "#ebe6d9"; ctx.fillText(label, x, y + s / 2 + 18);

@@ -167,8 +167,8 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
         out.append({"id": f"h-{th['id']}-{now.date()}", "kind": "holiday", "emoji": th.get("emoji") or "🎉", "style": "party",
                     "text": th.get("message") or th["name"], "detail": "", "countdown": None})
     if names:
-        from . import challenges
-        out += challenges.banners(sid)
+        from . import challenges, races
+        out += challenges.banners(sid) + races.banners(sid)
     order = {"bedtime": 0, "challenge": 0.5, "note": 1, "birthday": 2, "holiday": 3, "birthday-soon": 4}
     out.sort(key=lambda x: (order.get(x["kind"], 5), x.get("countdown") or 1e12))
     return out
