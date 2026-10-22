@@ -272,6 +272,7 @@ class Recorder:
         if self._running_state.get(srv.id) is not None:
             for n in joined:
                 await challenges.on_join(srv, n)        # prizes won while away
+                await games.on_join(srv, n)             # back from a game that ended while they were away
                 if not fwshow.pushed_recently(srv.id, "join", n):
                     fwshow.push(srv.id, srv.display_name, "join", n, f"{n} joined the game")
 

@@ -1740,7 +1740,7 @@ async def get_games(sid: str, request: Request):
         except Exception:
             pack = None
     w = await asyncio.to_thread(S.world_info, srv, False) if srv.is_java else {}
-    return {"runs": games.runs_for(srv.id), "rcon": bool(srv.rcon_conf()), "pack": pack, "pack_needed": 2,
+    return {"runs": games.runs_for(srv.id), "rcon": bool(srv.rcon_conf()), "pack": pack, "pack_needed": 2, "pack_needed_spleef": 10,
             "spawn": w.get("spawn"), "now": time.time(), "rcon_echo": _rcon_echo(srv)}
 
 

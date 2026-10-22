@@ -590,6 +590,7 @@ const GAME_INFO = {
   hideseek: ["🙈", "Hide and seek", "One seeker, everyone else hides inside an area. Optional no-digging, Marco Polo in chat, and found hiders can join the seekers."],
   treasure: ["💰", "Treasure hunt", "A chest of prizes hidden somewhere in an area. Everyone's hotbar says how warm they are. First to take the treasure wins."],
   archery: ["🎯", "Archery", "Longest bullseye, most points, or HORSE: make the setter's shot from the same spot or take a letter. Needs the Solstone data pack."],
+  spleef: ["❄️", "Spleef", "A snow arena high in the sky, a shovel each: dig the floor out from under everyone else. Last one standing wins the round. Teams, layers, a shrinking floor. Needs the Solstone data pack."],
 };
 
 async function viewGames(sid) {
@@ -609,6 +610,9 @@ async function viewGames(sid) {
     } else if (r.game === "archery" && Object.keys(r.players || {}).length) {
       const rows = Object.entries(r.players).sort((a, b) => (r.mode === "horse" ? a[1].letters.length - b[1].letters.length : r.mode === "points" ? b[1].points - a[1].points : b[1].best - a[1].best));
       body = `<ol class="ch-scores">${rows.map(([n, p], i) => `<li><span class="rank">${i + 1}</span>${faceHtml({ name: n }, 22)}<b>${esc(n)}${r.turn === n && live ? " 🎯" : ""}</b><span class="val">${r.mode === "horse" ? esc(p.letters || "–") : r.mode === "points" ? `${p.points} pts` : p.best ? `${p.best} m` : "–"}</span></li>`).join("")}</ol>`;
+    } else if (r.game === "spleef" && Object.keys(r.players || {}).length) {
+      const rows = Object.entries(r.players).sort((a, b) => b[1].wins - a[1].wins || a[0].localeCompare(b[0]));
+      body = `${r.teams ? `<p class="muted small">Red ${r.team_wins?.red || 0} · Blue ${r.team_wins?.blue || 0}</p>` : ""}<ol class="ch-scores">${rows.map(([n, p], i) => `<li><span class="rank">${i + 1}</span>${faceHtml({ name: n }, 22)}<b>${esc(n)}${r.teams ? ` <span class="gm-team ${esc(p.team || "")}">${esc(p.team || "")}</span>` : ""}</b><span class="val">${live ? (p.alive ? "standing" : "out") : ""}${r.teams ? "" : ` · ${p.wins} won`}</span></li>`).join("")}</ol>`;
     } else if (r.game === "treasure" && r.items) {
       body = `<div class="ch-prize">${r.items.map((it) => `${itemIcon({ id: it.item })}<span>${it.count} × ${esc(it.name || itemName({ id: it.item }))}</span>`).join(" ")}</div>`;
     }
@@ -621,14 +625,15 @@ async function viewGames(sid) {
   };
   const render = () => {
     const live = d.runs.filter((r) => ["countdown", "hiding", "running"].includes(r.state)), soon = d.runs.filter((r) => r.state === "scheduled"), past = d.runs.filter((r) => !["countdown", "hiding", "running", "scheduled"].includes(r.state));
-    const packOk = (d.pack || 0) >= d.pack_needed;
+    const packOk = (d.pack || 0) >= d.pack_needed, spleefOk = (d.pack || 0) >= (d.pack_needed_spleef || 10);
+    const needsPack = (k) => (k === "archery" && !packOk) || (k === "spleef" && !spleefOk);
     setView(serverHeader(s, "challenges") + playSwitch(sid, "games") + rconEchoNote(d) + `
       ${d.rcon ? "" : `<p class="notice">Games need RCON turned on for this server (⚙ settings).</p>`}
       ${live.length ? `<section class="section"><div class="section-head"><h2>Playing now</h2></div><div class="ch-list">${live.map(runCard).join("")}</div></section>` : ""}
       <section class="section"><div class="ch-list">${Object.entries(GAME_INFO).map(([k, [e, t, about]]) => `<div class="ch-card panel gm-pick">
         <div class="ch-head"><span class="ch-emoji">${e}</span><div><h3>${esc(t)}</h3></div></div><p class="muted">${esc(about)}</p>
-        ${k === "archery" && !packOk ? `<p class="notice small">Add the Solstone data pack to the world first (on the <a href="#/s/${encodeURIComponent(sid)}/challenges">Contests</a> page${d.pack ? ": it needs the newer version" : ""}).</p>` : ""}
-        <div class="btn-row"><button class="btn primary" type="button" data-setup="${k}" ${!d.rcon || (k === "archery" && !packOk) ? "disabled" : ""}>Set up</button></div></div>`).join("")}</div></section>
+        ${needsPack(k) ? `<p class="notice small">Add the Solstone data pack to the world first (on the <a href="#/s/${encodeURIComponent(sid)}/challenges">Contests</a> page${d.pack ? ": it needs the newer version" : ""}).</p>` : ""}
+        <div class="btn-row"><button class="btn primary" type="button" data-setup="${k}" ${!d.rcon || needsPack(k) ? "disabled" : ""}>Set up</button></div></div>`).join("")}</div></section>
       ${soon.length ? `<section class="section"><div class="section-head"><h2>Coming up</h2></div><div class="ch-list">${soon.map(runCard).join("")}</div></section>` : ""}
       ${past.length ? `<section class="section"><div class="section-head"><h2>Finished</h2></div><div class="ch-list">${past.map(runCard).join("")}</div></section>` : ""}`);
     wireHeader(s);
@@ -648,7 +653,9 @@ async function viewGames(sid) {
   const openSetup = (game) => {
     const f = { game, when: "now", at: "", center: null, radius: game === "treasure" ? 150 : 40, spot: null, target: null, place_target: false,
       hide_secs: 60, minutes: game === "treasure" ? 15 : game === "archery" ? 10 : 6, seeker: "", no_dig: true, marco: true, infect: true,
-      mode: "bullseye", word: "HORSE", give_bow: true, hint_after: 5, items: [], prize: null, hot: false, hot_bonus: 2, hot_far: 40, hot_on: 45, hot_off: 20 };
+      mode: "bullseye", word: "HORSE", give_bow: true, hint_after: 5, items: [], prize: null, hot: false, hot_bonus: 2, hot_far: 40, hot_on: 45, hot_off: 20,
+      layers: 1, best_of: 3, teams: false, snowballs: true, shrink: true, shrink_after: 60 };
+    if (game === "spleef") f.radius = 10;
     const at = (() => { const t = new Date(Date.now() + 15 * 60e3); t.setSeconds(0, 0); return new Date(t.getTime() - t.getTimezoneOffset() * 60e3).toISOString().slice(0, 16); })();
     f.at = at;
     let map = null;
@@ -663,7 +670,8 @@ async function viewGames(sid) {
           <div class="btn-row"><select class="input sm" id="gm-player">${online().map((n) => `<option>${esc(n)}</option>`).join("") || "<option value=''>Nobody online</option>"}</select>
             <button class="btn sm" type="button" id="gm-here">Centre it where they're standing</button></div>
           <p class="muted small">Or click the map${game === "treasure" ? ". Shift-click to choose the exact treasure spot (otherwise it's random)" : ""}.</p>
-          <label>Size: <input type="range" name="radius" min="${game === "treasure" ? 30 : 10}" max="${game === "treasure" ? 500 : 150}" step="5" value="${f.radius}"> <b id="gm-r">${f.radius}</b> blocks from the middle</label>
+          ${game === "spleef" ? `<p class="muted small">The arena is built high in the sky above this spot (well clear of anything there) and taken down afterwards.</p>` : ""}
+          <label>Size: <input type="range" name="radius" min="${game === "treasure" ? 30 : game === "spleef" ? 6 : 10}" max="${game === "treasure" ? 500 : game === "spleef" ? 20 : 150}" step="${game === "spleef" ? 1 : 5}" value="${f.radius}"> <b id="gm-r">${f.radius}${game === "spleef" ? ` (${f.radius * 2 + 1} × ${f.radius * 2 + 1})` : ""}</b> blocks from the middle</label>
           <p class="gm-chosen" id="gm-chosen">${f.center ? `Middle at ${Math.round(f.center.x)}, ${Math.round(f.center.z)}${f.spot ? ` · treasure at ${Math.round(f.spot.x)}, ${Math.round(f.spot.z)}` : ""}` : "No area yet"}</p></div>`);
     const options = () => game === "hideseek" ? `
         <label>Seeker <select class="input" name="seeker"><option value="">Random</option>${online().map((n) => `<option ${f.seeker === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
@@ -672,6 +680,14 @@ async function viewGames(sid) {
         <label class="check"><input type="checkbox" name="no_dig" ${f.no_dig ? "checked" : ""}> No digging or building (Adventure mode during the game)</label>
         <label class="check"><input type="checkbox" name="marco" ${f.marco ? "checked" : ""}> Marco Polo: the seeker can type <b>marco</b> to hear roughly where everyone is</label>
         <label class="check"><input type="checkbox" name="infect" ${f.infect ? "checked" : ""}> Found hiders join the seekers (otherwise they watch)</label>`
+      : game === "spleef" ? `
+        <label>Floors <select class="input" name="layers">${[1, 2, 3].map((v) => `<option value="${v}" ${f.layers === v ? "selected" : ""}>${v === 1 ? "1 floor" : `${v} floors, ${5} blocks apart`}</option>`).join("")}</select></label>
+        <label>Rounds <select class="input" name="best_of">${[1, 3, 5].map((v) => `<option value="${v}" ${f.best_of === v ? "selected" : ""}>${v === 1 ? "One round" : `Best of ${v}`}</option>`).join("")}</select></label>
+        <label class="check"><input type="checkbox" name="teams" ${f.teams ? "checked" : ""}> Teams: red against blue, picked at random</label>
+        <label class="check"><input type="checkbox" name="snowballs" ${f.snowballs ? "checked" : ""}> Snowballs: broken snow drops snowballs to knock people around with</label>
+        <label class="check"><input type="checkbox" name="shrink" ${f.shrink ? "checked" : ""}> Shrinking floor: the edges start falling away after
+          <select class="input sm" name="shrink_after">${[30, 60, 90, 120].map((v) => `<option value="${v}" ${f.shrink_after === v ? "selected" : ""}>${v < 60 ? `${v} seconds` : `${v / 60} minute${v > 60 ? "s" : ""}`}</option>`).join("")}</select></label>
+        <p class="muted small gm-wide">Everyone online plays. Falling out lands you in a pool of water; nobody takes damage. When it's over everyone goes back to exactly where they were, and anyone offline is sent back when they next join.</p>`
       : game === "treasure" ? `
         <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>
         <label>Show the direction after <select class="input" name="hint_after">${[0, 2, 5, 10, 60].map((v) => `<option value="${v}" ${f.hint_after === v ? "selected" : ""}>${v === 60 ? "never" : v ? `${v} minutes` : "straight away"}</option>`).join("")}</select></label>
@@ -700,18 +716,21 @@ async function viewGames(sid) {
     const sync = (m) => {
       const fm = $("#gm-form", m);
       for (const k of ["seeker", "mode", "word"]) if (fm[k]) f[k] = fm[k].value;
-      for (const k of ["hide_secs", "minutes", "hint_after", "radius", "hot_bonus", "hot_far", "hot_on", "hot_off"]) if (fm[k]) f[k] = +fm[k].value;
-      for (const k of ["no_dig", "marco", "infect", "give_bow", "hot"]) if (fm[k]) f[k] = fm[k].checked;
+      for (const k of ["hide_secs", "minutes", "hint_after", "radius", "hot_bonus", "hot_far", "hot_on", "hot_off", "layers", "best_of", "shrink_after"]) if (fm[k]) f[k] = +fm[k].value;
+      for (const k of ["no_dig", "marco", "infect", "give_bow", "hot", "teams", "snowballs", "shrink"]) if (fm[k]) f[k] = fm[k].checked;
       f.when = fm.when.value; f.at = fm.at.value;
     };
     const show = () => openModal(body(), (m) => {
       m.classList.add("gm-modal");
       map = worldMapCanvas($("#gm-map", m), sid, {
-        center: f.center || f.target || d.spawn || { x: 0, z: 0 }, scale: game === "treasure" ? 0.5 : 1,
+        center: f.center || f.target || d.spawn || { x: 0, z: 0 }, scale: game === "treasure" ? 0.5 : game === "spleef" ? 3 : 1,
         overlay: (ctx, toScreen, view) => {
           if (f.center) {
             const [x, y] = toScreen(f.center.x, f.center.z);
-            ctx.strokeStyle = "#f2c14e"; ctx.lineWidth = 2; ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.arc(x, y, f.radius * view.scale, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+            ctx.strokeStyle = "#f2c14e"; ctx.lineWidth = 2; ctx.setLineDash([6, 5]); ctx.beginPath();
+            if (game === "spleef") ctx.rect(x - (f.radius + 0.5) * view.scale, y - (f.radius + 0.5) * view.scale, (f.radius * 2 + 1) * view.scale, (f.radius * 2 + 1) * view.scale);
+            else ctx.arc(x, y, f.radius * view.scale, 0, Math.PI * 2);
+            ctx.stroke(); ctx.setLineDash([]);
             ctx.fillStyle = "#f2c14e"; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
           }
           if (f.target && f.mode === "points" && f.hot) {         // where hot zones can open
@@ -736,7 +755,7 @@ async function viewGames(sid) {
       let clickShift = false;
       $("#gm-map", m).addEventListener("pointerdown", (e) => { clickShift = e.shiftKey; }, true);
       const fm = $("#gm-form", m);
-      fm.radius?.addEventListener("input", () => { f.radius = +fm.radius.value; $("#gm-r", m).textContent = f.radius; map.draw(); });
+      fm.radius?.addEventListener("input", () => { f.radius = +fm.radius.value; $("#gm-r", m).textContent = game === "spleef" ? `${f.radius} (${f.radius * 2 + 1} × ${f.radius * 2 + 1})` : f.radius; map.draw(); });
       for (const k of ["hot", "hot_bonus", "hot_far", "hot_on", "hot_off"]) fm[k]?.addEventListener("change", () => { sync(m); show(); });
       fm.mode?.addEventListener("change", () => { sync(m); if (f.mode === "horse" && f.minutes < 30) f.minutes = 30; show(); });
       $("#gm-here", m)?.addEventListener("click", async () => {

@@ -252,3 +252,123 @@ def test_hot_zone_surface_tells_water_from_land():
     w = W()
     assert asyncio.run(hotzone.surface(w, "minecraft:overworld", 10, 4, "t")) == (63, "water")
     assert asyncio.run(hotzone.surface(w, "minecraft:overworld", 11, 4, "t")) == (63, "land")
+
+
+class SpleefServer(FakeServer):
+    """Adds what spleef asks: dimensions, the pack's storage, fills, teleports."""
+    def __init__(self, pack=10):
+        super().__init__()
+        self.pack, self.storage, self.fills, self.tps, self.hb = pack, None, [], [], None
+
+    async def rcon(self, cmd):
+        if re.match(r"data get entity \w+ Dimension", cmd):
+            return 'Tyler has the following entity data: "minecraft:overworld"'
+        if cmd == "data get storage solstone:games pack":
+            return f"Storage solstone:games has the following contents: {{version: {self.pack}}}"
+        if cmd.startswith("data modify storage solstone:games spleef set value"):
+            self.storage = cmd
+            return "Modified storage"
+        if cmd == "data remove storage solstone:games spleef":
+            self.storage = None
+            return "Modified storage"
+        if cmd == "data get storage solstone:games spleef.arena":
+            return "Storage solstone:games has the following contents: {x1: \"0\"}" if self.storage else "Found no elements matching spleef.arena"
+        m = re.match(r"scoreboard players set #spleef_hb solg_tmp (\d+)", cmd)
+        if m:
+            self.hb = int(m.group(1))
+        if " run fill " in cmd:
+            self.fills.append(cmd)
+            return "Successfully filled 10 block(s)"
+        m = re.search(r" run tp (\w+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)", cmd)
+        if m:
+            if m.group(1) not in self.online:
+                return "No entity was found"
+            self.pos[m.group(1)] = [float(m.group(2)), float(m.group(3)), float(m.group(4))]
+            self.tps.append(m.group(1))
+            return f"Teleported {m.group(1)}"
+        return await super().rcon(cmd)
+
+
+@pytest.fixture()
+def spleef_game(game, monkeypatch):
+    games, _plain = game
+    from app import servers as S
+    srv = SpleefServer()
+
+    async def online(_s):
+        return list(srv.online), "rcon"
+
+    async def live(_s, name):
+        return {"gamemode": srv.gm.get(name, "survival")}
+    monkeypatch.setattr(S, "online_players", online)
+    monkeypatch.setattr(S, "live_player", live)
+    return games, srv
+
+
+def test_spleef_rounds_teams_and_everyone_goes_back(spleef_game):
+    games, srv = spleef_game
+    srv.pos.update({"Tyler": [10.0, 70.0, 10.0], "Gimli_Jr": [-5.0, 64.0, 3.0], "MomCrafts": [100.0, 80.0, 100.0]})
+    srv.gm["MomCrafts"] = "creative"
+    games.create(srv.id, {"game": "spleef", "center": {"x": 0, "y": 64, "z": 0}, "size": 8, "layers": 2, "best_of": 3, "shrink": True})
+    asyncio.run(games.tick([srv]))
+    r = _run(games)
+    assert r["state"] == "countdown" and r["round"] == 1 and set(r["players"]) == {"Tyler", "Gimli_Jr", "MomCrafts"}
+    assert srv.storage and 'n:"MomCrafts"' in srv.storage and 'g:"creative"' in srv.storage and srv.hb == 2400
+    top = r["top"]
+    assert top >= 64 + 35 and any("snow_block replace air" in f for f in srv.fills) and any("water replace air" in f for f in srv.fills)
+    assert all(srv.pos[n][1] == top + 1 for n in r["players"])                      # everyone up on the arena
+    _set(games, phase_ends=time.time() - 1)
+    asyncio.run(games.tick([srv]))
+    assert _run(games)["state"] == "running" and any("Spleef Shovel" in c for c in srv.cmds)
+    # MomCrafts falls through both floors, then Gimli_Jr: Tyler wins round 1
+    srv.pos["MomCrafts"][1] = top - 5 - 4
+    asyncio.run(games.tick([srv]))
+    assert not _run(games)["players"]["MomCrafts"]["alive"]
+    srv.pos["Gimli_Jr"][1] = top - 12
+    asyncio.run(games.tick([srv]))
+    r = _run(games)
+    assert r["players"]["Tyler"]["wins"] == 1 and r["round"] == 2 and r["state"] == "countdown"
+    # round 2: Gimli_Jr logs off mid-game (out), MomCrafts falls: Tyler wins 2-0, best of 3 over
+    _set(games, phase_ends=time.time() - 1)
+    asyncio.run(games.tick([srv]))
+    srv.online.remove("Gimli_Jr")
+    srv.pos["MomCrafts"][1] = top - 20
+    asyncio.run(games.tick([srv]))
+    r = _run(games)
+    assert r["state"] == "done" and r["result"] == "Tyler won spleef!"
+    assert srv.pos["Tyler"] == [10.0, 70.0, 10.0] and srv.pos["MomCrafts"] == [100.0, 80.0, 100.0] and "gamemode creative MomCrafts" in srv.cmds
+    assert srv.storage is None and srv.hb == 0
+    assert any("air replace minecraft:snow_block" in f for f in srv.fills) and any("air replace minecraft:glass" in f for f in srv.fills)
+    assert set(r["owed"]) == {"Gimli_Jr"}                                            # offline at the end
+    srv.online.append("Gimli_Jr")
+    asyncio.run(games.on_join(srv, "Gimli_Jr"))
+    assert srv.pos["Gimli_Jr"] == [-5.0, 64.0, 3.0] and not _run(games)["owed"]
+
+
+def test_spleef_stops_if_the_pack_safety_net_went_off(spleef_game):
+    games, srv = spleef_game
+    games.create(srv.id, {"game": "spleef", "center": {"x": 0, "y": 64, "z": 0}, "teams": True})
+    asyncio.run(games.tick([srv]))
+    r = _run(games)
+    assert r["name"] == "Team spleef" and {p["team"] for p in r["players"].values()} == {"red", "blue"}
+    srv.storage = None                                                   # Solstone was away; the pack cleaned up
+    asyncio.run(games.tick([srv]))
+    r = _run(games)
+    assert r["state"] == "done" and "taken down" in r["result"]
+
+
+def test_spleef_needs_the_newer_pack(spleef_game):
+    games, srv = spleef_game
+    srv.pack = 9
+    games.create(srv.id, {"game": "spleef", "center": {"x": 0, "y": 64, "z": 0}})
+    asyncio.run(games.tick([srv]))
+    assert _run(games)["state"] == "skipped" and "version 10" in _run(games)["result"] and srv.storage is None
+
+
+def test_pack_has_the_spleef_safety_net():
+    from app import fishpack
+    f = fishpack.pack_files(True)
+    tick = f["data/solgames/function/tick.mcfunction"]
+    assert "#spleef_hb solg_tmp matches 1.." in tick and "function solgames:spleef_failsafe" in tick
+    assert all(line.startswith("$") for line in f["data/solgames/function/spleef_back1.mcfunction"].strip().splitlines())
+    assert "replace minecraft:snow_block" in f["data/solgames/function/spleef_clear.mcfunction"]

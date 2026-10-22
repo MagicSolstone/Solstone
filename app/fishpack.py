@@ -28,7 +28,7 @@ import zipfile
 
 PACK_ID = "solstone-pack"                     # one pack: fishing and the archery games
 PACK_FILE = f"{PACK_ID}.zip"
-VERSION = 9                                   # bump when the pack's content changes
+VERSION = 10                                   # bump when the pack's content changes
 
 # ------------------------------------------------------------------ the water
 _OCEAN = ["ocean", "deep_ocean", "cold_ocean", "deep_cold_ocean", "lukewarm_ocean", "deep_lukewarm_ocean",
@@ -281,6 +281,43 @@ data modify storage solstone:games pack set value {version:%VERSION%}
     "tick": """
 execute as @a[scores={solg_bow=1..}] at @s run function solgames:shot
 execute as @a[scores={solg_xbow=1..}] at @s run function solgames:shot
+execute if score #spleef_hb solg_tmp matches 1.. run scoreboard players remove #spleef_hb solg_tmp 1
+execute if score #spleef_hb solg_tmp matches ..0 if data storage solstone:games spleef.arena run function solgames:spleef_failsafe
+execute if score #spleef_hb solg_tmp matches ..0 if data storage solstone:games spleef.zone run function solgames:spleef_guard with storage solstone:games spleef.zone
+""",
+    # Spleef's safety net. Solstone sets #spleef_hb every few seconds while a game is on; if that
+    # stops for two minutes (Solstone down), everyone goes back and the arena comes down, here.
+    "spleef_failsafe": """
+function solgames:spleef_back
+function solgames:spleef_clear with storage solstone:games spleef.arena
+data remove storage solstone:games spleef.arena
+team remove solsp_red
+team remove solsp_blue
+tellraw @a [{"text":"★ ","color":"gold"},{"text":"Spleef stopped (Solstone went quiet), so everyone was sent back and the arena was taken down.","color":"yellow"}]
+""",
+    "spleef_back": """
+execute unless data storage solstone:games spleef.back[0] run return 0
+function solgames:spleef_back1 with storage solstone:games spleef.back[0]
+data remove storage solstone:games spleef.back[0]
+function solgames:spleef_back
+""",
+    "spleef_back1": """
+$execute in $(d) run tp $(n) $(x) $(y) $(z)
+$gamemode $(g) $(n)
+$clear $(n) minecraft:diamond_shovel[minecraft:custom_data={solspleef:1b}]
+$effect clear $(n) minecraft:resistance
+$effect clear $(n) minecraft:saturation
+""",
+    "spleef_clear": """
+$execute in $(d) run fill $(x1) $(yb) $(z1) $(x2) $(yt) $(z2) minecraft:air replace minecraft:snow_block
+$execute in $(d) run fill $(bx1) $(yb) $(bz1) $(bx2) $(yt2) $(bz2) minecraft:air replace minecraft:barrier
+$execute in $(d) run fill $(px1) $(py1) $(pz1) $(px2) $(py2) $(pz2) minecraft:air replace minecraft:water
+$execute in $(d) run fill $(px1) $(py1) $(pz1) $(px2) $(py2) $(pz2) minecraft:air replace minecraft:glass
+$execute in $(d) run forceload remove $(px1) $(pz1) $(px2) $(pz2)
+""",
+    # anyone found up where the arena was (offline when it came down) goes to spawn
+    "spleef_guard": """
+$execute in $(d) as @a[x=$(x),y=$(y),z=$(z),dx=$(dx),dy=$(dy),dz=$(dz),gamemode=!creative,gamemode=!spectator] run tp @s $(sx) $(sy) $(sz)
 """,
     "shot": """
 scoreboard players set @s solg_bow 0

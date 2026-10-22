@@ -22,6 +22,7 @@ you're out; last one standing wins.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import random
@@ -35,7 +36,7 @@ from .races import _direction, _fmt, _pos, _rcon
 
 log = logging.getLogger("solstone.games")
 SECTION = "games"
-KINDS = {"hideseek": ("Hide and seek", "🙈"), "treasure": ("Treasure hunt", "💰"), "archery": ("Archery", "🎯")}
+KINDS = {"hideseek": ("Hide and seek", "🙈"), "treasure": ("Treasure hunt", "💰"), "archery": ("Archery", "🎯"), "spleef": ("Spleef", "❄️")}
 ACTIVE = ("countdown", "hiding", "running")
 
 
@@ -48,7 +49,7 @@ def _load() -> dict:
 def _save(d: dict) -> None:
     done = [r for r in d["runs"] if r["state"] not in ("scheduled", *ACTIVE)]
     keep = {r["id"] for r in sorted(done, key=lambda r: -r["start"])[:20]}
-    d["runs"] = [r for r in d["runs"] if r["state"] in ("scheduled", *ACTIVE) or r["id"] in keep]
+    d["runs"] = [r for r in d["runs"] if r["state"] in ("scheduled", *ACTIVE) or r["id"] in keep or r.get("owed")]
     settings_store.save_section(SECTION, d)
 
 
@@ -94,6 +95,10 @@ def create(server: str, body: dict) -> dict:
                  minutes=int(_num(body.get("minutes"), 3, 60, 15)), hint_after=int(_num(body.get("hint_after"), 0, 60, 5)))
         if not r["items"]:
             raise ValueError("Put something in the treasure chest")
+    elif kind == "spleef":
+        from . import spleef
+        r.update(center=_point(body.get("center"), "spot for the arena"), **spleef.settings(body, _num))
+        r["name"] = "Team spleef" if r["teams"] else "Spleef"
     else:
         mode = body.get("mode") if body.get("mode") in ("bullseye", "points", "horse") else "bullseye"
         word = "".join(c for c in str(body.get("word") or "HORSE").upper() if c.isalpha())[:10] or "HORSE"
@@ -685,7 +690,29 @@ async def _horse_tick(srv, r: dict) -> None:
 
 
 # ------------------------------------------------------------------ the loop
+_lock = asyncio.Lock()                  # tick and on_join both change the saved games
+
+
 async def tick(servers: list) -> None:
+    async with _lock:
+        await _tick(servers)
+
+
+async def on_join(srv, player: str) -> None:
+    """Someone who was in a game when it ended (offline at the time): put them back now."""
+    from . import spleef
+    async with _lock:
+        d = _load()
+        for r in d["runs"]:
+            p = (r.get("owed") or {}).get(player) if r["server"] == srv.id else None
+            if p and await spleef.send_back(srv, player, p):
+                del r["owed"][player]
+                await _say(srv, [("★ ", "gold"), (f"{r['name']} ended while you were away, so you're back where you were.", "yellow")], who=player)
+                _save(d)
+
+
+async def _tick(servers: list) -> None:
+    from . import spleef
     d = _load()
     live = [r for r in d["runs"] if r["state"] in ("scheduled", *ACTIVE)]
     if not live:
@@ -700,14 +727,16 @@ async def tick(servers: list) -> None:
                 r["state"], r["result"] = "skipped", "The server wasn't running with RCON at the start time"
             elif srv and srv.rcon_conf() and now >= r["start"]:
                 r["started"] = now
-                await {"hideseek": _hs_start, "treasure": _th_start, "archery": _ar_start}[r["game"]](srv, r)
+                await {"hideseek": _hs_start, "treasure": _th_start, "archery": _ar_start, "spleef": spleef.start}[r["game"]](srv, r)
             else:
                 continue
             changed = True
         elif srv:
             try:
-                await {"hideseek": _hs_tick, "treasure": _th_tick, "archery": _ar_tick}[r["game"]](srv, r)
-                if r["state"] in ACTIVE:
+                await {"hideseek": _hs_tick, "treasure": _th_tick, "archery": _ar_tick, "spleef": spleef.tick}[r["game"]](srv, r)
+                if r["game"] == "spleef":
+                    pass                             # rounds, not a clock: no countdown bar
+                elif r["state"] in ACTIVE:
                     await _countdown(srv, r)
                 else:
                     await bossbar.hide(srv, r)
@@ -728,11 +757,20 @@ async def on_chat(srv, player: str, text: str) -> None:
 
 
 async def cancel(srv, rid: str) -> bool:
+    async with _lock:
+        return await _cancel(srv, rid)
+
+
+async def _cancel(srv, rid: str) -> bool:
     d = _load()
     r = next((x for x in d["runs"] if x["id"] == rid and x["server"] == srv.id), None)
     if not r:
         return False
-    if r["state"] in ACTIVE:
+    was_live = r["state"] in ("scheduled", *ACTIVE)
+    if r["state"] in ACTIVE and r["game"] == "spleef":
+        from . import spleef
+        await spleef.cancel(srv, r)
+    elif r["state"] in ACTIVE:
         await bossbar.hide(srv, r)
         if r["game"] == "hideseek":
             await _hs_cleanup(srv, r)
@@ -747,9 +785,9 @@ async def cancel(srv, rid: str) -> bool:
                 t = r["target"]
                 await _rcon(srv, f"execute in {r['dim']} run setblock {int(math.floor(t['x']))} {int(math.floor(t['y']))} {int(math.floor(t['z']))} minecraft:air")
         await _say(srv, [("★ ", "gold"), (f"{r['name']} was called off.", "yellow")])
-    if r["state"] in ("scheduled", *ACTIVE):
+    if was_live:
         r["state"] = "cancelled"
-    else:
+    elif not r.get("owed"):                          # removing a finished one (kept while it still owes someone a trip back)
         d["runs"] = [x for x in d["runs"] if x["id"] != rid]
     _save(d)
     return True
@@ -779,6 +817,11 @@ def live(sid: str) -> list[dict]:
             rows = [{"name": n, "value": label.get(p["role"], p["role"])} for n, p in sorted(r["players"].items(), key=lambda kv: (order.get(kv[1]["role"], 3), kv[0].lower()))]
             hidden = sum(1 for p in r["players"].values() if p["role"] == "hider")
             sub = "Hiders are hiding..." if r["state"] == "hiding" else f"{hidden} still hidden"
+        elif r["game"] == "spleef":
+            from . import spleef
+            rows, sub = spleef.live_rows(r)
+            if r["state"] == "countdown":
+                sub = f"Round {r.get('round', 1)} starting... · best of {r['best_of']}"
         elif r["game"] == "treasure":
             sub = "Find the hidden chest"
             if r.get("warmest"):
@@ -815,6 +858,9 @@ def banners(sid: str | None) -> list[dict]:
             if r["game"] == "hideseek":
                 hiders = sum(1 for p in r["players"].values() if p["role"] == "hider")
                 txt = f"Hide and seek: {'hiding...' if r['state'] == 'hiding' else f'{hiders} still hidden'}"
+            elif r["game"] == "spleef":
+                left = [n for n, p in r["players"].items() if p.get("alive")]
+                txt = f"{r['name']}: round {r.get('round', 1)}, {len(left)} still standing"
             elif r["game"] == "archery" and r.get("mode") == "horse":
                 txt = f"{r['name']}: " + " · ".join(f"{n} {p['letters'] or '-'}" for n, p in r["players"].items())
             else:
