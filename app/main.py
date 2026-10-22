@@ -18,7 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, backups, board, challenges, control, db, fishing, fishpack, games, races, fireworks, fwshow, guard, music, notify, recap, selfcheck, skins, tide, upcoming, worldmap
+from . import auth, backups, board, challenges, control, db, fishing, fishpack, games, modpack, races, fireworks, fwshow, guard, music, notify, recap, selfcheck, skins, tide, upcoming, worldmap
 from . import servers as S
 from . import settings_store
 from .recorder import recorder
@@ -68,7 +68,7 @@ CSP = "; ".join([
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https://mc-heads.net",
+    "img-src 'self' data: blob: https://mc-heads.net https://cdn.modrinth.com",      # Modrinth icons (family modpack)
     "media-src 'self' blob:",
     "font-src 'self'",
     "connect-src 'self'",
@@ -1405,6 +1405,121 @@ async def get_world(sid: str):
 async def get_mods(sid: str):
     srv = await _server(sid)
     return {"loader": S.detect_loader(srv), "mods": await asyncio.to_thread(S.mods, srv)}
+
+
+# ---- the family modpack (packwiz): Prism updates every PC's mods from here
+def _pack_view(srv, request: Request) -> dict:
+    cfg = modpack.get(srv.id)
+    base = str(request.base_url).rstrip("/")
+    url = f"{base}/api/public/pack/{cfg['token']}/pack.toml" if cfg["token"] else ""
+    return {"enabled": cfg["enabled"], "url": url, "command": modpack.prism_command(url) if url else "",
+            "bootstrap": f"{base}/api/public/packwiz-installer-bootstrap.jar", "mc": srv.mc_version,
+            "loader": modpack.fabric_loader_version(srv), "server_mods": modpack.server_mods(srv),
+            "extra": [{k: e.get(k) for k in ("slug", "title", "kind", "version", "filename", "icon")} for e in cfg["extra"]]}
+
+
+@app.get("/api/servers/{sid}/modpack")
+async def get_modpack(sid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    return await asyncio.to_thread(_pack_view, srv, request)
+
+
+@app.put("/api/servers/{sid}/modpack")
+async def put_modpack(sid: str, request: Request):
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    body = await request.json()
+    cfg = modpack.get(srv.id)
+    if "enabled" in body:
+        cfg["enabled"] = bool(body["enabled"])
+    if isinstance(body.get("server_mods"), list):
+        cfg["server_mods"] = [str(x) for x in body["server_mods"]][:200]
+    if body.get("new_token"):
+        cfg["token"] = ""                       # a new address (the old one stops working)
+    modpack.save(srv.id, cfg)
+    auth.audit(user, srv.id, "modpack", f"enabled={cfg['enabled']}")
+    return await asyncio.to_thread(_pack_view, srv, request)
+
+
+@app.get("/api/servers/{sid}/modpack/search")
+async def search_modpack(sid: str, request: Request, q: str = "", kind: str = "mod"):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    if kind not in modpack.KINDS or not q.strip():
+        return {"hits": []}
+    try:
+        return {"hits": await modpack.search(q.strip()[:80], srv.mc_version or "", kind)}
+    except Exception as e:
+        raise HTTPException(502, f"Couldn't reach Modrinth: {e}") from e
+
+
+@app.post("/api/servers/{sid}/modpack/add")
+async def add_to_modpack(sid: str, request: Request):
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    body = await request.json()
+    try:
+        if body.get("names"):
+            res = await modpack.add_names(srv, str(body["names"])[:4000])
+        else:
+            kind = str(body.get("kind") or "mod")
+            got = await modpack.add(srv, str(body.get("slug") or ""), kind if kind in modpack.KINDS else "mod")
+            res = {"added": [{"title": e["title"], "slug": e["slug"]} for e in got], "missing": []}
+    except Exception as e:
+        raise HTTPException(502, f"Couldn't reach Modrinth: {e}") from e
+    auth.audit(user, srv.id, "modpack:add", ", ".join(a["slug"] for a in res["added"]))
+    return {**res, "pack": await asyncio.to_thread(_pack_view, srv, request)}
+
+
+@app.delete("/api/servers/{sid}/modpack/extra/{slug}")
+async def remove_from_modpack(sid: str, slug: str, request: Request):
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    modpack.remove(srv.id, slug)
+    auth.audit(user, srv.id, "modpack:remove", slug)
+    return await asyncio.to_thread(_pack_view, srv, request)
+
+
+@app.post("/api/servers/{sid}/modpack/{action}")
+async def modpack_updates(sid: str, action: str, request: Request):
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    if action == "check":
+        return {"updates": await modpack.check_updates(srv.id, srv.mc_version or "")}
+    if action == "update-all":
+        changed = await modpack.update_all(srv.id, srv.mc_version or "")
+        auth.audit(user, srv.id, "modpack:update", ", ".join(c["slug"] for c in changed))
+        return {"changed": changed, "pack": await asyncio.to_thread(_pack_view, srv, request)}
+    raise HTTPException(404, "Unknown action")
+
+
+@app.get("/api/public/packwiz-installer-bootstrap.jar")
+async def pack_bootstrap():
+    try:
+        data = await modpack.bootstrap_jar()
+    except Exception as e:
+        raise HTTPException(502, f"Couldn't download the installer from GitHub: {e}") from e
+    return Response(data, media_type="application/java-archive",
+                    headers={"Content-Disposition": 'attachment; filename="packwiz-installer-bootstrap.jar"'})
+
+
+@app.get("/api/public/pack/{token}/{path:path}")
+async def pack_file(token: str, path: str, request: Request):
+    """What packwiz-installer reads: pack.toml, index.toml, the metafiles, and the server's own jars."""
+    found = modpack.by_token(token)
+    if not found:
+        raise HTTPException(404, "No such pack")
+    srv = await _server(found[0])
+    if path.startswith("jar/"):
+        jar = await asyncio.to_thread(modpack.server_jar, srv, token, path[4:])
+        if not jar:
+            raise HTTPException(404, "Not in the pack")
+        return FileResponse(jar, media_type="application/java-archive", filename=jar.name)
+    files = await asyncio.to_thread(modpack.files, srv, str(request.base_url))
+    if path not in files:
+        raise HTTPException(404, "Not in the pack")
+    return Response(files[path], media_type="application/toml", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/servers/{sid}/players")

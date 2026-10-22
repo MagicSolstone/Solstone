@@ -1720,3 +1720,24 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .fj-recent .item { width: 20px; height: 20px; }
 .chip-link { color: inherit; text-decoration: none; }
 .chip-link:hover { border-color: var(--gold); }
+
+/* family modpack (Mods tab) */
+.pk { display: grid; gap: 10px; margin-bottom: 26px; }
+.pk h3 { margin: 10px 0 0; font-size: 1rem; }
+.pk-steps { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.pk-copy { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+.pk-copy code, .pk code { word-break: break-all; }
+.pk-list { display: grid; gap: 4px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
+.pk-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 8px; background: var(--well); }
+.pk-item .icon-btn { margin-left: auto; }
+.pk-item img, .pk-hit img { border-radius: 4px; flex: none; }
+.pk-search { display: flex; gap: 8px; flex-wrap: wrap; }
+.pk-search .input[name=q] { flex: 1; min-width: 180px; }
+.pk-hits { display: grid; gap: 6px; }
+.pk-hit { display: flex; gap: 10px; align-items: center; text-align: left; padding: 8px 10px; border-radius: 10px; background: var(--well); border: 1px solid var(--line); color: inherit; cursor: pointer; font: inherit; }
+.pk-hit > span:nth-child(2) { flex: 1; display: grid; }
+.pk-hit small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pk-paste textarea { width: 100%; margin: 8px 0; }
+.pk .linkish { background: none; border: 0; color: var(--accent, #7dc4ff); cursor: pointer; padding: 0; font: inherit; text-decoration: underline; }
+.pk-t { display: grid; min-width: 0; flex: 1; }
+.pk-t b, .pk-t small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

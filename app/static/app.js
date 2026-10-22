@@ -1059,10 +1059,84 @@ async function viewWorld(sid) {
 async function viewMods(sid) {
   const s = await serverFrame(sid, "mods");
   const data = await api(`/api/servers/${sid}/mods`);
-  setView(serverHeader(s, "mods") + `<div class="section-head"><h2>${data.mods.length} ${data.mods.length === 1 ? "mod" : "mods"}</h2><span class="muted">${esc(data.loader)}</span></div>` +
+  const listHtml = `<div class="section-head"><h2>${data.mods.length} ${data.mods.length === 1 ? "mod" : "mods"}</h2><span class="muted">${esc(data.loader)}</span></div>` +
     (data.mods.length ? `<div class="mods">${data.mods.map((m) => `<div class="mod"><div class="mn"><span>${esc(m.name)}</span><span class="mv">${esc(m.version || "")}</span></div>${m.description ? `<p>${esc(m.description)}</p>` : ""}</div>`).join("")}</div>`
-      : `<div class="empty"><h3>No mods installed</h3><p>This server runs ${esc(data.loader)} without a mods folder.</p></div>`));
-  wireHeader(s);
+      : `<div class="empty"><h3>No mods installed</h3><p>This server runs ${esc(data.loader)} without a mods folder.</p></div>`);
+  if (!isAdmin() || !data.mods.length) { setView(serverHeader(s, "mods") + listHtml); wireHeader(s); return; }
+  let pack = await api(`/api/servers/${encodeURIComponent(sid)}/modpack`).catch(() => null);
+  const base = `/api/servers/${encodeURIComponent(sid)}/modpack`;
+  const KIND = { mod: "Mod", resourcepack: "Resource pack", shader: "Shader" };
+  let hits = [], kind = "mod", note = "";
+  const packHtml = () => {
+    if (!pack) return "";
+    const setup = pack.enabled ? `<ol class="pk-steps">
+        <li>In Prism, right-click the instance → <b>Folder</b>, and open the <code>minecraft</code> folder inside it. Put <a href="${esc(pack.bootstrap)}" download>packwiz-installer-bootstrap.jar</a> there. Move any mods the pack provides out of its <code>mods</code> folder (the pack puts them back; two copies of a mod won't start).</li>
+        <li>Right-click the instance → <b>Edit</b> → <b>Settings</b> → <b>Custom commands</b>, tick it, and paste this as the <b>Pre-launch command</b>:
+          <div class="pk-copy"><code id="pk-cmd">${esc(pack.command)}</code><button class="btn sm" type="button" data-copy="pk-cmd">Copy</button></div></li>
+        <li>Launch. A small window checks the pack and downloads what changed, every time it starts.</li></ol>
+        <p class="muted small">Pack address: <code>${esc(pack.url)}</code> · Anyone with this address can download the pack's mods. <button class="linkish" type="button" data-newtoken>Make a new address</button></p>` : "";
+    const sm = pack.server_mods.filter((m) => !m.server_only);
+    return `<section class="section panel pk">
+      <div class="section-head"><h2>📦 Family modpack</h2><label class="check"><input type="checkbox" data-mp-on ${pack.enabled ? "checked" : ""}> Keep the family's Prism instances up to date from here</label></div>
+      <p class="muted">Every PC gets the same mods on each launch: this server's own jars (so they always match it) plus the client mods, resource packs and shaders below, for Minecraft ${esc(pack.mc || "?")}${pack.loader ? ` with Fabric Loader ${esc(pack.loader)}` : ""}.</p>
+      ${setup}
+      <h3>From this server</h3>
+      <div class="pk-list">${sm.map((m) => `<label class="check pk-item"><input type="checkbox" data-sm="${esc(m.id)}" ${m.included ? "checked" : ""}> <b>${esc(m.name)}</b> <span class="muted small">${esc(m.version || "")}${m.environment === "client" ? " · client mod" : ""}</span></label>`).join("")}</div>
+      <h3>From Modrinth <span class="muted small">${pack.extra.length}</span></h3>
+      ${pack.extra.length ? `<div class="pk-list">${pack.extra.map((e) => `<div class="pk-item">${e.icon ? `<img src="${esc(e.icon)}" alt="" width="20" height="20" loading="lazy" data-fail="remove">` : ""}<span class="pk-t"><b>${esc(e.title)}</b><small class="muted">${e.kind === "mod" ? "" : `${esc(KIND[e.kind])} · `}${esc(e.version)}</small></span><button class="icon-btn" type="button" data-rm="${esc(e.slug)}" aria-label="Remove ${esc(e.title)}">✕</button></div>`).join("")}</div>
+        <div class="btn-row"><button class="btn sm" type="button" data-check>Check for updates</button><span id="pk-upd" class="muted small"></span></div>` : `<p class="muted small">Nothing yet.</p>`}
+      <form class="pk-search" id="pk-search"><select class="input sm" name="kind">${Object.entries(KIND).map(([k, l]) => `<option value="${k}" ${k === kind ? "selected" : ""}>${l}</option>`).join("")}</select>
+        <input class="input" name="q" placeholder="Search Modrinth (Sodium, Iris, Fresh Animations…)" autocomplete="off"><button class="btn" type="submit">Search</button></form>
+      ${hits.length ? `<div class="pk-hits">${hits.map((h) => `<button type="button" class="pk-hit" data-add="${esc(h.slug)}" data-kind="${esc(h.kind)}">${h.icon ? `<img src="${esc(h.icon)}" alt="" width="28" height="28" loading="lazy" data-fail="remove">` : ""}<span><b>${esc(h.title)}</b><small class="muted">${esc(h.description)}</small></span><span class="btn sm">Add</span></button>`).join("")}</div>` : ""}
+      <details class="pk-paste"><summary>Add a whole list at once</summary>
+        <form id="pk-names"><textarea class="input" name="names" rows="6" placeholder="One per line, for example:&#10;Sodium&#10;Iris&#10;LambDynamicLights&#10;resourcepack: Fresh Animations&#10;shader: Complementary Reimagined"></textarea>
+        <button class="btn" type="submit">Add them</button></form></details>
+      ${note ? `<p class="notice small">${note}</p>` : ""}
+    </section>`;
+  };
+  const render = () => { setView(serverHeader(s, "mods") + packHtml() + listHtml); wireHeader(s); wire(); };
+  const busy = (el, on) => { if (el) { el.disabled = on; el.classList.toggle("busy", on); } };
+  const wire = () => {
+    $("[data-mp-on]")?.addEventListener("change", async (e) => { pack = await post(base, { enabled: e.target.checked }, "PUT"); render(); });
+    $("[data-newtoken]")?.addEventListener("click", async () => { if (!confirm("Make a new pack address? Every PC's pre-launch command will need the new one.")) return; pack = await post(base, { new_token: true }, "PUT"); render(); });
+    $$("[data-sm]").forEach((b) => b.addEventListener("change", async () => {
+      pack = await post(base, { server_mods: $$("[data-sm]").filter((x) => x.checked).map((x) => x.dataset.sm) }, "PUT"); render();
+    }));
+    $$("[data-rm]").forEach((b) => b.addEventListener("click", async () => { pack = await api(`${base}/extra/${encodeURIComponent(b.dataset.rm)}`, { method: "DELETE" }); render(); }));
+    $$("[data-copy]").forEach((b) => b.addEventListener("click", () => { navigator.clipboard?.writeText($("#" + b.dataset.copy).textContent); showToast("Copied", 1500); }));
+    $("#pk-search")?.addEventListener("submit", async (e) => {
+      e.preventDefault(); const f = new FormData(e.target); kind = f.get("kind");
+      busy(e.target.querySelector("button"), true);
+      try { hits = (await api(`${base}/search?q=${encodeURIComponent(f.get("q"))}&kind=${kind}`)).hits; note = hits.length ? "" : `Nothing on Modrinth for that on ${esc(pack.mc)}.`; }
+      catch (err) { note = esc(err.message); }
+      render(); $("#pk-search input[name=q]").value = f.get("q");
+    });
+    $$("[data-add]").forEach((b) => b.addEventListener("click", async () => {
+      busy(b, true);
+      try { const r = await post(`${base}/add`, { slug: b.dataset.add, kind: b.dataset.kind }); pack = r.pack; hits = []; note = r.added.length ? `Added ${r.added.map((a) => esc(a.title)).join(", ")}.` : "Already in the pack."; }
+      catch (err) { note = esc(err.message); }
+      render();
+    }));
+    $("#pk-names")?.addEventListener("submit", async (e) => {
+      e.preventDefault(); busy(e.target.querySelector("button"), true);
+      try {
+        const r = await post(`${base}/add`, { names: new FormData(e.target).get("names") }); pack = r.pack;
+        note = `${r.added.length ? `Added: ${r.added.map((a) => esc(a.title) + (a.already ? " (already in)" : "")).join(", ")}.` : ""}${r.missing.length ? ` Not found for ${esc(pack.mc)}: ${r.missing.map(esc).join(", ")}.` : ""}`;
+      } catch (err) { note = esc(err.message); }
+      render();
+    });
+    $("[data-check]")?.addEventListener("click", async (e) => {
+      busy(e.target, true);
+      const r = await post(`${base}/check`).catch((err) => ({ error: err.message }));
+      const el = $("#pk-upd");
+      if (r.error) { el.textContent = r.error; busy(e.target, false); return; }
+      if (!r.updates.length) { el.textContent = "Everything is up to date."; busy(e.target, false); return; }
+      el.innerHTML = `${r.updates.map((u) => `${esc(u.title)} ${esc(u.current)} → ${esc(u.latest)}`).join(" · ")} <button class="btn sm primary" type="button" data-updall>Update all</button>`;
+      busy(e.target, false);
+      $("[data-updall]").addEventListener("click", async () => { const u = await post(`${base}/update-all`); pack = u.pack; note = `Updated ${u.changed.length}. Each PC picks it up next launch.`; render(); });
+    });
+  };
+  render();
 }
 
 // ---------------------------------------------------------------- settings
