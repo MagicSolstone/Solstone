@@ -27,7 +27,7 @@ import zipfile
 
 PACK_ID = "solstone-pack"                     # one pack: fishing and the archery games
 PACK_FILE = f"{PACK_ID}.zip"
-VERSION = 3                                   # bump when the pack's content changes
+VERSION = 4                                   # bump when the pack's content changes
 
 # ------------------------------------------------------------------ the water
 _OCEAN = ["ocean", "deep_ocean", "cold_ocean", "deep_cold_ocean", "lukewarm_ocean", "deep_lukewarm_ocean",
@@ -272,6 +272,10 @@ def pack_files() -> dict[str, str]:
         # The same fish under our own name, and the rod's table pointed at it: if something else
         # (a mod) also replaces minecraft:gameplay/fishing/fish, the rod still lands our fish.
         "data/solfish/loot_table/fish.json": json.dumps(loot_table()),
+        # the smallest possible test: one stone, named and tagged (do loot functions work at all?)
+        "data/solfish/loot_table/probe.json": json.dumps({"pools": [{"rolls": 1, "entries": [{"type": "minecraft:item", "name": "minecraft:stone", "functions": [
+            {"function": "minecraft:set_name", "target": "item_name", "name": {"text": "Solstone probe"}},
+            {"function": "minecraft:set_custom_data", "tag": "{solprobe:1b}"}]}]}]}),
         "data/minecraft/loot_table/gameplay/fishing.json": json.dumps(fishing_table()),
         "data/minecraft/tags/function/load.json": json.dumps({"values": ["solfish:load", "solgames:load"]}),
         "data/minecraft/tags/function/tick.json": json.dumps({"values": ["solgames:tick"]}),

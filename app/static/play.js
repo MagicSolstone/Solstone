@@ -190,14 +190,18 @@ async function viewChallenges(sid) {
       diag(`<p class="muted small">Casting a few test lines…</p>`);
       try {
         const t = await post(`/api/servers/${encodeURIComponent(sid)}/fishing/test`, {});
-        const what = (r) => r.pack_fish ? `${r.pack_fish.quality} ${r.pack_fish.name} (${r.pack_fish.lb} lb)` : r.item ? `plain ${r.item.replace("minecraft:", "")}` : "nothing";
-        const rodPack = t.rod.filter((r) => r.pack_fish).length, rodFish = t.rod.filter((r) => /cod|salmon|pufferfish|tropical/.test(r.item || "")).length;
-        const verdict = rodPack || (t.pack_fish && !rodFish) ? `<p class="fish-ok">✔ The pack's fish are working.</p>`
-          : t.pack_fish ? `<p class="notice small"><b>The pack's fish table is loaded, but the rod's table doesn't use it</b> (a mod, or the game's own fishing table changed).</p>`
-          : t.own.pack_fish ? `<p class="notice small"><b>The pack loads, but something above it replaces the fishing tables</b> (likely a mod, see the pack list below).</p>`
-          : `<p class="notice small"><b>The game isn't reading the pack's loot tables at all</b> (its functions load, its fish tables don't).</p>`;
-        diag(`${verdict}<pre class="mc-out">${esc([`Tested ${t.where} · pack version ${t.version ?? "?"}`, `fish table: ${what(t)}`, `solfish:fish: ${t.own.item || t.own.pack_fish ? what(t.own) : t.own.command_reply || "nothing"}`,
-          ...t.rod.map((r, i) => `rod roll ${i + 1}: ${what(r)}`), ...(t.item ? [] : [`loot: ${t.command_reply}`, `item: ${t.item_reply}`]), "", `packs: ${t.packs}`].join("\n"))}</pre><p class="muted small">Send this to get it fixed.</p>`);
+        const what = (r) => r.pack_fish ? `${r.pack_fish.quality} ${r.pack_fish.name} (${r.pack_fish.lb} lb)`
+          : r.item ? `${r.named ? `"${r.named}" ` : "plain "}${r.item.replace("minecraft:", "")}${r.probe ? " (tagged)" : ""}` : `nothing (${r.command_reply || "no reply"})`;
+        const rodPack = t.rod.filter((r) => r.pack_fish).length;
+        const verdict = rodPack ? `<p class="fish-ok">✔ The pack's fish are working: ${rodPack} of ${t.rod.length} rod casts were Solstone fish (the rest are junk and treasure, as usual).</p>`
+          : t.pack_fish || t.own.pack_fish ? `<p class="notice small"><b>The pack's fish table works, but the rod's table doesn't use it.</b></p>`
+          : t.probe.probe ? `<p class="notice small"><b>The pack's loot functions work, but its fish tables aren't being used.</b></p>`
+          : `<p class="notice small"><b>The game isn't applying the pack's loot tables</b> (even the one-line probe).</p>`;
+        const lines = [`Tested ${t.where} · pack version ${t.version ?? "?"}${t.barrel && !/changed/i.test(t.barrel) ? ` · barrel: ${t.barrel}` : ""}`,
+          `fish table: ${what(t)}`, `solfish:fish: ${what(t.own)}`, `probe: ${what(t.probe)}`, ...t.rod.map((r, i) => `rod cast ${i + 1}: ${what(r)}`),
+          "", "raw:", ...[t, t.own, t.probe].map((r) => `${r.table}: ${r.command_reply} | ${r.item_reply}`),
+          "", `packs: ${t.packs}`, ...(t.log?.length ? ["", "game log:", ...t.log] : [])];
+        diag(`${verdict}<pre class="mc-out">${esc(lines.join("\n"))}</pre><p class="muted small">Send this to get it fixed.</p>`);
       } catch (e) { diag(`<p class="notice small">${esc(e.message)}</p>`); }
       b.disabled = false;
       return;

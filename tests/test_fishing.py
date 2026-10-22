@@ -152,3 +152,14 @@ def test_datapack_folder_listing_finds_copies(tmp_path):
     assert rows["solstone-pack.zip"]["version"] == fishpack.VERSION and rows["solstone-pack.zip"]["fish_table"] and not rows["solstone-pack.zip"]["nested"]
     assert rows["solstone-pack (1).zip"]["version"] == 2 and rows["solstone-pack (1).zip"]["nested"]
     assert rows["other"]["version"] is None
+
+
+def test_reading_a_barrel_slot():
+    from app import fishing
+    got = ('0, 319, 0 has the following block data: [{Slot: 0b, components: {"minecraft:custom_data": {solfish: {s: "bluegill", n: "Bluegill", '
+           'q: 0, ql: "Poor", w: 3, lb: "0.27", p: 2}}, "minecraft:item_name": {color: "gray", italic: 0b, text: "Poor Bluegill"}}, count: 1, id: "minecraft:cod"}]')
+    r = fishing._read_item(got)
+    assert r["item"] == "minecraft:cod" and r["named"] == "Poor Bluegill" and r["pack_fish"]["name"] == "Bluegill"
+    plain = fishing._read_item('0, 319, 0 has the following block data: [{Slot: 0b, count: 1, id: "minecraft:cod"}]')
+    assert plain["item"] == "minecraft:cod" and plain["pack_fish"] is None and plain["named"] is None
+    assert fishing._read_item("0, 319, 0 has the following block data: []")["item"] is None

@@ -142,52 +142,86 @@ async def reload(srv) -> dict:
     return st
 
 
-async def _roll(srv, at: str, table: str) -> dict:
-    """Roll one loot table as a catch, six blocks above `at` (so only our item is there), and read it."""
+def _read_item(reply: str) -> dict:
+    """The first item in a `data get block ... Items` reply: its id, and the pack's fish data if any."""
     import nbtlib
 
-    sel = "@e[type=item,distance=..2,sort=nearest,limit=1]"
-    out = await _rcon(srv, f"execute {at} positioned ~ ~6 ~ run loot spawn ~ ~ ~ fish {table} ~ ~-6 ~ minecraft:fishing_rod")
-    got = await _rcon(srv, f"execute {at} positioned ~ ~6 ~ run data get entity {sel} Item")
-    await _rcon(srv, f"execute {at} positioned ~ ~6 ~ run kill {sel}")
-    res = {"table": table, "command_reply": out[:300], "item_reply": got[:400], "item": None, "pack_fish": None}
-    if "{" in got:
-        try:
-            item = nbtlib.parse_nbt(got[got.index("{"):].strip())
-            res["item"] = str(item.get("id"))
-            fish = (item.get("components") or {}).get("minecraft:custom_data", {}).get("solfish")
-            if fish:
-                res["pack_fish"] = {"name": str(fish["n"]), "quality": str(fish["ql"]), "lb": str(fish["lb"]), "points": int(fish["p"])}
-        except Exception as e:
-            res["parse_error"] = str(e)[:200]
+    res = {"item": None, "pack_fish": None, "named": None}
+    if "[" not in reply:
+        return res
+    try:
+        items = nbtlib.parse_nbt(reply[reply.index("["):].strip())
+        if not len(items):
+            return res
+        item = items[0]
+        res["item"] = str(item.get("id"))
+        comps = item.get("components") or {}
+        nm = comps.get("minecraft:item_name") or comps.get("minecraft:custom_name")
+        res["named"] = (str(nm.get("text", "")) if hasattr(nm, "get") else str(nm)) if nm is not None else None
+        data = comps.get("minecraft:custom_data", {})
+        fish = data.get("solfish")
+        if fish:
+            res["pack_fish"] = {"name": str(fish["n"]), "quality": str(fish["ql"]), "lb": str(fish["lb"]), "points": int(fish["p"])}
+        res["probe"] = "solprobe" in data
+    except Exception as e:
+        res["parse_error"] = str(e)[:200]
     return res
 
 
 async def test_catch(srv) -> dict:
-    """Fish from the real tables and say what came out: the fish table on its own, and the whole
-    fishing table a few times (which is what a rod uses). Done where a player is standing, so the
-    spot is loaded; with nobody on, at spawn with that chunk loaded for a moment."""
+    """Roll the tables into a barrel (put up at the top of the world for a moment, so there's
+    nothing to fall or get picked up) and read exactly what came out:
+    the vanilla-named fish table, the pack's own copy, a one-line probe table (do the pack's
+    loot functions work at all?), and the rod's whole table a few times."""
+    from .races import _pos
     names, _src = await S.online_players(srv)
     forced = None
-    if names:
-        at, where = f"at {names[0]}", f"at {names[0]}"
+    q = await _pos(srv, names[0]) if names else None
+    if q:
+        pre, where = f"execute at {names[0]}", f"at {names[0]}"
+        x, y, z = int(q[0] // 1), int(q[1] // 1), int(q[2] // 1)
     else:
         w = await __import__("asyncio").to_thread(S.world_info, srv, False)
         sp = w.get("spawn") or {"x": 0, "y": 64, "z": 0}
         x, y, z = int(sp["x"]), int(sp.get("y", 64)), int(sp["z"])
         forced = (x, z)
-        await _rcon(srv, f"execute in minecraft:overworld run forceload add {x} {z}")
-        at, where = f"in minecraft:overworld positioned {x}.5 {y} {z}.5", "at spawn"
+        pre, where = "execute in minecraft:overworld", "at spawn"
+        await _rcon(srv, f"{pre} run forceload add {x} {z}")
+    top = 319
+    placed = await _rcon(srv, f"{pre} run setblock {x} {top} {z} minecraft:barrel")
+
+    async def roll(kind: str, table: str) -> dict:
+        src = f"fish {table} {x} {y} {z} minecraft:fishing_rod" if kind == "fish" else f"loot {table}"
+        out = await _rcon(srv, f"{pre} run loot replace block {x} {top} {z} container.0 {src}")
+        got = await _rcon(srv, f"{pre} run data get block {x} {top} {z} Items")
+        await _rcon(srv, f"{pre} run item replace block {x} {top} {z} container.0 with minecraft:air")
+        return {"table": table, "command_reply": out[:300], "item_reply": got[:600], **_read_item(got)}
+
     try:
-        fish = await _roll(srv, at, "minecraft:gameplay/fishing/fish")
-        own = await _roll(srv, at, "solfish:fish")
-        rod = [await _roll(srv, at, "minecraft:gameplay/fishing") for _ in range(4)]
+        fish = await roll("fish", "minecraft:gameplay/fishing/fish")
+        own = await roll("fish", "solfish:fish")
+        probe = await roll("loot", "solfish:probe")
+        rod = [await roll("fish", "minecraft:gameplay/fishing") for _ in range(4)]
     finally:
+        await _rcon(srv, f"{pre} run setblock {x} {top} {z} minecraft:air")
         if forced:
-            await _rcon(srv, f"execute in minecraft:overworld run forceload remove {forced[0]} {forced[1]}")
-    # kept flat for the page: the fish-table roll's fields, plus the whole-table rolls
+            await _rcon(srv, f"{pre} run forceload remove {forced[0]} {forced[1]}")
     packs = await _rcon(srv, "datapack list enabled")
-    return {**fish, "where": where, "rod": rod, "own": own, "packs": packs[:1500], "version": (await check(srv)).get("version")}
+    return {**fish, "where": where, "barrel": placed[:200], "rod": rod, "own": own, "probe": probe, "packs": packs[:1500],
+            "version": (await check(srv, force=True)).get("version"), "log": _log_mentions(srv)}
+
+
+def _log_mentions(srv) -> list[str]:
+    """Every line in the game's current log about our pack or loot tables, at any level (startup
+    errors scroll by unnoticed)."""
+    try:
+        with (srv.dir / "logs" / "latest.log").open("rb") as fh:
+            fh.seek(max(0, fh.seek(0, 2) - 3_000_000))
+            text = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return []
+    keys = ("solstone", "solfish", "solgames", "loot_table", "loot table", "gameplay/fishing", "couldn't parse", "failed to parse", "validation problem")
+    return [ln.strip()[:400] for ln in text.splitlines() if any(k in ln.lower() for k in keys) and "rcon" not in ln.lower()][-30:]
 
 
 def _names(srv) -> dict[str, str]:
