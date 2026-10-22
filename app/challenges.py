@@ -173,9 +173,19 @@ async def _start(srv, c: dict) -> None:
         if out and ("unknown" in out.lower() or "invalid" in out.lower() or "error" in out.lower()):
             continue                     # a block this version doesn't have (pale oak before 1.21.4, say)
         made.append(obj)
-    await _rcon(srv, f"scoreboard objectives add {_total_obj(c)} dummy {json.dumps(c['name'])}")
-    await _rcon(srv, f"scoreboard objectives setdisplay sidebar {_total_obj(c)}")
+    # One statistic counted as-is: the sidebar shows that objective itself, so the game keeps it
+    # up to date instantly and Solstone doesn't have to send anything. Otherwise (several added
+    # up, or shown as pounds) a total that Solstone writes when it changes.
+    direct = made[0] if len(made) == 1 and KINDS[c["kind"]][4] == 1 and c["kind"] != "fish_heaviest" else None
+    c["direct"] = direct
+    if direct:
+        await _rcon(srv, f"scoreboard objectives modify {direct} displayname {json.dumps(c['name'])}")
+        await _rcon(srv, f"scoreboard objectives setdisplay sidebar {direct}")
+    else:
+        await _rcon(srv, f"scoreboard objectives add {_total_obj(c)} dummy {json.dumps(c['name'])}")
+        await _rcon(srv, f"scoreboard objectives setdisplay sidebar {_total_obj(c)}")
     c["objectives"] = made
+    c["shown"] = {}
     c["state"], c["started_at"] = "running", time.time()
     c["ends_at"] = c["started_at"] + c["minutes"] * 60
     if c["say"]:
@@ -199,6 +209,9 @@ async def _read_scores(srv, c: dict) -> None:
             m = _SCORE.search(await _rcon(srv, f"scoreboard players get {p} {obj}"))
             total += int(m.group(1)) if m else 0
         c["scores"][p] = total // div
+        if c.get("direct") or c.setdefault("shown", {}).get(p) == total // div:
+            continue                                            # nothing to send: shown by the game, or unchanged
+        c["shown"][p] = total // div
         await _rcon(srv, f"scoreboard players set {p} {_total_obj(c)} {total // div}")
         if c["kind"] == "fish_heaviest" and total:               # the sidebar says "16.2 lb", not 162
             await _rcon(srv, f"scoreboard players display numberformat {p} {_total_obj(c)} fixed {json.dumps(_show(c, total))}")
@@ -257,13 +270,27 @@ async def _finish(srv, c: dict, d: dict) -> None:
             await _rcon(srv, "title @a times 10 80 20")
             await _rcon(srv, f"title @a title {component([(' & '.join(first)[:30], 'gold')])}")
             await _rcon(srv, f"title @a subtitle {component([('wins ' + c['name'], 'yellow')])}")
-    for obj in [*c["objectives"], _total_obj(c)]:
-        if obj not in FISH_KINDS.values():                 # the fishing pack keeps its own
-            await _rcon(srv, f"scoreboard objectives remove {obj}")
+    await _tidy(srv, c)
     c["state"] = "done"
     db.add_event(srv.id, time.time(), "challenge", c["result"], first[0] if first else None)
     if first:
         fwshow.push(srv.id, srv.display_name, "challenge", first[0], c["result"])
+
+
+async def _tidy(srv, c: dict) -> None:
+    """Remove this contest's objectives; the fishing pack's own get their sidebar and name back."""
+    for obj in [*c.get("objectives", []), _total_obj(c)]:
+        if obj in FISH_KINDS.values():
+            await _rcon(srv, "scoreboard objectives setdisplay sidebar")
+            await _rcon(srv, f"scoreboard objectives modify {obj} displayname {json.dumps({'solfish_cp': 'Challenge points', 'solfish_cb': 'Heaviest catch'}[obj])}")
+        else:
+            await _rcon(srv, f"scoreboard objectives remove {obj}")
+
+
+def busy() -> bool:
+    """Something to look at every couple of seconds: a contest on, or about to start."""
+    now = time.time()
+    return any(c["state"] == "running" or (c["state"] == "scheduled" and c["start"] - now < 75) for c in _load()["items"])
 
 
 async def cancel(srv, cid: str) -> bool:
@@ -272,9 +299,7 @@ async def cancel(srv, cid: str) -> bool:
     if not c:
         return False
     if c["state"] == "running" and srv.rcon_conf():
-        for obj in [*c.get("objectives", []), _total_obj(c)]:
-            if obj not in FISH_KINDS.values():
-                await _rcon(srv, f"scoreboard objectives remove {obj}")
+        await _tidy(srv, c)
         if c["say"]:
             await _rcon(srv, f"tellraw @a {component([('★ ', 'gold'), (c['name'] + ' was called off.', 'yellow')])}")
     if c["state"] in ("scheduled", "running"):
@@ -306,7 +331,8 @@ async def tick(servers: list) -> None:
         elif c["state"] == "running" and srv:
             if now >= c["ends_at"]:
                 await _finish(srv, c, d)
-            else:
+            elif now - c.get("read_at", 0) >= 2:
+                c["read_at"] = now
                 await _read_scores(srv, c)
                 if c["say"] and 0 < c["ends_at"] - now <= 60 and db.alert_once(f"ch-1min:{c['id']}"):
                     await _rcon(srv, f"tellraw @a {component([('★ ', 'gold'), ('1 minute left in ' + c['name'] + '!', 'yellow')])}")

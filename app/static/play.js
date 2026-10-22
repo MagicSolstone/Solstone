@@ -126,7 +126,7 @@ async function viewChallenges(sid) {
     </form>`;
   const render = () => {
     const live = d.items.filter((c) => c.state === "running"), soon = d.items.filter((c) => c.state === "scheduled"), past = d.items.filter((c) => !["running", "scheduled"].includes(c.state));
-    setView(serverHeader(s, "challenges") + playSwitch(sid, "contests") + `
+    setView(serverHeader(s, "challenges") + playSwitch(sid, "contests") + rconEchoNote(d) + `
       <p class="muted ch-intro">Timed contests for whoever's playing. The game counts the score live and shows it on everyone's screen; the winner gets the prize straight away, or the next time they join.</p>
       ${live.length ? `<section class="section"><div class="section-head"><h2>Happening now</h2></div><div class="ch-list">${live.map(card).join("")}</div></section>` : ""}
       <section class="section">${formHtml()}</section>
@@ -217,6 +217,11 @@ async function viewChallenges(sid) {
     if (document.activeElement?.closest?.("#ch-form") || $(".modal")) return;      // don't redraw under someone typing
     await reload();
   });
+}
+
+// Shown on all three pages while the server echoes RCON commands to operators.
+function rconEchoNote(d) {
+  return d?.rcon_echo ? `<div class="notice small echo-note"><b>Ops will see a lot of "[Rcon: …]" lines in chat</b> while contests, races and games run: the server shows operators every command Solstone sends. To turn that off, set <code>broadcast-rcon-to-ops=false</code> in this server's <code>server.properties</code> (in Crafty: the server's Config tab) and restart it.</div>` : "";
 }
 
 // Contests and races share the Challenges tab.
@@ -372,7 +377,7 @@ async function viewRaces(sid) {
   const render = () => {
     if (editing) return renderEditor();
     const live = d.runs.filter((r) => ["running", "countdown"].includes(r.state)), soon = d.runs.filter((r) => r.state === "scheduled"), past = d.runs.filter((r) => !["running", "countdown", "scheduled"].includes(r.state));
-    setView(serverHeader(s, "challenges") + playSwitch(sid, "races") + `
+    setView(serverHeader(s, "challenges") + playSwitch(sid, "races") + rconEchoNote(d) + `
       <p class="muted ch-intro">Lay out a course of checkpoints on the map, then race it. In the game each point is a tall glowing column with its name floating above it, and everyone sees which way to go and how far.</p>
       ${d.rcon ? "" : `<p class="notice">Races need RCON turned on for this server (⚙ settings).</p>`}
       ${live.length ? `<section class="section"><div class="section-head"><h2>Racing now</h2></div><div class="ch-list">${live.map(runCard).join("")}</div></section>` : ""}
@@ -554,7 +559,7 @@ async function viewGames(sid) {
   const render = () => {
     const live = d.runs.filter((r) => ["countdown", "hiding", "running"].includes(r.state)), soon = d.runs.filter((r) => r.state === "scheduled"), past = d.runs.filter((r) => !["countdown", "hiding", "running", "scheduled"].includes(r.state));
     const packOk = (d.pack || 0) >= d.pack_needed;
-    setView(serverHeader(s, "challenges") + playSwitch(sid, "games") + `
+    setView(serverHeader(s, "challenges") + playSwitch(sid, "games") + rconEchoNote(d) + `
       ${d.rcon ? "" : `<p class="notice">Games need RCON turned on for this server (⚙ settings).</p>`}
       ${live.length ? `<section class="section"><div class="section-head"><h2>Playing now</h2></div><div class="ch-list">${live.map(runCard).join("")}</div></section>` : ""}
       <section class="section"><div class="ch-list">${Object.entries(GAME_INFO).map(([k, [e, t, about]]) => `<div class="ch-card panel gm-pick">

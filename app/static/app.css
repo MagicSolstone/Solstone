@@ -1585,3 +1585,4 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .gm-players li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 .gm-role { font-size: .85rem; color: var(--muted); }
 .gm-role.seeker { color: var(--redstone); } .gm-role.hider { color: var(--copper); }
+.echo-note { margin: 0 0 14px; }

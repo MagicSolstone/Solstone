@@ -38,6 +38,8 @@ class FakeServer:
             return f"Gave {m.group(3)} [x] to {m.group(1)}"
         if cmd.startswith(("tellraw", "title")):
             self.said.append(cmd)
+        if cmd.startswith("scoreboard players set"):
+            self.sets = getattr(self, "sets", 0) + 1
         return ""
 
 
@@ -73,6 +75,8 @@ def test_fishing_contest_start_to_prize(fake):
     srv.scores[("Tyler", fish)] = 3; srv.scores[("Gimli_Jr", fish)] = 7
     asyncio.run(challenges.tick([srv]))                              # live scores for the pages
     assert challenges.list_for(srv.id)[0]["scores"] == {"Gimli_Jr": 7, "Tyler": 3}
+    assert not getattr(srv, "sets", 0)                               # one statistic: the sidebar shows it directly
+    assert any("setdisplay sidebar" in c for c in srv.said) is False and challenges.list_for(srv.id)[0]["direct"]
     banner = challenges.banners(srv.id)[0]
     assert banner["text"] == "Fishing contest: Gimli_Jr leads with 7 fish" and banner["countdown"]
     d = challenges._load(); d["items"][0]["ends_at"] = time.time() - 1; challenges._save(d)
@@ -92,6 +96,10 @@ def test_ties_offline_winners_and_unknown_blocks(fake):
     srv.scores[("Tyler", "minecraft.mined:minecraft.oak_log")] = 4
     srv.scores[("Gimli_Jr", "minecraft.mined:minecraft.birch_log")] = 4
     asyncio.run(challenges.tick([srv]))
+    sets = srv.sets
+    d = challenges._load(); d["items"][0]["read_at"] = 0; challenges._save(d)
+    asyncio.run(challenges.tick([srv]))
+    assert srv.sets == sets                                          # nothing changed: nothing sent
     srv.online = ["Tyler"]                                            # Gimli_Jr logs off before the end
     d = challenges._load(); d["items"][0]["ends_at"] = time.time() - 1; challenges._save(d)
     asyncio.run(challenges.tick([srv]))

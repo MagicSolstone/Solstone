@@ -121,12 +121,13 @@ class Recorder:
         visible = [s for s in S.registry.servers.values() if not s.settings.get("hidden")]
         await guard.tick(visible)
         await board.tick(visible)
-        await challenges.tick(visible)
+        if not challenges.busy():                 # far-off starts; running contests are on the fast loop
+            await challenges.tick(visible)
 
     async def race_tick(self) -> None:
         """Races need a once-a-second look at where everyone is; nothing happens otherwise."""
-        race, game = races.busy(), games.busy()
-        if not race and not game:
+        race, game, contest = races.busy(), games.busy(), challenges.busy()
+        if not (race or game or contest):
             return
         await S.registry.refresh()
         visible = [s for s in S.registry.servers.values() if not s.settings.get("hidden")]
@@ -134,6 +135,8 @@ class Recorder:
             await races.tick(visible)
         if game:
             await games.tick(visible)
+        if contest:
+            await challenges.tick(visible)
 
     async def fish_poll(self) -> None:
         """Catches from the Solstone Fishing pack (only where it's loaded and someone's on)."""

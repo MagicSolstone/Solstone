@@ -1636,13 +1636,19 @@ async def control_broadcast(sid: str, request: Request):
                       lambda srv, u: control.broadcast(srv, msg, u.username, bool(body.get("on_screen"))))
 
 
+def _rcon_echo(srv: S.Server) -> bool:
+    """True when the server shows every RCON command to operators in chat (the default), which
+    turns contests, races and games into a stream of "[Rcon: ...]" lines for any op playing."""
+    return bool(srv.rcon_conf()) and srv.props.get("broadcast-rcon-to-ops", "true").strip().lower() != "false"
+
+
 # ---- challenges: timed contests with prizes
 @app.get("/api/servers/{sid}/challenges")
 async def get_challenges(sid: str, request: Request):
     auth.require_admin(request)
     srv = await _server(sid)
     return {"kinds": challenges.kinds(), "items": challenges.list_for(srv.id), "gifts": challenges.gifts_for(srv.id),
-            "rcon": bool(srv.rcon_conf()), "now": time.time()}
+            "rcon": bool(srv.rcon_conf()), "now": time.time(), "rcon_echo": _rcon_echo(srv)}
 
 
 @app.post("/api/servers/{sid}/challenges")
@@ -1730,7 +1736,7 @@ async def get_games(sid: str, request: Request):
             pack = None
     w = await asyncio.to_thread(S.world_info, srv, False) if srv.is_java else {}
     return {"runs": games.runs_for(srv.id), "rcon": bool(srv.rcon_conf()), "pack": pack, "pack_needed": 2,
-            "spawn": w.get("spawn"), "now": time.time()}
+            "spawn": w.get("spawn"), "now": time.time(), "rcon_echo": _rcon_echo(srv)}
 
 
 @app.post("/api/servers/{sid}/games")
@@ -1774,7 +1780,7 @@ async def get_races(sid: str, request: Request):
         r["standings"] = races.standings(r)
     w = await asyncio.to_thread(S.world_info, srv, False) if srv.is_java else {}
     return {"courses": races.courses_for(srv.id), "runs": runs, "rcon": bool(srv.rcon_conf()), "now": time.time(),
-            "spawn": w.get("spawn"), "version": srv.mc_version}
+            "spawn": w.get("spawn"), "version": srv.mc_version, "rcon_echo": _rcon_echo(srv)}
 
 
 @app.post("/api/servers/{sid}/races/courses")
