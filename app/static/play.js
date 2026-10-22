@@ -1005,7 +1005,7 @@ function viewTideFishing(s, sid, d, who) {
       <section class="section"><div class="section-head"><h2>${p ? `${esc(p.name)}'s journal` : "Family records"}</h2><span class="muted">${p ? "Their best of every fish" : "Hover a record to see who caught it"}</span></div>${groups}</section>
       ${d.recent.length ? `<section class="section"><div class="section-head"><h2>Latest catches</h2></div><ul class="panel fj-recent">${d.recent.map((c) => `<li>${faceHtml({ name: c.player }, 20)}<b>${esc(c.player)}</b>
           ${itemIcon({ id: c.species })}<span class="fq-${QC[c.quality]}">${esc(c.quality === 1 ? "" : `${c.quality_name} `)}${esc(c.name)}</span><span class="muted small">${esc(fmtWeight(c.weight_g))} · ${c.points} pts · ${esc(fmtAgo(c.ts))}</span></li>`).join("")}</ul></section>` : ""}
-      <section class="section"><div class="section-head"><h2>Catch quality</h2><span class="muted">At level ${d.baseline} with a normal hook; higher levels and better hooks improve them</span></div>
+      <section class="section"><div class="section-head"><h2>Catch quality</h2><span class="muted">At level ${d.baseline}; higher levels improve them, and better fish fight harder</span></div>
         <div class="fish-qs">${d.qualities.map((q, i) => `<span class="fish-q fq-${q.color}">${qMarks(i)} ${esc(q.name)} <small>${q.chance >= 1 ? `${q.chance}%` : `1 in ${Math.round(100 / q.chance).toLocaleString()}`}</small></span>`).join("")}</div></section>`);
     wireHeader(s);
     $$("[data-fj]").forEach((b) => b.addEventListener("click", () => { pick = b.dataset.fj; render(); window.scrollTo({ top: 0 }); }));
