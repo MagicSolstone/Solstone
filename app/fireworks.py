@@ -113,6 +113,9 @@ def sanitize(d: dict) -> dict:
     out["sound_fizzle"] = bool(d.get("sound_fizzle", False))
     out["picture"] = _picture(d.get("picture"))
     out["picture2"] = _picture(d.get("picture2"))
+    # the shape the "burst again" pieces make (a small ball, as before, unless chosen)
+    sp = d.get("second_pattern")
+    out["second_pattern"] = sp if sp in PATTERNS and sp != "picture" else "ball"
     out["stages"] = [_stage(st) for st in (d.get("stages") or [])[:MAX_STAGES] if isinstance(st, dict)]
     if out["pattern"] == "picture" and not any(c != "." for r in out["picture"] for c in r):
         out["pattern"] = "ball"            # an empty picture would launch nothing
@@ -194,6 +197,10 @@ def _stage(st: dict) -> dict:
     for k, (lo, hi, default) in STAGE_NUMBERS.items():
         out[k] = _num(st.get(k, default), lo, hi, default, k == "sparks")
     out["colors"] = [c.lower() for c in (st.get("colors") or []) if isinstance(c, str) and _HEX.match(c)][:4]
+    # its own sound ("auto": the one that suits the step, as before)
+    out["sound"] = st.get("sound") if st.get("sound") in BURST_SOUNDS else "auto"
+    if out["sound"] == "custom":
+        out["sfx"] = _sfx(st.get("sfx"))
     return out
 
 

@@ -24,6 +24,7 @@ const FWE_PATTERNS = [
 ];
 const FWE_ACTIONS = [["burst", "Burst again", "a new burst from the middle"], ["pieces", "Every piece bursts", "lots of little bursts"],
   ["shatter", "Shatter", "everything flies outward"], ["implode", "Implode", "pulls back in, then pops"]];
+const STAGE_SOUNDS = [["auto", "Auto"], ["boom", "Boom"], ["pop", "Pop"], ["thud", "Thud"], ["crack", "Crack"], ["custom", "🎛 Make your own"], ["none", "Silent"]];
 const pct = (v) => `${Math.round(v * 100)}%`;
 const off0 = (v) => (v === 0 ? "Off" : pct(v));
 const secs = (v) => `${(+v).toFixed(v < 1 ? 2 : 1)} s`;
@@ -267,6 +268,8 @@ function stagesHtml(d) {
       <div class="fwe-actions">${FWE_ACTIONS.map(([k, l, hint]) => `<button type="button" data-action="${k}" aria-pressed="${st.action === k}" title="${esc(hint)}">${l}</button>`).join("")}</div>
       ${st.action !== "shatter" ? `<label class="fwe-select">Pattern <select class="input sm" data-stage-pattern>${FWE_PATTERNS.filter(([k]) => k !== "picture").map(([k]) => `<option value="${k}" ${st.pattern === k ? "selected" : ""}>${label[k]}</option>`).join("")}</select></label>` : ""}
       <div class="fwe-sliders">${FWE_STAGE_SLIDERS.filter(([k]) => st.action !== "shatter" || k !== "sparks").map((sl) => sliderHtml(sl, st, `s${i}:`)).join("")}</div>
+      <div class="fwe-row fwe-stage-snd"><span>Sound</span><div class="seg" role="group">${STAGE_SOUNDS.map(([k, l]) => `<button type="button" data-stage-snd="${k}" aria-pressed="${(st.sound || "auto") === k}" ${k === "auto" ? 'title="Whatever suits the step"' : ""}>${l}</button>`).join("")}</div></div>
+      ${st.sound === "custom" ? sfxPanelHtml(`stage${i}`) : ""}
       <label class="check small"><input type="checkbox" data-stage-owncolors ${st.colors?.length ? "checked" : ""}> Its own colours</label>
       ${st.colors?.length ? colorsHtml(st.colors, `sc${i}`) : ""}
     </div>`).join("")}
@@ -291,7 +294,8 @@ function renderControls() {
       <p class="muted small">${{ mix: "Each piece picks one of your colours.", alternate: "Pieces go through your colours in order.", change: "Every piece changes from the first colour to the last as it fades.", rainbow: "Every colour of the rainbow, cycling as it falls." }[d.color_mode]}</p>`),
     then: isRocket(d) ? sec("Then…", stagesHtml(d), "fwe-stages") : "",
     motion: sec("Motion", sliders("Motion")),
-    effects: sec("Effects", sliders("Effects")),
+    effects: sec("Effects", `${sliders("Effects")}
+      ${isRocket(d) && d.second > 0 ? `<label class="fwe-select">…shape <select class="input sm" id="fwe-second-pattern">${FWE_PATTERNS.filter(([k]) => k !== "picture").map(([k, l, ic]) => `<option value="${k}" ${(d.second_pattern || "ball") === k ? "selected" : ""}>${ic} ${l}</option>`).join("")}</select></label>` : ""}`),
     sound: sec("Sound", `${isRocket(d) ? `<div class="fwe-row"><span>Going up</span><div class="seg" role="group">${[["whoosh", "Whoosh"], ["whistle", "Whistle"], ["custom", "🎛 Make your own"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_launch" data-v="${k}" aria-pressed="${(d.sound_launch || "whoosh") === k}">${l}</button>`).join("")}</div></div>
       ${d.sound_launch === "custom" ? sfxPanelHtml("launch") : ""}
       <div class="fwe-row"><span>The burst</span><div class="seg" role="group">${[["boom", "Boom"], ["pop", "Pop"], ["thud", "Thud"], ["crack", "Crack"], ["custom", "🎛 Make your own"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_burst" data-v="${k}" aria-pressed="${(d.sound_burst || "boom") === k}">${l}</button>`).join("")}</div></div>
@@ -322,6 +326,7 @@ function renderControls() {
   const rerender = (launchNow = true) => { renderControls(); if (launchNow) fweLaunch(); };
   el.querySelectorAll("[data-launch]").forEach((b) => b.addEventListener("click", () => { d.launch = b.dataset.launch; rerender(); }));
   el.querySelectorAll("[data-style]").forEach((b) => b.addEventListener("click", () => { d.rocket_style = b.dataset.style; rerender(); }));
+  $("#fwe-second-pattern", el)?.addEventListener("change", (e) => { d.second_pattern = e.target.value; fweLaunch(); });
   $("#fwe-mirror-pair", el)?.addEventListener("change", (e) => { d.mirror = e.target.checked; fweLaunch(); });
   el.querySelectorAll("[data-pattern]").forEach((b) => b.addEventListener("click", () => {
     d.pattern = b.dataset.pattern;
@@ -374,6 +379,12 @@ function renderControls() {
     const st = d.stages[+card.dataset.si];
     card.querySelector("[data-rm-stage]").addEventListener("click", () => { d.stages.splice(+card.dataset.si, 1); rerender(); });
     card.querySelectorAll("[data-action]").forEach((b) => b.addEventListener("click", () => { st.action = b.dataset.action; rerender(); }));
+    card.querySelectorAll("[data-stage-snd]").forEach((b) => b.addEventListener("click", () => {
+      st.sound = b.dataset.stageSnd;
+      if (st.sound === "custom") st.sfx ||= SFX_MAKERS.boom();
+      if (!FWAudio.isOn("editor")) showToast("Turn on 🔊 under the preview to hear it", 2000);
+      rerender();
+    }));
     card.querySelector("[data-stage-pattern]")?.addEventListener("change", (e) => { st.pattern = e.target.value; fweLaunch(); });
     card.querySelector("[data-stage-owncolors]").addEventListener("change", (e) => {
       st.colors = e.target.checked ? [pick2(FW_COLORS), pick2(FW_COLORS)] : []; rerender();
@@ -645,8 +656,11 @@ const SFX_GROUPS = [
 // Pitch is easier to set on a log scale.
 const sfxToSlider = (k, v) => k === "freq" ? Math.round(Math.log(v / 20) / Math.log(250) * 1000) : v;
 const sfxFromSlider = (k, v) => k === "freq" ? Math.round(20 * 250 ** (v / 1000)) : v;
+// Where a slot's custom sound is kept: on the firework (launch, burst, ground) or on a "then…" step.
+const sfxHome = (slot) => (slot.startsWith("stage") ? [ed.d.stages[+slot.slice(5)], "sfx"] : [ed.d, `sfx_${slot}`]);
 function sfxPanelHtml(slot) {
-  const p = { ...SFX_DEFAULT, ...ed.d[`sfx_${slot}`] };
+  const [home, hk] = sfxHome(slot);
+  const p = { ...SFX_DEFAULT, ...home[hk] };
   const slider = ([k, label, fmt, when]) => {
     if (when && !when(p)) return "";
     const [lo, hi, step] = SFX_RANGES[k];
@@ -670,21 +684,21 @@ function sfxPanelHtml(slot) {
 }
 function wireSfx(root) {
   root.querySelectorAll(".sfx").forEach((box) => {
-    const slot = box.dataset.slot, key = `sfx_${slot}`;
-    const p = () => (ed.d[key] = { ...SFX_DEFAULT, ...ed.d[key] });
+    const slot = box.dataset.slot, [home, key] = sfxHome(slot);
+    const p = () => (home[key] = { ...SFX_DEFAULT, ...home[key] });
     const play = () => { ed.scene?.hush(); FWAudio.preview(p()); };      // only this sound, nothing else
     const redraw = () => sfxDraw(box, p());
     // A change starts the preview over, so you hear the new sound in place right away.
     const rebuild = () => { renderControls(); fweLaunch(); };
     box.querySelector("[data-sfx-play]").addEventListener("click", play);
-    box.querySelectorAll("[data-sfx-make]").forEach((b) => b.addEventListener("click", () => { ed.d[key] = SFX_MAKERS[b.dataset.sfxMake](); rebuild(); }));
-    box.querySelector("[data-sfx-mutate]").addEventListener("click", () => { ed.d[key] = sfxMutate(p()); rebuild(); });
+    box.querySelectorAll("[data-sfx-make]").forEach((b) => b.addEventListener("click", () => { home[key] = SFX_MAKERS[b.dataset.sfxMake](); rebuild(); }));
+    box.querySelector("[data-sfx-mutate]").addEventListener("click", () => { home[key] = sfxMutate(p()); rebuild(); });
     const lib = box.querySelector("[data-sfx-lib]"), del = box.querySelector("[data-sfx-del]");
     lib.addEventListener("change", () => {
       const x = (ed.sounds || []).find((o) => o.id === lib.value);
       del.hidden = !x?.can_delete;
       if (!x) return;
-      ed.d[key] = { ...x.sfx };
+      home[key] = { ...x.sfx };
       const keep = lib.value; rebuild(); const again = $(`.sfx[data-slot="${slot}"] [data-sfx-lib]`); if (again) { again.value = keep; again.dispatchEvent(new Event("pick")); }
     });
     lib.addEventListener("pick", () => { const x = (ed.sounds || []).find((o) => o.id === lib.value); del.hidden = !x?.can_delete; });

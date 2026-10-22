@@ -1624,3 +1624,4 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .fish-files { margin: 8px 0; } .fish-files ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; } .fish-files summary { cursor: pointer; }
 .ch-hot { display: grid; gap: 8px; } .ch-hot[hidden] { display: none; }
 .gm-team { font-size: .75em; padding: 1px 6px; border-radius: 6px; margin-left: 4px; } .gm-team.red { background: rgba(224,80,63,.25); color: #ff8b7e; } .gm-team.blue { background: rgba(80,140,240,.25); color: #8fb8ff; }
+.mu-more { margin: 6px 0 10px; } .mu-more summary { cursor: pointer; color: var(--muted, #9aa); }

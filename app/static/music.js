@@ -375,7 +375,10 @@ async function muLibrary(el) {
 
     <section class="panel"><h3 class="fws-sub">Upload music</h3>
       ${x.upload_ok ? `<p class="small">Uploads go into <code>${esc(x.upload_dir)}</code>, sorted as <i>Artist / Album / 01 - Title</i> from the file's tags, so Jellyfin sees them too. ${x.uploaded ? `${x.uploaded} ${x.uploaded === 1 ? "song" : "songs"} there so far.` : ""} Songs without tags go in <i>Unsorted</i>; use ✎ on a song to fix its details.</p>`
-        : x.configured ? `<div class="notice">Solstone can't write to <code>${esc(x.upload_dir)}</code>, so uploads stay in Solstone's own data folder for now. Mount just that folder read-write:<pre class="mu-code">- /mnt/user/media/music/Solstone:/music/Solstone</pre></div>`
+        : x.configured ? `<p class="small">The easy way to add music is to put it in your music library (<code>${esc(x.root)}</code>), the way you do for Jellyfin: Solstone finds it on its own (see below). Uploading here is optional, for a quick song or two; those are kept in Solstone's own data folder, so only Solstone plays them.</p>
+          <details class="mu-more"><summary class="small">Want uploads to go into the library too, so Jellyfin sees them?</summary>
+            <p class="small">Let Solstone write to just one folder inside it, <code>${esc(x.upload_dir)}</code>, by adding this volume (the rest of the library stays read-only):</p>
+            <pre class="mu-code">- /mnt/user/media/music/Solstone:/music/Solstone</pre></details>`
         : `<p class="muted small">Uploads are kept in Solstone's data folder. Set up a music library below to keep everything in one place.</p>`}
       <div class="fws-upload"><label class="btn primary">Add music…<input type="file" accept="audio/*" multiple hidden id="mu-file"></label><span class="muted small" id="mu-up">MP3, OGG, M4A, WAV, FLAC or Opus, up to 60 MB each.</span></div>
       ${s.main.length && x.upload_ok ? `<div class="notice" style="margin-top:12px">${s.main.length} ${s.main.length === 1 ? "song was" : "songs were"} uploaded before the library was set up. <button class="btn sm" type="button" id="mu-move">Move them into the Solstone folder</button><br><small class="muted">They're kept together as the “Minecraft music” playlist, which becomes the default radio if you haven't picked one.</small></div>` : ""}

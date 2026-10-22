@@ -588,7 +588,10 @@ function startSkyScene(cv, opts = {}) {
     const d = g.d, cols = colorsOf(d, st.colors);
     const list = piecesOf(g);
     const c = centreOf(g, list);
-    if (d.sound_burst !== "none") {
+    const own = st.sound && st.sound !== "auto" ? st.sound : null;          // the step's own sound, if it has one
+    if (own && own !== "none") {
+      snd("burst", { x: c.x, kind: own === "custom" ? "boom" : own, size: st.size, sfx: own === "custom" ? st.sfx : null });
+    } else if (!own && d.sound_burst !== "none") {
       const kind = st.action === "pieces" ? "crack" : st.action === "shatter" ? "pop" : d.sound_burst || "boom";
       snd("burst", { x: c.x, kind: kind === "custom" ? "boom" : kind, size: st.size, sfx: kind === "custom" ? d.sfx_burst : null });
     }
@@ -697,8 +700,9 @@ function startSkyScene(cv, opts = {}) {
     if (p.fuse && p.life >= p.fuse) {               // "burst again"
       sparks.splice(i, 1);
       const cols = colorsOf(d), next = cols[(cols.indexOf(p.color) + 1) % cols.length] || cols[0];
-      burst(g, p.x, p.y, { pattern: "ball", size: (d.size || 1.2) * dv(d, "second_size", 0.6) * 0.45, sparks: 14, colors: [next] });
-      for (const q of sparks.slice(-14)) { q.fuse = 0; q.vx += p.vx * 0.3; q.vy += p.vy * 0.3; q.max *= 0.7; }
+      const shape = d.second_pattern || "ball", n = shape === "ball" ? 14 : 18;
+      burst(g, p.x, p.y, { pattern: shape, size: (d.size || 1.2) * dv(d, "second_size", 0.6) * 0.45, sparks: n, colors: [next] });
+      for (const q of sparks.slice(-n)) { q.fuse = 0; q.vx += p.vx * 0.3; q.vy += p.vy * 0.3; q.max *= 0.7; }
       return;
     }
     let colorOverride = null;
