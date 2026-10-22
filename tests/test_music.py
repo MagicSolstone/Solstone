@@ -85,7 +85,8 @@ def test_playlists_radio_and_streaming(library, client, viewer, anon, sid):
     assert viewer.put(f"/api/music/playlists/{mine['id']}", json={"add": [ids[2]], "remove": [ids[0]]}).json()["tracks"] == [ids[1], ids[2]]
 
     # Christmas-style radio: an admin playlist with dates that include today takes over.
-    today = datetime.now().strftime("%m-%d")
+    from app import db
+    today = datetime.now(db.tz()).strftime("%m-%d")              # the app's day, not the machine's (UTC on CI)
     xmas = client.post("/api/music/playlists", json={"name": "Holiday", "tracks": [ids[0]], "shared": True}).json()
     r = client.put(f"/api/music/playlists/{xmas['id']}", json={"schedule": {"on": True, "from": today, "to": today}}).json()
     assert r["schedule"] == {"on": True, "from": today, "to": today}
