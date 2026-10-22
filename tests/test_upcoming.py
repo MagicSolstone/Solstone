@@ -2,11 +2,12 @@
 from datetime import datetime
 
 
-def test_coming_up_lists_everything_in_order():
+def test_coming_up_lists_everything_in_order(monkeypatch):
     from app import challenges, db, settings_store, upcoming
     settings_store.save_section("challenges", {})
     settings_store.save_section("board", {"birthdays": [{"player": "Gimli_Jr", "month": 11, "day": 2}]})
     now = datetime(2026, 10, 22, 9, 0, tzinfo=db.tz())
+    monkeypatch.setattr(challenges.time, "time", lambda: now.timestamp())     # contests can't start in the past
     c = challenges.create("s1", {"kind": "fish", "start": now.timestamp() + 86400 + 3600, "minutes": 10, "prize": {"item": "diamond"}})
     challenges.create("elsewhere", {"kind": "mobs", "start": now.timestamp() + 7200, "minutes": 10, "prize": {"item": "diamond"}})
     try:
