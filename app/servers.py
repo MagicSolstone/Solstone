@@ -166,10 +166,19 @@ class Server:
             self._rcon = Rcon(*conf, timeout=config.rcon_timeout)
         try:
             out = await self._rcon.command(cmd)
-        except RconError as e:
-            self.rcon_error = str(e)
-            self._rcon_backoff = time.monotonic() + 30
-            raise
+        except RconError as first:
+            # A dropped connection is common (the server closes it now and then): reconnect and
+            # try once more straight away. Only if that fails too, leave RCON alone for a bit, and
+            # not for long, since races and games read positions every second.
+            if "password" in str(first) or "Nothing is listening" in str(first):
+                self.rcon_error, self._rcon_backoff = str(first), time.monotonic() + 30
+                raise
+            try:
+                out = await self._rcon.command(cmd)
+            except RconError as e:
+                self.rcon_error = str(e)
+                self._rcon_backoff = time.monotonic() + 5
+                raise
         self.rcon_error = None
         return out
 

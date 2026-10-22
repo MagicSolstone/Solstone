@@ -28,7 +28,7 @@ import random
 import secrets
 import time
 
-from . import challenges, db, fwshow, settings_store
+from . import bossbar, challenges, db, fwshow, settings_store
 from . import servers as S
 from .control import check_name, component
 from .races import _direction, _fmt, _pos, _rcon
@@ -152,6 +152,23 @@ async def _award(srv, r: dict, winners: list[str]) -> None:
             await challenges.award(srv, w, prize, f"won {r['name']}")
     if winners:
         fwshow.push(srv.id, srv.display_name, "challenge", winners[0], r["result"])
+
+
+async def _countdown(srv, r: dict) -> None:
+    """The boss bar for whatever phase the game is in, plus 10/5/1 minute warnings."""
+    if not r.get("phase_ends"):
+        return
+    if r["game"] == "hideseek" and r["state"] == "hiding":
+        title, total, color = "Hide!", r["hide_secs"], "green"
+    else:
+        title, total, color = r["name"], r["minutes"] * 60, {"hideseek": "red", "treasure": "yellow", "archery": "blue"}[r["game"]]
+    if r.get("bar_title") != title:                   # new phase: a fresh bar
+        await bossbar.hide(srv, r)
+        r["bar_title"] = title
+    await bossbar.show(srv, r, f"g_{r['id']}", title, r["phase_ends"], total, color=color)
+    mins = bossbar.due_warning(r, r["phase_ends"], total) if r["state"] == "running" else None
+    if mins:
+        await _say(srv, [("★ ", "gold"), (f"{mins} minute{'s' if mins > 1 else ''} left in {r['name']}!", "yellow")])
 
 
 def _finish(srv, r: dict, result: str) -> None:
@@ -357,6 +374,7 @@ async def _th_tick(srv, r: dict) -> None:
         word, color = next((w, col) for lim, w, col in _BANDS if d < lim)
         extra = f" · {_direction(c['x'] - q[0], c['z'] - q[2])}" if hint and d > 10 else ""
         await _bar(srv, n, f"{word}{extra} · {_fmt(r['phase_ends'] - now)} left", color)
+    r["warmest"] = min(near, key=near.get) if near else None
     out = await _rcon(srv, f"execute in {r['dim']} run data get block {c['x']} {c['y']} {c['z']} Items")
     low = out.lower()
     # an emptied chest has no Items at all ("found no elements"); a broken one is no block entity
@@ -378,8 +396,16 @@ async def _th_tick(srv, r: dict) -> None:
 
 
 # ------------------------------------------------------------------ archery
+BULLSEYE = 13                                 # rings 13-15: dead centre (15) is near impossible from far away
+
+
+def _multiplier(dist: float) -> float:
+    """Long shots should win: x2 at 10 blocks, x5 at 20, x10 at 30, x26 at 50."""
+    return 1 + (dist / 10) ** 2
+
+
 def _ring_points(ring: int, dist: float) -> int:
-    return round(ring * (1 + dist / 10))
+    return round(ring * _multiplier(dist))
 
 
 async def _ar_start(srv, r: dict) -> None:
@@ -399,7 +425,7 @@ async def _ar_start(srv, r: dict) -> None:
     r["seq"] = max((e["i"] for e in seen), default=0)
     r["pending"] = {}
     r["state"], r["phase_ends"] = "running", time.time() + r["minutes"] * 60
-    goal = {"bullseye": "Longest bullseye wins.", "points": "Points: the ring (1-15) times a bonus for distance. Most points wins.",
+    goal = {"bullseye": f"Longest bullseye (ring {BULLSEYE}-15) wins.", "points": "Points: the ring (1-15) times a distance bonus: x2 at 10 blocks, x5 at 20, x10 at 30. Most points wins.",
             "horse": f"{r['word']}: make the setter's shot or take a letter."}[r["mode"]]
     await _say(srv, [("★ ", "gold"), (r["name"], "yellow"), (f" at the target at {tx}, {ty}, {tz}. {goal}", None)], "Archery!", goal[:40])
     if r["mode"] == "horse":
@@ -454,13 +480,13 @@ async def _ar_tick(srv, r: dict) -> None:
             if r["mode"] == "points":
                 pts = _ring_points(ring, d)
                 st["points"] += pts
-                await _say(srv, [("≫ ", "aqua"), (who, "aqua"), (f": ring {ring} from {d:.0f} blocks", None), (f" +{pts} ({st['points']})", "yellow")])
-            elif ring == 15:
+                await _say(srv, [("≫ ", "aqua"), (who, "aqua"), (f": ring {ring} from {d:.0f} blocks (x{_multiplier(d):.1f})", None), (f" +{pts} ({st['points']})", "yellow")])
+            elif ring >= BULLSEYE:
                 if d > st["best"]:
                     st["best"] = round(d, 1)
                 await _say(srv, [("≫ ", "aqua"), (who, "aqua"), (": BULLSEYE", "gold"), (f" from {d:.1f} blocks!", None)])
             else:
-                await _bar(srv, who, f"Ring {ring} of 15 from {d:.0f} blocks", "white")
+                await _bar(srv, who, f"Ring {ring} of 15 from {d:.0f} blocks (bullseye is {BULLSEYE}+)", "white")
     if r["mode"] == "horse":
         await _horse_tick(srv, r)
         return
@@ -607,6 +633,10 @@ async def tick(servers: list) -> None:
         elif srv:
             try:
                 await {"hideseek": _hs_tick, "treasure": _th_tick, "archery": _ar_tick}[r["game"]](srv, r)
+                if r["state"] in ACTIVE:
+                    await _countdown(srv, r)
+                else:
+                    await bossbar.hide(srv, r)
             except Exception:
                 log.exception("game %s failed", r["id"])
             changed = True
@@ -629,6 +659,7 @@ async def cancel(srv, rid: str) -> bool:
     if not r:
         return False
     if r["state"] in ACTIVE:
+        await bossbar.hide(srv, r)
         if r["game"] == "hideseek":
             await _hs_cleanup(srv, r)
         elif r["game"] == "treasure" and r.get("chest"):
@@ -655,6 +686,40 @@ async def target_under(srv, player: str) -> dict:
     x, y, z = int(math.floor(q[0])), int(math.floor(q[1] - 0.5)), int(math.floor(q[2]))
     out = await _rcon(srv, f"execute if block {x} {y} {z} minecraft:target")
     return {"x": x, "y": y, "z": z, "is_target": "passed" in out.lower()}
+
+
+def live(sid: str) -> list[dict]:
+    """Running games for the status page and TV."""
+    out = []
+    for r in _load()["runs"]:
+        if r["server"] != sid or r["state"] not in ACTIVE:
+            continue
+        name, emoji = KINDS[r["game"]]
+        rows, sub = [], ""
+        if r["game"] == "hideseek":
+            order = {"seeker": 0, "hider": 1, "found": 2}
+            label = {"seeker": "seeking", "hider": "hidden" if r["state"] != "hiding" else "hiding", "found": "found"}
+            rows = [{"name": n, "value": label.get(p["role"], p["role"])} for n, p in sorted(r["players"].items(), key=lambda kv: (order.get(kv[1]["role"], 3), kv[0].lower()))]
+            hidden = sum(1 for p in r["players"].values() if p["role"] == "hider")
+            sub = "Hiders are hiding..." if r["state"] == "hiding" else f"{hidden} still hidden"
+        elif r["game"] == "treasure":
+            sub = "Find the hidden chest"
+            if r.get("warmest"):
+                rows = [{"name": r["warmest"], "value": "closest"}]
+        elif r["game"] == "archery":
+            mode = r.get("mode")
+            if mode == "horse":
+                rows = [{"name": n, "value": p["letters"] or "-", "note": "out" if len(p["letters"]) >= len(r["word"]) else ""} for n, p in r["players"].items()]
+                sub = f"Spell {r['word']} and you're out"
+            else:
+                key = "points" if mode == "points" else "best"
+                ranked = sorted(r["players"].items(), key=lambda kv: (-kv[1][key], kv[0].lower()))
+                rows = [{"name": n, "value": f"{p['points']} pts" if key == "points" else (f"{p['best']:.1f} m" if p["best"] else "-"),
+                         "note": f"{p['hits']}/{p['shots']} hits"} for n, p in ranked]
+                sub = "Most points" if key == "points" else "Longest bullseye"
+        out.append({"id": f"g-{r['id']}", "emoji": emoji, "title": r["name"] or name, "sub": sub, "ends_at": r.get("phase_ends"),
+                    "rows": rows[:10], "empty": ""})
+    return out
 
 
 def banners(sid: str | None) -> list[dict]:

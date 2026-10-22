@@ -95,3 +95,31 @@ def test_crafty_client_with_mock_transport():
         assert parse_player_list(stats["players"]) == ["Tyler"]
         await c.close()
     asyncio.run(run())
+
+
+def test_one_dropped_connection_is_retried_not_backed_off():
+    """A single 'connection closed' used to switch RCON off for 30 s (archery and races stalled)."""
+    import asyncio
+
+    from app import servers as S
+    from app.rcon import RconError
+    srv = next(iter(S.registry.servers.values()), None) or S.Server.__new__(S.Server)
+
+    class Flaky:
+        def __init__(self, conf):
+            self.host, self.port, self.password = conf
+            self.calls = 0
+
+        async def command(self, cmd):
+            self.calls += 1
+            if self.calls == 1:
+                raise RconError("RCON command failed: 0 bytes read on a total of 4 expected bytes")
+            return "ok"
+
+    conf = ("127.0.0.1", 25575, "pw")
+    srv.rcon_conf = lambda: conf
+    srv._rcon, srv._rcon_backoff, srv.rcon_error = Flaky(conf), 0.0, None
+    assert asyncio.run(S.Server.rcon(srv, "list")) == "ok"
+    assert srv.rcon_error is None and srv._rcon_backoff == 0.0
+    del srv.rcon_conf
+    srv._rcon = None

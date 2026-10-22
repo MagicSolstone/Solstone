@@ -18,7 +18,7 @@ import secrets
 import time
 from datetime import datetime
 
-from . import db, fwshow, settings_store
+from . import bossbar, db, fwshow, settings_store
 from . import servers as S
 from .control import ITEM_RE, clean_text, component
 from .rcon import RconError
@@ -278,7 +278,9 @@ async def _finish(srv, c: dict, d: dict) -> None:
 
 
 async def _tidy(srv, c: dict) -> None:
-    """Remove this contest's objectives; the fishing pack's own get their sidebar and name back."""
+    """Remove this contest's objectives and countdown; the fishing pack's own objectives get
+    their sidebar and name back."""
+    await bossbar.hide(srv, c)
     for obj in [*c.get("objectives", []), _total_obj(c)]:
         if obj in FISH_KINDS.values():
             await _rcon(srv, "scoreboard objectives setdisplay sidebar")
@@ -334,8 +336,11 @@ async def tick(servers: list) -> None:
             elif now - c.get("read_at", 0) >= 2:
                 c["read_at"] = now
                 await _read_scores(srv, c)
-                if c["say"] and 0 < c["ends_at"] - now <= 60 and db.alert_once(f"ch-1min:{c['id']}"):
-                    await _rcon(srv, f"tellraw @a {component([('★ ', 'gold'), ('1 minute left in ' + c['name'] + '!', 'yellow')])}")
+                await bossbar.show(srv, c, f"c_{c['id']}", c["name"], c["ends_at"], c["minutes"] * 60)
+                mins = bossbar.due_warning(c, c["ends_at"], c["minutes"] * 60)
+                if c["say"] and mins:
+                    left = f"{mins} minute{'s' if mins > 1 else ''} left in {c['name']}!"
+                    await _rcon(srv, f"tellraw @a {component([('★ ', 'gold'), (left, 'yellow')])}")
             changed = True
     if changed:
         _save(d)
@@ -380,6 +385,19 @@ async def on_join(srv, player: str) -> None:
 
 
 # ------------------------------------------------------------------ pages
+def live(sid: str) -> list[dict]:
+    """Running contests for the status page and TV: the full scoreboard and when it ends."""
+    out = []
+    for c in _load()["items"]:
+        if c["server"] != sid or c["state"] != "running":
+            continue
+        _label, emoji, unit, _crit, _div = KINDS.get(c["kind"], ("", "🏆", ("", ""), [], 1))
+        ranked = sorted(((n, v) for n, v in (c.get("scores") or {}).items()), key=lambda kv: (-kv[1], kv[0].lower()))
+        out.append({"id": f"ch-{c['id']}", "emoji": emoji, "title": c["name"], "sub": f"Most {unit[1]} wins", "ends_at": c["ends_at"],
+                    "rows": [{"name": n, "value": _show(c, v)} for n, v in ranked[:10]], "empty": "Nobody has scored yet"})
+    return out
+
+
 def banners(sid: str | None, now: float | None = None) -> list[dict]:
     """Status page and app banners: coming up within the hour, running (with the leader), just finished."""
     now = now or time.time()

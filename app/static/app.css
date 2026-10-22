@@ -1586,3 +1586,31 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .gm-role { font-size: .85rem; color: var(--muted); }
 .gm-role.seeker { color: var(--redstone); } .gm-role.hider { color: var(--copper); }
 .echo-note { margin: 0 0 14px; }
+.fish-ok { color: var(--copper); margin: 0; }
+
+/* Happening now: running contests, races and games on the status page and TV */
+.sp-live { margin: 0 0 18px; }
+.sp-live-h { display: flex; align-items: center; gap: 8px; font-size: 1.05rem; margin: 0 0 10px; }
+.live-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+.live-grid.big { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 22px; }
+.live-card { border-radius: 16px; padding: 14px 16px; min-width: 0; }
+.live-card header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.live-card header > div { flex: 1; min-width: 0; }
+.live-card h3 { margin: 0; font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-card header p { margin: 2px 0 0; font-size: .85rem; }
+.live-emoji { font-size: 1.7rem; line-height: 1; }
+.live-cd { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 1.25rem; padding: 4px 10px; border-radius: 10px; background: rgba(255, 200, 80, .16); color: var(--gold); white-space: nowrap; }
+.live-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.live-rows li { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.live-rows li b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-rows li small { opacity: .65; white-space: nowrap; }
+.live-rows .rank { width: 1.4em; text-align: right; opacity: .6; font-variant-numeric: tabular-nums; }
+.live-rows .val { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.live-rows li.lead .val, .live-rows li.lead b { color: var(--gold); }
+.live-grid.big .live-card { padding: 20px 24px; }
+.live-grid.big h3 { font-size: clamp(1.3rem, 2vw, 2rem); }
+.live-grid.big header p { font-size: clamp(.95rem, 1.2vw, 1.25rem); }
+.live-grid.big .live-emoji { font-size: clamp(2rem, 3vw, 3rem); }
+.live-grid.big .live-cd { font-size: clamp(1.6rem, 2.6vw, 2.8rem); padding: 6px 16px; }
+.live-grid.big .live-rows { gap: 10px; }
+.live-grid.big .live-rows li { font-size: clamp(1.05rem, 1.5vw, 1.6rem); }

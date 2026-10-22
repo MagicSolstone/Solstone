@@ -22,7 +22,7 @@ import re
 import secrets
 import time
 
-from . import challenges, db, fwshow, settings_store
+from . import bossbar, challenges, db, fwshow, settings_store
 from . import servers as S
 from .control import check_name, clean_text, component
 from .rcon import RconError
@@ -171,6 +171,12 @@ async def _place_markers(srv, r: dict) -> None:
                                f"translation:[-0.5f,0f,-0.5f],scale:[1f,32f,1f]}}}}")
         if out and "summoned" not in out.lower():
             errors.append(out[:160])
+        if i > 0:                       # a dot on everyone's locator bar (1.21.6+): an armor stand buried under the point
+            # (not Invisible: invisible entities are left off the locator bar)
+            await _rcon(srv, f"execute in {dim} run summon minecraft:armor_stand {x} {y - 2} {z} "
+                             f"{{Tags:[\"solrace\",\"{_tag(r)}\",\"{_tag(r)}_wp{i}\"],Small:1b,Marker:1b,NoGravity:1b,Invulnerable:1b,Silent:1b,"
+                             f"attributes:[{{id:\"minecraft:waypoint_transmit_range\",base:60000000d}}]}}")
+            await _rcon(srv, f"waypoint modify @e[tag={_tag(r)}_wp{i},limit=1] color {'gold' if i == last else 'green'}")
         await _rcon(srv, f"execute in {dim} run summon minecraft:text_display {x} {y + 33} {z} "
                          f"{{Tags:[\"solrace\",\"{_tag(r)}\"],billboard:\"center\",see_through:1b,view_range:8f,"
                          f"background:1073741824,transformation:{{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],"
@@ -267,13 +273,20 @@ async def _track(srv, r: dict) -> None:
             dist = math.hypot(dx, dz)
         nxt = f"Next: {_label(r, st['next'])} · {int(dist)} m {_direction(dx, dz)} · {_fmt(r['ends_at'] - now)} left"
         await _rcon(srv, f"title {n} actionbar {component([(nxt, 'yellow')])}")
-    # particles on every point still to be reached by someone, every other second
+    # checkpoints everyone has passed leave the locator bar, so the nearest dot is the next one
+    todo = {st["next"] for st in r["racers"].values() if not st["finished"]}
+    lowest = min(todo, default=last + 1)
+    for i in range(1, lowest):
+        if i not in r.setdefault("wp_gone", []):
+            r["wp_gone"].append(i)
+            await _rcon(srv, f"kill @e[tag={_tag(r)}_wp{i}]")
+    # a tall beam of particles on every point still to be reached by someone, every other second
     if int(now) % 2 == 0:
-        todo = {st["next"] for st in r["racers"].values() if not st["finished"]}
         dim = r.get("dim") or "minecraft:overworld"
         for i in sorted(todo):
             p = pts[i]
-            await _rcon(srv, f"execute in {dim} run particle minecraft:end_rod {p['x']} {p['y'] + 1.5} {p['z']} {p['radius'] / 2} 2 {p['radius'] / 2} 0.01 25 force")
+            await _rcon(srv, f"execute in {dim} run particle minecraft:end_rod {p['x']} {p['y'] + 8} {p['z']} {p['radius'] / 3} 8 {p['radius'] / 3} 0.02 90 force")
+            await _rcon(srv, f"execute in {dim} run particle minecraft:glow {p['x']} {p['y'] + 1} {p['z']} {p['radius'] / 2} 0.5 {p['radius'] / 2} 0 30 force")
 
 
 def _ordinal(n: int) -> str:
@@ -305,6 +318,7 @@ async def _end(srv, r: dict) -> None:
         if prize:
             await challenges.award(srv, x["name"], prize, f"came {_ordinal(i + 1)} in {r['name']}")
     await _remove_markers(srv, r)
+    await bossbar.hide(srv, r)
     db.add_event(srv.id, time.time(), "race", r["result"], finished[0]["name"] if finished else None)
 
 
@@ -315,6 +329,7 @@ async def cancel(srv, rid: str) -> bool:
         return False
     if r["state"] in ("countdown", "running"):
         await _remove_markers(srv, r)
+        await bossbar.hide(srv, r)
         await _say(srv, r, [("★ ", "gold"), (f"{r['name']} was called off.", "yellow")])
     if r["state"] in ("scheduled", "countdown", "running"):
         r["state"] = "cancelled"
@@ -363,6 +378,10 @@ async def tick(servers: list) -> None:
             changed = True
         elif r["state"] == "running" and srv:
             await _track(srv, r)
+            await bossbar.show(srv, r, f"r_{r['id']}", r["name"], r["ends_at"], r["minutes"] * 60, color="green")
+            mins = bossbar.due_warning(r, r["ends_at"], r["minutes"] * 60)
+            if mins:
+                await _say(srv, r, [("★ ", "gold"), (f"{mins} minute{'s' if mins > 1 else ''} left in {r['name']}!", "yellow")])
             if now >= r["ends_at"] or (r["racers"] and all(st["finished"] is not None for st in r["racers"].values())):
                 await _end(srv, r)
             changed = True
@@ -393,6 +412,21 @@ def banners(sid: str | None, now: float | None = None) -> list[dict]:
                         "countdown": r.get("ends_at") or r.get("go_at"), "done_text": "Time's up!"})
         elif r["state"] == "done" and now - r["start"] < 1800 and r.get("results"):
             out.append({"id": f"raced-{r['id']}", "kind": "challenge", "emoji": "🏆", "style": "party", "text": r.get("result", ""), "detail": "", "countdown": None})
+    return out
+
+
+def live(sid: str) -> list[dict]:
+    """The running race for the status page and TV: everyone's place and how far along they are."""
+    out = []
+    for r in _load()["runs"]:
+        if r["server"] != sid or r["state"] not in ("countdown", "running"):
+            continue
+        last = len(r["points"]) - 1
+        rows = [{"name": x["name"], "value": _fmt(x["finished"]) if x["finished"] is not None else f"{x['reached']}/{last}",
+                 "note": "finished" if x["finished"] is not None else "checkpoints"} for x in standings(r)]
+        sub = "Starting..." if r["state"] == "countdown" else f"{last - 1} checkpoints, then the finish"
+        out.append({"id": f"race-{r['id']}", "emoji": "🏁", "title": f"{r['name']} race", "sub": sub,
+                    "ends_at": r.get("ends_at") or r.get("go_at"), "rows": rows[:10], "empty": "Waiting for racers"})
     return out
 
 

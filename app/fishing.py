@@ -64,14 +64,68 @@ async def install(srv) -> dict:
     return await reload(srv)
 
 
+def _log_size(srv) -> int:
+    try:
+        return (srv.dir / "logs" / "latest.log").stat().st_size
+    except OSError:
+        return 0
+
+
+def _log_problems(srv, since: int) -> list[str]:
+    """Lines the game logged since `since` that look like it complaining about a data pack."""
+    try:
+        with (srv.dir / "logs" / "latest.log").open("rb") as fh:
+            fh.seek(since)
+            text = fh.read(400_000).decode("utf-8", "replace")
+    except OSError:
+        return []
+    keys = ("solstone", "solfish", "solgames", "loot_table", "loot table", "gameplay/fishing", "couldn't parse", "failed to", "error")
+    out = []
+    for line in text.splitlines():
+        low = line.lower()
+        if ("/error]" in low or "/warn]" in low) and any(k in low for k in keys):
+            out.append(line.strip()[:400])
+    return out[:20]
+
+
 async def reload(srv) -> dict:
+    import asyncio
+    before = _log_size(srv)
     out = await _rcon(srv, "reload")
     await _rcon(srv, f'datapack enable "file/{fishpack.PACK_FILE}"')        # in case it was added disabled
     listed = await _rcon(srv, "datapack list enabled")
     st = await check(srv, force=True)
     st["listed"] = fishpack.PACK_FILE in listed or fishpack.PACK_ID in listed
     st["reload_reply"] = out[:200]
+    await asyncio.sleep(1.5)                          # let the game finish writing its log
+    st["problems"] = _log_problems(srv, before)
     return st
+
+
+async def test_catch(srv) -> dict:
+    """Fish once from the real fishing table at spawn and say what came out: the plainest way to
+    see whether the pack's fish are being used."""
+    import nbtlib
+
+    w = await __import__("asyncio").to_thread(S.world_info, srv, False)
+    sp = w.get("spawn") or {"x": 0, "y": 64, "z": 0}
+    x, z = int(sp["x"]), int(sp["z"])
+    sel = f"@e[type=item,x={x}.5,y=330,z={z}.5,distance=..4]"
+    await _rcon(srv, f"kill {sel}")
+    out = await _rcon(srv, f"execute in minecraft:overworld run loot spawn {x}.5 330 {z}.5 fish minecraft:gameplay/fishing/fish {x} {int(sp.get('y', 64))} {z} minecraft:fishing_rod")
+    got = await _rcon(srv, f"data get entity {sel.replace(']', ',limit=1]')} Item")
+    await _rcon(srv, f"kill {sel}")
+    res = {"command_reply": out[:300], "item_reply": got[:600], "item": None, "pack_fish": None}
+    if "{" in got:
+        try:
+            item = nbtlib.parse_nbt(got[got.index("{"):].strip())
+            res["item"] = str(item.get("id"))
+            fish = (item.get("components") or {}).get("minecraft:custom_data", {}).get("solfish")
+            if fish:
+                res["pack_fish"] = {"name": str(fish["n"]), "quality": str(fish["ql"]), "lb": str(fish["lb"]), "points": int(fish["p"])}
+        except Exception as e:
+            res["parse_error"] = str(e)[:200]
+    return res
 
 
 def _names(srv) -> dict[str, str]:

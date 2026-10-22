@@ -247,6 +247,7 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
                 board["race"] = races.live_for_map(srv.id)
         except Exception as e:
             log.debug("status page world info failed for %s: %s", srv.id, e)
+    board["live"] = challenges.live(srv.id) + races.live(srv.id) + games.live(srv.id)
     if summ["running"] is not False and summ["online"]:
         overview = await S.players_overview(srv)
         sessions = {s["player"].lower(): s["start"] for s in db.sessions(srv.id, limit=50) if s["open"]}
@@ -1711,16 +1712,18 @@ async def fishing_pack(request: Request):
 async def fishing_action(sid: str, action: str, request: Request):
     user = auth.require_admin(request)
     srv = await _server(sid)
-    if action not in ("install", "reload"):
+    if action not in ("install", "reload", "test"):
         raise HTTPException(404)
     if not srv.rcon_conf():
         raise HTTPException(409, "Turn on RCON for this server first")
     try:
+        if action == "test":
+            return await fishing.test_catch(srv)
         st = await (fishing.install(srv) if action == "install" else fishing.reload(srv))
     except RuntimeError as e:
         raise HTTPException(502, f"The server didn't answer: {e}") from e
     auth.audit(user, srv.id, f"fishing:{action}", f"pack version {st.get('version')}")
-    return {**fishing.status(srv), "listed": st.get("listed"), "reload_reply": st.get("reload_reply", "")}
+    return {**fishing.status(srv), "listed": st.get("listed"), "reload_reply": st.get("reload_reply", ""), "problems": st.get("problems", [])}
 
 
 # ---- games: hide and seek, treasure hunt, archery

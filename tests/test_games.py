@@ -153,7 +153,7 @@ def test_archery_points(game):
     srv.add_log("shot", "Gimli_Jr", (0.5, 65.0, 10.5)); srv.add_log("hit", "Gimli_Jr", (0.5, 65, 10.5), 5)
     asyncio.run(games.tick([srv]))
     r = _run(games)
-    assert r["players"]["Tyler"]["points"] == 45 and r["players"]["Gimli_Jr"]["points"] == 10       # 15 x 3, 5 x 2
+    assert r["players"]["Tyler"]["points"] == 75 and r["players"]["Gimli_Jr"]["points"] == 10       # 15 x 5 (20 blocks), 5 x 2 (10)
     srv.add_log("shot", "MomCrafts", (5.0, 65.0, 5.0))                                                 # a miss: no hit follows
     asyncio.run(games.tick([srv]))
     for s in _run(games)["pending"]["MomCrafts"]:
@@ -164,7 +164,7 @@ def test_archery_points(game):
     _set(games, phase_ends=time.time() - 1)
     asyncio.run(games.tick([srv]))
     r = _run(games)
-    assert r["state"] == "done" and r["result"].startswith("Tyler won Archery: most points with 45 points") and srv.blocks[(0, 65, 0)] == "air"
+    assert r["state"] == "done" and r["result"].startswith("Tyler won Archery: most points with 75 points") and srv.blocks[(0, 65, 0)] == "air"
 
 
 def test_archery_horse(game):

@@ -157,3 +157,34 @@ def _chat_checks(client, sid):
     assert client.get(f"/api/servers/{sid}/chat?after={last}").json()["items"] == []
     assert client.post(f"/api/servers/{sid}/chat", json={"message": "  "}).status_code == 400
     assert client.post(f"/api/servers/{sid}/chat", json={"message": "hi", "to": "bad name!"}).status_code == 400
+
+
+def test_countdown_bar_and_warnings():
+    from app import bossbar
+
+    class Srv:
+        cmds = []
+
+        async def rcon(self, cmd):
+            self.cmds.append(cmd)
+            return ""
+    srv, st = Srv(), {}
+    asyncio.run(bossbar.show(srv, st, "c_x", "Biggest catch", time.time() + 400, 900))
+    assert any(c.startswith("bossbar add solstone:c_x") for c in srv.cmds) and any("max 900" in c for c in srv.cmds)
+    n = len(srv.cmds)
+    asyncio.run(bossbar.show(srv, st, "c_x", "Biggest catch", time.time() + 400, 900))
+    assert len(srv.cmds) == n                                    # not again within a few seconds
+    assert bossbar.due_warning(st, time.time() + 290, 900) == 5 and bossbar.due_warning(st, time.time() + 290, 900) is None
+    assert bossbar.due_warning({}, time.time() + 290, 300) is None                     # a 5-minute contest: no "5 minutes left"
+    asyncio.run(bossbar.hide(srv, st))
+    assert srv.cmds[-1] == "bossbar remove solstone:c_x" and not st["bar"]
+
+
+def test_live_scoreboard_for_status_page(monkeypatch):
+    from app import challenges
+    c = {"id": "x1", "server": "s1", "kind": "fish_heaviest", "name": "Big one", "state": "running", "ends_at": 2000.0,
+         "scores": {"amy": 162, "bo": 300, "cy": 0}}
+    monkeypatch.setattr(challenges, "_load", lambda: {"items": [c, {**c, "id": "x2", "server": "other"}], "gifts": []})
+    live = challenges.live("s1")
+    assert len(live) == 1 and live[0]["ends_at"] == 2000.0
+    assert [(r["name"], r["value"]) for r in live[0]["rows"]] == [("bo", "30 lb"), ("amy", "16.2 lb"), ("cy", "0 lb")]

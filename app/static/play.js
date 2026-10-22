@@ -153,7 +153,8 @@ async function viewChallenges(sid) {
     return `<section class="section" id="fish-sec"><div class="section-head"><h2>🎣 Solstone data pack</h2><span class="muted">${on ? `In the world${old ? " (an update is ready)" : " ✓"}` : "Not in this world yet"}</span></div>
       <div class="panel fish-panel">
         <p>One data pack for fishing and archery. Fishing: every catch is a species with a weight and a quality: <b>${fish.guide.length} kinds of fish</b> that depend on where you cast (rivers and lakes, oceans, warm or cold water, swamps, jungle rivers, the deep ocean). It unlocks the <b>Fishing tournament</b> (most points) and <b>Biggest catch</b> contests, and Prime and Exquisite catches are announced to everyone. Archery: it notes where each shot was taken from and how close to the centre it hit, for the archery games.</p>
-        ${!fish.rcon ? `<p class="notice">Needs RCON turned on for this server.</p>` : on && !old ? `<p class="muted small">Loaded (version ${st.version}). <button class="link-btn" type="button" data-fish="reload">Reload</button></p>` : steps}
+        ${!fish.rcon ? `<p class="notice">Needs RCON turned on for this server.</p>` : on && !old ? `<p class="muted small">Loaded (version ${st.version}). <button class="link-btn" type="button" data-fish="reload">Reload</button> · <button class="link-btn" type="button" data-fish="test">Test a catch</button></p>` : steps}
+        <div id="fish-diag"></div>
         ${old && !st.writable ? `<p class="muted small">Replace the old file with the new download, then load it.</p>` : ""}
         ${st.error ? `<p class="notice small">${esc(st.error)}</p>` : ""}
         <div class="fish-qs">${q}</div>
@@ -161,10 +162,23 @@ async function viewChallenges(sid) {
         ${fish.recent.length ? `<h3>Recent catches</h3><ul class="fish-recent">${fish.recent.slice(0, 8).map((e) => `<li>${e.player ? faceHtml({ name: e.player }, 20) : ""}<span>${esc(e.message)}</span><time class="muted small">${esc(fmtAgo(e.ts))}</time></li>`).join("")}</ul>` : ""}
       </div></section>`;
   };
+  const diag = (html) => { const el = $("#fish-diag"); if (el) el.innerHTML = html; };
   const wireFish = () => $$("[data-fish]").forEach((b) => b.addEventListener("click", async () => {
     b.disabled = true;
+    if (b.dataset.fish === "test") {
+      diag(`<p class="muted small">Casting a test line at spawn…</p>`);
+      try {
+        const t = await post(`/api/servers/${encodeURIComponent(sid)}/fishing/test`, {});
+        diag(t.pack_fish
+          ? `<p class="fish-ok">✔ The pack's fish are working: a test cast caught a <b>${esc(t.pack_fish.quality)} ${esc(t.pack_fish.name)}</b> (${esc(t.pack_fish.lb)} lb, ${t.pack_fish.points} points).</p>`
+          : `<div class="notice small"><b>The test cast caught ${t.item ? `plain <code>${esc(t.item)}</code>` : "nothing readable"}</b>, so the game isn't using the pack's fish table. Press Reload to see the game's errors, or send these replies to get it fixed:<pre class="mc-out">${esc(`loot: ${t.command_reply}\nitem: ${t.item_reply}`)}</pre></div>`);
+      } catch (e) { diag(`<p class="notice small">${esc(e.message)}</p>`); }
+      b.disabled = false;
+      return;
+    }
     try {
       const r = await post(`/api/servers/${encodeURIComponent(sid)}/fishing/${b.dataset.fish}`, {});
+      if (r.problems?.length) { fish = await api(`/api/servers/${encodeURIComponent(sid)}/fishing`); render(); diag(`<div class="notice small"><b>The game reported problems loading data packs:</b><pre class="mc-out">${esc(r.problems.join("\n"))}</pre></div>`); return; }
       showToast(r.version ? `Solstone Fishing is loaded (version ${r.version})` : r.listed === false ? "The game didn't load it. Is the file in the world's datapacks folder?" : "Reloaded, but the pack didn't start. Check the server log for errors.", 5000);
       fish = await api(`/api/servers/${encodeURIComponent(sid)}/fishing`); render();
     } catch (e) { showToast(esc(e.message), 5000); b.disabled = false; }
@@ -615,7 +629,7 @@ async function viewGames(sid) {
         <div class="gm-items"><span class="lbl">In the chest</span>${f.items.map((it, i) => `<span class="chip">${itemIcon({ id: it.item })} ${it.count} × ${esc(it.name)} <button type="button" class="chip-x" data-rmitem="${i}" aria-label="Remove">×</button></span>`).join("")}
           <button type="button" class="btn sm" id="gm-additem">＋ Add treasure</button></div>`
       : `
-        <label>Game <select class="input" name="mode"><option value="bullseye" ${f.mode === "bullseye" ? "selected" : ""}>Longest bullseye</option><option value="points" ${f.mode === "points" ? "selected" : ""}>Most points (ring × distance)</option><option value="horse" ${f.mode === "horse" ? "selected" : ""}>HORSE (match the shot or take a letter)</option></select></label>
+        <label>Game <select class="input" name="mode"><option value="bullseye" ${f.mode === "bullseye" ? "selected" : ""}>Longest bullseye</option><option value="points" ${f.mode === "points" ? "selected" : ""}>Most points (ring × distance bonus: ×2 at 10 blocks, ×5 at 20, ×10 at 30)</option><option value="horse" ${f.mode === "horse" ? "selected" : ""}>HORSE (match the shot or take a letter)</option></select></label>
         ${f.mode === "horse" ? `<label>Word <input class="input" name="word" maxlength="10" value="${esc(f.word)}"></label>` : ""}
         <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30, 45].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>
         <label class="check"><input type="checkbox" name="give_bow" ${f.give_bow ? "checked" : ""}> Give everyone a bow and 64 arrows</label>`;
