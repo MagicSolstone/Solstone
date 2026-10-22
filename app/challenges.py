@@ -45,6 +45,7 @@ KINDS: dict[str, tuple[str, str, tuple[str, str], list[str], int]] = {
     "fish_heaviest": ("Biggest catch", "🐟", ("lb", "lb"), [], 1),
 }
 FISH_KINDS = {"fish_points": "solfish_cp", "fish_heaviest": "solfish_cb"}     # kind -> the pack's objective
+ROD_KINDS = ("fish", "fish_points", "fish_heaviest")
 SECTION = "challenges"
 KEEP_DONE = 30                          # finished challenges kept for the history list
 _SCORE = re.compile(r"has (-?\d+)")
@@ -108,7 +109,8 @@ def clean(body: dict, server: str) -> dict:
         raise ValueError("Choose a prize for the winner")
     return {"server": server, "kind": kind, "name": clean_text(str(body.get("name") or KINDS[kind][0]), 40),
             "start": start, "minutes": minutes, "prize": first, "second": _prize(body.get("second")),
-            "say": bool(body.get("say", True))}
+            "say": bool(body.get("say", True)),
+            "lure": int(body.get("lure") or 0) if kind in ROD_KINDS and str(body.get("lure") or 0) in ("0", "3", "5") else 0}
 
 
 def list_for(server: str) -> list[dict]:
@@ -161,6 +163,30 @@ def _total_obj(c: dict) -> str:
     return f"sc{c['id'][:6]}t"
 
 
+def _rod(srv, lure: int) -> str:
+    """The contest rod: Lure makes fish bite sooner (Lure V: within about 5 seconds; above V
+    fish stop biting at all). Unbreakable, tagged so it can be taken back afterwards."""
+    from .races import _new_text
+    if _new_text(srv):
+        return (f'minecraft:fishing_rod[minecraft:enchantments={{"minecraft:lure":{lure}}},minecraft:custom_data={{solrod:1b}},'
+                f'minecraft:item_name="Contest Rod",minecraft:unbreakable={{}}]')
+    return (f'minecraft:fishing_rod[minecraft:enchantments={{levels:{{"minecraft:lure":{lure}}}}},minecraft:custom_data={{solrod:1b}},'
+            f"minecraft:item_name='\"Contest Rod\"',minecraft:unbreakable={{}}]")
+
+
+ROD_MATCH = "minecraft:fishing_rod[minecraft:custom_data={solrod:1b}]"
+
+
+async def _give_rod(srv, c: dict, player: str) -> None:
+    if player.lower() in (c.setdefault("rodded", [])):
+        return
+    out = await _rcon(srv, f"give {player} {_rod(srv, c['lure'])}")
+    if "gave" in out.lower() or not out:
+        c["rodded"].append(player.lower())
+        note = f"A Contest Rod (Lure {'III' if c['lure'] == 3 else 'V'}) for {c['name']}: the fish bite fast. It goes back when the contest ends."
+        await _rcon(srv, f"tellraw {player} {component([('★ ', 'gold'), (note, 'yellow')])}")
+
+
 async def _start(srv, c: dict) -> None:
     label, _emoji, unit, criteria, _div = KINDS[c["kind"]]
     made = []
@@ -188,6 +214,9 @@ async def _start(srv, c: dict) -> None:
     c["shown"] = {}
     c["state"], c["started_at"] = "running", time.time()
     c["ends_at"] = c["started_at"] + c["minutes"] * 60
+    if c.get("lure"):
+        for n in (await S.online_players(srv))[0]:
+            await _give_rod(srv, c, n)
     if c["say"]:
         prize = f"{c['prize']['count']} × {c['prize'].get('name') or c['prize']['item'].split(':')[1].replace('_', ' ')}"
         goal = {"fish_points": "Most fishing points", "fish_heaviest": "The heaviest fish"}.get(c["kind"], f"Most {unit[1]}")
@@ -281,6 +310,12 @@ async def _tidy(srv, c: dict) -> None:
     """Remove this contest's objectives and countdown; the fishing pack's own objectives get
     their sidebar and name back."""
     await bossbar.hide(srv, c)
+    if c.get("rodded"):                              # the contest rods go back; whoever's away hands theirs in on joining
+        online = {n.lower() for n in (await S.online_players(srv))[0]}
+        for n in c["rodded"]:
+            if n in online:
+                await _rcon(srv, f"clear {n} {ROD_MATCH}")
+        c["rod_owed"] = [n for n in c["rodded"] if n not in online]
     for obj in [*c.get("objectives", []), _total_obj(c)]:
         if obj in FISH_KINDS.values():
             await _rcon(srv, "scoreboard objectives setdisplay sidebar")
@@ -370,8 +405,18 @@ async def on_catch(srv, player: str, catch: dict) -> bool:
 
 
 async def on_join(srv, player: str) -> None:
-    """Hand over prizes won while away."""
+    """Hand over prizes won while away; a contest rod for a contest that's on, or back if one ended while away."""
     d = _load()
+    for c in d["items"]:
+        if c["server"] != srv.id:
+            continue
+        if c["state"] == "running" and c.get("lure"):
+            await _give_rod(srv, c, player)
+            _save(d)
+        elif player.lower() in (c.get("rod_owed") or []):
+            await _rcon(srv, f"clear {player} {ROD_MATCH}")
+            c["rod_owed"].remove(player.lower())
+            _save(d)
     mine = [g for g in d["gifts"] if g["server"] == srv.id and g["player"].lower() == player.lower()]
     if not mine or not srv.rcon_conf():
         return

@@ -1614,3 +1614,10 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .live-grid.big .live-cd { font-size: clamp(1.6rem, 2.6vw, 2.8rem); padding: 6px 16px; }
 .live-grid.big .live-rows { gap: 10px; }
 .live-grid.big .live-rows li { font-size: clamp(1.05rem, 1.5vw, 1.6rem); }
+.gm-row, .gm-wide { grid-column: 1 / -1; }
+.gm-row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; }
+.gm-row label { display: grid; gap: 4px; }
+.gm-row select { width: auto; }
+.ch-lure { display: grid; gap: 4px; }
+.ch-lure[hidden] { display: none; }
+.ch-lure select { max-width: 420px; }

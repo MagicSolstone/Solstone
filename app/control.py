@@ -66,8 +66,13 @@ def clean_text(text: str, limit: int = 256) -> str:
 
 
 def component(parts: list[tuple[str, str | None]]) -> str:
-    """A chat component. JSON is valid SNBT, so this works before and after 1.21.5."""
-    comp = [{"text": t, **({"color": c} if c else {})} for t, c in parts]
+    """A chat component. JSON is valid SNBT, so this works before and after 1.21.5.
+    A colour ending in "!" is bold too ("gold!")."""
+    def one(t, c):
+        bold = bool(c and c.endswith("!"))
+        c = (c or "").rstrip("!")
+        return {"text": t, **({"color": c} if c else {}), **({"bold": True} if bold else {})}
+    comp = [one(t, c) for t, c in parts]
     return json.dumps(comp, ensure_ascii=False)
 
 

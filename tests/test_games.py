@@ -1,5 +1,6 @@
 """Hide and seek, treasure hunt and archery (incl. HORSE) against a pretend server."""
 import asyncio
+import math
 import re
 import time
 
@@ -205,3 +206,30 @@ def test_games_api(client, viewer, sid):
     assert client.delete(f"/api/servers/{sid}/games/{r.json()['id']}").json() == {"ok": True}
     from app import settings_store
     settings_store.save_section("games", {})
+
+
+def test_archery_hot_zone_and_big_shot_flair(game):
+    games, srv = game
+    games.create(srv.id, {"game": "archery", "mode": "points", "target": {"x": 0, "y": 65, "z": 0}, "minutes": 5, "hot": True, "hot_bonus": 2, "hot_far": 30})
+    asyncio.run(games.tick([srv]))
+    _set(games, started=time.time() - 30)                               # the first zone opens 15 s in
+    asyncio.run(games.tick([srv]))
+    z = _run(games)["hot_zone"]
+    assert z["on"] and 10 <= math.hypot(z["x"] - 0.5, z["z"] - 0.5) <= 31
+    assert any("waypoint modify @e[tag=solhot_" in c and "color red" in c for c in srv.cmds)
+    srv.add_log("shot", "Tyler", (z["x"] + 1, 65.0, z["z"])); srv.add_log("hit", "Tyler", (z["x"], 65, z["z"]), 10)
+    asyncio.run(games.tick([srv]))
+    d = math.dist((z["x"] + 1, 65.0, z["z"]), (0.5, 65.5, 0.5))
+    assert _run(games)["players"]["Tyler"]["points"] == round(10 * games._multiplier(d) * 2)
+    shout = next(c for c in srv.cmds if c.startswith("tellraw @a") and "ring 10" in c)
+    assert "×2" in shout and "♨" in shout
+    # close it: the marker and sign go, and the next one waits
+    _set(games, hot_zone={**z, "until": time.time() - 1})
+    asyncio.run(games.tick([srv]))
+    assert not _run(games)["hot_zone"]["on"] and any(c.startswith("kill @e[tag=solhot_") for c in srv.cmds)
+
+
+def test_hit_tiers():
+    from app import games
+    assert games._tier(2)[2] == "" and games._tier(4)[2] == "Nice shot! " and games._tier(12)[2] == "AMAZING SHOT! " and games._tier(30)[2] == "LEGENDARY SHOT! "
+    assert [games._multiplier(x) for x in (10, 20, 30, 50, 70)] == [2.0, 4.0, 6.8, 14.1, 23.5]

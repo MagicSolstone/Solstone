@@ -140,12 +140,14 @@ async def test_catch(srv) -> dict:
         at, where = f"in minecraft:overworld positioned {x}.5 {y} {z}.5", "at spawn"
     try:
         fish = await _roll(srv, at, "minecraft:gameplay/fishing/fish")
+        own = await _roll(srv, at, "solfish:fish")
         rod = [await _roll(srv, at, "minecraft:gameplay/fishing") for _ in range(4)]
     finally:
         if forced:
             await _rcon(srv, f"execute in minecraft:overworld run forceload remove {forced[0]} {forced[1]}")
     # kept flat for the page: the fish-table roll's fields, plus the whole-table rolls
-    return {**fish, "where": where, "rod": rod}
+    packs = await _rcon(srv, "datapack list enabled")
+    return {**fish, "where": where, "rod": rod, "own": own, "packs": packs[:1500], "version": (await check(srv)).get("version")}
 
 
 def _names(srv) -> dict[str, str]:

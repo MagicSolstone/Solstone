@@ -100,6 +100,8 @@ def create(server: str, body: dict) -> dict:
         r.update(target=_point(body.get("target"), "target"), place_target=bool(body.get("place_target")), mode=mode, word=word,
                  minutes=int(_num(body.get("minutes"), 2, 60, 10 if mode != "horse" else 30)), give_bow=bool(body.get("give_bow", True)),
                  spot_r=round(_num(body.get("spot_r"), 1, 5, 2), 1), min_ring=int(_num(body.get("min_ring"), 1, 15, 1)),
+                 hot=bool(body.get("hot")) and mode == "points", hot_bonus=round(_num(body.get("hot_bonus"), 1.5, 5, 2), 1),
+                 hot_far=round(_num(body.get("hot_far"), 15, 80, 40)),
                  name={"bullseye": "Archery: longest bullseye", "points": "Archery: most points", "horse": f"Archery: {word}"}[mode])
     d = _load()
     d["runs"].append(r)
@@ -409,6 +411,89 @@ def _ring_points(ring: int, dist: float) -> int:
     return round(ring * _multiplier(dist))
 
 
+# How a hit is announced, by its total multiplier: (from, stars, words, colour, sound)
+_TIERS = [(15, "★★★★ ", "LEGENDARY SHOT! ", "red!", "minecraft:ui.toast.challenge_complete"),
+          (10, "★★★ ", "AMAZING SHOT! ", "light_purple!", "minecraft:entity.player.levelup"),
+          (6, "★★ ", "Great shot! ", "gold!", "minecraft:entity.firework_rocket.twinkle"),
+          (3, "★ ", "Nice shot! ", "green", "minecraft:entity.experience_orb.pickup"),
+          (0, "≫ ", "", "aqua", "")]
+
+
+def _tier(mult: float) -> tuple:
+    return next(t for t in _TIERS if mult >= t[0])
+
+
+def _hit_parts(who: str, ring: int, d: float, mult: float, hot: float, pts: int, total: int) -> list:
+    _f, stars, words, color, _snd = _tier(mult * hot)
+    parts = [(stars, color), (words, color), (who, "aqua"), (f": ring {ring}", "white")]
+    if ring >= BULLSEYE:
+        parts.append((" BULLSEYE", "gold!"))
+    parts.append((f" from {d:.0f} blocks ", "white"))
+    parts.append((f"×{mult:g}", color if mult >= 3 else "gray"))
+    if hot > 1:
+        parts.append((f" ×{hot:g} ♨", "red!"))
+    parts.append((f"  +{pts}", "yellow!" if mult * hot >= 6 else "yellow"))
+    parts.append((f" ({total})", "gray"))
+    return parts
+
+
+HOT_R = 3                                     # how big a hot zone is (blocks from its middle)
+HOT_ON, HOT_OFF = 45, 20                      # seconds open, seconds between
+
+
+def _hot_tag(r: dict) -> str:
+    return f"solhot_{r['id']}"
+
+
+def _in_hot(r: dict, pos, now: float) -> bool:
+    """Was this shot taken inside a hot zone (open now, or one that closed in the last few seconds)?"""
+    for z in (r.get("hot_zone"), r.get("hot_prev")):
+        if z and (z.get("on") or now - z.get("closed", 0) < 6) and math.hypot(pos[0] - z["x"], pos[2] - z["z"]) <= HOT_R + 0.5:
+            return True
+    return False
+
+
+async def _ground_y(srv, dim: str, x: int, z: int, tag: str, fallback: int) -> int:
+    from .races import _POS
+    await _rcon(srv, f"execute in {dim} positioned {x} 320 {z} positioned over motion_blocking_no_leaves run summon minecraft:marker ~ ~ ~ {{Tags:[\"{tag}\"]}}")
+    m = _POS.search(await _rcon(srv, f"data get entity @e[tag={tag},limit=1] Pos"))
+    await _rcon(srv, f"kill @e[tag={tag}]")
+    return int(float(m.group(2))) if m else fallback
+
+
+async def _hot_tick(srv, r: dict, now: float) -> None:
+    """Open a hot zone somewhere around the target, keep it marked, close it, open the next."""
+    from .races import _text_nbt
+    z, dim, tag = r.get("hot_zone"), r["dim"], _hot_tag(r)
+    tx, ty, tz = r["target_c"]
+    if z and z["on"] and now >= z["until"]:
+        await _rcon(srv, f"kill @e[tag={tag}]")
+        z.update(on=False, closed=now, until=now + HOT_OFF)
+        r["hot_prev"] = dict(z)
+        await _say(srv, [("♨ ", "red"), ("The hot zone has gone out. ", "gold"), ("Another opens soon...", "gray")])
+    elif (not z or not z["on"]) and now >= (z["until"] if z else r["started"] + 15) and r["phase_ends"] - now > 20:
+        ang = random.uniform(0, 2 * math.pi)
+        far = random.uniform(10, max(12, r.get("hot_far", 40)))
+        x, zz = int(math.floor(tx + math.cos(ang) * far)), int(math.floor(tz + math.sin(ang) * far))
+        y = await _ground_y(srv, dim, x, zz, tag + "_m", int(ty))
+        r["hot_zone"] = {"on": True, "x": x + 0.5, "y": y, "z": zz + 0.5, "until": now + HOT_ON, "far": round(far)}
+        # a dot on the locator bar (buried, as in races) and a sign above it
+        await _rcon(srv, f"execute in {dim} run summon minecraft:armor_stand {x + 0.5} {y - 2} {zz + 0.5} "
+                         f"{{Tags:[\"{tag}\",\"{tag}_wp\"],Small:1b,Marker:1b,NoGravity:1b,Invulnerable:1b,Silent:1b,"
+                         f"attributes:[{{id:\"minecraft:waypoint_transmit_range\",base:60000000d}}]}}")
+        await _rcon(srv, f"waypoint modify @e[tag={tag}_wp,limit=1] color red")
+        label = _text_nbt(srv, f"♨ HOT ZONE ×{r['hot_bonus']:g} ♨", "red")
+        await _rcon(srv, f"execute in {dim} run summon minecraft:text_display {x + 0.5} {y + 3} {zz + 0.5} "
+                         f"{{Tags:[\"{tag}\"],billboard:\"center\",see_through:1b,text:{label},transformation:{{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],translation:[0f,0f,0f],scale:[2.5f,2.5f,2.5f]}}}}")
+        where = _direction(x - tx, zz - tz)
+        await _say(srv, [("♨ ", "red"), ("HOT ZONE! ", "red!"), (f"{round(far)} blocks {where} of the target. Hits from inside score ×{r['hot_bonus']:g} for {HOT_ON} seconds.", "gold")],
+                   "♨ Hot zone!", f"{round(far)} blocks {where} of the target")
+    z = r.get("hot_zone")
+    if z and z["on"]:
+        await _rcon(srv, f"execute in {dim} run particle minecraft:flame {z['x']} {z['y'] + 0.3} {z['z']} {HOT_R / 2} 0.1 {HOT_R / 2} 0.01 40 force")
+        await _rcon(srv, f"execute in {dim} run particle minecraft:campfire_signal_smoke {z['x']} {z['y'] + 1} {z['z']} 0.3 2 0.3 0.01 4 force")
+
+
 async def _ar_start(srv, r: dict) -> None:
     t, dim = r["target"], r["dim"]
     tx, ty, tz = int(math.floor(t["x"])), int(math.floor(t["y"])), int(math.floor(t["z"]))
@@ -479,9 +564,19 @@ async def _ar_tick(srv, r: dict) -> None:
         if ring:
             st["hits"] += 1
             if r["mode"] == "points":
-                pts = _ring_points(ring, d)
+                mult = _multiplier(d)
+                hot = r["hot_bonus"] if r.get("hot") and _in_hot(r, pos, now) else 1
+                pts = round(ring * mult * hot)
                 st["points"] += pts
-                await _say(srv, [("≫ ", "aqua"), (who, "aqua"), (f": ring {ring} from {d:.0f} blocks (x{_multiplier(d):.1f})", None), (f" +{pts} ({st['points']})", "yellow")])
+                await _say(srv, _hit_parts(who, ring, d, mult, hot, pts, st["points"]))
+                _f, stars, words, _c, snd = _tier(mult * hot)
+                if snd:
+                    await _rcon(srv, f"execute as @a at @s run playsound {snd} master @s ~ ~ ~ 1 1")
+                if mult * hot >= 10:                # the big ones go up on screen and into the activity feed
+                    await _rcon(srv, "title @a times 5 40 10")
+                    await _rcon(srv, f"title @a subtitle {component([(f'{who}: {d:.0f} blocks, +{pts}', 'yellow')])}")
+                    await _rcon(srv, f"title @a title {component([(stars + words.strip(), _c)])}")
+                    db.add_event(srv.id, now, "game", f"{who} {words.strip().lower().rstrip('!')}: ring {ring} from {d:.0f} blocks, ×{mult * hot:g} for {pts} points", who)
             elif ring >= BULLSEYE:
                 if d > st["best"]:
                     st["best"] = round(d, 1)
@@ -492,12 +587,22 @@ async def _ar_tick(srv, r: dict) -> None:
         await _horse_tick(srv, r)
         return
     left = r["phase_ends"] - now
+    if r.get("hot"):
+        await _hot_tick(srv, r, now)
+    hz = r.get("hot_zone") if r.get("hot") else None
     board = sorted(r["players"].items(), key=lambda kv: -(kv[1]["points"] if r["mode"] == "points" else kv[1]["best"]))
     lead = board[0] if board and (board[0][1]["points"] or board[0][1]["best"]) else None
     for n in r["players"]:
         mine = r["players"][n]
         s = f"{mine['points']} points" if r["mode"] == "points" else f"best bullseye {mine['best']:.1f} m" if mine["best"] else "no bullseye yet"
-        await _bar(srv, n, f"{s} · {_fmt(left)} left" + (f" · leader {lead[0]}" if lead and lead[0] != n else ""), "yellow")
+        hot_txt, color = "", "yellow"
+        if hz and hz["on"]:
+            q = await _pos(srv, n)
+            if q and math.hypot(q[0] - hz["x"], q[2] - hz["z"]) <= HOT_R + 0.5:
+                hot_txt, color = f"♨ IN THE HOT ZONE ×{r['hot_bonus']:g} · ", "red"
+            elif q:
+                hot_txt = f"♨ hot zone {math.hypot(q[0] - hz['x'], q[2] - hz['z']):.0f} m {_direction(hz['x'] - q[0], hz['z'] - q[2])} · "
+        await _bar(srv, n, hot_txt + f"{s} · {_fmt(left)} left" + (f" · leader {lead[0]}" if lead and lead[0] != n else ""), color)
     if left <= 0:
         key = "points" if r["mode"] == "points" else "best"
         top = max((p[key] for p in r["players"].values()), default=0)
@@ -507,6 +612,8 @@ async def _ar_tick(srv, r: dict) -> None:
 
 
 async def _ar_end(srv, r: dict, result: str, winners: list[str]) -> None:
+    if r.get("hot"):
+        await _rcon(srv, f"kill @e[tag={_hot_tag(r)}]")
     await _say(srv, [("★ ", "gold"), (result, "yellow")], "Game over", (" & ".join(winners) + " won")[:40] if winners else "")
     if r["place_target"]:
         t = r["target"]
@@ -667,9 +774,12 @@ async def cancel(srv, rid: str) -> bool:
             c = r["chest"]
             await _rcon(srv, f"execute in {r['dim']} run setblock {c['x']} {c['y']} {c['z']} minecraft:air")
             await _rcon(srv, f"execute in {r['dim']} run forceload remove {c['x']} {c['z']}")
-        elif r["game"] == "archery" and r.get("place_target"):
-            t = r["target"]
-            await _rcon(srv, f"execute in {r['dim']} run setblock {int(math.floor(t['x']))} {int(math.floor(t['y']))} {int(math.floor(t['z']))} minecraft:air")
+        elif r["game"] == "archery":
+            if r.get("hot"):
+                await _rcon(srv, f"kill @e[tag={_hot_tag(r)}]")
+            if r.get("place_target"):
+                t = r["target"]
+                await _rcon(srv, f"execute in {r['dim']} run setblock {int(math.floor(t['x']))} {int(math.floor(t['y']))} {int(math.floor(t['z']))} minecraft:air")
         await _say(srv, [("★ ", "gold"), (f"{r['name']} was called off.", "yellow")])
     if r["state"] in ("scheduled", *ACTIVE):
         r["state"] = "cancelled"
@@ -718,6 +828,9 @@ def live(sid: str) -> list[dict]:
                 rows = [{"name": n, "value": f"{p['points']} pts" if key == "points" else (f"{p['best']:.1f} m" if p["best"] else "-"),
                          "note": f"{p['hits']}/{p['shots']} hits"} for n, p in ranked]
                 sub = "Most points" if key == "points" else "Longest bullseye"
+                hz = r.get("hot_zone") if r.get("hot") else None
+                if hz and hz["on"]:
+                    sub += f" · 🔥 hot zone open ×{r['hot_bonus']:g}"
         out.append({"id": f"g-{r['id']}", "emoji": emoji, "title": r["name"] or name, "sub": sub, "ends_at": r.get("phase_ends"),
                     "rows": rows[:10], "empty": ""})
     return out

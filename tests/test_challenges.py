@@ -11,11 +11,13 @@ class FakeServer:
     def __init__(self, online):
         self.id, self.display_name, self.online = "ch-srv", "Family", list(online)
         self.objectives, self.scores, self.given, self.said = {}, {}, [], []
+        self.mc_version, self.cmds = "26.1", []
 
     def rcon_conf(self):
         return {"host": "x"}
 
     async def rcon(self, cmd):
+        self.cmds.append(cmd)
         m = re.match(r"scoreboard objectives add (\S+) (\S+)", cmd)
         if m:
             if "pale_oak" in m.group(2):
@@ -188,3 +190,22 @@ def test_live_scoreboard_for_status_page(monkeypatch):
     live = challenges.live("s1")
     assert len(live) == 1 and live[0]["ends_at"] == 2000.0
     assert [(r["name"], r["value"]) for r in live[0]["rows"]] == [("bo", "30 lb"), ("amy", "16.2 lb"), ("cy", "0 lb")]
+
+
+def test_contest_rods_given_and_taken_back(fake):
+    challenges, srv, _p = fake
+    challenges.create(srv.id, {"kind": "fish_heaviest", "minutes": 10, "lure": 5, "prize": {"item": "diamond", "count": 1}})
+    asyncio.run(challenges.tick([srv]))
+    gives = [c for c in srv.cmds if c.startswith("give ") and "fishing_rod" in c]
+    assert len(gives) == 2 and '"minecraft:lure":5' in gives[0] and "solrod:1b" in gives[0]
+    asyncio.run(challenges.on_join(srv, "Tyler"))                       # already has one
+    assert len([c for c in srv.cmds if c.startswith("give ") and "fishing_rod" in c]) == 2
+    srv.online.remove("Gimli_Jr")
+    d = challenges._load(); d["items"][0]["ends_at"] = time.time() - 1; challenges._save(d)
+    asyncio.run(challenges.tick([srv]))
+    assert "clear tyler minecraft:fishing_rod[minecraft:custom_data={solrod:1b}]" in srv.cmds
+    assert challenges._load()["items"][0]["rod_owed"] == ["gimli_jr"]
+    asyncio.run(challenges.on_join(srv, "Gimli_Jr"))                    # back later: theirs goes too
+    assert "clear Gimli_Jr minecraft:fishing_rod[minecraft:custom_data={solrod:1b}]" in srv.cmds
+    assert challenges._load()["items"][0]["rod_owed"] == []
+    assert challenges.clean({"kind": "mobs", "lure": 5, "prize": {"item": "dirt"}}, "x")["lure"] == 0     # rods only for fishing

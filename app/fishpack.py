@@ -27,7 +27,7 @@ import zipfile
 
 PACK_ID = "solstone-pack"                     # one pack: fishing and the archery games
 PACK_FILE = f"{PACK_ID}.zip"
-VERSION = 2                                   # bump when the pack's content changes
+VERSION = 3                                   # bump when the pack's content changes
 
 # ------------------------------------------------------------------ the water
 _OCEAN = ["ocean", "deep_ocean", "cold_ocean", "deep_cold_ocean", "lukewarm_ocean", "deep_lukewarm_ocean",
@@ -154,6 +154,18 @@ def loot_table() -> dict:
             "random_sequence": "minecraft:gameplay/fishing/fish"}
 
 
+def fishing_table() -> dict:
+    """Vanilla's rod table (junk, treasure in open water, fish; luck shifts the odds), with the
+    fish coming from solfish:fish."""
+    return {"type": "minecraft:fishing", "pools": [{"rolls": 1, "bonus_rolls": 0, "entries": [
+        {"type": "minecraft:loot_table", "value": "minecraft:gameplay/fishing/junk", "weight": 10, "quality": -2},
+        {"type": "minecraft:loot_table", "value": "minecraft:gameplay/fishing/treasure", "weight": 5, "quality": 2,
+         "conditions": [{"condition": "minecraft:entity_properties", "entity": "this",
+                         "predicate": {"type_specific": {"type": "minecraft:fishing_hook", "in_open_water": True}}}]},
+        {"type": "minecraft:loot_table", "value": "solfish:fish", "weight": 85, "quality": -1}]}],
+        "random_sequence": "minecraft:gameplay/fishing"}
+
+
 FUNCTIONS = {
     "load": """
 scoreboard objectives add solfish_points dummy "Fishing points"
@@ -257,6 +269,10 @@ def pack_files() -> dict[str, str]:
             "pack_format": 48, "supported_formats": {"min_inclusive": 48, "max_inclusive": 999},
             "min_format": 48, "max_format": 999}}, indent=1),
         "data/minecraft/loot_table/gameplay/fishing/fish.json": json.dumps(loot_table()),
+        # The same fish under our own name, and the rod's table pointed at it: if something else
+        # (a mod) also replaces minecraft:gameplay/fishing/fish, the rod still lands our fish.
+        "data/solfish/loot_table/fish.json": json.dumps(loot_table()),
+        "data/minecraft/loot_table/gameplay/fishing.json": json.dumps(fishing_table()),
         "data/minecraft/tags/function/load.json": json.dumps({"values": ["solfish:load", "solgames:load"]}),
         "data/minecraft/tags/function/tick.json": json.dumps({"values": ["solgames:tick"]}),
         "data/solfish/advancement/hooked.json": json.dumps({
