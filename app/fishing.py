@@ -95,6 +95,25 @@ def files(srv) -> list[dict]:
     return out
 
 
+def available(srv) -> str | None:
+    """What this server fishes with, for showing the Fishing tab: "tide" (the mod), "pack" (the
+    Solstone data pack is in the world, or catches from it were recorded), or None (plain vanilla:
+    no Fishing tab; the plain fishing contest still works)."""
+    from . import tide
+    if not srv.is_java:
+        return None
+    if tide.installed(srv):
+        return "tide"
+    try:
+        if any(p.name.startswith(fishpack.PACK_ID) for p in datapacks_dir(srv).iterdir()):
+            return "pack"
+    except OSError:
+        pass
+    if db.q("SELECT 1 FROM fish_catches WHERE server_id=? LIMIT 1", (srv.id,)):
+        return "pack"
+    return None
+
+
 def writable(srv) -> bool:
     d = datapacks_dir(srv)
     try:
@@ -110,7 +129,8 @@ def writable(srv) -> bool:
 async def install(srv) -> dict:
     """Write the pack into the world (only if that folder is writable), reload, check."""
     if writable(srv):
-        (datapacks_dir(srv) / fishpack.PACK_FILE).write_bytes(fishpack.build_zip(new_format(srv)))
+        from . import tide
+        (datapacks_dir(srv) / fishpack.PACK_FILE).write_bytes(fishpack.build_zip(new_format(srv), fishing=not tide.installed(srv)))
     return await reload(srv)
 
 

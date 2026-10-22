@@ -287,14 +287,10 @@ def describe(c: dict, who: str) -> str:
 
 
 def fmt_lb(lb: float) -> str:
-    oz = lb * 16
-    if oz < 16:
-        return f"{oz:.1f} oz" if oz < 10 else f"{round(oz)} oz"
-    whole = int(oz // 16)
-    rest = round(oz - whole * 16)
-    if rest == 16:
-        whole, rest = whole + 1, 0
-    return f"{whole:,} lb" + (f" {rest} oz" if rest and whole < 100 else "")
+    """Same as the mod: "0.38 lb", "3.4 lb", "1,298 lb"."""
+    if lb < 1:
+        return f"{max(lb, 0.01):.2f} lb"
+    return f"{lb:.1f} lb" if lb < 100 else f"{round(lb):,} lb"
 
 
 def record_catch(srv, ts: float, c: dict) -> tuple[str, str] | None:

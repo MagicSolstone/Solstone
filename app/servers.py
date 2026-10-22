@@ -304,6 +304,7 @@ async def server_summary(srv: Server) -> dict:
         "game_label": GAME_LABELS.get(srv.game, srv.game.replace("-", " ").replace("_", " ").title()),
         "perf": _latest_perf(srv),
         "backup": _backup(srv),
+        "fishing": _fishing_with(srv),
     }
 
 
@@ -865,6 +866,14 @@ async def players_overview(srv: Server) -> dict:
         r["today_seconds"] = today.get(r["name"].lower(), 0)
     rows.sort(key=lambda r: (not r["online"], -(r.get("last_seen") or 0)))
     return {"players": rows, "online_source": source}
+
+
+def _fishing_with(srv: Server) -> str | None:
+    from . import fishing
+    try:
+        return fishing.available(srv)
+    except Exception:
+        return None
 
 
 def _tide():

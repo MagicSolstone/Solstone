@@ -82,11 +82,10 @@ function fmtStat(kind, v) {
   }
   if (kind === "cm") { const m = v / 100; return m >= 1000 ? `${n(m / 1000, m >= 100000 ? 0 : 1)} km` : `${Math.round(m)} m`; }
   if (kind === "hearts") return `${n(v / 20)} ♥`;
-  if (kind === "grams") {                         // a fish's weight, in pounds and ounces
-    const oz = v / 28.349523125;
-    if (oz < 16) return `${n(oz, oz < 10 ? 1 : 0)} oz`;
-    const lb = Math.floor(oz / 16), rest = Math.round(oz - lb * 16);
-    return lb >= 100 || !rest || rest === 16 ? `${n(rest === 16 ? lb + 1 : lb)} lb` : `${lb} lb ${rest} oz`;
+  if (kind === "grams") {                         // a fish's weight: "0.38 lb", "3.4 lb", "1,298 lb"
+    const lb = v / 453.59237;
+    if (lb < 1) return `${Math.max(lb, 0.01).toFixed(2)} lb`;
+    return lb < 100 ? `${lb.toFixed(1)} lb` : `${n(lb)} lb`;
   }
   return n(v);
 }

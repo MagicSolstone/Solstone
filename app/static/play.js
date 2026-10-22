@@ -926,20 +926,16 @@ async function viewFishingJournal(sid, who) {
 // ================================================================ fishing with the Tide mod
 // Tide keeps its own journal per player; this shows the family's: records (hover for who),
 // the top three of every fish, how much of each rarity tier has been caught, and everyone's level.
+// Same units as the mod: pounds with a decimal ("3.4 lb"), inches ("19 in", feet only from 100 in)
 function fmtWeight(g) {
   if (!g) return "";
-  const oz = g / 28.349523125;
-  if (oz < 16) return `${oz < 10 ? oz.toFixed(1) : Math.round(oz)} oz`;
-  let lb = Math.floor(oz / 16), rest = Math.round(oz - lb * 16);
-  if (rest === 16) { lb++; rest = 0; }
-  return lb >= 100 ? `${lb.toLocaleString()} lb` : `${lb} lb${rest ? ` ${rest} oz` : ""}`;
+  return fmtStat("grams", g);
 }
 function fmtLength(cm) {
   if (!cm) return "";
   const inch = cm / 2.54;
-  if (inch < 12) return `${inch.toFixed(1).replace(/\.0$/, "")} in`;
-  const t = Math.round(inch), ft = Math.floor(t / 12), rest = t % 12;
-  return rest ? `${ft} ft ${rest} in` : `${ft} ft`;
+  if (inch < 10) return `${inch.toFixed(1).replace(/\.0$/, "")} in`;
+  return inch < 100 ? `${Math.round(inch)} in` : `${Math.round(inch / 12)} ft`;
 }
 const qMarks = (q) => "◆".repeat(Math.max(0, q)) + "◇".repeat(Math.max(0, 5 - q));
 

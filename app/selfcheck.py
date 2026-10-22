@@ -209,8 +209,12 @@ async def run(srv, near: list[tuple[float, float]], assets) -> dict:
         c.add("Data pack", "Pack written for this version", (fmt == want) if fmt else None,
               f"pack: {fmt or 'unknown'}, server needs: {want}", "fishing",
               "Download the pack again (it's built for the server it's going to) and replace it." if fmt and fmt != want else "")
-        await c.cmd("Data pack", "Fishing and archery triggers", [
-            f"advancement revoke {NOBODY} only solfish:hooked", f"advancement revoke {NOBODY} only solgames:hit_15"], "fish catches, archery hits")
+        from . import tide
+        if tide.installed(srv):                       # the Tide build of the pack has no fishing half
+            await c.cmd("Data pack", "Archery triggers", [f"advancement revoke {NOBODY} only solgames:hit_15"], "archery hits")
+        else:
+            await c.cmd("Data pack", "Fishing and archery triggers", [
+                f"advancement revoke {NOBODY} only solfish:hooked", f"advancement revoke {NOBODY} only solgames:hit_15"], "fish catches, archery hits")
         if "found no elements" in (await _rc(srv, "data get storage solstone:games spleef")).lower():
             await c.cmd("Data pack", "Spleef safety net", ["function solgames:spleef_back"], "spleef (cleans up if Solstone stops)")
         else:

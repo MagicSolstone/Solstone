@@ -344,32 +344,38 @@ execute if data storage solstone:games log[150] run data remove storage solstone
 """
 
 
-def pack_files(new: bool = False) -> dict[str, str]:
-    """`new`: write loot tables the 26.3+ way (see new_loot_format)."""
+def pack_files(new: bool = False, fishing: bool = True) -> dict[str, str]:
+    """`new`: write loot tables the 26.3+ way (see new_loot_format). `fishing=False` (a server with
+    the Tide fishing mod, which does fishing its own way): just the archery and games half, plus
+    the version marker, and nothing that touches fishing loot or catches."""
     lt = to_263 if new else (lambda t: t)
     files = {
         "pack.mcmeta": json.dumps({"pack": {
-            "description": "Solstone: fishing (species, sizes, quality) and archery games",
+            "description": "Solstone: fishing (species, sizes, quality) and archery games" if fishing else "Solstone: archery and games",
             # 1.21 (48) up to anything newer; old fields for <1.21.9, min/max for 1.21.9+
             "pack_format": 48, "supported_formats": {"min_inclusive": 48, "max_inclusive": 999},
             "min_format": 48, "max_format": 999}}, indent=1),
-        "data/minecraft/loot_table/gameplay/fishing/fish.json": json.dumps(lt(loot_table())),
-        # The same fish under our own name, and the rod's table pointed at it: if something else
-        # (a mod) also replaces minecraft:gameplay/fishing/fish, the rod still lands our fish.
-        "data/solfish/loot_table/fish.json": json.dumps(lt(loot_table())),
-        # the smallest possible test: one stone, named and tagged (do loot functions work at all?)
-        "data/solfish/loot_table/probe.json": json.dumps(lt({"pools": [{"rolls": 1, "entries": [{"type": "minecraft:item", "name": "minecraft:stone", "functions": [
-            {"function": "minecraft:set_name", "target": "item_name", "name": {"text": "Solstone probe"}},
-            {"function": "minecraft:set_custom_data", "tag": "{solprobe:1b}"}]}]}]})),
-        "data/minecraft/loot_table/gameplay/fishing.json": json.dumps(fishing_table_263() if new else fishing_table()),
         "data/minecraft/tags/function/load.json": json.dumps({"values": ["solfish:load", "solgames:load"]}),
         "data/minecraft/tags/function/tick.json": json.dumps({"values": ["solgames:tick"]}),
-        "data/solfish/advancement/hooked.json": json.dumps({
-            "criteria": {"hooked": {"trigger": "minecraft:fishing_rod_hooked"}},
-            "rewards": {"function": "solfish:hooked"}}),
     }
+    if fishing:
+        files.update({
+            "data/minecraft/loot_table/gameplay/fishing/fish.json": json.dumps(lt(loot_table())),
+            # The same fish under our own name, and the rod's table pointed at it: if something else
+            # (a mod) also replaces minecraft:gameplay/fishing/fish, the rod still lands our fish.
+            "data/solfish/loot_table/fish.json": json.dumps(lt(loot_table())),
+            # the smallest possible test: one stone, named and tagged (do loot functions work at all?)
+            "data/solfish/loot_table/probe.json": json.dumps(lt({"pools": [{"rolls": 1, "entries": [{"type": "minecraft:item", "name": "minecraft:stone", "functions": [
+                {"function": "minecraft:set_name", "target": "item_name", "name": {"text": "Solstone probe"}},
+                {"function": "minecraft:set_custom_data", "tag": "{solprobe:1b}"}]}]}]})),
+            "data/minecraft/loot_table/gameplay/fishing.json": json.dumps(fishing_table_263() if new else fishing_table()),
+            "data/solfish/advancement/hooked.json": json.dumps({
+                "criteria": {"hooked": {"trigger": "minecraft:fishing_rod_hooked"}},
+                "rewards": {"function": "solfish:hooked"}}),
+        })
     for name, body in FUNCTIONS.items():
-        files[f"data/solfish/function/{name}.mcfunction"] = body.replace("%VERSION%", str(VERSION)).strip() + "\n"
+        if fishing or name == "load":                  # load: the scoreboards and the version marker
+            files[f"data/solfish/function/{name}.mcfunction"] = body.replace("%VERSION%", str(VERSION)).strip() + "\n"
     for name, body in GAME_FUNCTIONS.items():
         files[f"data/solgames/function/{name}.mcfunction"] = body.replace("%VERSION%", str(VERSION)).strip() + "\n"
     for n in range(1, 16):
@@ -402,10 +408,10 @@ def parse_game_log(reply: str) -> list[dict]:
     return out
 
 
-def build_zip(new: bool = False) -> bytes:
+def build_zip(new: bool = False, fishing: bool = True) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for path, body in sorted(pack_files(new).items()):
+        for path, body in sorted(pack_files(new, fishing).items()):
             z.writestr(path, body)
     return buf.getvalue()
 

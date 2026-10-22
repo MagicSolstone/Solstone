@@ -155,13 +155,13 @@ def test_biggest_catch_with_tide_and_fair_play(lake):
     asyncio.run(challenges.on_catch(srv, "Gimli_Jr", pike))
     asyncio.run(challenges.on_catch(srv, "Gimli_Jr", small))
     asyncio.run(challenges.on_catch(srv, "Tyler", small))
-    assert any("Prime Pike" in x and "10 lb 3 oz" in x and "new best" in x for x in srv.cmds)
+    assert any("Prime Pike" in x and "10.2 lb" in x and "new best" in x for x in srv.cmds)
     srv.online = ["Tyler"]                                                               # Gimli_Jr logs off before the end
     _end(challenges)
     asyncio.run(challenges.tick([srv]))
     c = challenges.list_for(srv.id)[0]
     assert c["winners"] == ["Gimli_Jr"] and c["scores"]["Gimli_Jr"] == 102 and c["scores"]["Tyler"] == 4
-    assert c["result"] == "Gimli_Jr won Biggest catch with a 10 lb 3 oz Pike!"
+    assert c["result"] == "Gimli_Jr won Biggest catch with a 10.2 lb Pike!"
     assert "fishinglevel fair Tyler false" in srv.cmds and "fishinglevel fair Gimli_Jr false" not in srv.cmds
     assert c["fair_owed"] == ["gimli_jr"]
     asyncio.run(challenges.on_join(srv, "Gimli_Jr"))                                     # their own level back on joining
@@ -194,3 +194,27 @@ def test_plain_fishing_contest_still_uses_the_game_stat_with_tide(lake):
     c = challenges.list_for(srv.id)[0]
     assert c["tide"] and c.get("tscore") is None and any("minecraft.custom:minecraft.fish_caught" in x for x in srv.cmds)
     assert "fishinglevel fair Tyler true" in srv.cmds                                    # fair play applies to every fishing contest
+
+
+def test_pack_without_fishing_for_tide_servers():
+    from app import fishpack
+    full, games = fishpack.pack_files(True), fishpack.pack_files(True, fishing=False)
+    assert "data/minecraft/loot_table/gameplay/fishing.json" in full and "data/solfish/advancement/hooked.json" in full
+    assert not any("loot_table" in p or p.endswith("hooked.json") or p.endswith("scan.mcfunction") for p in games)
+    assert "data/solfish/function/load.mcfunction" in games                          # still says which version is in
+    assert "data/solgames/advancement/hit_15.json" in games and "archery" in games["pack.mcmeta"]
+
+
+def test_fishing_tab_only_with_something_to_fish_with(client, sid, tmp_path):
+    from app import fishing
+    s = client.get(f"/api/servers/{sid}").json()
+    assert s["fishing"] == "tide"
+
+    class Plain:                                    # a vanilla server with no pack and no catches
+        is_java, id = True, "plain-srv"
+        dir = tmp_path
+        world_dir = tmp_path / "world"
+    assert fishing.available(Plain()) is None
+    (tmp_path / "world" / "datapacks").mkdir(parents=True)
+    (tmp_path / "world" / "datapacks" / "solstone-pack.zip").write_bytes(b"PK")
+    assert fishing.available(Plain()) == "pack"

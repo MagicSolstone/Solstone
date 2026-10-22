@@ -598,7 +598,7 @@ function serverHeader(s, tab) {
   const base = `#/s/${encodeURIComponent(s.id)}`;
   const java = !s.game || s.game === "minecraft-java";
   const tabs = [["overview", "Overview", base], ["performance", "Performance", `${base}/performance`],
-    ...(java ? [["world", "World", `${base}/world`], ["leaderboards", "Leaderboards", `${base}/leaderboards`], ["fishing", "Fishing", `${base}/fishing`], ["mods", "Mods", `${base}/mods`]] : []),
+    ...(java ? [["world", "World", `${base}/world`], ["leaderboards", "Leaderboards", `${base}/leaderboards`], ...(s.fishing ? [["fishing", "Fishing", `${base}/fishing`]] : []), ["mods", "Mods", `${base}/mods`]] : []),
     ...(isAdmin() && java ? [["chat", "Chat", `${base}/chat`], ["challenges", "Challenges", `${base}/challenges`]] : []),
     ...(isAdmin() ? [["control", "Control", `${base}/control`]] : []),
     ...(isAdmin() && java ? [["check", "Check", `${base}/check`]] : [])];
