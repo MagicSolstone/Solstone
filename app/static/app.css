@@ -1655,3 +1655,20 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .gather-pick select { width: auto; }
 .gather-map { position: relative; height: 240px; border-radius: 10px; overflow: hidden; }
 .gather-map .rm-canvas { width: 100%; height: 100%; display: block; }
+
+/* Compatibility check */
+.ck-intro p { margin: 0 0 8px; }
+.ck-summary { font-size: 1.15rem; padding: 12px 16px; border-radius: 12px; margin-bottom: 10px; }
+.ck-summary.ok { background: rgba(80, 200, 120, .12); }
+.ck-summary.bad { background: rgba(224, 80, 63, .14); }
+.ck-area { font-size: 1rem; margin: 16px 0 6px; }
+.ck-list { list-style: none; margin: 0; padding: 4px 0; }
+.ck-row { display: flex; gap: 12px; padding: 8px 14px; border-top: 1px solid rgba(255, 255, 255, .06); }
+.ck-row:first-child { border-top: 0; }
+.ck-mark { width: 1.4em; font-weight: 800; flex: none; text-align: center; }
+.ck-row.ok .ck-mark { color: #6fdc8c; }
+.ck-row.bad .ck-mark { color: #ff7b6b; }
+.ck-row.skip .ck-mark { color: var(--muted, #9aa); }
+.ck-main { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.ck-main pre { white-space: pre-wrap; word-break: break-word; }
+.ck-fix { color: #ffd36b; }

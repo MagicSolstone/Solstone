@@ -600,7 +600,8 @@ function serverHeader(s, tab) {
   const tabs = [["overview", "Overview", base], ["performance", "Performance", `${base}/performance`],
     ...(java ? [["world", "World", `${base}/world`], ["leaderboards", "Leaderboards", `${base}/leaderboards`], ["mods", "Mods", `${base}/mods`]] : []),
     ...(isAdmin() && java ? [["chat", "Chat", `${base}/chat`], ["challenges", "Challenges", `${base}/challenges`]] : []),
-    ...(isAdmin() ? [["control", "Control", `${base}/control`]] : [])];
+    ...(isAdmin() ? [["control", "Control", `${base}/control`]] : []),
+    ...(isAdmin() && java ? [["check", "Check", `${base}/check`]] : [])];
   return `<header class="server-head">
       <div class="big-icon">${s.has_icon ? `<img src="/api/servers/${encodeURIComponent(s.id)}/icon.png" alt="">` : esc((s.name || "?")[0])}</div>
       <div><h1>${esc(s.name)}</h1><div class="motd">${motdHtml(s.motd)}</div><div class="facts">${facts}</div></div>
@@ -1101,6 +1102,7 @@ async function route() {
       else if (parts[2] === "world") await viewWorld(sid);
       else if (parts[2] === "activity") location.replace(`#/s/${encodeURIComponent(sid)}`);
       else if (parts[2] === "control") await viewControl(sid);
+      else if (parts[2] === "check") await viewCheck(sid);
       else if (parts[2] === "chat") await viewChat(sid);
       else if (parts[2] === "challenges" && parts[3] === "races") await viewRaces(sid);
       else if (parts[2] === "challenges" && parts[3] === "games") await viewGames(sid);

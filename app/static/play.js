@@ -837,3 +837,43 @@ async function viewGames(sid) {
     await reload();
   });
 }
+
+// ================================================================ compatibility check
+// One button: try every kind of command and file Solstone relies on, on this server. For after
+// a Minecraft update (on a copy of the server first, ideally).
+async function viewCheck(sid) {
+  if (!isAdmin()) { location.replace(`#/s/${encodeURIComponent(sid)}`); return; }
+  const s = await serverFrame(sid, "check");
+  let d = await api(`/api/servers/${encodeURIComponent(sid)}/check`), busy = false;
+  const render = () => {
+    const last = d.last, rows = last?.rows || [];
+    const bad = rows.filter((r) => r.ok === false).length, good = rows.filter((r) => r.ok === true).length, skip = rows.filter((r) => r.ok === null).length;
+    const areas = [...new Set(rows.map((r) => r.area))];
+    const row = (r) => `<li class="ck-row ${r.ok === false ? "bad" : r.ok ? "ok" : "skip"}">
+        <span class="ck-mark" aria-label="${r.ok === false ? "Problem" : r.ok ? "Works" : "Not checked"}">${r.ok === false ? "✘" : r.ok ? "✔" : "–"}</span>
+        <div class="ck-main"><b>${esc(r.label)}</b>${r.used_by ? `<span class="muted small">Used by: ${esc(r.used_by)}</span>` : ""}
+          ${r.ok === false && r.fix ? `<span class="ck-fix small">${esc(r.fix)}</span>` : ""}
+          ${r.detail ? `<details ${r.ok === false ? "open" : ""}><summary class="small muted">${r.ok === false ? "What the game said" : "Details"}</summary><pre class="mc-out">${esc(r.detail)}</pre></details>` : ""}</div></li>`;
+    setView(`${serverHeader(s, "check")}
+      <section class="section"><div class="section-head"><h2>Compatibility check</h2></div>
+        <div class="panel ck-intro"><p>Tries, on this server, every kind of command and file Solstone relies on: scoreboards, boss bars, titles, floating markers, locator-bar dots,
+          holding racers still, teleporting, building blocks, special items, the data pack's fish, archery and spleef, and reading the map and player files.
+          Run it after every Minecraft update, ideally on a copy of the server before updating the real one.</p>
+          <p class="muted small">Harmless: messages go to nobody, and the blocks and entities it makes for a moment high above spawn are removed. Takes about ten seconds.</p>
+          <div class="btn-row"><button class="btn primary" type="button" id="ck-run" ${busy || !d.rcon ? "disabled" : ""}>${busy ? "Checking…" : "▶ Run the check"}</button>
+            ${!d.rcon ? `<span class="notice small">RCON is off for this server.</span>` : ""}
+            ${last ? `<span class="muted small">Last run ${esc(fmtAgo(last.at))} on Minecraft ${esc(last.version || "?")}${last.version !== d.version && d.version ? ` · <b>the server is now on ${esc(d.version)}: run it again</b>` : ""}</span>` : ""}</div></div></section>
+      ${last ? `<section class="section"><div class="ck-summary ${bad ? "bad" : "ok"}">${bad ? `✘ <b>${bad}</b> ${bad === 1 ? "thing doesn't" : "things don't"} work` : "✔ <b>Everything works</b>"}
+          <span class="muted">· ${good} working${skip ? ` · ${skip} not checked` : ""}</span></div>
+        ${bad ? `<p class="muted small">Send the red lines (with what the game said) to get them fixed.</p>` : ""}
+        ${areas.map((a) => `<h3 class="ck-area">${esc(a)}</h3><ul class="ck-list panel">${rows.filter((r) => r.area === a).map(row).join("")}</ul>`).join("")}</section>` : ""}`);
+    wireHeader(s);
+    $("#ck-run")?.addEventListener("click", async () => {
+      busy = true; render();
+      try { d.last = await post(`/api/servers/${encodeURIComponent(sid)}/check`, {}); d.version = d.last.version; }
+      catch (err) { showToast(esc(err.message), 5000); }
+      busy = false; render();
+    });
+  };
+  render();
+}

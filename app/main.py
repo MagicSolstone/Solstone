@@ -18,7 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, backups, board, challenges, control, db, fishing, fishpack, games, races, fireworks, fwshow, guard, music, notify, recap, skins, upcoming, worldmap
+from . import auth, backups, board, challenges, control, db, fishing, fishpack, games, races, fireworks, fwshow, guard, music, notify, recap, selfcheck, skins, upcoming, worldmap
 from . import servers as S
 from . import settings_store
 from .recorder import recorder
@@ -545,6 +545,39 @@ async def map_check(sid: str, request: Request, dim: str = "minecraft:overworld"
                 out.append((pos.get("x", 0), pos.get("z", 0)))
         return out
     return await asyncio.to_thread(lambda: worldmap.check(srv.id, srv.world_dir, dim, near(), _assets(srv)))
+
+
+@app.get("/api/servers/{sid}/check")
+async def get_selfcheck(sid: str, request: Request):
+    """Admin: the last compatibility check for this server."""
+    auth.require_admin(request)
+    srv = await _server(sid)
+    return {"last": (settings_store.load().get("selfcheck") or {}).get(srv.id), "rcon": bool(srv.rcon_conf()), "version": srv.mc_version}
+
+
+@app.post("/api/servers/{sid}/check")
+async def run_selfcheck(sid: str, request: Request):
+    """Admin: try every kind of command and file Solstone relies on, on this server."""
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    _require_java(srv)
+    if not srv.rcon_conf():
+        raise HTTPException(409, "RCON is off for this server, so Solstone can't talk to it")
+
+    def near() -> list[tuple[float, float]]:
+        out = []
+        for uuid in S.known_players(srv):
+            data, _m = S.player_file_data(srv, uuid)
+            pos = (data or {}).get("position") or {}
+            if pos and (pos.get("dimension") or "minecraft:overworld") == "minecraft:overworld":
+                out.append((pos.get("x", 0), pos.get("z", 0)))
+        return out
+    result = await selfcheck.run(srv, await asyncio.to_thread(near), _assets(srv))
+    saved = settings_store.load().get("selfcheck") or {}
+    saved[srv.id] = result
+    settings_store.save_section("selfcheck", saved)
+    auth.audit(user, srv.id, "selfcheck", f"{sum(1 for r in result['rows'] if r['ok'] is False)} problems")
+    return result
 
 
 @app.get("/api/public/icon/{sid}.png")
