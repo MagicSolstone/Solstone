@@ -18,7 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, backups, board, challenges, control, db, fishing, fishpack, games, races, fireworks, fwshow, guard, music, notify, recap, selfcheck, skins, upcoming, worldmap
+from . import auth, backups, board, challenges, control, db, fishing, fishpack, games, races, fireworks, fwshow, guard, music, notify, recap, selfcheck, skins, tide, upcoming, worldmap
 from . import servers as S
 from . import settings_store
 from .recorder import recorder
@@ -1755,6 +1755,8 @@ async def delete_challenge(sid: str, cid: str, request: Request):
 async def fishing_journal(sid: str, request: Request):
     """Everyone's fishing journal (anyone signed in)."""
     srv = await _server(sid)
+    if await asyncio.to_thread(tide.installed, srv):
+        return await asyncio.to_thread(tide.journal, srv)
     return await asyncio.to_thread(fishing.journal, srv.id)
 
 

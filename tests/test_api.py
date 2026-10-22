@@ -82,7 +82,7 @@ def test_world(client, sid):
 def test_mods(client, sid):
     data = client.get(f"/api/servers/{sid}/mods").json()
     assert data["loader"] == "Fabric"
-    assert [m["name"] for m in data["mods"]] == ["Fancy Gems", "Lithium"]
+    assert [m["name"] for m in data["mods"]] == ["Fancy Gems", "Lithium", "Tide"]
 
 
 def test_leaderboard(client, sid):
@@ -136,7 +136,7 @@ def test_one_leaderboard_list_for_app_and_status_page(client, anon, sid):
     keys = [b["key"] for b in mine["boards"]]
     assert keys == [k for k, _t, _f in S.LEADERBOARDS] and len(keys) >= 20
     assert all(set(keys) <= set(p) for p in mine["players"])
-    assert {b["kind"] for b in mine["boards"]} <= {"ticks", "count", "cm", "hearts"}
+    assert {b["kind"] for b in mine["boards"]} <= {"ticks", "count", "cm", "hearts", "grams"}         # all handled by hud.js fmtStat
     client.put("/api/settings/status", json={"enabled": True})
     try:
         public = anon.get(f"/api/public/leaderboard/{sid}").json()

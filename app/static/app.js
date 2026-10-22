@@ -786,10 +786,19 @@ function playerHero(p) {
         <span class="chip">${esc(humanize(d.gamemode))}${d.flying ? " · flying" : ""}</span>
         ${d.respawn ? `<span class="chip" title="Respawn point">Bed <b>${d.respawn.x}, ${d.respawn.y}, ${d.respawn.z}</b></span>` : ""}
         ${d.last_death ? `<span class="chip" title="Where they last died">Last death <b>${d.last_death.x}, ${d.last_death.y}, ${d.last_death.z}</b> ${esc(dimName(d.last_death.dimension))}</span>` : ""}
+        ${fishingChip(p)}
         ${effects}
       </div>
       ${giveBtn(p)}
     </div></div>`;
+}
+
+// The Tide fishing mod: level and title, a link to their fishing journal, more on hover.
+function fishingChip(p) {
+  const f = p.fishing;
+  if (!f) return "";
+  const tip = `${f.xp.toLocaleString()} fishing XP · ${f.species}/${f.species_total} kinds of fish · ${f.caught.toLocaleString()} caught${f.biggest ? ` · biggest: ${f.biggest.name}, ${fmtStat("grams", f.biggest.weight_g)}` : ""}`;
+  return `<a class="chip chip-link" href="#/s/${encodeURIComponent(curSid)}/fishing/${encodeURIComponent(p.name)}" title="${esc(tip)}">🎣 Fishing <b>Lv ${f.level}</b> ${esc(f.title)}</a>`;
 }
 
 function statStrip(p) {

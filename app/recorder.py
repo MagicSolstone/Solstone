@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import backups, board, challenges, db, fishing, fwshow, games, gather, guard, music, notify, races, recap
+from . import backups, board, challenges, db, fishing, fwshow, games, gather, guard, music, notify, races, recap, tide
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -413,7 +413,21 @@ class Recorder:
         text = chunk.decode("utf-8", errors="replace")
         offset = self._log_offset(srv.id, text, st.st_mtime, now)
         pending: list[tuple[str, str]] = []
+        tide_on = None
         for raw in text.splitlines():
+            if "[Tide catch]" in raw:                       # the Tide fishing mod: one line per caught fish
+                if tide_on is None:
+                    tide_on = tide.installed(srv)
+                got = tide.parse_log_line(raw) if tide_on else None
+                if got:
+                    h, mi, se, c = got
+                    ts_dt = now.replace(hour=h, minute=mi, second=se, microsecond=0)
+                    if ts_dt > now + timedelta(seconds=60):
+                        ts_dt -= timedelta(days=1)
+                    rec = tide.record_catch(srv, ts_dt.timestamp() - offset, c)
+                    if rec and rec[0] == "bigfish" and time.time() - ts_dt.timestamp() + offset < NOTIFY_MAX_AGE:
+                        pending.append(rec)
+                continue
             ev = parse_line(raw, names)
             if not ev or ev.type == "server":  # start/stop comes from Crafty's state instead
                 continue

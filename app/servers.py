@@ -867,6 +867,11 @@ async def players_overview(srv: Server) -> dict:
     return {"players": rows, "online_source": source}
 
 
+def _tide():
+    from . import tide           # tide reads player files through this module
+    return tide
+
+
 async def player_detail(srv: Server, uuid: str) -> dict | None:
     known = known_players(srv)
     p = known.get(norm_uuid(uuid))
@@ -892,6 +897,7 @@ async def player_detail(srv: Server, uuid: str) -> dict | None:
         "headline": headline_stats(stats),
         "stats": stats,
         "advancements": player_advancements(srv, p["uuid"]),
+        "fishing": _tide().player_summary(srv, p["uuid"]),
     }
 
 
@@ -912,6 +918,8 @@ LEADERBOARDS = [
     ("time_since_death", "Longest alive right now", "ticks"),
     ("jumps", "Jumps", "count"),
     ("fish_caught", "Fish caught", "count"),
+    ("fishing_level", "Fishing level", "count"),             # Tide (fishing mod) only
+    ("heaviest_fish", "Heaviest fish", "grams"),              # Tide only
     ("animals_bred", "Animals bred", "count"),
     ("traded", "Villager trades", "count"),
     ("creepers_defeated", "Creepers defeated", "count"),
@@ -950,5 +958,6 @@ async def leaderboard(srv: Server) -> dict:
         h["xp_level"] = data["xp_level"] if data else 0
         adv = player_advancements(srv, uuid)
         h["advancements"] = sum(1 for k, a in adv.items() if a["done"] and "/recipes/" not in k and ":recipes/" not in k)
+        h.update(_tide().leaderboard_values(srv, uuid))
         rows.append({"uuid": uuid, "name": p["name"], **{k: h.get(k, 0) for k, _t, _f in LEADERBOARDS}})
     return {"boards": [{"key": k, "title": t, "kind": f} for k, t, f in LEADERBOARDS], "players": rows}

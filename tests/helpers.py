@@ -94,8 +94,28 @@ def build(root: Path) -> Path:
             "LastDeathLocation": Compound({"pos": IntArray([-40, 12, 900]), "dimension": String("minecraft:overworld")}),
         })
 
+    def tide_nbt(i):
+        """Tyler: level ~10 with bass and bluegill; Gimli_Jr: a heavier bass; MomCrafts: no Tide data."""
+        def fish(fid, n, longest, heaviest, best, counts):
+            return Compound({"fish": String(f"tide:{fid}"), "data": Compound({"stats": Compound({
+                "amount_caught": Int(n), "largest_catch": Double(longest), "smallest_catch": Double(longest * 0.6),
+                "best_quality": Int(best), "heaviest_catch": Double(heaviest), "quality_counts": List[Int]([Int(c) for c in counts])})})})
+        if i == 0:
+            data = [fish("bluegill", 12, 31.0, 410.0, 3, [3, 6, 2, 1, 0, 0]), fish("largemouth_bass", 4, 55.0, 2300.0, 2, [1, 2, 1, 0, 0, 0])]
+            xp = 300
+        elif i == 1:
+            data = [fish("largemouth_bass", 2, 61.0, 3400.0, 4, [0, 1, 0, 0, 1, 0])]
+            xp = 150
+        else:
+            return None
+        return Compound({"TidePlayerData": Compound({"fish_data": List[Compound](data), "got_journal": Byte(1)}),
+                         "TideAngler": Compound({"xp": Long(xp), "fair": Byte(0), "backfilled": Byte(1), "version": Int(2)})})
+
     for i, (_n, u) in enumerate(players):
-        nbtlib.File(player_nbt(i), gzipped=True).save(w / "playerdata" / f"{u}.dat")
+        nbt = player_nbt(i)
+        if tide_nbt(i) is not None:
+            nbt["TidePersistentData"] = tide_nbt(i)
+        nbtlib.File(nbt, gzipped=True).save(w / "playerdata" / f"{u}.dat")
         stats = {"stats": {
             "minecraft:custom": {"minecraft:play_time": 72000*(30-i*9), "minecraft:deaths": 7+i*3, "minecraft:mob_kills": 412-i*100,
                                  "minecraft:walk_one_cm": 4_200_000-i*1_000_000, "minecraft:sprint_one_cm": 900_000, "minecraft:jump": 18000-i*3000,
@@ -135,6 +155,19 @@ def build(root: Path) -> Path:
         z.writestr("assets/fancymod/textures/item/ruby.png", b.getvalue())
         z.writestr("assets/fancymod/models/item/ruby.json", json.dumps({"parent": "minecraft:item/generated", "textures": {"layer0": "fancymod:item/ruby"}}))
         z.writestr("assets/fancymod/lang/en_us.json", json.dumps({"item.fancymod.ruby": "Ruby"}))
+    # Tide, the fishing mod: three of its fish, its names, and a config with the default XP curve
+    with zipfile.ZipFile(srv / "mods" / "tide-2.0.jar", "w") as z:
+        z.writestr("fabric.mod.json", json.dumps({"schemaVersion": 1, "id": "tide", "name": "Tide", "version": "2.0.0"}))
+        z.writestr("assets/tide/lang/en_us.json", json.dumps({"item.tide.bluegill": "Bluegill", "item.tide.largemouth_bass": "Largemouth Bass",
+                                                              "item.tide.great_white_shark": "Great White Shark", "journal.info.location.freshwater": "Lakes and Rivers"}))
+        for fid, group, rarity in (("bluegill", "freshwater", None), ("largemouth_bass", "freshwater", "uncommon"), ("great_white_shark", "saltwater", "very_rare")):
+            prof = {"group": group, "location": f"journal.info.location.{group}"}
+            if rarity:
+                prof["rarity"] = rarity
+            z.writestr(f"data/tide/fishing/fish/{group}/{fid}.json", json.dumps({"fish": f"tide:{fid}", "journal_profile": prof,
+                                                                                  "size": {"typical_low_cm": 20, "typical_high_cm": 40, "record_high_cm": 60}}))
+    (srv / "config").mkdir(exist_ok=True)
+    (srv / "config" / "tide.json").write_text(json.dumps({"server": {"leveling": {"enabled": True, "xpPerLevel": 20.0, "xpGrowth": 0.2}}}))
     with zipfile.ZipFile(srv / "mods" / "lithium.jar", "w") as z:
         z.writestr("fabric.mod.json", json.dumps({"schemaVersion": 1, "id": "lithium", "name": "Lithium", "version": "0.16.0", "description": "Server optimization"}))
 

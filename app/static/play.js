@@ -885,6 +885,7 @@ const FQ = ["gray", "white", "green", "aqua", "gold", "light_purple"];
 async function viewFishingJournal(sid, who) {
   const s = await serverFrame(sid, "fishing");
   const d = await api(`/api/servers/${encodeURIComponent(sid)}/fishing/journal`);
+  if (d.source === "tide") return viewTideFishing(s, sid, d, who);
   const qName = (i) => d.qualities[i]?.name || "";
   let pick = who && d.players.find((p) => p.name === who) ? who : d.players[0]?.name || "";
   const render = () => {
@@ -915,6 +916,101 @@ async function viewFishingJournal(sid, who) {
       <section class="section"><div class="section-head"><h2>How rare</h2></div><div class="fish-qs">${d.qualities.map((q) => `<span class="fish-q fq-${q.color}">${esc(q.name)} <small>${q.one_in <= 2 ? `${q.chance}%` : `1 in ${q.one_in}`}</small></span>`).join("")}</div></section>`);
     wireHeader(s);
     $$("[data-fj]").forEach((b) => b.addEventListener("click", () => { pick = b.dataset.fj; render(); }));
+  };
+  render();
+}
+
+
+// ================================================================ fishing with the Tide mod
+// Tide keeps its own journal per player; this shows the family's: records (hover for who),
+// the top three of every fish, how much of each rarity tier has been caught, and everyone's level.
+function fmtWeight(g) {
+  if (!g) return "";
+  const oz = g / 28.349523125;
+  if (oz < 16) return `${oz < 10 ? oz.toFixed(1) : Math.round(oz)} oz`;
+  let lb = Math.floor(oz / 16), rest = Math.round(oz - lb * 16);
+  if (rest === 16) { lb++; rest = 0; }
+  return lb >= 100 ? `${lb.toLocaleString()} lb` : `${lb} lb${rest ? ` ${rest} oz` : ""}`;
+}
+function fmtLength(cm) {
+  if (!cm) return "";
+  const inch = cm / 2.54;
+  if (inch < 12) return `${inch.toFixed(1).replace(/\.0$/, "")} in`;
+  const t = Math.round(inch), ft = Math.floor(t / 12), rest = t % 12;
+  return rest ? `${ft} ft ${rest} in` : `${ft} ft`;
+}
+const qMarks = (q) => "◆".repeat(Math.max(0, q)) + "◇".repeat(Math.max(0, 5 - q));
+
+function viewTideFishing(s, sid, d, who) {
+  const QC = d.qualities.map((q) => q.color);
+  const qLabel = (q) => q >= 0 ? `<span class="fq-${QC[q]}">${qMarks(q)} ${esc(d.qualities[q].name)}</span>` : "";
+  const total = d.species.length;
+  let pick = who && d.players.find((p) => p.name === who) ? who : "";
+  const stars = (n) => `<span class="tf-stars" title="${n} star rarity">${"★".repeat(n)}</span>`;
+  const size = (e) => [fmtWeight(e.weight_g), fmtLength(e.length_cm)].filter(Boolean).join(" · ");
+
+  const familyCard = (sp) => {
+    const rec = d.records[sp.id], top = d.top[sp.id] || [];
+    if (!rec) return `<div class="fj-card"><div class="fj-top fj-dark">${itemIcon({ id: sp.id })}<b class="muted">${esc(sp.name)}</b>${stars(sp.stars)}</div>
+        <span class="muted small">Nobody has caught one yet</span>${sp.where ? `<span class="muted small">Look in: ${esc(sp.where)}</span>` : ""}</div>`;
+    return `<div class="fj-card got"><div class="fj-top">${itemIcon({ id: sp.id })}<b>${esc(sp.name)}</b>${stars(sp.stars)}</div>
+        <span class="fj-best" title="Family record, caught by ${esc(rec.player)}${rec.quality >= 0 ? ` · ${esc(d.qualities[rec.quality].name)}` : ""}">🏆 <b>${esc(size(rec) || `${rec.count} caught`)}</b> <span class="muted small">${esc(rec.player)}</span></span>
+        <ol class="tf-top">${top.map((e, i) => `<li title="${esc(e.player)}: ${esc(size(e))}${e.quality >= 0 ? ` · best quality ${esc(d.qualities[e.quality].name)}` : ""} · ${e.count} caught">
+          <span class="rank">${i + 1}</span>${faceHtml({ name: e.player, uuid: e.uuid }, 16)}<span>${esc(e.player)}</span><span class="muted small">${esc(fmtWeight(e.weight_g) || fmtLength(e.length_cm))}</span></li>`).join("")}</ol></div>`;
+  };
+  const playerCard = (p) => (sp) => {
+    const mine = p.species[sp.id], rec = d.records[sp.id];
+    const recLine = rec ? (rec.player === p.name ? `<span class="small fj-mine">🏆 Family record</span>`
+      : `<span class="small muted" title="${esc(size(rec))}">Record: ${esc(fmtWeight(rec.weight_g) || fmtLength(rec.length_cm))} by ${esc(rec.player)}</span>`) : "";
+    if (!mine) return `<div class="fj-card"><div class="fj-top fj-dark">${itemIcon({ id: sp.id })}<b class="muted">${esc(sp.name)}</b>${stars(sp.stars)}</div>
+        <span class="muted small">Not caught yet${sp.where ? ` · ${esc(sp.where)}` : ""}</span>${recLine}</div>`;
+    const bits = [mine.heaviest_g && `Heaviest <b>${esc(fmtWeight(mine.heaviest_g))}</b>`, mine.longest_cm && `Longest <b>${esc(fmtLength(mine.longest_cm))}</b>`,
+      mine.shortest_cm && `Shortest <b>${esc(fmtLength(mine.shortest_cm))}</b>`].filter(Boolean);
+    return `<div class="fj-card got"><div class="fj-top">${itemIcon({ id: sp.id })}<b>${esc(sp.name)}</b>${stars(sp.stars)}</div>
+        <span class="small">Caught <b>${mine.count}×</b>${mine.best_quality >= 0 ? ` · best ${qLabel(mine.best_quality)}` : ""}</span>
+        ${bits.length ? `<span class="small">${bits.join(" · ")}</span>` : ""}${recLine}</div>`;
+  };
+
+  const render = () => {
+    const p = d.players.find((x) => x.name === pick);
+    const card = p ? playerCard(p) : familyCard;
+    const have = p ? Object.keys(p.species).length : d.family_species;
+    const head = p
+      ? `<div class="panel fj-head">
+          <div class="tf-level">${faceHtml(p, 40)}<div><b class="tf-lv">Fishing level ${p.level}</b> <span class="muted">${esc(p.title)}</span>${p.fair ? ' <span class="fish-q fq-gold">Fair play</span>' : ""}
+            <div class="fj-bar" title="${p.next == null ? "Max level" : `${p.next.toLocaleString()} XP to level ${p.level + 1}`}"><i style="width:${p.progress * 100}%"></i></div>
+            <span class="muted small">${p.xp.toLocaleString()} XP${p.next == null ? " · max level" : ` · ${p.next.toLocaleString()} to level ${p.level + 1}`}</span></div></div>
+          <div class="fj-progress"><span><b>${have} of ${total}</b> kinds of fish · <b>${p.caught.toLocaleString()}</b> caught</span><div class="fj-bar"><i style="width:${(have / Math.max(1, total)) * 100}%"></i></div></div>
+          <div class="fish-qs">${d.qualities.map((q, i) => `<span class="fish-q fq-${q.color}">${qMarks(i)} ${esc(q.name)} <small>${p.qualities[i] || 0}</small></span>`).join("")}</div></div>`
+      : `<div class="panel fj-head">
+          <div class="fj-progress"><span>The family has caught <b>${have} of ${total}</b> kinds of fish</span><div class="fj-bar"><i style="width:${(have / Math.max(1, total)) * 100}%"></i></div></div>
+          <div class="tf-tiers">${d.tiers.map((t) => `<div class="tf-tier ${t.family === t.total ? "done" : ""}" title="${esc(Object.entries(t.players).map(([n, c]) => `${n}: ${c}/${t.total}`).join("\n"))}">
+            <span>${esc(t.label)} <span class="tf-stars">${"★".repeat(t.stars)}</span></span><b>${t.family === t.total ? "✓ All caught!" : `${t.family} / ${t.total}`}</b>
+            <div class="fj-bar"><i style="width:${(t.family / t.total) * 100}%"></i></div></div>`).join("")}</div></div>`;
+    const anglers = !p && d.players.length ? `<section class="section"><div class="section-head"><h2>Anglers</h2>${d.levels_on ? "" : '<span class="muted">Levels are switched off on this server</span>'}</div>
+        <ol class="panel tf-anglers">${d.players.map((x) => `<li><button type="button" class="linkish" data-fj="${esc(x.name)}">${faceHtml(x, 24)}<b>${esc(x.name)}</b></button>
+          <span class="tf-lvl">Lv <b>${x.level}</b></span><span class="muted">${esc(x.title)}</span>
+          <div class="fj-bar" title="${x.xp.toLocaleString()} XP"><i style="width:${x.progress * 100}%"></i></div>
+          <span class="muted small">${Object.keys(x.species).length}/${total} fish · ${x.caught.toLocaleString()} caught</span></li>`).join("")}</ol></section>` : "";
+    const groups = d.groups.map((g) => {
+      const list = d.species.filter((sp) => sp.group === g.key);
+      if (!list.length) return "";
+      const got = list.filter((sp) => p ? p.species[sp.id] : d.records[sp.id]).length;
+      return `<h3 class="tf-group">${esc(g.label)} <span class="muted small">${got} / ${list.length}</span></h3><div class="fj-grid">${list.map(card).join("")}</div>`;
+    }).join("");
+    setView(`${serverHeader(s, "fishing")}
+      <section class="section"><div class="section-head"><h2>🎣 Fishing</h2><span class="muted">From the Tide fishing mod</span></div>
+        <div class="fj-players"><button type="button" class="chip-btn ${!p ? "on" : ""}" data-fj="">👪 Family</button>${d.players.map((x) => `<button type="button" class="chip-btn ${x.name === pick ? "on" : ""}" data-fj="${esc(x.name)}">${faceHtml(x, 20)} ${esc(x.name)} <small>Lv ${x.level}</small></button>`).join("")}</div>
+        ${d.players.length ? "" : `<p class="muted">Nobody has caught anything with Tide yet.</p>`}
+        ${head}</section>
+      ${anglers}
+      <section class="section"><div class="section-head"><h2>${p ? `${esc(p.name)}'s journal` : "Family records"}</h2><span class="muted">${p ? "Their best of every fish" : "Hover a record to see who caught it"}</span></div>${groups}</section>
+      ${d.recent.length ? `<section class="section"><div class="section-head"><h2>Latest catches</h2></div><ul class="panel fj-recent">${d.recent.map((c) => `<li>${faceHtml({ name: c.player }, 20)}<b>${esc(c.player)}</b>
+          ${itemIcon({ id: c.species })}<span class="fq-${QC[c.quality]}">${esc(c.quality === 1 ? "" : `${c.quality_name} `)}${esc(c.name)}</span><span class="muted small">${esc(fmtWeight(c.weight_g))} · ${c.points} pts · ${esc(fmtAgo(c.ts))}</span></li>`).join("")}</ul></section>` : ""}
+      <section class="section"><div class="section-head"><h2>Catch quality</h2><span class="muted">At level ${d.baseline} with a normal hook; higher levels and better hooks improve them</span></div>
+        <div class="fish-qs">${d.qualities.map((q, i) => `<span class="fish-q fq-${q.color}">${qMarks(i)} ${esc(q.name)} <small>${q.chance >= 1 ? `${q.chance}%` : `1 in ${Math.round(100 / q.chance).toLocaleString()}`}</small></span>`).join("")}</div></section>`);
+    wireHeader(s);
+    $$("[data-fj]").forEach((b) => b.addEventListener("click", () => { pick = b.dataset.fj; render(); window.scrollTo({ top: 0 }); }));
   };
   render();
 }
