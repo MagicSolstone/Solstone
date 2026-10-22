@@ -131,3 +131,24 @@ def test_fishing_api(client, viewer, sid):
     r = client.get("/api/fishing/solstone-pack.zip")
     assert r.status_code == 200 and r.headers["content-type"] == "application/zip" and r.content[:2] == b"PK"
     assert viewer.get("/api/fishing/solstone-pack.zip").status_code == 403
+
+
+def test_datapack_folder_listing_finds_copies(tmp_path):
+    import io
+    import zipfile
+    from types import SimpleNamespace
+
+    from app import fishing, fishpack
+    dp = tmp_path / "datapacks"
+    dp.mkdir()
+    (dp / "solstone-pack.zip").write_bytes(fishpack.build_zip())
+    old = io.BytesIO()
+    with zipfile.ZipFile(old, "w") as z:                               # an old copy, re-zipped inside a folder
+        z.writestr("solstone-pack/pack.mcmeta", "{}")
+        z.writestr("solstone-pack/data/solfish/function/load.mcfunction", "data modify storage solstone:fish pack set value {version:2}\n")
+    (dp / "solstone-pack (1).zip").write_bytes(old.getvalue())
+    (dp / "other").mkdir()
+    rows = {r["name"]: r for r in fishing.files(SimpleNamespace(world_dir=tmp_path))}
+    assert rows["solstone-pack.zip"]["version"] == fishpack.VERSION and rows["solstone-pack.zip"]["fish_table"] and not rows["solstone-pack.zip"]["nested"]
+    assert rows["solstone-pack (1).zip"]["version"] == 2 and rows["solstone-pack (1).zip"]["nested"]
+    assert rows["other"]["version"] is None

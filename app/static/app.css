@@ -1621,3 +1621,4 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .ch-lure { display: grid; gap: 4px; }
 .ch-lure[hidden] { display: none; }
 .ch-lure select { max-width: 420px; }
+.fish-files { margin: 8px 0; } .fish-files ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; } .fish-files summary { cursor: pointer; }

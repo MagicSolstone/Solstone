@@ -107,7 +107,7 @@ async function viewChallenges(sid) {
   };
   const formHtml = () => `<form class="panel ch-form" id="ch-form">
       <h3>New challenge</h3>
-      <div class="ch-kinds" role="radiogroup" aria-label="What counts">${d.kinds.filter((k) => !["jumps", "walk"].includes(k.key) || draft.kind === k.key).map((k) => {
+      <div class="ch-kinds" role="radiogroup" aria-label="What counts">${d.kinds.filter((k) => !k.retired).map((k) => {
         const off = k.pack && !fishOn();
         const what = k.key === "fish_points" ? "most points (needs the fishing pack)" : k.key === "fish_heaviest" ? "heaviest fish (needs the fishing pack)" : `most ${k.unit}`;
         return `<label class="ch-kind ${draft.kind === k.key ? "on" : ""} ${off ? "off" : ""}" ${off ? 'title="Add the Solstone Fishing pack to the world first (below)"' : ""}><input type="radio" name="kind" value="${k.key}" ${draft.kind === k.key ? "checked" : ""} ${off ? "disabled" : ""}><span>${k.emoji}</span><b>${esc(k.label)}</b><small>${esc(off ? what : what.replace(" (needs the fishing pack)", ""))}</small></label>`;
@@ -161,12 +161,27 @@ async function viewChallenges(sid) {
         <p>One data pack for fishing and archery. Fishing: every catch is a species with a weight and a quality: <b>${fish.guide.length} kinds of fish</b> that depend on where you cast (rivers and lakes, oceans, warm or cold water, swamps, jungle rivers, the deep ocean). It unlocks the <b>Fishing tournament</b> (most points) and <b>Biggest catch</b> contests, and Prime and Exquisite catches are announced to everyone. Archery: it notes where each shot was taken from and how close to the centre it hit, for the archery games.</p>
         ${!fish.rcon ? `<p class="notice">Needs RCON turned on for this server.</p>` : on && !old ? `<p class="muted small">Loaded (version ${st.version}). <button class="link-btn" type="button" data-fish="reload">Reload</button> · <button class="link-btn" type="button" data-fish="test">Test a catch</button></p>` : steps}
         <div id="fish-diag"></div>
+        ${filesHtml(st)}
         ${old && !st.writable ? `<p class="muted small">Replace the old file with the new download, then load it.</p>` : ""}
         ${st.error ? `<p class="notice small">${esc(st.error)}</p>` : ""}
         <div class="fish-qs">${q}</div>
         <details class="fish-guide"><summary>Fish guide</summary><div class="table-wrap"><table class="data"><thead><tr><th>Fish</th><th>Where</th><th>Size</th><th>Points</th><th>How often</th></tr></thead><tbody>${rows}</tbody></table></div></details>
         ${fish.recent.length ? `<h3>Recent catches</h3><ul class="fish-recent">${fish.recent.slice(0, 8).map((e) => `<li>${e.player ? faceHtml({ name: e.player }, 20) : ""}<span>${esc(e.message)}</span><time class="muted small">${esc(fmtAgo(e.ts))}</time></li>`).join("")}</ul>` : ""}
       </div></section>`;
+  };
+  // What's really in the world's datapacks folder: a second (older) copy, or a zip with an extra
+  // folder inside it, is the usual reason the game runs an old version.
+  const filesHtml = (st) => {
+    const fl = st.files || [];
+    const ours = fl.filter((f) => f.version != null);
+    const warn = [];
+    if (ours.length > 1) warn.push(`There are <b>${ours.length} copies</b> of the Solstone pack in the folder. The game may use the old one: delete all but <code>${esc(st.file)}</code>, then restart the server.`);
+    if (ours.some((f) => f.nested)) warn.push("A copy has an extra folder inside the zip, so the game can't read it properly. Use the download as it is, without unzipping and re-zipping it.");
+    if (ours.length === 1 && ours[0].version === st.current && st.version && st.version !== st.current) warn.push(`The file is version ${st.current} but the game is still running version ${st.version}. Restart the server (a reload doesn't pick up a replaced file).`);
+    if (!ours.length && fl.length) warn.push(`No Solstone pack in this folder. Is it the right world? The game reads <code>${esc(st.folder)}</code>.`);
+    if (!fl.length) return warn.length ? `<p class="notice small">${warn.join("<br>")}</p>` : "";
+    const fmt = (f) => `<li><code>${esc(f.name)}</code>${f.folder ? " (folder)" : ""} ${f.version != null ? `<b>Solstone v${f.version}</b>${f.fish_table ? "" : " · no fish table"}` : `<span class="muted">other pack</span>`}${f.modified ? ` <span class="muted small">${esc(fmtAgo(f.modified))}</span>` : ""}${f.error ? ` <span class="notice small">${esc(f.error)}</span>` : ""}</li>`;
+    return `${warn.length ? `<p class="notice small">${warn.join("<br>")}</p>` : ""}<details class="fish-files" ${warn.length ? "open" : ""}><summary>In the world's datapacks folder (${fl.length})</summary><ul>${fl.map(fmt).join("")}</ul></details>`;
   };
   const diag = (html) => { const el = $("#fish-diag"); if (el) el.innerHTML = html; };
   const wireFish = () => $$("[data-fish]").forEach((b) => b.addEventListener("click", async () => {
@@ -192,6 +207,7 @@ async function viewChallenges(sid) {
       if (r.problems?.length) { fish = await api(`/api/servers/${encodeURIComponent(sid)}/fishing`); render(); diag(`<div class="notice small"><b>The game reported problems loading data packs:</b><pre class="mc-out">${esc(r.problems.join("\n"))}</pre></div>`); return; }
       showToast(r.version ? `Solstone Fishing is loaded (version ${r.version})` : r.listed === false ? "The game didn't load it. Is the file in the world's datapacks folder?" : "Reloaded, but the pack didn't start. Check the server log for errors.", 5000);
       fish = await api(`/api/servers/${encodeURIComponent(sid)}/fishing`); render();
+      if (r.packs) diag(`<details class="fish-files" open><summary>What the game says it has</summary><pre class="mc-out">${esc(r.packs)}</pre></details>`);
     } catch (e) { showToast(esc(e.message), 5000); b.disabled = false; }
   }));
   const wire = () => {

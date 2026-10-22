@@ -90,8 +90,9 @@ def test_fishing_contest_start_to_prize(fake):
     assert pushed and pushed[0][2] == "challenge"
 
 
-def test_ties_offline_winners_and_unknown_blocks(fake):
+def test_ties_offline_winners_and_unknown_blocks(fake, monkeypatch):
     challenges, srv, _ = fake
+    monkeypatch.setattr(challenges, "RETIRED", ())            # no longer offered, but the several-statistics path stays
     challenges.create(srv.id, {"kind": "logs", "start": time.time(), "minutes": 5, "prize": {"item": "golden_apple", "count": 1}})
     asyncio.run(challenges.tick([srv]))
     assert not any("pale_oak" in v for v in srv.objectives.values()) and len(srv.objectives) >= 9   # 8 logs + total
@@ -121,7 +122,11 @@ def test_validation_and_cancel(fake):
         challenges.create(srv.id, {"kind": "fish", "prize": {}})
     with pytest.raises(ValueError):
         challenges.create(srv.id, {"kind": "fish", "start": time.time() - 3600, "prize": {"item": "diamond"}})
-    c = challenges.create(srv.id, {"kind": "jumps", "start": time.time(), "prize": {"item": "diamond"}})
+    for gone in ("diamonds", "logs", "stone", "breed", "jumps"):
+        with pytest.raises(ValueError):
+            challenges.create(srv.id, {"kind": gone, "prize": {"item": "diamond"}})
+    assert {k["key"] for k in challenges.kinds() if not k["retired"]} == {"fish", "mobs", "creepers", "fish_points", "fish_heaviest"}
+    c = challenges.create(srv.id, {"kind": "creepers", "start": time.time(), "prize": {"item": "diamond"}})
     asyncio.run(challenges.tick([srv]))
     assert srv.objectives
     assert asyncio.run(challenges.cancel(srv, c["id"])) and not srv.objectives

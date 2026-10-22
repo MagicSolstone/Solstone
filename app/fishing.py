@@ -45,6 +45,45 @@ def datapacks_dir(srv):
     return srv.world_dir / "datapacks"
 
 
+def files(srv) -> list[dict]:
+    """What's actually in the world's datapacks folder, and which version of the Solstone pack
+    each one is (read from its load function): two copies, or an old one, explain a lot."""
+    import zipfile
+    d = datapacks_dir(srv)
+    out = []
+    try:
+        entries = sorted(d.iterdir(), key=lambda p: p.name.lower())
+    except OSError:
+        return out
+    for p in entries[:60]:
+        if p.name.startswith("."):
+            continue
+        row = {"name": p.name, "folder": p.is_dir(), "version": None, "fish_table": False, "nested": False}
+        try:
+            row["modified"] = p.stat().st_mtime
+            if p.is_dir():
+                names = [str(x.relative_to(p)).replace("\\", "/") for x in p.rglob("*") if x.is_file()][:5000]
+                read = lambda n, p=p: (p / n).read_text("utf-8", "replace")  # noqa: E731
+            elif p.suffix.lower() == ".zip":
+                z = zipfile.ZipFile(p)
+                names = z.namelist()
+                read = lambda n, z=z: z.read(n).decode("utf-8", "replace")  # noqa: E731
+            else:
+                out.append(row)
+                continue
+            load = next((n for n in names if n.endswith("data/solfish/function/load.mcfunction")), None)
+            if load:
+                m = re.search(r"version:\s*(\d+)", read(load))
+                row["version"] = int(m.group(1)) if m else 0
+                row["nested"] = load != "data/solfish/function/load.mcfunction"      # zipped inside an extra folder
+            row["fish_table"] = any(n.endswith("data/minecraft/loot_table/gameplay/fishing/fish.json") for n in names)
+            row["mcmeta"] = "pack.mcmeta" in names
+        except (OSError, zipfile.BadZipFile, ValueError) as e:
+            row["error"] = str(e)[:120]
+        out.append(row)
+    return out
+
+
 def writable(srv) -> bool:
     d = datapacks_dir(srv)
     try:
@@ -97,6 +136,7 @@ async def reload(srv) -> dict:
     st = await check(srv, force=True)
     st["listed"] = fishpack.PACK_FILE in listed or fishpack.PACK_ID in listed
     st["reload_reply"] = out[:200]
+    st["packs"] = (listed + "\n" + await _rcon(srv, "datapack list available"))[:2000]
     await asyncio.sleep(1.5)                          # let the game finish writing its log
     st["problems"] = _log_problems(srv, before)
     return st
@@ -203,4 +243,4 @@ async def poll(servers: list) -> None:
 def status(srv) -> dict:
     st = _state.get(srv.id) or {}
     return {"version": st.get("version"), "current": fishpack.VERSION, "error": st.get("error", ""),
-            "writable": writable(srv), "file": fishpack.PACK_FILE, "folder": str(datapacks_dir(srv))}
+            "writable": writable(srv), "file": fishpack.PACK_FILE, "folder": str(datapacks_dir(srv)), "files": files(srv)}

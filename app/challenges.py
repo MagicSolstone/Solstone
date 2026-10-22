@@ -46,6 +46,8 @@ KINDS: dict[str, tuple[str, str, tuple[str, str], list[str], int]] = {
 }
 FISH_KINDS = {"fish_points": "solfish_cp", "fish_heaviest": "solfish_cb"}     # kind -> the pack's objective
 ROD_KINDS = ("fish", "fish_points", "fish_heaviest")
+# Kept so old contests still show properly, but no longer offered: not enough of a real race.
+RETIRED = ("diamonds", "logs", "stone", "breed", "jumps", "walk")
 SECTION = "challenges"
 KEEP_DONE = 30                          # finished challenges kept for the history list
 _SCORE = re.compile(r"has (-?\d+)")
@@ -66,7 +68,7 @@ def _save(d: dict) -> None:
 
 def kinds() -> list[dict]:
     return [{"key": k, "label": v[0], "emoji": v[1], "unit": v[2][1], "pack": k in FISH_KINDS,
-             "scale": 10 if k == "fish_heaviest" else 1} for k, v in KINDS.items()]
+             "scale": 10 if k == "fish_heaviest" else 1, "retired": k in RETIRED} for k, v in KINDS.items()]
 
 
 def _show(c: dict, n: int) -> str:
@@ -95,7 +97,7 @@ def _prize(p) -> dict | None:
 
 def clean(body: dict, server: str) -> dict:
     kind = str(body.get("kind") or "")
-    if kind not in KINDS:
+    if kind not in KINDS or kind in RETIRED:
         raise ValueError("Pick what the challenge counts")
     try:
         start = float(body.get("start") or 0) or time.time()
