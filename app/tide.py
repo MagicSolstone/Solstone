@@ -38,7 +38,7 @@ G_PER_LB = 453.59237
 # ------------------------------------------------------------------ the mod
 def jar(srv) -> Path | None:
     """The Tide jar in the server's mods folder, if it's installed."""
-    if not srv.is_java:
+    if not getattr(srv, "is_java", True) or getattr(srv, "dir", None) is None:
         return None
     for m in S.mods(srv):
         if m.get("id") == MOD_ID:

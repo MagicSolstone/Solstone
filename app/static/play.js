@@ -75,8 +75,8 @@ async function viewChallenges(sid) {
   const s = await serverFrame(sid, "challenges");
   const base = `/api/servers/${encodeURIComponent(sid)}/challenges`;
   let [d, fish] = await Promise.all([api(base), api(`/api/servers/${encodeURIComponent(sid)}/fishing`).catch(() => null)]);
-  const fishOn = () => !!fish?.status?.version;
-  const draft = { kind: "fish", name: "", when: "now", at: "", minutes: 10, prize: null, second: null, say: true, lure: 0, hot: false, hot_bonus: 2, hot_on: 60, hot_off: 30, hot_far: 40, g: { on: false, spot: null, r: 4 } };
+  const fishOn = () => !!fish?.status?.version || !!fish?.tide;        // the fishing pack, or the Tide mod
+  const draft = { kind: "fish", name: "", when: "now", at: "", minutes: 10, prize: null, second: null, say: true, lure: 0, fair: true, hot: false, hot_bonus: 2, hot_on: 60, hot_off: 30, hot_far: 40, g: { on: false, spot: null, r: 4 } };
   const ROD_KINDS = ["fish", "fish_points", "fish_heaviest"];
   // default time for "later": the next 8 PM, or the next hour if that's already past today
   const next8 = () => { const t = new Date(); t.setHours(20, 0, 0, 0); if (t < new Date()) { t.setTime(Date.now() + 3600e3); t.setMinutes(0, 0, 0); } return t; };
@@ -89,7 +89,8 @@ async function viewChallenges(sid) {
   const scoresHtml = (c) => {
     const rows = Object.entries(c.scores || {}).sort((a, b) => b[1] - a[1]);
     if (!rows.length) return `<p class="muted small">No scores yet.</p>`;
-    const show = (n, v) => (c.kind === "fish_heaviest" ? `${v / 10} lb${c.best?.[n] ? ` · ${esc(c.best[n].name)}` : ""}` : c.kind === "fish_points" ? `${v} pts` : v);
+    const lb = (v) => (c.tide ? fmtWeight(v / 10 * 453.59237) : `${v / 10} lb`);
+    const show = (n, v) => (c.kind === "fish_heaviest" ? `${lb(v)}${c.best?.[n] ? ` · ${esc(c.best[n].name)}` : ""}` : c.kind === "fish_points" ? `${v} pts` : v);
     return `<ol class="ch-scores">${rows.map(([n, v], i) => `<li class="${(c.winners || []).includes(n) ? "win" : ""}"><span class="rank">${i + 1}</span>${faceHtml({ name: n }, 22)}<b>${esc(n)}</b><span class="val">${show(n, v)}</span></li>`).join("")}</ol>`;
   };
   const card = (c) => {
@@ -109,8 +110,8 @@ async function viewChallenges(sid) {
       <h3>New challenge</h3>
       <div class="ch-kinds" role="radiogroup" aria-label="What counts">${d.kinds.filter((k) => !k.retired).map((k) => {
         const off = k.pack && !fishOn();
-        const what = k.key === "fish_points" ? "most points (needs the fishing pack)" : k.key === "fish_heaviest" ? "heaviest fish (needs the fishing pack)" : `most ${k.unit}`;
-        return `<label class="ch-kind ${draft.kind === k.key ? "on" : ""} ${off ? "off" : ""}" ${off ? 'title="Add the Solstone Fishing pack to the world first (below)"' : ""}><input type="radio" name="kind" value="${k.key}" ${draft.kind === k.key ? "checked" : ""} ${off ? "disabled" : ""}><span>${k.emoji}</span><b>${esc(k.label)}</b><small>${esc(off ? what : what.replace(" (needs the fishing pack)", ""))}</small></label>`;
+        const what = k.key === "fish_points" ? "most points (needs the fishing pack or Tide)" : k.key === "fish_heaviest" ? "heaviest fish (needs the fishing pack or Tide)" : `most ${k.unit}`;
+        return `<label class="ch-kind ${draft.kind === k.key ? "on" : ""} ${off ? "off" : ""}" ${off ? 'title="Add the Solstone Fishing pack to the world first (below)"' : ""}><input type="radio" name="kind" value="${k.key}" ${draft.kind === k.key ? "checked" : ""} ${off ? "disabled" : ""}><span>${k.emoji}</span><b>${esc(k.label)}</b><small>${esc(off ? what : what.replace(" (needs the fishing pack or Tide)", ""))}</small></label>`;
       }).join("")}</div>
       <div class="ch-grid">
         <label>Name <input class="input" name="name" maxlength="40" placeholder="${esc(kind(draft.kind).label)}" value="${esc(draft.name)}"></label>
@@ -134,6 +135,7 @@ async function viewChallenges(sid) {
         <option value="3" ${draft.lure === 3 ? "selected" : ""}>Contest Rod with Lure III (bites within ~15 s)</option>
         <option value="5" ${draft.lure === 5 ? "selected" : ""}>Contest Rod with Lure V (bites within ~5 s)</option></select>
         <small class="muted">Each player gets one when it starts (or when they join); it's taken back at the end.</small></label>
+      ${fish?.tide ? `<label class="check ch-fair" ${ROD_KINDS.includes(draft.kind) ? "" : "hidden"}><input type="checkbox" name="fair" ${draft.fair ? "checked" : ""}> Fair play: everyone fishes at the same level for the contest (Tide levels are switched off until it ends)</label>` : ""}
       <label class="check"><input type="checkbox" name="say" ${draft.say ? "checked" : ""}> Announce it in the game (start, last minute, winner) and show the scores on everyone's screen</label>
       ${d.rcon ? "" : `<p class="notice">This server needs RCON turned on for challenges (⚙ settings).</p>`}
       <div class="btn-row"><button class="btn primary" type="submit" ${d.rcon ? "" : "disabled"}>${draft.when === "now" ? "Start the challenge" : "Schedule it"}</button></div>
@@ -226,11 +228,11 @@ async function viewChallenges(sid) {
   }));
   const wire = () => {
     const form = $("#ch-form");
-    const sync = () => { const f = new FormData(form); draft.kind = f.get("kind"); draft.name = f.get("name"); draft.minutes = +f.get("minutes"); draft.when = f.get("when"); draft.at = f.get("at"); draft.say = !!f.get("say"); draft.lure = +(f.get("lure") || 0);
+    const sync = () => { const f = new FormData(form); draft.kind = f.get("kind"); draft.name = f.get("name"); draft.minutes = +f.get("minutes"); draft.when = f.get("when"); draft.at = f.get("at"); draft.say = !!f.get("say"); draft.lure = +(f.get("lure") || 0); draft.fair = !!f.get("fair");
       draft.hot = !!f.get("hot"); for (const k of ["hot_bonus", "hot_on", "hot_off", "hot_far"]) if (f.get(k)) draft[k] = +f.get(k); };
     form.addEventListener("change", (e) => {
       sync();
-      if (e.target.name === "kind") { form.querySelectorAll(".ch-kind").forEach((l) => l.classList.toggle("on", l.querySelector("input").checked)); form.name.placeholder = kind(draft.kind).label; form.querySelector(".ch-lure").hidden = !ROD_KINDS.includes(draft.kind); form.querySelector(".ch-hot").hidden = draft.kind !== "fish_points"; }
+      if (e.target.name === "kind") { form.querySelectorAll(".ch-kind").forEach((l) => l.classList.toggle("on", l.querySelector("input").checked)); form.name.placeholder = kind(draft.kind).label; form.querySelector(".ch-lure").hidden = !ROD_KINDS.includes(draft.kind); if (form.querySelector(".ch-fair")) form.querySelector(".ch-fair").hidden = !ROD_KINDS.includes(draft.kind); form.querySelector(".ch-hot").hidden = draft.kind !== "fish_points"; }
       if (e.target.name === "at") { draft.when = "later"; form.querySelector('[name=when][value=later]').checked = true; }
       form.querySelector("[type=submit]").textContent = draft.when === "now" ? "Start the challenge" : "Schedule it";
     });
@@ -248,7 +250,7 @@ async function viewChallenges(sid) {
       if (draft.g.on && !draft.g.spot) { showToast("Pick the spot to teleport everyone to (or untick teleporting)", 3000); return; }
       const start = draft.when === "now" ? Date.now() / 1000 : new Date(draft.at).getTime() / 1000;
       try {
-        const c = await post(base, { kind: draft.kind, name: draft.name, start, minutes: draft.minutes, say: draft.say, lure: ROD_KINDS.includes(draft.kind) ? draft.lure : 0,
+        const c = await post(base, { kind: draft.kind, name: draft.name, start, minutes: draft.minutes, say: draft.say, lure: ROD_KINDS.includes(draft.kind) ? draft.lure : 0, fair: ROD_KINDS.includes(draft.kind) && !!fish?.tide && draft.fair,
           gather: gatherBody(draft.g),
           hot: draft.kind === "fish_points" && draft.hot, hot_bonus: draft.hot_bonus, hot_on: draft.hot_on, hot_off: draft.hot_off, hot_far: draft.hot_far,
           prize: { item: draft.prize.item, count: draft.prize.count, name: draft.prize.label }, second: draft.second ? { item: draft.second.item, count: draft.second.count, name: draft.second.label } : null });
@@ -263,7 +265,7 @@ async function viewChallenges(sid) {
         try { await api(`${base}/${encodeURIComponent(c.id)}`, { method: "DELETE" }); await reload(); } catch (err) { showToast(esc(err.message), 4000); }
       });
       el.querySelector("[data-again]")?.addEventListener("click", () => {
-        Object.assign(draft, { kind: c.kind, name: c.name, minutes: c.minutes, say: c.say, lure: c.lure || 0, hot: !!c.hot, hot_bonus: c.hot_bonus || 2, hot_on: c.hot_on || 60, hot_off: c.hot_off || 30, hot_far: c.hot_far || 40, when: "now",
+        Object.assign(draft, { kind: c.kind, name: c.name, minutes: c.minutes, say: c.say, lure: c.lure || 0, fair: c.fair !== false, hot: !!c.hot, hot_bonus: c.hot_bonus || 2, hot_on: c.hot_on || 60, hot_off: c.hot_off || 30, hot_far: c.hot_far || 40, when: "now",
           prize: { ...c.prize, label: c.prize.name }, second: c.second ? { ...c.second, label: c.second.name } : null });
         render(); $("#ch-form").scrollIntoView({ behavior: "smooth", block: "center" });
       });

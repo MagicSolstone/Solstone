@@ -43,7 +43,8 @@ KINDS: dict[str, tuple[str, str, tuple[str, str], list[str], int]] = {
     "jumps": ("Jump-a-thon", "🦘", ("jump", "jumps"), ["minecraft.custom:minecraft.jump"], 1),
     "walk": ("Explorer", "🧭", ("block walked", "blocks walked"),
              ["minecraft.custom:minecraft.walk_one_cm", "minecraft.custom:minecraft.sprint_one_cm"], 100),
-    # These two need the Solstone Fishing pack, which keeps its own scoreboards.
+    # These two need the Solstone Fishing pack (which keeps its own scoreboards) or the Tide
+    # fishing mod (whose catches Solstone reads from the log and scores itself).
     "fish_points": ("Fishing tournament", "🏆", ("point", "points"), [], 1),
     "fish_heaviest": ("Biggest catch", "🐟", ("lb", "lb"), [], 1),
 }
@@ -121,7 +122,9 @@ def clean(body: dict, server: str) -> dict:
             "gather": gather.clean_spot(body.get("gather")),
             "hot": bool(body.get("hot")) and kind == "fish_points", **hotzone.settings(body, 60, 30),
             "hot_far": int(max(16, min(96, float(body.get("hot_far") or 40)))),
-            "lure": int(body.get("lure") or 0) if kind in ROD_KINDS and str(body.get("lure") or 0) in ("0", "3", "5") else 0}
+            "lure": int(body.get("lure") or 0) if kind in ROD_KINDS and str(body.get("lure") or 0) in ("0", "3", "5") else 0,
+            # Tide: everyone fishes at the same (baseline) level for the contest, whatever their own
+            "fair": bool(body.get("fair", True)) and kind in ROD_KINDS}
 
 
 def list_for(server: str) -> list[dict]:
@@ -198,16 +201,33 @@ async def _give_rod(srv, c: dict, player: str) -> None:
         await _rcon(srv, f"tellraw {player} {component([('★ ', 'gold'), (note, 'yellow')])}")
 
 
+async def _fair(srv, c: dict, who: str) -> None:
+    """Tide's fair play for this contest: `who` (a name, or @a) fishes at the baseline level."""
+    names = [n for n in (await S.online_players(srv))[0]] if who == "@a" else [who]
+    for n in names:
+        if n.lower() in {x.lower() for x in c.setdefault("faired", [])}:
+            continue
+        out = await _rcon(srv, f"fishinglevel fair {n} true")
+        if "fair play on" in out.lower() or not out:
+            c["faired"].append(n)
+
+
 async def _start(srv, c: dict) -> None:
     from . import gather
     if c.get("gather"):                                  # everyone to the event's spot first (and home afterwards)
         c["gathered"] = await gather.send(srv, c["gather"])
     label, _emoji, unit, criteria, _div = KINDS[c["kind"]]
     made = []
-    if c["kind"] in FISH_KINDS:                       # the pack's own objective, cleared for this contest
+    from . import tide
+    c["tide"] = c["kind"] in ROD_KINDS and await asyncio.to_thread(tide.installed, srv)
+    if c["kind"] in FISH_KINDS and c["tide"]:         # Tide: Solstone scores the catches it reads from the log
+        c["best"], c["tscore"] = {}, {}
+    elif c["kind"] in FISH_KINDS:                     # the pack's own objective, cleared for this contest
         made = _objectives(c)
         await _rcon(srv, f"scoreboard players reset * {made[0]}")
         c["best"] = {}
+    if c["tide"] and c.get("fair"):
+        await _fair(srv, c, "@a")
     for obj, crit in zip(_objectives(c) if c["kind"] not in FISH_KINDS else [], criteria, strict=True):
         out = await _rcon(srv, f"scoreboard objectives add {obj} {crit}")
         if out and ("unknown" in out.lower() or "invalid" in out.lower() or "error" in out.lower()):
@@ -235,6 +255,8 @@ async def _start(srv, c: dict) -> None:
         prize = f"{c['prize']['count']} × {c['prize'].get('name') or c['prize']['item'].split(':')[1].replace('_', ' ')}"
         goal = {"fish_points": "Most fishing points", "fish_heaviest": "The heaviest fish"}.get(c["kind"], f"Most {unit[1]}")
         rules = f" has started! {goal} in {c['minutes']} minutes wins {prize}."
+        if c["tide"] and c.get("fair"):
+            rules += " Fair play: everyone fishes at the same level."
         await _rcon(srv, f"tellraw @a {component([('★ ', 'gold'), (c['name'], 'yellow'), (rules, None)])}")
         await _rcon(srv, "title @a times 10 60 20")
         await _rcon(srv, f"title @a title {component([('Go!', 'gold')])}")
@@ -246,8 +268,13 @@ async def _read_scores(srv, c: dict) -> None:
     names, _src = await S.online_players(srv)
     c["players"] = sorted({*c.get("players", []), *names}, key=str.lower)
     div = KINDS[c["kind"]][4]
+    tscore = c.get("tscore")
+    if tscore is not None:                                       # Tide: scored from the catches themselves
+        c["players"] = sorted({*c["players"], *tscore}, key=str.lower)
     for p in c["players"]:
         total = 0
+        if tscore is not None:
+            total = tscore.get(p, 0)
         for obj in c["objectives"]:
             m = _SCORE.search(await _rcon(srv, f"scoreboard players get {p} {obj}"))
             total += int(m.group(1)) if m else 0
@@ -303,7 +330,8 @@ async def _finish(srv, c: dict, d: dict) -> None:
         n = c["scores"][first[0]]
         who = " and ".join(first)
         best = (c.get("best") or {}).get(first[0])
-        what = f"a {best['lb']} lb {best['name']}" if c["kind"] == "fish_heaviest" and best else _show(c, n)
+        weight = _lb_oz(best["lb"]) if best and c.get("tide") else f"{best['lb']} lb" if best else ""
+        what = f"a {weight} {best['name']}" if c["kind"] == "fish_heaviest" and best else _show(c, n)
         c["result"] = f"{who} won {c['name']} with {what}!"
     else:
         c["result"] = f"{c['name']} is over. Nobody scored this time."
@@ -324,6 +352,13 @@ async def _tidy(srv, c: dict) -> None:
     """Remove this contest's objectives and countdown; the fishing pack's own objectives get
     their sidebar and name back."""
     await bossbar.hide(srv, c)
+    if c.get("faired"):                                  # back to their own fishing level (whoever's away: on joining)
+        online = {n.lower() for n in (await S.online_players(srv))[0]}
+        for n in c["faired"]:
+            if n.lower() in online:
+                await _rcon(srv, f"fishinglevel fair {n} false")
+        c["fair_owed"] = [n.lower() for n in c["faired"] if n.lower() not in online]
+        c["faired"] = []
     if c.get("gathered"):                                # prizes are out: a countdown, then everyone goes home
         from . import gather
         gather.come_home(srv, c.pop("gathered"), c["name"])
@@ -341,6 +376,11 @@ async def _tidy(srv, c: dict) -> None:
             await _rcon(srv, f"scoreboard objectives modify {obj} displayname {json.dumps({'solfish_cp': 'Challenge points', 'solfish_cb': 'Heaviest catch'}[obj])}")
         else:
             await _rcon(srv, f"scoreboard objectives remove {obj}")
+
+
+def _lb_oz(lb: float) -> str:
+    from .tide import fmt_lb
+    return fmt_lb(lb)
 
 
 def busy() -> bool:
@@ -469,20 +509,27 @@ async def _on_catch(srv, player: str, catch: dict) -> bool:
     best = c.setdefault("best", {})
     if player not in best or catch["weight"] > best[player]["weight"]:
         best[player] = {k: catch[k] for k in ("name", "lb", "weight", "quality_name", "points")}
+    hot = c.get("hot") and catch.get("pos") and hotzone.inside(c, catch["pos"], time.time(), FISH_HOT_R)
+    tscore = c.get("tscore")
+    if tscore is not None:                     # Tide: Solstone keeps the score (tenths of a pound for the heaviest)
+        if c["kind"] == "fish_points":
+            tscore[player] = tscore.get(player, 0) + round(catch["points"] * (c["hot_bonus"] if hot else 1))
+        else:
+            tscore[player] = max(tscore.get(player, 0), round(catch["weight"] * 10))
     _save(d)
     from .fishing import QUALITY_COLOR
     colour = QUALITY_COLOR.get(catch["quality"], "white")
     fish = catch["name"] if catch["quality"] == 1 else f"{catch['quality_name']} {catch['name']}"
-    hot = c.get("hot") and catch.get("pos") and hotzone.inside(c, catch["pos"], time.time(), FISH_HOT_R)
     if c["kind"] == "fish_points" and hot:
         more = round(catch["points"] * (c["hot_bonus"] - 1))
-        await _rcon(srv, f"scoreboard players add {player} {FISH_KINDS['fish_points']} {more}")
+        if tscore is None:
+            await _rcon(srv, f"scoreboard players add {player} {FISH_KINDS['fish_points']} {more}")
         extra = f" · ♨ ×{c['hot_bonus']:g} hot zone · +{catch['points'] + more} points"
     elif c["kind"] == "fish_points":
         extra = f" · +{catch['points']} points"
     else:
         extra = " · new best!" if best[player]["weight"] == catch["weight"] else ""
-    size = f" · {catch['lb']} lb"
+    size = f" · {catch['lb']} lb" if tscore is None else f" · {_lb_oz(catch['lb'])}"
     await _rcon(srv, f"tellraw @a {component([('≫ ', 'aqua'), (player, 'aqua'), (' caught ', None), (fish, colour), (size, None), (extra, 'yellow')])}")
     return True
 
@@ -493,6 +540,13 @@ async def on_join(srv, player: str) -> None:
     for c in d["items"]:
         if c["server"] != srv.id:
             continue
+        if c["state"] == "running" and c.get("tide") and c.get("fair"):
+            await _fair(srv, c, player)
+            _save(d)
+        elif player.lower() in (c.get("fair_owed") or []):
+            await _rcon(srv, f"fishinglevel fair {player} false")
+            c["fair_owed"].remove(player.lower())
+            _save(d)
         if c["state"] == "running" and c.get("lure"):
             await _give_rod(srv, c, player)
             _save(d)

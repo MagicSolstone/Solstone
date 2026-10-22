@@ -1771,6 +1771,7 @@ async def get_fishing(sid: str, request: Request):
             log.debug("fishing check failed: %s", e)
     evs = db.events(srv.id, ["fish", "bigfish"], None, 40)
     return {"status": fishing.status(srv), "rcon": bool(srv.rcon_conf()), "guide": fishpack.guide(), "qualities": fishpack.qualities(),
+            "tide": await asyncio.to_thread(tide.installed, srv),
             "recent": [{"ts": e["ts"], "player": e["player"], "message": e["message"]} for e in evs]}
 
 

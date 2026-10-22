@@ -89,3 +89,108 @@ def test_recorder_reads_tide_lines(client, sid):
     recorder.tail_server(srv)
     after = [r for r in db.fish_catches(sid) if r["species"] == "tide:bluegill"]
     assert len(after) == before + 1 and after[-1]["quality_name"] == "Fine" and after[-1]["points"] == 15
+
+
+# ------------------------------------------------------------------ contests scored from Tide catches
+import asyncio  # noqa: E402
+import time  # noqa: E402
+
+import pytest  # noqa: E402
+
+
+class TideServer:
+    is_java = True
+
+    def __init__(self):
+        self.id, self.display_name, self.mc_version = "tide-srv", "Family", "26.3"
+        self.cmds, self.online = [], ["Tyler", "Gimli_Jr"]
+
+    def rcon_conf(self):
+        return {"host": "x"}
+
+    async def rcon(self, cmd):
+        self.cmds.append(cmd)
+        if cmd.startswith("fishinglevel fair"):
+            return f"Fair play {'on' if cmd.endswith('true') else 'off'} for 1 player(s)"
+        if cmd.startswith("give"):
+            return "Gave 1 [x] to someone"
+        return ""
+
+
+@pytest.fixture()
+def lake(monkeypatch):
+    from app import challenges, gather, settings_store, tide
+    from app import servers as S
+    monkeypatch.setattr(gather, "LEAD", 0)
+    settings_store.save_section("challenges", {})
+    srv = TideServer()
+
+    async def online(_s):
+        return list(srv.online), "rcon"
+    monkeypatch.setattr(S, "online_players", online)
+    monkeypatch.setattr(tide, "installed", lambda _s: True)
+    monkeypatch.setattr(tide, "species", lambda _s: [{"id": "tide:pike", "name": "Pike"}, {"id": "tide:bluegill", "name": "Bluegill"}])
+    monkeypatch.setattr(challenges.fwshow, "push", lambda *a, **k: None)
+    yield challenges, tide, srv
+    settings_store.save_section("challenges", {})
+
+
+def _end(challenges):
+    d = challenges._load()
+    d["items"][0]["ends_at"] = time.time() - 1
+    challenges._save(d)
+
+
+def test_biggest_catch_with_tide_and_fair_play(lake):
+    challenges, tide, srv = lake
+    challenges.create(srv.id, {"kind": "fish_heaviest", "start": time.time(), "minutes": 10, "prize": {"item": "diamond"}})
+    asyncio.run(challenges.tick([srv]))
+    c = challenges.list_for(srv.id)[0]
+    assert c["state"] == "running" and c["tide"] and c["objectives"] == [] and c["fair"]
+    assert not any("solfish" in x for x in srv.cmds)                                      # the pack isn't involved
+    assert {"fishinglevel fair Tyler true", "fishinglevel fair Gimli_Jr true"} <= set(srv.cmds)
+    assert any("Fair play: everyone fishes at the same level" in x for x in srv.cmds)
+    pike = tide.to_catch(srv, {"player": "Gimli_Jr", "fish": "tide:pike", "rarity": "rare", "quality": 3, "weight_g": 4627.0})
+    small = tide.to_catch(srv, {"player": "Gimli_Jr", "fish": "tide:bluegill", "quality": 1, "weight_g": 200.0})
+    asyncio.run(challenges.on_catch(srv, "Gimli_Jr", pike))
+    asyncio.run(challenges.on_catch(srv, "Gimli_Jr", small))
+    asyncio.run(challenges.on_catch(srv, "Tyler", small))
+    assert any("Prime Pike" in x and "10 lb 3 oz" in x and "new best" in x for x in srv.cmds)
+    srv.online = ["Tyler"]                                                               # Gimli_Jr logs off before the end
+    _end(challenges)
+    asyncio.run(challenges.tick([srv]))
+    c = challenges.list_for(srv.id)[0]
+    assert c["winners"] == ["Gimli_Jr"] and c["scores"]["Gimli_Jr"] == 102 and c["scores"]["Tyler"] == 4
+    assert c["result"] == "Gimli_Jr won Biggest catch with a 10 lb 3 oz Pike!"
+    assert "fishinglevel fair Tyler false" in srv.cmds and "fishinglevel fair Gimli_Jr false" not in srv.cmds
+    assert c["fair_owed"] == ["gimli_jr"]
+    asyncio.run(challenges.on_join(srv, "Gimli_Jr"))                                     # their own level back on joining
+    assert srv.cmds[-1] == "fishinglevel fair Gimli_Jr false" or "fishinglevel fair Gimli_Jr false" in srv.cmds
+    assert challenges.list_for(srv.id)[0]["fair_owed"] == []
+
+
+def test_tournament_points_from_tide_and_no_fair_play(lake):
+    challenges, tide, srv = lake
+    challenges.create(srv.id, {"kind": "fish_points", "start": time.time(), "minutes": 10, "fair": False, "prize": {"item": "diamond"},
+                               "hot": True, "hot_bonus": 2})
+    asyncio.run(challenges.tick([srv]))
+    assert not any(x.startswith("fishinglevel") for x in srv.cmds)
+    d = challenges._load(); d["items"][0].setdefault("hot_zone", None); challenges._save(d)
+    catch = tide.to_catch(srv, {"player": "Tyler", "fish": "tide:bluegill", "rarity": "common", "quality": 2, "weight_g": 300.0})
+    asyncio.run(challenges.on_catch(srv, "Tyler", catch))
+    asyncio.run(challenges.on_catch(srv, "Tyler", catch))
+    asyncio.run(challenges.on_join(srv, "Gimli_Jr"))                                     # no fair play: nothing sent on join
+    assert not any(x.startswith("fishinglevel") for x in srv.cmds)
+    _end(challenges)
+    asyncio.run(challenges.tick([srv]))
+    c = challenges.list_for(srv.id)[0]
+    assert c["scores"]["Tyler"] == 30 and c["winners"] == ["Tyler"]                       # Fine common: 10 x 1.5 = 15 each
+
+
+def test_plain_fishing_contest_still_uses_the_game_stat_with_tide(lake):
+    challenges, _tide, srv = lake
+    challenges.create(srv.id, {"kind": "fish", "start": time.time(), "minutes": 10, "prize": {"item": "diamond"}})
+    asyncio.run(challenges.tick([srv]))
+    c = challenges.list_for(srv.id)[0]
+    assert c["tide"] and c.get("tscore") is None and any("minecraft.custom:minecraft.fish_caught" in x for x in srv.cmds)
+    assert "fishinglevel fair Tyler true" in srv.cmds                                    # fair play applies to every fishing contest

@@ -88,6 +88,7 @@ class Recorder:
         self._night: dict[str, bool] = {}
         self._offsets: dict[str, float] = {}     # server id -> seconds its log clock is ahead
         self._chat: dict[str, list[tuple[str, str]]] = {}    # server id -> new chat lines (player, text)
+        self._catches: dict[str, list[tuple[str, dict]]] = {}  # server id -> new Tide catches (player, catch)
 
     def start(self) -> None:
         self.started = time.time()
@@ -342,6 +343,8 @@ class Recorder:
                         await board.greet(srv, message.split(" ", 1)[0])
                 for player, text in self._chat.pop(srv.id, []):
                     await games.on_chat(srv, player, text)
+                for player, catch in self._catches.pop(srv.id, []):
+                    await challenges.on_catch(srv, player, catch)
             except Exception:
                 log.exception("log tail failed for %s", srv.id)
 
@@ -425,8 +428,11 @@ class Recorder:
                     if ts_dt > now + timedelta(seconds=60):
                         ts_dt -= timedelta(days=1)
                     rec = tide.record_catch(srv, ts_dt.timestamp() - offset, c)
-                    if rec and rec[0] == "bigfish" and time.time() - ts_dt.timestamp() + offset < NOTIFY_MAX_AGE:
+                    fresh_catch = time.time() - ts_dt.timestamp() + offset < NOTIFY_MAX_AGE
+                    if rec and rec[0] == "bigfish" and fresh_catch:
                         pending.append(rec)
+                    if rec and fresh_catch:                     # for a fishing contest that's on
+                        self._catches.setdefault(srv.id, []).append((c["player"], tide.to_catch(srv, c)))
                 continue
             ev = parse_line(raw, names)
             if not ev or ev.type == "server":  # start/stop comes from Crafty's state instead
