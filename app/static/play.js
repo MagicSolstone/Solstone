@@ -26,7 +26,7 @@ async function viewChat(sid) {
     if (e.type === "chat") return `<div class="cm">${t}${faceHtml({ name: e.player }, 22)}<b>${esc(e.player)}</b><span>${esc(e.message)}</span></div>`;
     if (e.type === "webchat") return `<div class="cm web">${t}<span class="cm-from">🌐</span><b>${esc(e.player)}</b><span>${esc(e.message)}</span></div>`;
     if (e.type === "webdm") return `<div class="cm web dm">${t}<span class="cm-from">✉</span><b>${esc(e.player)} → ${esc(e.to)}</b><span>${esc(e.message)}</span></div>`;
-    const icon = { join: "→", leave: "←", death: "☠", advancement: "★", challenge: "🏆", race: "🏁", fish: "🎣", bigfish: "🐟" }[e.type] || "•";
+    const icon = { join: "→", leave: "←", death: "☠", advancement: "★", challenge: "🏆", race: "🏁", fish: "🎣", bigfish: "🐟", game: "🎲" }[e.type] || "•";
     return `<div class="cm sys">${t}<span class="cm-from">${icon}</span><span>${esc(e.message)}</span></div>`;
   };
   const render = (items) => {
@@ -150,9 +150,9 @@ async function viewChallenges(sid) {
           <li><button class="btn sm primary" type="button" data-fish="reload">Load it</button> <span class="muted small">(runs /reload in the game and checks)</span></li></ol>`;
     const q = fish.qualities.map((x) => `<span class="fish-q fq-${x.color}">${esc(x.name)} <small>${x.chance}%</small></span>`).join("");
     const rows = fish.guide.map((g) => `<tr><td>${itemIcon({ id: g.item })}<b>${esc(g.name)}</b></td><td>${esc(g.waters.join(", "))}</td><td>${g.min_lb}–${g.max_lb} lb</td><td>${g.min_points}–${g.max_points}</td><td class="muted">${esc(g.rarity)}</td></tr>`).join("");
-    return `<section class="section" id="fish-sec"><div class="section-head"><h2>🎣 Solstone Fishing</h2><span class="muted">${on ? `In the world${old ? " (an update is ready)" : " ✓"}` : "Not in this world yet"}</span></div>
+    return `<section class="section" id="fish-sec"><div class="section-head"><h2>🎣 Solstone data pack</h2><span class="muted">${on ? `In the world${old ? " (an update is ready)" : " ✓"}` : "Not in this world yet"}</span></div>
       <div class="panel fish-panel">
-        <p>A data pack that makes every catch a species with a weight and a quality: <b>${fish.guide.length} kinds of fish</b> that depend on where you cast (rivers and lakes, oceans, warm or cold water, swamps, jungle rivers, the deep ocean). It unlocks the <b>Fishing tournament</b> (most points) and <b>Biggest catch</b> contests, and Prime and Exquisite catches are announced to everyone.</p>
+        <p>One data pack for fishing and archery. Fishing: every catch is a species with a weight and a quality: <b>${fish.guide.length} kinds of fish</b> that depend on where you cast (rivers and lakes, oceans, warm or cold water, swamps, jungle rivers, the deep ocean). It unlocks the <b>Fishing tournament</b> (most points) and <b>Biggest catch</b> contests, and Prime and Exquisite catches are announced to everyone. Archery: it notes where each shot was taken from and how close to the centre it hit, for the archery games.</p>
         ${!fish.rcon ? `<p class="notice">Needs RCON turned on for this server.</p>` : on && !old ? `<p class="muted small">Loaded (version ${st.version}). <button class="link-btn" type="button" data-fish="reload">Reload</button></p>` : steps}
         ${old && !st.writable ? `<p class="muted small">Replace the old file with the new download, then load it.</p>` : ""}
         ${st.error ? `<p class="notice small">${esc(st.error)}</p>` : ""}
@@ -222,7 +222,7 @@ async function viewChallenges(sid) {
 // Contests and races share the Challenges tab.
 function playSwitch(sid, on) {
   const base = `#/s/${encodeURIComponent(sid)}/challenges`;
-  return `<nav class="seg play-switch" aria-label="Kind of challenge"><a href="${base}" ${on === "contests" ? 'aria-current="page"' : ""}>🏆 Contests</a><a href="${base}/races" ${on === "races" ? 'aria-current="page"' : ""}>🏁 Races</a></nav>`;
+  return `<nav class="seg play-switch" aria-label="Kind of challenge"><a href="${base}" ${on === "contests" ? 'aria-current="page"' : ""}>🏆 Contests</a><a href="${base}/races" ${on === "races" ? 'aria-current="page"' : ""}>🏁 Races</a><a href="${base}/games" ${on === "games" ? 'aria-current="page"' : ""}>🎲 Games</a></nav>`;
 }
 
 // ---------------------------------------------------------------- a small world map (course editor)
@@ -513,6 +513,190 @@ async function viewRaces(sid) {
   every(2000, async () => {
     if (editing || $(".modal")) return;
     if (!d.runs.some((r) => ["countdown", "running"].includes(r.state) || (r.state === "scheduled" && r.start - Date.now() / 1000 < 20))) return;
+    await reload();
+  });
+}
+
+// ---------------------------------------------------------------- games
+const GAME_INFO = {
+  hideseek: ["🙈", "Hide and seek", "One seeker, everyone else hides inside an area. Optional no-digging, Marco Polo in chat, and found hiders can join the seekers."],
+  treasure: ["💰", "Treasure hunt", "A chest of prizes hidden somewhere in an area. Everyone's hotbar says how warm they are. First to take the treasure wins."],
+  archery: ["🎯", "Archery", "Longest bullseye, most points, or HORSE: make the setter's shot from the same spot or take a letter. Needs the Solstone data pack."],
+};
+
+async function viewGames(sid) {
+  if (!isAdmin()) { location.replace(`#/s/${encodeURIComponent(sid)}`); return; }
+  const s = await serverFrame(sid, "challenges");
+  const base = `/api/servers/${encodeURIComponent(sid)}/games`;
+  let d = await api(base);
+  const fmtT = (sec) => `${Math.floor(Math.max(0, sec) / 60)}:${String(Math.floor(Math.max(0, sec) % 60)).padStart(2, "0")}`;
+  const fmtWhen = (ts) => new Date(ts * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+  const online = () => state.servers.find((x) => x.id === sid)?.online || [];
+  const runCard = (r) => {
+    const live = ["countdown", "hiding", "running"].includes(r.state);
+    const [emoji] = GAME_INFO[r.game];
+    let body = "";
+    if (r.game === "hideseek" && Object.keys(r.players || {}).length) {
+      body = `<ul class="gm-players">${Object.entries(r.players).map(([n, p]) => `<li>${faceHtml({ name: n }, 20)}<b>${esc(n)}</b><span class="gm-role ${p.role}">${{ seeker: "seeker", hider: "hiding", found: "found" }[p.role]}${p.found_by ? ` (by ${esc(p.found_by)})` : ""}</span></li>`).join("")}</ul>`;
+    } else if (r.game === "archery" && Object.keys(r.players || {}).length) {
+      const rows = Object.entries(r.players).sort((a, b) => (r.mode === "horse" ? a[1].letters.length - b[1].letters.length : r.mode === "points" ? b[1].points - a[1].points : b[1].best - a[1].best));
+      body = `<ol class="ch-scores">${rows.map(([n, p], i) => `<li><span class="rank">${i + 1}</span>${faceHtml({ name: n }, 22)}<b>${esc(n)}${r.turn === n && live ? " 🎯" : ""}</b><span class="val">${r.mode === "horse" ? esc(p.letters || "–") : r.mode === "points" ? `${p.points} pts` : p.best ? `${p.best} m` : "–"}</span></li>`).join("")}</ol>`;
+    } else if (r.game === "treasure" && r.items) {
+      body = `<div class="ch-prize">${r.items.map((it) => `${itemIcon({ id: it.item })}<span>${it.count} × ${esc(it.name || itemName({ id: it.item }))}</span>`).join(" ")}</div>`;
+    }
+    const status = live ? `<span class="ch-live">● ${r.state === "hiding" ? "Hiding" : "On now"}${r.phase_ends ? ` · <span data-left="${r.phase_ends}"></span> left` : ""}</span>`
+      : r.state === "scheduled" ? `<span class="muted">${esc(fmtWhen(r.start))}</span>` : `<span class="muted">${esc({ done: "Finished", skipped: "Didn't run", cancelled: "Called off" }[r.state] || r.state)} · ${esc(fmtWhen(r.start))}</span>`;
+    return `<div class="ch-card panel ch-${live ? "running" : r.state}" data-gid="${esc(r.id)}">
+      <div class="ch-head"><span class="ch-emoji">${emoji}</span><div><h3>${esc(r.name)}</h3>${status}</div>
+        <div class="ch-acts">${live || r.state === "scheduled" ? `<button class="btn sm danger" type="button" data-stop>${live ? "Stop" : "Cancel"}</button>` : `<button class="icon-btn" type="button" data-stop aria-label="Remove">✕</button>`}</div></div>
+      ${r.result ? `<p class="ch-result">${esc(r.result)}</p>` : ""}${r.chest_error ? `<p class="notice small">The chest didn't place: ${esc(r.chest_error)}</p>` : ""}${body}</div>`;
+  };
+  const render = () => {
+    const live = d.runs.filter((r) => ["countdown", "hiding", "running"].includes(r.state)), soon = d.runs.filter((r) => r.state === "scheduled"), past = d.runs.filter((r) => !["countdown", "hiding", "running", "scheduled"].includes(r.state));
+    const packOk = (d.pack || 0) >= d.pack_needed;
+    setView(serverHeader(s, "challenges") + playSwitch(sid, "games") + `
+      ${d.rcon ? "" : `<p class="notice">Games need RCON turned on for this server (⚙ settings).</p>`}
+      ${live.length ? `<section class="section"><div class="section-head"><h2>Playing now</h2></div><div class="ch-list">${live.map(runCard).join("")}</div></section>` : ""}
+      <section class="section"><div class="ch-list">${Object.entries(GAME_INFO).map(([k, [e, t, about]]) => `<div class="ch-card panel gm-pick">
+        <div class="ch-head"><span class="ch-emoji">${e}</span><div><h3>${esc(t)}</h3></div></div><p class="muted">${esc(about)}</p>
+        ${k === "archery" && !packOk ? `<p class="notice small">Add the Solstone data pack to the world first (on the <a href="#/s/${encodeURIComponent(sid)}/challenges">Contests</a> page${d.pack ? ": it needs the newer version" : ""}).</p>` : ""}
+        <div class="btn-row"><button class="btn primary" type="button" data-setup="${k}" ${!d.rcon || (k === "archery" && !packOk) ? "disabled" : ""}>Set up</button></div></div>`).join("")}</div></section>
+      ${soon.length ? `<section class="section"><div class="section-head"><h2>Coming up</h2></div><div class="ch-list">${soon.map(runCard).join("")}</div></section>` : ""}
+      ${past.length ? `<section class="section"><div class="section-head"><h2>Finished</h2></div><div class="ch-list">${past.map(runCard).join("")}</div></section>` : ""}`);
+    wireHeader(s);
+    $$("[data-setup]").forEach((b) => b.addEventListener("click", () => openSetup(b.dataset.setup)));
+    $$("[data-gid]").forEach((el) => el.querySelector("[data-stop]")?.addEventListener("click", async () => {
+      const r = d.runs.find((x) => x.id === el.dataset.gid);
+      const active = ["scheduled", "countdown", "hiding", "running"].includes(r.state);
+      if (active && !(await confirmBox(`Stop ${r.name}?`, "Everything is put back (game modes, the chest or target) and nobody gets a prize.", "Stop it"))) return;
+      await api(`${base}/${encodeURIComponent(r.id)}`, { method: "DELETE" }).catch((e) => showToast(esc(e.message), 4000)); await reload();
+    }));
+    tickLeft();
+  };
+  const tickLeft = () => $$("[data-left]").forEach((el) => { el.textContent = fmtT(+el.dataset.left - Date.now() / 1000); });
+  const reload = async () => { d = await api(base); render(); };
+
+  // --- setting a game up
+  const openSetup = (game) => {
+    const f = { game, when: "now", at: "", center: null, radius: game === "treasure" ? 150 : 40, spot: null, target: null, place_target: false,
+      hide_secs: 60, minutes: game === "treasure" ? 15 : game === "archery" ? 10 : 6, seeker: "", no_dig: true, marco: true, infect: true,
+      mode: "bullseye", word: "HORSE", give_bow: true, hint_after: 5, items: [], prize: null };
+    const at = (() => { const t = new Date(Date.now() + 15 * 60e3); t.setSeconds(0, 0); return new Date(t.getTime() - t.getTimezoneOffset() * 60e3).toISOString().slice(0, 16); })();
+    f.at = at;
+    let map = null;
+    const pickBtn = (p, empty) => (p ? `${itemIcon({ id: p.item })}<span>${p.count} × ${esc(p.name)}</span>` : `<span class="muted">${empty}</span>`);
+    const where = () => (game === "archery"
+      ? `<div class="gm-where"><span class="lbl">Target</span>
+          <div class="btn-row"><select class="input sm" id="gm-player">${online().map((n) => `<option>${esc(n)}</option>`).join("") || "<option value=''>Nobody online</option>"}</select>
+            <button class="btn sm" type="button" id="gm-under">Use the target block they're standing on</button></div>
+          <p class="muted small">Or click the map to have Solstone put a target there (removed afterwards).</p>
+          <p class="gm-chosen" id="gm-chosen">${f.target ? `${f.place_target ? "New target at" : "🎯 Target block at"} ${Math.round(f.target.x)}, ${Math.round(f.target.y)}, ${Math.round(f.target.z)}` : "No target yet"}</p></div>`
+      : `<div class="gm-where"><span class="lbl">Play area</span>
+          <div class="btn-row"><select class="input sm" id="gm-player">${online().map((n) => `<option>${esc(n)}</option>`).join("") || "<option value=''>Nobody online</option>"}</select>
+            <button class="btn sm" type="button" id="gm-here">Centre it where they're standing</button></div>
+          <p class="muted small">Or click the map${game === "treasure" ? ". Shift-click to choose the exact treasure spot (otherwise it's random)" : ""}.</p>
+          <label>Size: <input type="range" name="radius" min="${game === "treasure" ? 30 : 10}" max="${game === "treasure" ? 500 : 150}" step="5" value="${f.radius}"> <b id="gm-r">${f.radius}</b> blocks from the middle</label>
+          <p class="gm-chosen" id="gm-chosen">${f.center ? `Middle at ${Math.round(f.center.x)}, ${Math.round(f.center.z)}${f.spot ? ` · treasure at ${Math.round(f.spot.x)}, ${Math.round(f.spot.z)}` : ""}` : "No area yet"}</p></div>`);
+    const options = () => game === "hideseek" ? `
+        <label>Seeker <select class="input" name="seeker"><option value="">Random</option>${online().map((n) => `<option ${f.seeker === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
+        <label>Hiding time <select class="input" name="hide_secs">${[30, 45, 60, 90, 120].map((v) => `<option value="${v}" ${f.hide_secs === v ? "selected" : ""}>${v} seconds</option>`).join("")}</select></label>
+        <label>Seeking time <select class="input" name="minutes">${[3, 5, 6, 8, 10, 15].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>
+        <label class="check"><input type="checkbox" name="no_dig" ${f.no_dig ? "checked" : ""}> No digging or building (Adventure mode during the game)</label>
+        <label class="check"><input type="checkbox" name="marco" ${f.marco ? "checked" : ""}> Marco Polo: the seeker can type <b>marco</b> to hear roughly where everyone is</label>
+        <label class="check"><input type="checkbox" name="infect" ${f.infect ? "checked" : ""}> Found hiders join the seekers (otherwise they watch)</label>`
+      : game === "treasure" ? `
+        <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>
+        <label>Show the direction after <select class="input" name="hint_after">${[0, 2, 5, 10, 60].map((v) => `<option value="${v}" ${f.hint_after === v ? "selected" : ""}>${v === 60 ? "never" : v ? `${v} minutes` : "straight away"}</option>`).join("")}</select></label>
+        <div class="gm-items"><span class="lbl">In the chest</span>${f.items.map((it, i) => `<span class="chip">${itemIcon({ id: it.item })} ${it.count} × ${esc(it.name)} <button type="button" class="chip-x" data-rmitem="${i}" aria-label="Remove">×</button></span>`).join("")}
+          <button type="button" class="btn sm" id="gm-additem">＋ Add treasure</button></div>`
+      : `
+        <label>Game <select class="input" name="mode"><option value="bullseye" ${f.mode === "bullseye" ? "selected" : ""}>Longest bullseye</option><option value="points" ${f.mode === "points" ? "selected" : ""}>Most points (ring × distance)</option><option value="horse" ${f.mode === "horse" ? "selected" : ""}>HORSE (match the shot or take a letter)</option></select></label>
+        ${f.mode === "horse" ? `<label>Word <input class="input" name="word" maxlength="10" value="${esc(f.word)}"></label>` : ""}
+        <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30, 45].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>
+        <label class="check"><input type="checkbox" name="give_bow" ${f.give_bow ? "checked" : ""}> Give everyone a bow and 64 arrows</label>`;
+    const body = () => `<h2>${GAME_INFO[game][0]} ${esc(GAME_INFO[game][1])}</h2>
+      <form id="gm-form" class="gm-form">
+        <div class="gm-map" id="gm-map"></div>
+        ${where()}
+        <div class="gm-opts">${options()}</div>
+        ${game !== "treasure" ? `<div class="gm-prize"><span class="lbl">Prize for the winner${game === "hideseek" ? "s" : ""}</span><button type="button" class="btn ch-pick" id="gm-prize">${pickBtn(f.prize, "Optional")}</button></div>` : ""}
+        <div class="ch-when"><span class="lbl">When</span>
+          <label class="check"><input type="radio" name="when" value="now" ${f.when === "now" ? "checked" : ""}> Right now</label>
+          <label class="check"><input type="radio" name="when" value="later" ${f.when === "later" ? "checked" : ""}> At <input class="input sm" type="datetime-local" name="at" value="${esc(f.at)}"></label></div>
+        <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Start</button></div>
+      </form>`;
+    const sync = (m) => {
+      const fm = $("#gm-form", m);
+      for (const k of ["seeker", "mode", "word"]) if (fm[k]) f[k] = fm[k].value;
+      for (const k of ["hide_secs", "minutes", "hint_after", "radius"]) if (fm[k]) f[k] = +fm[k].value;
+      for (const k of ["no_dig", "marco", "infect", "give_bow"]) if (fm[k]) f[k] = fm[k].checked;
+      f.when = fm.when.value; f.at = fm.at.value;
+    };
+    const show = () => openModal(body(), (m) => {
+      m.classList.add("gm-modal");
+      map = worldMapCanvas($("#gm-map", m), sid, {
+        center: f.center || f.target || d.spawn || { x: 0, z: 0 }, scale: game === "treasure" ? 0.5 : 1,
+        overlay: (ctx, toScreen, view) => {
+          if (f.center) {
+            const [x, y] = toScreen(f.center.x, f.center.z);
+            ctx.strokeStyle = "#f2c14e"; ctx.lineWidth = 2; ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.arc(x, y, f.radius * view.scale, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+            ctx.fillStyle = "#f2c14e"; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+          }
+          for (const [p, c] of [[f.spot, "#ffd84a"], [f.target, "#e0503f"]]) {
+            if (!p) continue;
+            const [x, y] = toScreen(p.x, p.z);
+            ctx.fillStyle = c; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          }
+        },
+        onClick: async (x, z) => {
+          sync(m);
+          const spot = await api(`/api/servers/${encodeURIComponent(sid)}/races/spot?x=${x}&z=${z}`).catch(() => ({ x, y: 64, z }));
+          if (game === "archery") { f.target = spot; f.place_target = true; }
+          else if (game === "treasure" && clickShift && f.center) f.spot = spot;
+          else { f.center = spot; f.spot = null; }
+          show();
+        },
+      });
+      let clickShift = false;
+      $("#gm-map", m).addEventListener("pointerdown", (e) => { clickShift = e.shiftKey; }, true);
+      const fm = $("#gm-form", m);
+      fm.radius?.addEventListener("input", () => { f.radius = +fm.radius.value; $("#gm-r", m).textContent = f.radius; map.draw(); });
+      fm.mode?.addEventListener("change", () => { sync(m); if (f.mode === "horse" && f.minutes < 30) f.minutes = 30; show(); });
+      $("#gm-here", m)?.addEventListener("click", async () => {
+        sync(m);
+        try { f.center = await api(`/api/servers/${encodeURIComponent(sid)}/races/spot?player=${encodeURIComponent($("#gm-player", m).value)}`); f.spot = null; show(); } catch (e) { showToast(esc(e.message), 4000); }
+      });
+      $("#gm-under", m)?.addEventListener("click", async () => {
+        sync(m);
+        try {
+          const t = await api(`${base}/target?player=${encodeURIComponent($("#gm-player", m).value)}`);
+          if (!t.is_target) { showToast("That isn't a target block. Stand right on top of it and try again", 4000); return; }
+          f.target = t; f.place_target = false; show();
+        } catch (e) { showToast(esc(e.message), 4000); }
+      });
+      const pickItem = (title, then) => { sync(m); openGiveItem(sid, "", { title, pick: (item, count) => { then({ item: item.id, count, name: item.name }); show(); } }); };
+      $("#gm-prize", m)?.addEventListener("click", () => pickItem("Prize for the winner", (p) => { f.prize = p; }));
+      $("#gm-additem", m)?.addEventListener("click", () => pickItem("Treasure for the chest", (p) => { f.items.push(p); }));
+      m.querySelectorAll("[data-rmitem]").forEach((b) => b.addEventListener("click", () => { sync(m); f.items.splice(+b.dataset.rmitem, 1); show(); }));
+      fm.addEventListener("submit", async (e) => {
+        e.preventDefault(); sync(m);
+        if (game === "archery" ? !f.target : !f.center) { showToast(game === "archery" ? "Choose the target first" : "Choose the play area first", 3000); return; }
+        if (game === "treasure" && !f.items.length) { showToast("Put something in the treasure chest", 3000); return; }
+        const start = f.when === "now" ? Date.now() / 1000 : new Date(f.at).getTime() / 1000;
+        try {
+          await post(base, { ...f, start, prizes: f.prize ? [f.prize] : [] });
+          closeModal(); showToast(f.when === "now" ? `${GAME_INFO[game][1]} is starting` : "Scheduled", 3000); await reload();
+        } catch (err) { showToast(esc(err.message), 4000); }
+      });
+    });
+    show();
+  };
+
+  render();
+  every(1000, tickLeft);
+  every(2000, async () => {
+    if ($(".modal")) return;
+    if (!d.runs.some((r) => ["countdown", "hiding", "running"].includes(r.state) || (r.state === "scheduled" && r.start - Date.now() / 1000 < 20))) return;
     await reload();
   });
 }

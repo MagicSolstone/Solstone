@@ -128,6 +128,6 @@ def test_fishing_api(client, viewer, sid):
     assert viewer.get(f"/api/servers/{sid}/fishing").status_code == 403
     d = client.get(f"/api/servers/{sid}/fishing").json()
     assert len(d["guide"]) >= 20 and d["status"]["current"] >= 1 and "writable" in d["status"]
-    r = client.get("/api/fishing/solstone-fishing.zip")
+    r = client.get("/api/fishing/solstone-pack.zip")
     assert r.status_code == 200 and r.headers["content-type"] == "application/zip" and r.content[:2] == b"PK"
-    assert viewer.get("/api/fishing/solstone-fishing.zip").status_code == 403
+    assert viewer.get("/api/fishing/solstone-pack.zip").status_code == 403

@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import backups, board, challenges, db, fishing, fwshow, guard, music, notify, races, recap
+from . import backups, board, challenges, db, fishing, fwshow, games, guard, music, notify, races, recap
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -87,6 +87,7 @@ class Recorder:
         self._levels: dict[tuple[str, str], int] = {}  # (server, player) -> last seen level
         self._night: dict[str, bool] = {}
         self._offsets: dict[str, float] = {}     # server id -> seconds its log clock is ahead
+        self._chat: dict[str, list[tuple[str, str]]] = {}    # server id -> new chat lines (player, text)
 
     def start(self) -> None:
         self.started = time.time()
@@ -124,10 +125,15 @@ class Recorder:
 
     async def race_tick(self) -> None:
         """Races need a once-a-second look at where everyone is; nothing happens otherwise."""
-        if not races.busy():
+        race, game = races.busy(), games.busy()
+        if not race and not game:
             return
         await S.registry.refresh()
-        await races.tick([s for s in S.registry.servers.values() if not s.settings.get("hidden")])
+        visible = [s for s in S.registry.servers.values() if not s.settings.get("hidden")]
+        if race:
+            await races.tick(visible)
+        if game:
+            await games.tick(visible)
 
     async def fish_poll(self) -> None:
         """Catches from the Solstone Fishing pack (only where it's loaded and someone's on)."""
@@ -327,6 +333,8 @@ class Recorder:
                     maybe_notify(etype, srv.display_name, message)
                     if etype == "join":
                         await board.greet(srv, message.split(" ", 1)[0])
+                for player, text in self._chat.pop(srv.id, []):
+                    await games.on_chat(srv, player, text)
             except Exception:
                 log.exception("log tail failed for %s", srv.id)
 
@@ -415,6 +423,8 @@ class Recorder:
             db.add_event(srv.id, ts, ev.type, ev.message, ev.player, uuid)
             if fresh and ev.type not in ("chat", "join", "leave"):      # join/leave: see poll_server
                 pending.append((ev.type, ev.message))
+            if fresh and ev.type == "chat" and ev.player:              # for games listening to chat (Marco Polo)
+                self._chat.setdefault(srv.id, []).append((ev.player, ev.message))
             if fresh:                                      # fireworks only for things happening now
                 if ev.type == "join":
                     if not fwshow.pushed_recently(srv.id, "join", ev.player):

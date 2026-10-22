@@ -155,7 +155,7 @@ function toast(html) {
 }
 
 // ------------------------------------------------------------------ rendering
-const EVENT_ICON = { join: "→", leave: "←", death: "☠", advancement: "★", level: "⬆", server: "⏻", challenge: "🏆", race: "🏁", bigfish: "🐟" };
+const EVENT_ICON = { join: "→", leave: "←", death: "☠", advancement: "★", level: "⬆", server: "⏻", challenge: "🏆", race: "🏁", bigfish: "🐟", game: "🎲" };
 
 // Sections are only replaced when their content changes, so the web map iframe and the
 // position canvas aren't rebuilt on every refresh.

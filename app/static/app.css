@@ -1563,3 +1563,25 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .fish-guide .item { width: 24px; height: 24px; }
 .fish-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .fish-recent li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+
+/* ------------------------------------------------------------ games */
+.gm-pick { align-content: start; }
+.gm-pick p { margin: 0; }
+.modal.gm-modal { width: min(760px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow-y: auto; }
+.gm-form { display: grid; gap: 12px; }
+.gm-form label { display: grid; gap: 4px; }
+.gm-form label.check { display: flex; align-items: center; gap: 8px; }
+.gm-map { position: relative; height: min(42vh, 360px); border-radius: var(--radius-m); overflow: hidden; border: 1px solid var(--line); }
+.gm-where, .gm-opts, .gm-prize, .gm-items { display: grid; gap: 6px; }
+.gm-where p { margin: 0; }
+.gm-chosen { font-weight: 700; }
+.gm-opts { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.gm-opts label.check { grid-column: 1 / -1; }
+.gm-items { grid-template-columns: none; display: flex; flex-wrap: wrap; align-items: center; }
+.gm-items .lbl { width: 100%; }
+.gm-items .item { width: 20px; height: 20px; }
+.gm-form .lbl { font-weight: 700; font-size: .92rem; }
+.gm-players { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.gm-players li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.gm-role { font-size: .85rem; color: var(--muted); }
+.gm-role.seeker { color: var(--redstone); } .gm-role.hider { color: var(--copper); }

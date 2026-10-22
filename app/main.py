@@ -18,7 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, backups, board, challenges, control, db, fishing, fishpack, races, fireworks, fwshow, guard, music, notify, recap, skins, worldmap
+from . import auth, backups, board, challenges, control, db, fishing, fishpack, games, races, fireworks, fwshow, guard, music, notify, recap, skins, worldmap
 from . import servers as S
 from . import settings_store
 from .recorder import recorder
@@ -252,6 +252,7 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
         sessions = {s["player"].lower(): s["start"] for s in db.sessions(srv.id, limit=50) if s["open"]}
         online = [p for p in overview["players"] if p["online"]]
         details = await asyncio.gather(*(_maybe_live(srv, p) for p in online))
+        hidden = games.hidden_from_map(srv.id)
         for p, live in zip(online, details, strict=True):
             d = live
             if d is None and p.get("uuid"):
@@ -264,7 +265,7 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
                            gamemode=d["gamemode"], dimension=d["position"]["dimension"],
                            effects=[{"id": e["id"], "name": _lang_name(lang, "effect", e["id"]), "amplifier": e["amplifier"]}
                                     for e in d.get("effects", []) if not e.get("ambient")][:6])
-                if cfg["show_positions"]:
+                if cfg["show_positions"] and p["name"] not in hidden:      # hiders stay hidden during hide and seek
                     row["position"] = {k: d["position"][k] for k in ("x", "y", "z")}
                 if cfg["show_items"]:
                     inv = d["inventory"]
@@ -273,7 +274,7 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
                     row["armor"] = [_public_item(inv["armor"][k], lang) for k in ("head", "chest", "legs", "feet")]
             board["players"].append(row)
     if cfg["show_activity"]:
-        evs = db.events(srv.id, ["join", "leave", "death", "advancement", "level", "server", "challenge", "race", "bigfish"], None, 14)
+        evs = db.events(srv.id, ["join", "leave", "death", "advancement", "level", "server", "challenge", "race", "bigfish", "game"], None, 14)
         board["recent"] = [{"ts": e["ts"], "type": e["type"], "player": e["player"], "message": e["message"]} for e in evs]
     online_l = {n.lower() for n in summ["online"]}
     if srv.is_java:
@@ -1716,6 +1717,53 @@ async def fishing_action(sid: str, action: str, request: Request):
     return {**fishing.status(srv), "listed": st.get("listed"), "reload_reply": st.get("reload_reply", "")}
 
 
+# ---- games: hide and seek, treasure hunt, archery
+@app.get("/api/servers/{sid}/games")
+async def get_games(sid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    pack = None
+    if srv.is_java and srv.rcon_conf():
+        try:
+            pack = (await fishing.check(srv, force=not (fishing._state.get(srv.id) or {}).get("version"))).get("version")
+        except Exception:
+            pack = None
+    w = await asyncio.to_thread(S.world_info, srv, False) if srv.is_java else {}
+    return {"runs": games.runs_for(srv.id), "rcon": bool(srv.rcon_conf()), "pack": pack, "pack_needed": 2,
+            "spawn": w.get("spawn"), "now": time.time()}
+
+
+@app.post("/api/servers/{sid}/games")
+async def add_game(sid: str, request: Request):
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    try:
+        r = games.create(srv.id, await _body(request))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    auth.audit(user, srv.id, "game", f"{r['name']} at {datetime.fromtimestamp(r['start'], db.tz()):%Y-%m-%d %H:%M}")
+    return r
+
+
+@app.delete("/api/servers/{sid}/games/{rid}")
+async def stop_game(sid: str, rid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    if not await games.cancel(srv, rid):
+        raise HTTPException(404, "Game not found")
+    return {"ok": True}
+
+
+@app.get("/api/servers/{sid}/games/target")
+async def game_target(sid: str, request: Request, player: str):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    try:
+        return await games.target_under(srv, player)
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+
+
 # ---- races: courses of waypoints, run with markers in the game
 @app.get("/api/servers/{sid}/races")
 async def get_races(sid: str, request: Request):
@@ -1796,7 +1844,7 @@ async def race_spot(sid: str, request: Request, player: str = "", x: float = 0, 
 
 
 # ---- chat: what's said in the game, and messages from here
-CHAT_TYPES = ["chat", "webchat", "webdm", "join", "leave", "death", "advancement", "challenge", "race", "fish", "bigfish"]
+CHAT_TYPES = ["chat", "webchat", "webdm", "join", "leave", "death", "advancement", "challenge", "race", "fish", "bigfish", "game"]
 
 
 @app.get("/api/servers/{sid}/chat")

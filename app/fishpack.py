@@ -25,9 +25,9 @@ import io
 import json
 import zipfile
 
-PACK_ID = "solstone-fishing"
+PACK_ID = "solstone-pack"                     # one pack: fishing and the archery games
 PACK_FILE = f"{PACK_ID}.zip"
-VERSION = 1                                   # bump when the pack's content changes
+VERSION = 2                                   # bump when the pack's content changes
 
 # ------------------------------------------------------------------ the water
 _OCEAN = ["ocean", "deep_ocean", "cold_ocean", "deep_cold_ocean", "lukewarm_ocean", "deep_lukewarm_ocean",
@@ -208,22 +208,93 @@ scoreboard players operation @a[tag=solfish_catcher,limit=1] solfish_cb > #w sol
 }
 
 
+# ------------------------------------------------------------------ archery (games)
+# Where each shot was taken from (the bow/crossbow "used" statistic ticks up on release; a tick
+# function notes the shooter's position), and every target hit with its ring (signal strength
+# 1-15, 15 = bullseye) via one advancement per strength. Both go to storage solstone:games log
+# for Solstone to pair up: a shot, then a hit from the same player within a few seconds.
+GAME_FUNCTIONS = {
+    "load": """
+scoreboard objectives add solg_bow minecraft.used:minecraft.bow
+scoreboard objectives add solg_xbow minecraft.used:minecraft.crossbow
+scoreboard objectives add solg_tmp dummy
+execute unless data storage solstone:games log run data modify storage solstone:games log set value []
+data modify storage solstone:games pack set value {version:%VERSION%}
+""",
+    "tick": """
+execute as @a[scores={solg_bow=1..}] at @s run function solgames:shot
+execute as @a[scores={solg_xbow=1..}] at @s run function solgames:shot
+""",
+    "shot": """
+scoreboard players set @s solg_bow 0
+scoreboard players set @s solg_xbow 0
+data modify storage solstone:games e set value {k:"shot"}
+data modify storage solstone:games e.u set from entity @s UUID
+data modify storage solstone:games e.p set from entity @s Pos
+execute store result storage solstone:games e.i int 1 run scoreboard players add #seq solg_tmp 1
+data modify storage solstone:games log append from storage solstone:games e
+execute if data storage solstone:games log[150] run data remove storage solstone:games log[0]
+""",
+}
+
+
+def _hit_function(n: int) -> str:
+    return f"""advancement revoke @s only solgames:hit_{n}
+data modify storage solstone:games e set value {{k:"hit",s:{n}}}
+data modify storage solstone:games e.u set from entity @s UUID
+data modify storage solstone:games e.p set from entity @s Pos
+execute store result storage solstone:games e.i int 1 run scoreboard players add #seq solg_tmp 1
+data modify storage solstone:games log append from storage solstone:games e
+execute if data storage solstone:games log[150] run data remove storage solstone:games log[0]
+"""
+
+
 def pack_files() -> dict[str, str]:
     files = {
         "pack.mcmeta": json.dumps({"pack": {
-            "description": "Solstone Fishing: species, sizes and quality",
+            "description": "Solstone: fishing (species, sizes, quality) and archery games",
             # 1.21 (48) up to anything newer; old fields for <1.21.9, min/max for 1.21.9+
             "pack_format": 48, "supported_formats": {"min_inclusive": 48, "max_inclusive": 999},
             "min_format": 48, "max_format": 999}}, indent=1),
         "data/minecraft/loot_table/gameplay/fishing/fish.json": json.dumps(loot_table()),
-        "data/minecraft/tags/function/load.json": json.dumps({"values": ["solfish:load"]}),
+        "data/minecraft/tags/function/load.json": json.dumps({"values": ["solfish:load", "solgames:load"]}),
+        "data/minecraft/tags/function/tick.json": json.dumps({"values": ["solgames:tick"]}),
         "data/solfish/advancement/hooked.json": json.dumps({
             "criteria": {"hooked": {"trigger": "minecraft:fishing_rod_hooked"}},
             "rewards": {"function": "solfish:hooked"}}),
     }
     for name, body in FUNCTIONS.items():
         files[f"data/solfish/function/{name}.mcfunction"] = body.replace("%VERSION%", str(VERSION)).strip() + "\n"
+    for name, body in GAME_FUNCTIONS.items():
+        files[f"data/solgames/function/{name}.mcfunction"] = body.replace("%VERSION%", str(VERSION)).strip() + "\n"
+    for n in range(1, 16):
+        files[f"data/solgames/advancement/hit_{n}.json"] = json.dumps({
+            "criteria": {"hit": {"trigger": "minecraft:target_hit", "conditions": {"signal_strength": n}}},
+            "rewards": {"function": f"solgames:hit_{n}"}})
+        files[f"data/solgames/function/hit_{n}.mcfunction"] = _hit_function(n)
     return files
+
+
+def parse_game_log(reply: str) -> list[dict]:
+    """`data get storage solstone:games log` -> [{k: shot|hit, uuid, pos (x, y, z), s (ring), i}]."""
+    import nbtlib
+    if not reply or "[" not in reply:
+        return []
+    try:
+        data = nbtlib.parse_nbt(reply[reply.index("["):].strip())
+    except Exception:
+        return []
+    out = []
+    for e in data:
+        try:
+            u = [int(x) & 0xFFFFFFFF for x in e.get("u", [])]
+            h = "".join(f"{x:08x}" for x in u)
+            uuid = f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}" if len(u) == 4 else ""
+            p = [float(v) for v in e.get("p", [])]
+            out.append({"k": str(e["k"]), "uuid": uuid, "pos": tuple(p) if len(p) == 3 else None, "s": int(e.get("s", 0)), "i": int(e["i"])})
+        except (KeyError, ValueError, TypeError):
+            continue
+    return out
 
 
 def build_zip() -> bytes:
