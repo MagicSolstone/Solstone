@@ -34,6 +34,19 @@ function confirmBox(title, text, okLabel, danger = true) {
   });
 }
 
+// Ask for a short line of text. Resolves to the text, or "" if cancelled.
+function textBox(title, text, value = "", max = 40) {
+  return new Promise((resolve) => {
+    openModal(`<h2>${esc(title)}</h2><form id="tb-form"><p class="muted" style="margin-bottom:10px">${esc(text)}</p>
+      <input class="input" id="tb-in" maxlength="${max}" value="${esc(value)}" autocomplete="off">
+      <div class="actions" style="margin-top:14px"><button type="button" class="btn" id="tb-no">Cancel</button><button type="submit" class="btn primary">OK</button></div></form>`, (m) => {
+      $("#tb-no", m).addEventListener("click", () => { closeModal(); resolve(""); });
+      $("#tb-form", m).addEventListener("submit", (e) => { e.preventDefault(); const v = $("#tb-in", m).value.trim(); closeModal(); resolve(v); });
+      $("#tb-in", m).focus();
+    });
+  });
+}
+
 function auditHtml(rows, showServer = false) {
   if (!rows.length) return `<p class="muted">Nothing yet.</p>`;
   const serverName = (id) => state.servers.find((s) => s.id === id)?.name || "";

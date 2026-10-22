@@ -18,7 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, backups, board, challenges, control, db, fishing, fishpack, games, races, fireworks, fwshow, guard, music, notify, recap, skins, worldmap
+from . import auth, backups, board, challenges, control, db, fishing, fishpack, games, races, fireworks, fwshow, guard, music, notify, recap, skins, upcoming, worldmap
 from . import servers as S
 from . import settings_store
 from .recorder import recorder
@@ -1078,6 +1078,14 @@ def _can_edit(user, d: dict) -> bool:
     return user.role == "admin" or d.get("author") == user.username
 
 
+@app.get("/api/upcoming")
+async def get_upcoming(request: Request):
+    """Everything coming up, for the Coming up page (anyone signed in)."""
+    await S.registry.refresh()
+    names = {sid: srv.display_name for sid, srv in S.registry.servers.items()}
+    return {"items": upcoming.items(names), "days": upcoming.DAYS, "now": time.time()}
+
+
 @app.get("/api/fireworks")
 async def list_fireworks(request: Request):
     user = request.state.user
@@ -1111,11 +1119,30 @@ async def remove_sound(sound_id: str, request: Request):
     return {"ok": True}
 
 
+@app.get("/api/fireworks/limit")
+async def firework_limit(request: Request):
+    user = request.state.user
+    return {"per_person": fireworks.per_person(), "mine": fireworks.count_by(user.username), "limited": user.role != "admin"}
+
+
+@app.put("/api/fireworks/limit")
+async def set_firework_limit(request: Request):
+    user = request.state.user
+    if user.role != "admin":
+        raise HTTPException(403, "Only admins can change this")
+    try:
+        n = fireworks.set_per_person((await _body(request)).get("per_person"))
+    except (TypeError, ValueError) as e:
+        raise HTTPException(400, "Give a number") from e
+    auth.audit(user, None, "firework_limit", str(n))
+    return {"per_person": n}
+
+
 @app.post("/api/fireworks")
 async def create_firework(request: Request):
     user = request.state.user
     try:
-        d = fireworks.create(await _body(request), user.username)
+        d = fireworks.create(await _body(request), user.username, None if user.role == "admin" else fireworks.per_person())
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     auth.audit(user, None, "firework_create", d["name"])

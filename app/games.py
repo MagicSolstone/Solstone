@@ -92,7 +92,8 @@ def create(server: str, body: dict) -> dict:
         items = [challenges.clean_prize(p) for p in (body.get("items") or [])[:27]]
         r.update(area={**_point(body.get("center"), "middle of the area"), "r": round(_num(body.get("radius"), 20, 1000, 150))},
                  spot=_point(body["spot"], "spot") if body.get("spot") else None, items=[i for i in items if i],
-                 minutes=int(_num(body.get("minutes"), 3, 60, 15)), hint_after=int(_num(body.get("hint_after"), 0, 60, 5)))
+                 minutes=int(_num(body.get("minutes"), 3, 60, 15)), hint_after=int(_num(body.get("hint_after"), 0, 60, 5)),
+                 underwater=bool(body.get("underwater")))
         if not r["items"]:
             raise ValueError("Put something in the treasure chest")
     elif kind == "spleef":
@@ -341,29 +342,66 @@ async def _marco(srv, r: dict, player: str) -> None:
 _BANDS = [(10, "Burning hot!", "red"), (20, "Hot", "gold"), (40, "Warm", "yellow"), (80, "Cool", "aqua"), (150, "Cold", "blue"), (1e9, "Freezing", "dark_aqua")]
 
 
-async def _th_start(srv, r: dict) -> None:
-    a, dim = r["area"], r["dim"]
-    if r.get("spot"):
-        x, z = r["spot"]["x"], r["spot"]["z"]
-    else:
-        ang, rad = random.uniform(0, 2 * math.pi), a["r"] * math.sqrt(random.uniform(0.15, 1))
-        x, z = a["x"] + math.cos(ang) * rad, a["z"] + math.sin(ang) * rad
-    x, z = int(math.floor(x)), int(math.floor(z))
-    await _rcon(srv, f"execute in {dim} run forceload add {x} {z}")
-    tag = f"solth_{r['id']}"
-    # a marker on the ground there tells us the height
-    await _rcon(srv, f"execute in {dim} positioned {x} 320 {z} positioned over motion_blocking_no_leaves run summon minecraft:marker ~ ~ ~ {{Tags:[\"{tag}\"]}}")
+async def _height(srv, dim: str, x: int, z: int, tag: str, heightmap: str) -> int | None:
     from .races import _POS
+    await _rcon(srv, f"execute in {dim} positioned {x} 320 {z} positioned over {heightmap} run summon minecraft:marker ~ ~ ~ {{Tags:[\"{tag}\"]}}")
     m = _POS.search(await _rcon(srv, f"data get entity @e[tag={tag},limit=1] Pos"))
     await _rcon(srv, f"kill @e[tag={tag}]")
-    y = int(float(m.group(2))) if m else int(r["area"]["y"])
+    return int(float(m.group(2))) if m else None
+
+
+async def _treasure_spot(srv, r: dict, x: int, z: int, tag: str) -> tuple[int, bool] | None:
+    """Where a chest can go at x, z: (y, underwater) on solid ground, or on the bottom of the water
+    when that's allowed. None for no good: lava, the top of a tree, water when it isn't allowed."""
+    dim = r["dim"]
+    y = await _height(srv, dim, x, z, tag, "motion_blocking_no_leaves")
+    if y is None:
+        return None
+
+    async def is_(block: str) -> bool:
+        return "passed" in (await _rcon(srv, f"execute in {dim} if block {x} {y - 1} {z} {block}")).lower()
+    if await is_("minecraft:water"):
+        if not r.get("underwater"):
+            return None
+        floor = await _height(srv, dim, x, z, tag, "ocean_floor")
+        return (floor, True) if floor is not None and floor < y else None
+    if await is_("minecraft:lava") or await is_("#minecraft:logs") or await is_("#minecraft:leaves"):
+        return None
+    return y, False
+
+
+async def _th_start(srv, r: dict) -> None:
+    a, dim = r["area"], r["dim"]
+    tag = f"solth_{r['id']}"
+    found = None
+    for attempt in range(16):
+        if r.get("spot") and attempt == 0:
+            x, z = r["spot"]["x"], r["spot"]["z"]
+        elif r.get("spot") and attempt < 6:                  # the chosen spot won't do: somewhere close by
+            x, z = r["spot"]["x"] + random.uniform(-8, 8), r["spot"]["z"] + random.uniform(-8, 8)
+        else:
+            ang, rad = random.uniform(0, 2 * math.pi), a["r"] * math.sqrt(random.uniform(0.15, 1))
+            x, z = a["x"] + math.cos(ang) * rad, a["z"] + math.sin(ang) * rad
+        x, z = int(math.floor(x)), int(math.floor(z))
+        await _rcon(srv, f"execute in {dim} run forceload add {x} {z}")
+        found = await _treasure_spot(srv, r, x, z, tag)
+        if found:
+            break
+        await _rcon(srv, f"execute in {dim} run forceload remove {x} {z}")
+    if found:
+        y, wet = found
+    else:                                                    # nowhere good after all that: the last spot's surface
+        y, wet = (await _height(srv, dim, x, z, tag, "motion_blocking_no_leaves") or int(r["area"]["y"])), False
+        await _rcon(srv, f"execute in {dim} run forceload add {x} {z}")
+    r["underwater_spot"] = wet
     items = ",".join(f'{{Slot:{i}b,id:"{it["item"]}",count:{it["count"]}}}' for i, it in enumerate(r["items"][:27]))
-    out = await _rcon(srv, f"execute in {dim} run setblock {x} {y} {z} minecraft:chest{{Items:[{items}]}} replace")
+    chest = "minecraft:chest[waterlogged=true]" if wet else "minecraft:chest"
+    out = await _rcon(srv, f"execute in {dim} run setblock {x} {y} {z} {chest}{{Items:[{items}]}} replace")
     if out and "changed" not in out.lower():
         r["chest_error"] = out[:160]
     r["chest"] = {"x": x, "y": y, "z": z}
     r["state"], r["phase_ends"] = "running", time.time() + r["minutes"] * 60
-    await _say(srv, [("★ ", "gold"), ("Treasure hunt! ", "yellow"), (f"A chest of treasure is hidden within {a['r']} blocks. Watch your hotbar: it says how warm you are.", None)],
+    await _say(srv, [("★ ", "gold"), ("Treasure hunt! ", "yellow"), (f"A chest of treasure is hidden within {a['r']} blocks{' (it could be underwater!)' if r.get('underwater') else ''}. Watch your hotbar: it says how warm you are.", None)],
                "Treasure hunt!", "Find the chest")
 
 
@@ -390,14 +428,14 @@ async def _th_tick(srv, r: dict) -> None:
         finder = min(near, key=near.get) if near else None
         result = f"{finder} found the treasure!" if finder else "Someone found the treasure!"
         await _say(srv, [("★ ", "gold"), (result, "yellow")], "Treasure found!", finder or "")
-        await _rcon(srv, f"execute in {r['dim']} run setblock {c['x']} {c['y']} {c['z']} minecraft:air")
+        await _rcon(srv, f"execute in {r['dim']} run setblock {c['x']} {c['y']} {c['z']} {'minecraft:water' if r.get('underwater_spot') else 'minecraft:air'}")
         await _rcon(srv, f"execute in {r['dim']} run forceload remove {c['x']} {c['z']}")
         _finish(srv, r, result)
         if finder:
             fwshow.push(srv.id, srv.display_name, "challenge", finder, result)
     elif now >= r["phase_ends"]:
         await _say(srv, [("★ ", "gold"), ("Time's up! Nobody found the treasure. It was at ", "yellow"), (f"{c['x']}, {c['y']}, {c['z']}", "white"), (".", "yellow")], "Time's up", "The treasure is gone")
-        await _rcon(srv, f"execute in {r['dim']} run setblock {c['x']} {c['y']} {c['z']} minecraft:air")
+        await _rcon(srv, f"execute in {r['dim']} run setblock {c['x']} {c['y']} {c['z']} {'minecraft:water' if r.get('underwater_spot') else 'minecraft:air'}")
         await _rcon(srv, f"execute in {r['dim']} run forceload remove {c['x']} {c['z']}")
         _finish(srv, r, "Nobody found the treasure in time.")
 
@@ -776,7 +814,7 @@ async def _cancel(srv, rid: str) -> bool:
             await _hs_cleanup(srv, r)
         elif r["game"] == "treasure" and r.get("chest"):
             c = r["chest"]
-            await _rcon(srv, f"execute in {r['dim']} run setblock {c['x']} {c['y']} {c['z']} minecraft:air")
+            await _rcon(srv, f"execute in {r['dim']} run setblock {c['x']} {c['y']} {c['z']} {'minecraft:water' if r.get('underwater_spot') else 'minecraft:air'}")
             await _rcon(srv, f"execute in {r['dim']} run forceload remove {c['x']} {c['z']}")
         elif r["game"] == "archery":
             if r.get("hot"):

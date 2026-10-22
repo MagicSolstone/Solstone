@@ -80,8 +80,8 @@ NUMBERS: dict[str, tuple[float, float, float]] = {
 INTS = {"sparks", "points", "arms", "rockets", "piece"}
 STAGE_NUMBERS = {"delay": (0.1, 4, 0.8), "size": (0.2, 3, 0.8), "sparks": (8, 120, 30)}
 PIC_MAX = 25
-MAX_DESIGNS = 200
-MAX_PER_USER = 40
+MAX_DESIGNS = 1000                   # everyone together (a safety cap, not a working limit)
+PER_PERSON_DEFAULT = 20             # how many each person (not admins) can keep; admins can change it
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 _PIC_ROW = re.compile(r"^[.0-3]*$")
 _lock = threading.Lock()  # read-modify-write of the design list
@@ -91,6 +91,7 @@ def sanitize(d: dict) -> dict:
     out: dict = {}
     name = re.sub(r"\s+", " ", str(d.get("name") or "")).strip()[:40]
     out["name"] = name or "My firework"
+    out["group"] = re.sub(r"\s+", " ", str(d.get("group") or "")).strip()[:24]      # a collection to file it under
     out["pattern"] = d.get("pattern") if d.get("pattern") in PATTERNS else "ball"
     out["color_mode"] = d.get("color_mode") if d.get("color_mode") in COLOR_MODES else "mix"
     colors = [c.lower() for c in (d.get("colors") or []) if isinstance(c, str) and _HEX.match(c)][:4]
@@ -222,13 +223,30 @@ def in_show() -> list[dict]:
     return [{"id": d["id"], "author": d.get("author", ""), "weight": d.get("weight", 1), **sanitize(d)} for d in _load() if d.get("in_show")]
 
 
-def create(design: dict, author: str) -> dict:
+def per_person() -> int:
+    """How many fireworks each person can keep (0: no limit). Admins are never limited."""
+    v = settings_store.load().get("firework_limit")
+    return int(v) if isinstance(v, int) and v >= 0 else PER_PERSON_DEFAULT
+
+
+def set_per_person(n) -> int:
+    n = max(0, min(500, int(n)))
+    settings_store.save_section("firework_limit", n)
+    return n
+
+
+def count_by(author: str) -> int:
+    return sum(1 for d in _load() if d.get("author") == author)
+
+
+def create(design: dict, author: str, limit: int | None = None) -> dict:
+    """`limit`: how many this person may keep (None: no limit, for admins)."""
     with _lock:
         items = _load()
         if len(items) >= MAX_DESIGNS:
-            raise ValueError(f"There are already {MAX_DESIGNS} custom fireworks. Delete some first.")
-        if sum(1 for d in items if d.get("author") == author) >= MAX_PER_USER:
-            raise ValueError(f"You can keep up to {MAX_PER_USER} fireworks. Delete one to make room.")
+            raise ValueError(f"There are already {MAX_DESIGNS} saved fireworks. Some need deleting first.")
+        if limit and sum(1 for d in items if d.get("author") == author) >= limit:
+            raise ValueError(f"You've saved {limit} fireworks, the most each person can keep. Delete one to make room, or ask an admin for more.")
         d = {"id": secrets.token_hex(6), **sanitize(design), "author": author,
              "in_show": bool(design.get("in_show", True)), "created": time.time(), "updated": time.time()}
         items.append(d)

@@ -230,3 +230,35 @@ function annTv(el) {
     e.target.disabled = false; e.target.textContent = "Read old logs again";
   });
 }
+
+// ================================================================ coming up
+// Everything with a date ahead, in one list: contests, races, games, birthdays, holidays and
+// their shows, announcements counting down.
+const UP_KIND = { contest: "Contest", race: "Race", game: "Game", birthday: "Birthday", holiday: "Holiday", show: "Fireworks", note: "Announcement" };
+async function viewUpcoming() {
+  curSid = null;
+  document.title = "Coming up · Solstone";
+  $("#rail-servers").innerHTML = railHtml(null);
+  const d = await api("/api/upcoming");
+  const zone = new Date();
+  const dayKey = (iso) => {
+    const [y, m, dd] = iso.split("-").map(Number), day = new Date(y, m - 1, dd);
+    const today = new Date(zone.getFullYear(), zone.getMonth(), zone.getDate());
+    const diff = Math.round((day - today) / 86400000);
+    const name = day.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+    return diff === 0 ? `Today · ${name}` : diff === 1 ? `Tomorrow · ${name}` : diff < 7 ? name : diff < 14 ? `Next week · ${name}` : name;
+  };
+  const row = (it) => `<li class="up-item ${it.live ? "live" : ""} up-${esc(it.kind)}">
+      <span class="up-emoji" aria-hidden="true">${esc(it.emoji || "•")}</span>
+      <div class="up-main"><b>${it.link ? `<a href="${esc(it.link)}">${esc(it.title)}</a>` : esc(it.title)}</b>
+        <span class="muted small">${esc([UP_KIND[it.kind], it.server, it.detail, it.days > 1 ? `${it.days} days` : ""].filter(Boolean).join(" · "))}</span></div>
+      <span class="up-when">${it.live ? '<span class="state-pill live"><span class="status-dot on"></span>On now</span>' : it.time ? esc(it.time) : '<span class="muted small">All day</span>'}</span></li>`;
+  const live = d.items.filter((x) => x.live), ahead = d.items.filter((x) => !x.live);
+  const groups = [];
+  for (const it of ahead) { const g = groups[groups.length - 1]; if (g && g.date === it.date) g.items.push(it); else groups.push({ date: it.date, items: [it] }); }
+  setView(`<div class="fwe-head"><h1>Coming up</h1>
+      <p class="muted">Everything planned for the next ${d.days} days: contests, races and games, birthdays, holidays and their fireworks shows, and announcements counting down.${isAdmin() ? ` Add things from a server's <b>Contests</b> page, the <a href="#/fireworks/settings">fireworks calendar</a> or <a href="#/announcements">Announcements</a>.` : ""}</p></div>
+    ${live.length ? `<section class="section"><div class="section-head"><h2>Happening now</h2></div><ul class="up-list panel">${live.map(row).join("")}</ul></section>` : ""}
+    ${groups.length ? groups.map((g) => `<section class="section up-day"><div class="section-head"><h2>${esc(dayKey(g.date))}</h2></div><ul class="up-list panel">${g.items.map(row).join("")}</ul></section>`).join("")
+      : `<div class="panel"><p class="muted">Nothing planned in the next ${d.days} days.</p></div>`}`);
+}

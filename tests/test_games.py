@@ -25,6 +25,8 @@ class FakeServer:
         self.cmds, self.said, self.gm, self.teams, self.blocks = [], [], {n: "survival" for n in names}, {}, {}
         self.chest_items = None
         self.log = []
+        self.ground = {}                     # (x, z) -> the block under the surface there (grass if not given)
+        self.floor = {}                      # (x, z) -> the bottom of the water there
 
     def rcon_conf(self):
         return {"host": "x"}
@@ -38,8 +40,17 @@ class FakeServer:
         if m:
             x, y, z = self.pos[m.group(1)]
             return f"{m.group(1)} has the following entity data: [{x}d, {y}d, {z}d]"
+        m = re.search(r"positioned (-?\d+) 320 (-?\d+) positioned over (\w+)", cmd)
+        if m:
+            self.last_probe = (int(m.group(1)), int(m.group(2)), m.group(3))
         if "data get entity @e[tag=solth_" in cmd:
-            return "Marker has the following entity data: [100.5d, 71.0d, -40.5d]"
+            x, z, hm = getattr(self, "last_probe", (100, -41, ""))
+            y = self.floor.get((x, z), 60) if hm == "ocean_floor" else 71
+            return f"Marker has the following entity data: [{x}.5d, {y}.0d, {z}.5d]"
+        m = re.match(r"execute in \S+ if block (-?\d+) (-?\d+) (-?\d+) (\S+)", cmd)
+        if m:
+            here = self.ground.get((int(m.group(1)), int(m.group(3))), "minecraft:grass_block")
+            return "Test passed" if m.group(4) == here else "Test failed"
         m = re.match(r"gamemode (\w+) (\w+)", cmd)
         if m:
             self.gm[m.group(2)] = m.group(1)
@@ -372,3 +383,28 @@ def test_pack_has_the_spleef_safety_net():
     assert "#spleef_hb solg_tmp matches 1.." in tick and "function solgames:spleef_failsafe" in tick
     assert all(line.startswith("$") for line in f["data/solgames/function/spleef_back1.mcfunction"].strip().splitlines())
     assert "replace minecraft:snow_block" in f["data/solgames/function/spleef_clear.mcfunction"]
+
+
+def test_treasure_avoids_water_unless_allowed(game):
+    games, srv = game
+    srv.ground[(100, -41)] = "minecraft:water"
+    games.create(srv.id, {"game": "treasure", "center": {"x": 0, "z": 0}, "radius": 150, "spot": {"x": 100, "z": -41},
+                          "items": [{"item": "diamond", "count": 1}]})
+    asyncio.run(games.tick([srv]))
+    r = _run(games)
+    assert (r["chest"]["x"], r["chest"]["z"]) != (100, -41) and not r["underwater_spot"]   # moved somewhere dry nearby
+    assert abs(r["chest"]["x"] - 100) <= 9 and abs(r["chest"]["z"] + 41) <= 9
+
+
+def test_treasure_on_the_bottom_when_underwater_is_allowed(game):
+    games, srv = game
+    srv.ground[(100, -41)] = "minecraft:water"
+    srv.floor[(100, -41)] = 55
+    games.create(srv.id, {"game": "treasure", "center": {"x": 0, "z": 0}, "radius": 150, "spot": {"x": 100, "z": -41}, "underwater": True,
+                          "items": [{"item": "diamond", "count": 1}]})
+    asyncio.run(games.tick([srv]))
+    r = _run(games)
+    assert r["chest"] == {"x": 100, "y": 55, "z": -41} and r["underwater_spot"]
+    assert any("minecraft:chest[waterlogged=true]" in c for c in srv.cmds)
+    asyncio.run(games.cancel(srv, r["id"]))
+    assert any(c.endswith("setblock 100 55 -41 minecraft:water") for c in srv.cmds)        # the water put back, no air pocket

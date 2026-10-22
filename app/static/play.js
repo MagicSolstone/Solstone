@@ -654,7 +654,7 @@ async function viewGames(sid) {
     const f = { game, when: "now", at: "", center: null, radius: game === "treasure" ? 150 : 40, spot: null, target: null, place_target: false,
       hide_secs: 60, minutes: game === "treasure" ? 15 : game === "archery" ? 10 : 6, seeker: "", no_dig: true, marco: true, infect: true,
       mode: "bullseye", word: "HORSE", give_bow: true, hint_after: 5, items: [], prize: null, hot: false, hot_bonus: 2, hot_far: 40, hot_on: 45, hot_off: 20,
-      layers: 1, best_of: 3, teams: false, snowballs: true, shrink: true, shrink_after: 60 };
+      underwater: false, layers: 1, best_of: 3, teams: false, snowballs: true, shrink: true, shrink_after: 60 };
     if (game === "spleef") f.radius = 10;
     const at = (() => { const t = new Date(Date.now() + 15 * 60e3); t.setSeconds(0, 0); return new Date(t.getTime() - t.getTimezoneOffset() * 60e3).toISOString().slice(0, 16); })();
     f.at = at;
@@ -691,6 +691,7 @@ async function viewGames(sid) {
       : game === "treasure" ? `
         <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>
         <label>Show the direction after <select class="input" name="hint_after">${[0, 2, 5, 10, 60].map((v) => `<option value="${v}" ${f.hint_after === v ? "selected" : ""}>${v === 60 ? "never" : v ? `${v} minutes` : "straight away"}</option>`).join("")}</select></label>
+        <label class="check gm-wide"><input type="checkbox" name="underwater" ${f.underwater ? "checked" : ""}> It can be underwater, on the bottom of a lake or the sea (otherwise always on dry ground, never in a tree)</label>
         <div class="gm-items"><span class="lbl">In the chest</span>${f.items.map((it, i) => `<span class="chip">${itemIcon({ id: it.item })} ${it.count} × ${esc(it.name)} <button type="button" class="chip-x" data-rmitem="${i}" aria-label="Remove">×</button></span>`).join("")}
           <button type="button" class="btn sm" id="gm-additem">＋ Add treasure</button></div>`
       : `
@@ -717,7 +718,7 @@ async function viewGames(sid) {
       const fm = $("#gm-form", m);
       for (const k of ["seeker", "mode", "word"]) if (fm[k]) f[k] = fm[k].value;
       for (const k of ["hide_secs", "minutes", "hint_after", "radius", "hot_bonus", "hot_far", "hot_on", "hot_off", "layers", "best_of", "shrink_after"]) if (fm[k]) f[k] = +fm[k].value;
-      for (const k of ["no_dig", "marco", "infect", "give_bow", "hot", "teams", "snowballs", "shrink"]) if (fm[k]) f[k] = fm[k].checked;
+      for (const k of ["no_dig", "marco", "infect", "give_bow", "hot", "teams", "snowballs", "shrink", "underwater"]) if (fm[k]) f[k] = fm[k].checked;
       f.when = fm.when.value; f.at = fm.at.value;
     };
     const show = () => openModal(body(), (m) => {
