@@ -18,7 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, backups, board, challenges, control, db, races, fireworks, fwshow, guard, music, notify, recap, skins, worldmap
+from . import auth, backups, board, challenges, control, db, fishing, fishpack, races, fireworks, fwshow, guard, music, notify, recap, skins, worldmap
 from . import servers as S
 from . import settings_store
 from .recorder import recorder
@@ -273,7 +273,7 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
                     row["armor"] = [_public_item(inv["armor"][k], lang) for k in ("head", "chest", "legs", "feet")]
             board["players"].append(row)
     if cfg["show_activity"]:
-        evs = db.events(srv.id, ["join", "leave", "death", "advancement", "level", "server", "challenge", "race"], None, 14)
+        evs = db.events(srv.id, ["join", "leave", "death", "advancement", "level", "server", "challenge", "race", "bigfish"], None, 14)
         board["recent"] = [{"ts": e["ts"], "type": e["type"], "player": e["player"], "message": e["message"]} for e in evs]
     online_l = {n.lower() for n in summ["online"]}
     if srv.is_java:
@@ -1678,6 +1678,44 @@ async def delete_challenge(sid: str, cid: str, request: Request):
     return {"ok": True}
 
 
+# ---- the Solstone Fishing data pack
+@app.get("/api/servers/{sid}/fishing")
+async def get_fishing(sid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    if srv.is_java and srv.rcon_conf():
+        try:
+            await fishing.check(srv, force=not (fishing._state.get(srv.id) or {}).get("version"))
+        except Exception as e:
+            log.debug("fishing check failed: %s", e)
+    evs = db.events(srv.id, ["fish", "bigfish"], None, 40)
+    return {"status": fishing.status(srv), "rcon": bool(srv.rcon_conf()), "guide": fishpack.guide(), "qualities": fishpack.qualities(),
+            "recent": [{"ts": e["ts"], "player": e["player"], "message": e["message"]} for e in evs]}
+
+
+@app.get("/api/fishing/" + fishpack.PACK_FILE)
+async def fishing_pack(request: Request):
+    auth.require_admin(request)
+    return Response(fishpack.build_zip(), media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{fishpack.PACK_FILE}"', "Cache-Control": "no-store"})
+
+
+@app.post("/api/servers/{sid}/fishing/{action}")
+async def fishing_action(sid: str, action: str, request: Request):
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    if action not in ("install", "reload"):
+        raise HTTPException(404)
+    if not srv.rcon_conf():
+        raise HTTPException(409, "Turn on RCON for this server first")
+    try:
+        st = await (fishing.install(srv) if action == "install" else fishing.reload(srv))
+    except RuntimeError as e:
+        raise HTTPException(502, f"The server didn't answer: {e}") from e
+    auth.audit(user, srv.id, f"fishing:{action}", f"pack version {st.get('version')}")
+    return {**fishing.status(srv), "listed": st.get("listed"), "reload_reply": st.get("reload_reply", "")}
+
+
 # ---- races: courses of waypoints, run with markers in the game
 @app.get("/api/servers/{sid}/races")
 async def get_races(sid: str, request: Request):
@@ -1758,7 +1796,7 @@ async def race_spot(sid: str, request: Request, player: str = "", x: float = 0, 
 
 
 # ---- chat: what's said in the game, and messages from here
-CHAT_TYPES = ["chat", "webchat", "webdm", "join", "leave", "death", "advancement", "challenge", "race"]
+CHAT_TYPES = ["chat", "webchat", "webdm", "join", "leave", "death", "advancement", "challenge", "race", "fish", "bigfish"]
 
 
 @app.get("/api/servers/{sid}/chat")

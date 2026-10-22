@@ -40,7 +40,11 @@ KINDS: dict[str, tuple[str, str, tuple[str, str], list[str], int]] = {
     "jumps": ("Jump-a-thon", "🦘", ("jump", "jumps"), ["minecraft.custom:minecraft.jump"], 1),
     "walk": ("Explorer", "🧭", ("block walked", "blocks walked"),
              ["minecraft.custom:minecraft.walk_one_cm", "minecraft.custom:minecraft.sprint_one_cm"], 100),
+    # These two need the Solstone Fishing pack, which keeps its own scoreboards.
+    "fish_points": ("Fishing tournament", "🏆", ("point", "points"), [], 1),
+    "fish_heaviest": ("Biggest catch", "🐟", ("lb", "lb"), [], 1),
 }
+FISH_KINDS = {"fish_points": "solfish_cp", "fish_heaviest": "solfish_cb"}     # kind -> the pack's objective
 SECTION = "challenges"
 KEEP_DONE = 30                          # finished challenges kept for the history list
 _SCORE = re.compile(r"has (-?\d+)")
@@ -60,7 +64,16 @@ def _save(d: dict) -> None:
 
 
 def kinds() -> list[dict]:
-    return [{"key": k, "label": v[0], "emoji": v[1], "unit": v[2][1]} for k, v in KINDS.items()]
+    return [{"key": k, "label": v[0], "emoji": v[1], "unit": v[2][1], "pack": k in FISH_KINDS,
+             "scale": 10 if k == "fish_heaviest" else 1} for k, v in KINDS.items()]
+
+
+def _show(c: dict, n: int) -> str:
+    """A score as people read it: '7 fish', '42 points', '16.2 lb'."""
+    _l, _e, unit, _c, _d = KINDS[c["kind"]]
+    if c["kind"] == "fish_heaviest":
+        return f"{n / 10:g} lb"
+    return f"{n} {unit[0] if n == 1 else unit[1]}"
 
 
 def _prize(p) -> dict | None:
@@ -139,6 +152,8 @@ async def _rcon(srv, cmd: str) -> str:
 
 
 def _objectives(c: dict) -> list[str]:
+    if c["kind"] in FISH_KINDS:
+        return [FISH_KINDS[c["kind"]]]
     return [f"sc{c['id'][:6]}{i}" for i in range(len(KINDS[c["kind"]][3]))]
 
 
@@ -149,7 +164,11 @@ def _total_obj(c: dict) -> str:
 async def _start(srv, c: dict) -> None:
     label, _emoji, unit, criteria, _div = KINDS[c["kind"]]
     made = []
-    for obj, crit in zip(_objectives(c), criteria, strict=True):
+    if c["kind"] in FISH_KINDS:                       # the pack's own objective, cleared for this contest
+        made = _objectives(c)
+        await _rcon(srv, f"scoreboard players reset * {made[0]}")
+        c["best"] = {}
+    for obj, crit in zip(_objectives(c) if c["kind"] not in FISH_KINDS else [], criteria, strict=True):
         out = await _rcon(srv, f"scoreboard objectives add {obj} {crit}")
         if out and ("unknown" in out.lower() or "invalid" in out.lower() or "error" in out.lower()):
             continue                     # a block this version doesn't have (pale oak before 1.21.4, say)
@@ -161,7 +180,8 @@ async def _start(srv, c: dict) -> None:
     c["ends_at"] = c["started_at"] + c["minutes"] * 60
     if c["say"]:
         prize = f"{c['prize']['count']} × {c['prize'].get('name') or c['prize']['item'].split(':')[1].replace('_', ' ')}"
-        rules = f" has started! Most {unit[1]} in {c['minutes']} minutes wins {prize}."
+        goal = {"fish_points": "Most fishing points", "fish_heaviest": "The heaviest fish"}.get(c["kind"], f"Most {unit[1]}")
+        rules = f" has started! {goal} in {c['minutes']} minutes wins {prize}."
         await _rcon(srv, f"tellraw @a {component([('★ ', 'gold'), (c['name'], 'yellow'), (rules, None)])}")
         await _rcon(srv, "title @a times 10 60 20")
         await _rcon(srv, f"title @a title {component([('Go!', 'gold')])}")
@@ -180,6 +200,8 @@ async def _read_scores(srv, c: dict) -> None:
             total += int(m.group(1)) if m else 0
         c["scores"][p] = total // div
         await _rcon(srv, f"scoreboard players set {p} {_total_obj(c)} {total // div}")
+        if c["kind"] == "fish_heaviest" and total:               # the sidebar says "16.2 lb", not 162
+            await _rcon(srv, f"scoreboard players display numberformat {p} {_total_obj(c)} fixed {json.dumps(_show(c, total))}")
 
 
 def _places(scores: dict[str, int]) -> tuple[list[str], list[str]]:
@@ -224,7 +246,9 @@ async def _finish(srv, c: dict, d: dict) -> None:
     if first:
         n = c["scores"][first[0]]
         who = " and ".join(first)
-        c["result"] = f"{who} won {c['name']} with {n} {unit[0] if n == 1 else unit[1]}!"
+        best = (c.get("best") or {}).get(first[0])
+        what = f"a {best['lb']} lb {best['name']}" if c["kind"] == "fish_heaviest" and best else _show(c, n)
+        c["result"] = f"{who} won {c['name']} with {what}!"
     else:
         c["result"] = f"{c['name']} is over. Nobody scored this time."
     if c["say"]:
@@ -234,7 +258,8 @@ async def _finish(srv, c: dict, d: dict) -> None:
             await _rcon(srv, f"title @a title {component([(' & '.join(first)[:30], 'gold')])}")
             await _rcon(srv, f"title @a subtitle {component([('wins ' + c['name'], 'yellow')])}")
     for obj in [*c["objectives"], _total_obj(c)]:
-        await _rcon(srv, f"scoreboard objectives remove {obj}")
+        if obj not in FISH_KINDS.values():                 # the fishing pack keeps its own
+            await _rcon(srv, f"scoreboard objectives remove {obj}")
     c["state"] = "done"
     db.add_event(srv.id, time.time(), "challenge", c["result"], first[0] if first else None)
     if first:
@@ -248,7 +273,8 @@ async def cancel(srv, cid: str) -> bool:
         return False
     if c["state"] == "running" and srv.rcon_conf():
         for obj in [*c.get("objectives", []), _total_obj(c)]:
-            await _rcon(srv, f"scoreboard objectives remove {obj}")
+            if obj not in FISH_KINDS.values():
+                await _rcon(srv, f"scoreboard objectives remove {obj}")
         if c["say"]:
             await _rcon(srv, f"tellraw @a {component([('★ ', 'gold'), (c['name'] + ' was called off.', 'yellow')])}")
     if c["state"] in ("scheduled", "running"):
@@ -289,6 +315,29 @@ async def tick(servers: list) -> None:
         _save(d)
 
 
+async def on_catch(srv, player: str, catch: dict) -> bool:
+    """A fish from the fishing pack. During a fishing contest everyone hears about it (with
+    where it puts them), and the biggest fish per player is kept for the result. True if a
+    fishing contest is on."""
+    d = _load()
+    c = next((x for x in d["items"] if x["server"] == srv.id and x["state"] == "running" and x["kind"] in FISH_KINDS), None)
+    if not c:
+        return False
+    best = c.setdefault("best", {})
+    if player not in best or catch["weight"] > best[player]["weight"]:
+        best[player] = {k: catch[k] for k in ("name", "lb", "weight", "quality_name", "points")}
+    _save(d)
+    colour = {0: "gray", 1: "white", 2: "green", 3: "aqua", 4: "gold"}.get(catch["quality"], "white")
+    fish = catch["name"] if catch["quality"] == 1 else f"{catch['quality_name']} {catch['name']}"
+    if c["kind"] == "fish_points":
+        extra = f" · +{catch['points']} points"
+    else:
+        extra = " · new best!" if best[player]["weight"] == catch["weight"] else ""
+    size = f" · {catch['lb']} lb"
+    await _rcon(srv, f"tellraw @a {component([('≫ ', 'aqua'), (player, 'aqua'), (' caught ', None), (fish, colour), (size, None), (extra, 'yellow')])}")
+    return True
+
+
 async def on_join(srv, player: str) -> None:
     """Hand over prizes won while away."""
     d = _load()
@@ -320,7 +369,7 @@ def banners(sid: str | None, now: float | None = None) -> list[dict]:
         elif c["state"] == "running":
             first, _ = _places(c.get("scores") or {})
             n = c["scores"].get(first[0], 0) if first else 0
-            lead = f"{' & '.join(first)} {'leads' if len(first) == 1 else 'lead'} with {n} {unit[0] if n == 1 else unit[1]}" if first else "Nobody has scored yet"
+            lead = f"{' & '.join(first)} {'leads' if len(first) == 1 else 'lead'} with {_show(c, n)}" if first else "Nobody has scored yet"
             out.append({"id": f"ch-{c['id']}", "kind": "challenge", "emoji": emoji, "style": "party", "text": f"{c['name']}: {lead}",
                         "detail": "", "countdown": c["ends_at"], "done_text": "Time's up!", "scores": c.get("scores") or {}})
         elif c["state"] == "done" and c.get("winners") and now - (c.get("ends_at") or 0) < 1800:

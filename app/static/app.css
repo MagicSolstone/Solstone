@@ -1547,3 +1547,19 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .rs-form label.check { display: flex; align-items: center; gap: 8px; }
 .rs-prizes { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; }
 @media (max-width: 900px) { .rc-grid { grid-template-columns: 1fr; } .rc-map { height: 52vh; } }
+
+/* ------------------------------------------------------------ fishing pack */
+.ch-kind.off { opacity: .5; cursor: not-allowed; }
+.fish-panel { display: grid; gap: 12px; }
+.fish-panel p { margin: 0; }
+.fish-steps { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.fish-steps code { word-break: break-all; }
+.fish-qs { display: flex; flex-wrap: wrap; gap: 8px; }
+.fish-q { padding: 3px 10px; border-radius: 999px; background: var(--well); font-weight: 700; font-size: .88rem; }
+.fish-q small { font-weight: 400; color: var(--muted); }
+.fq-gray { color: #aaa; } .fq-white { color: #fff; } .fq-green { color: #55ff55; } .fq-aqua { color: #55ffff; } .fq-gold { color: #ffaa00; }
+.fish-guide summary { cursor: pointer; font-weight: 700; }
+.fish-guide td:first-child { display: flex; align-items: center; gap: 8px; }
+.fish-guide .item { width: 24px; height: 24px; }
+.fish-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.fish-recent li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; }

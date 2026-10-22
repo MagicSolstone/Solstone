@@ -26,7 +26,7 @@ async function viewChat(sid) {
     if (e.type === "chat") return `<div class="cm">${t}${faceHtml({ name: e.player }, 22)}<b>${esc(e.player)}</b><span>${esc(e.message)}</span></div>`;
     if (e.type === "webchat") return `<div class="cm web">${t}<span class="cm-from">🌐</span><b>${esc(e.player)}</b><span>${esc(e.message)}</span></div>`;
     if (e.type === "webdm") return `<div class="cm web dm">${t}<span class="cm-from">✉</span><b>${esc(e.player)} → ${esc(e.to)}</b><span>${esc(e.message)}</span></div>`;
-    const icon = { join: "→", leave: "←", death: "☠", advancement: "★", challenge: "🏆", race: "🏁" }[e.type] || "•";
+    const icon = { join: "→", leave: "←", death: "☠", advancement: "★", challenge: "🏆", race: "🏁", fish: "🎣", bigfish: "🐟" }[e.type] || "•";
     return `<div class="cm sys">${t}<span class="cm-from">${icon}</span><span>${esc(e.message)}</span></div>`;
   };
   const render = (items) => {
@@ -74,7 +74,8 @@ async function viewChallenges(sid) {
   if (!isAdmin()) { location.replace(`#/s/${encodeURIComponent(sid)}`); return; }
   const s = await serverFrame(sid, "challenges");
   const base = `/api/servers/${encodeURIComponent(sid)}/challenges`;
-  let d = await api(base);
+  let [d, fish] = await Promise.all([api(base), api(`/api/servers/${encodeURIComponent(sid)}/fishing`).catch(() => null)]);
+  const fishOn = () => !!fish?.status?.version;
   const draft = { kind: "fish", name: "", when: "now", at: "", minutes: 10, prize: null, second: null, say: true };
   // default time for "later": the next 8 PM, or the next hour if that's already past today
   const next8 = () => { const t = new Date(); t.setHours(20, 0, 0, 0); if (t < new Date()) { t.setTime(Date.now() + 3600e3); t.setMinutes(0, 0, 0); } return t; };
@@ -87,7 +88,8 @@ async function viewChallenges(sid) {
   const scoresHtml = (c) => {
     const rows = Object.entries(c.scores || {}).sort((a, b) => b[1] - a[1]);
     if (!rows.length) return `<p class="muted small">No scores yet.</p>`;
-    return `<ol class="ch-scores">${rows.map(([n, v], i) => `<li class="${(c.winners || []).includes(n) ? "win" : ""}"><span class="rank">${i + 1}</span>${faceHtml({ name: n }, 22)}<b>${esc(n)}</b><span class="val">${v}</span></li>`).join("")}</ol>`;
+    const show = (n, v) => (c.kind === "fish_heaviest" ? `${v / 10} lb${c.best?.[n] ? ` · ${esc(c.best[n].name)}` : ""}` : c.kind === "fish_points" ? `${v} pts` : v);
+    return `<ol class="ch-scores">${rows.map(([n, v], i) => `<li class="${(c.winners || []).includes(n) ? "win" : ""}"><span class="rank">${i + 1}</span>${faceHtml({ name: n }, 22)}<b>${esc(n)}</b><span class="val">${show(n, v)}</span></li>`).join("")}</ol>`;
   };
   const card = (c) => {
     const k = kind(c.kind);
@@ -104,7 +106,11 @@ async function viewChallenges(sid) {
   };
   const formHtml = () => `<form class="panel ch-form" id="ch-form">
       <h3>New challenge</h3>
-      <div class="ch-kinds" role="radiogroup" aria-label="What counts">${d.kinds.map((k) => `<label class="ch-kind ${draft.kind === k.key ? "on" : ""}"><input type="radio" name="kind" value="${k.key}" ${draft.kind === k.key ? "checked" : ""}><span>${k.emoji}</span><b>${esc(k.label)}</b><small>most ${esc(k.unit)}</small></label>`).join("")}</div>
+      <div class="ch-kinds" role="radiogroup" aria-label="What counts">${d.kinds.filter((k) => !["jumps", "walk"].includes(k.key) || draft.kind === k.key).map((k) => {
+        const off = k.pack && !fishOn();
+        const what = k.key === "fish_points" ? "most points (needs the fishing pack)" : k.key === "fish_heaviest" ? "heaviest fish (needs the fishing pack)" : `most ${k.unit}`;
+        return `<label class="ch-kind ${draft.kind === k.key ? "on" : ""} ${off ? "off" : ""}" ${off ? 'title="Add the Solstone Fishing pack to the world first (below)"' : ""}><input type="radio" name="kind" value="${k.key}" ${draft.kind === k.key ? "checked" : ""} ${off ? "disabled" : ""}><span>${k.emoji}</span><b>${esc(k.label)}</b><small>${esc(off ? what : what.replace(" (needs the fishing pack)", ""))}</small></label>`;
+      }).join("")}</div>
       <div class="ch-grid">
         <label>Name <input class="input" name="name" maxlength="40" placeholder="${esc(kind(draft.kind).label)}" value="${esc(draft.name)}"></label>
         <label>How long <select class="input" name="minutes">${[5, 10, 15, 20, 30, 45, 60].map((m) => `<option value="${m}" ${draft.minutes === m ? "selected" : ""}>${m} minutes</option>`).join("")}</select></label>
@@ -126,11 +132,43 @@ async function viewChallenges(sid) {
       <section class="section">${formHtml()}</section>
       ${soon.length ? `<section class="section"><div class="section-head"><h2>Coming up</h2></div><div class="ch-list">${soon.map(card).join("")}</div></section>` : ""}
       ${d.gifts.length ? `<section class="section"><div class="section-head"><h2>Prizes waiting</h2><span class="muted">Given the next time they join</span></div><div class="panel">${d.gifts.map((g) => `<div class="ch-gift">${faceHtml({ name: g.player }, 22)}<b>${esc(g.player)}</b> ${itemIcon({ id: g.item })} ${g.count} × ${esc(itemName({ id: g.item }))} <span class="muted small">for: ${esc(g.why)}</span></div>`).join("")}</div></section>` : ""}
-      ${past.length ? `<section class="section"><div class="section-head"><h2>Finished</h2></div><div class="ch-list">${past.map(card).join("")}</div></section>` : ""}`);
+      ${past.length ? `<section class="section"><div class="section-head"><h2>Finished</h2></div><div class="ch-list">${past.map(card).join("")}</div></section>` : ""}
+      ${fishHtml()}`);
     wireHeader(s);
     wire();
+    wireFish();
   };
   const reload = async () => { d = await api(base); render(); };
+  // --- the fishing pack: is it in the world, how to add it, and the guide to what's out there
+  const fishHtml = () => {
+    if (!fish) return "";
+    const st = fish.status, on = !!st.version, old = on && st.version < st.current;
+    const steps = st.writable
+      ? `<button class="btn primary" type="button" data-fish="install">Install it in the world</button>`
+      : `<ol class="fish-steps"><li><a class="btn sm" href="/api/fishing/${esc(st.file)}" download>⬇ Download ${esc(st.file)}</a></li>
+          <li>Put the file (still zipped) in this world's <code>datapacks</code> folder: <code>${esc(st.folder.replace(/^\/servers\//, "…/crafty-4/servers/"))}</code></li>
+          <li><button class="btn sm primary" type="button" data-fish="reload">Load it</button> <span class="muted small">(runs /reload in the game and checks)</span></li></ol>`;
+    const q = fish.qualities.map((x) => `<span class="fish-q fq-${x.color}">${esc(x.name)} <small>${x.chance}%</small></span>`).join("");
+    const rows = fish.guide.map((g) => `<tr><td>${itemIcon({ id: g.item })}<b>${esc(g.name)}</b></td><td>${esc(g.waters.join(", "))}</td><td>${g.min_lb}–${g.max_lb} lb</td><td>${g.min_points}–${g.max_points}</td><td class="muted">${esc(g.rarity)}</td></tr>`).join("");
+    return `<section class="section" id="fish-sec"><div class="section-head"><h2>🎣 Solstone Fishing</h2><span class="muted">${on ? `In the world${old ? " (an update is ready)" : " ✓"}` : "Not in this world yet"}</span></div>
+      <div class="panel fish-panel">
+        <p>A data pack that makes every catch a species with a weight and a quality: <b>${fish.guide.length} kinds of fish</b> that depend on where you cast (rivers and lakes, oceans, warm or cold water, swamps, jungle rivers, the deep ocean). It unlocks the <b>Fishing tournament</b> (most points) and <b>Biggest catch</b> contests, and Prime and Exquisite catches are announced to everyone.</p>
+        ${!fish.rcon ? `<p class="notice">Needs RCON turned on for this server.</p>` : on && !old ? `<p class="muted small">Loaded (version ${st.version}). <button class="link-btn" type="button" data-fish="reload">Reload</button></p>` : steps}
+        ${old && !st.writable ? `<p class="muted small">Replace the old file with the new download, then load it.</p>` : ""}
+        ${st.error ? `<p class="notice small">${esc(st.error)}</p>` : ""}
+        <div class="fish-qs">${q}</div>
+        <details class="fish-guide"><summary>Fish guide</summary><div class="table-wrap"><table class="data"><thead><tr><th>Fish</th><th>Where</th><th>Size</th><th>Points</th><th>How often</th></tr></thead><tbody>${rows}</tbody></table></div></details>
+        ${fish.recent.length ? `<h3>Recent catches</h3><ul class="fish-recent">${fish.recent.slice(0, 8).map((e) => `<li>${e.player ? faceHtml({ name: e.player }, 20) : ""}<span>${esc(e.message)}</span><time class="muted small">${esc(fmtAgo(e.ts))}</time></li>`).join("")}</ul>` : ""}
+      </div></section>`;
+  };
+  const wireFish = () => $$("[data-fish]").forEach((b) => b.addEventListener("click", async () => {
+    b.disabled = true;
+    try {
+      const r = await post(`/api/servers/${encodeURIComponent(sid)}/fishing/${b.dataset.fish}`, {});
+      showToast(r.version ? `Solstone Fishing is loaded (version ${r.version})` : r.listed === false ? "The game didn't load it. Is the file in the world's datapacks folder?" : "Reloaded, but the pack didn't start. Check the server log for errors.", 5000);
+      fish = await api(`/api/servers/${encodeURIComponent(sid)}/fishing`); render();
+    } catch (e) { showToast(esc(e.message), 5000); b.disabled = false; }
+  }));
   const wire = () => {
     const form = $("#ch-form");
     const sync = () => { const f = new FormData(form); draft.kind = f.get("kind"); draft.name = f.get("name"); draft.minutes = +f.get("minutes"); draft.when = f.get("when"); draft.at = f.get("at"); draft.say = !!f.get("say"); };
