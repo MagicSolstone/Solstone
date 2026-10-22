@@ -1,8 +1,8 @@
 """A countdown at the top of everyone's screen: a vanilla boss bar named "Fishing contest · 6:32
 left" that empties as time runs out. Used by contests, races and games.
 
-The name and fill are updated at most every few seconds (each update is an RCON command), and
-the bar is removed when the thing ends. Ids are solstone:<kind>_<id>."""
+The name and fill are updated every second (two RCON commands), and the bar is removed when
+the thing ends. Ids are solstone:<kind>_<id>."""
 from __future__ import annotations
 
 import json
@@ -10,7 +10,8 @@ import time
 
 from .rcon import RconError
 
-EVERY = 4                                   # seconds between updates
+EVERY = 1                                   # seconds between updates (a steady count, like a clock)
+JOIN_EVERY = 10                             # how often the bar is offered to people who joined since
 
 
 def _fmt(sec: float) -> str:
@@ -44,7 +45,9 @@ async def show(srv, state: dict, key: str, title: str, ends_at: float, total: fl
     state["bar_at"] = now
     await _cmd(srv, f"bossbar set {bid} value {int(left)}")
     await _cmd(srv, f"bossbar set {bid} name {name}")
-    await _cmd(srv, f"bossbar set {bid} players @a")          # people who joined since
+    if now - state.get("bar_join", 0) >= JOIN_EVERY:
+        state["bar_join"] = now
+        await _cmd(srv, f"bossbar set {bid} players @a")      # people who joined since
 
 
 async def hide(srv, state: dict) -> None:

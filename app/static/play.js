@@ -693,7 +693,8 @@ async function viewGames(sid) {
     const f = { game, when: "now", at: "", center: null, radius: game === "treasure" ? 150 : 40, spot: null, target: null, place_target: false,
       hide_secs: 60, minutes: game === "treasure" ? 15 : game === "archery" ? 10 : 6, seeker: "", no_dig: true, marco: true, infect: true,
       mode: "bullseye", word: "HORSE", give_bow: true, hint_after: 5, items: [], prize: null, hot: false, hot_bonus: 2, hot_far: 40, hot_on: 45, hot_off: 20,
-      underwater: false, g: { on: false, spot: null, r: 4 }, layers: 1, best_of: 3, teams: false, snowballs: true, shrink: true, shrink_after: 60 };
+      underwater: false, g: { on: false, spot: null, r: 4 }, layers: 1, best_of: 3, teams: false, snowballs: false, shrink: true, shrink_after: 60,
+      seconds: 120, rounds: 1, peaceful: true };
     if (game === "spleef") f.radius = 10;
     const at = (() => { const t = new Date(Date.now() + 15 * 60e3); t.setSeconds(0, 0); return new Date(t.getTime() - t.getTimezoneOffset() * 60e3).toISOString().slice(0, 16); })();
     f.at = at;
@@ -718,12 +719,15 @@ async function viewGames(sid) {
         <label>Seeking time <select class="input" name="minutes">${[3, 5, 6, 8, 10, 15].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>
         <label class="check"><input type="checkbox" name="no_dig" ${f.no_dig ? "checked" : ""}> No digging or building (Adventure mode during the game)</label>
         <label class="check"><input type="checkbox" name="marco" ${f.marco ? "checked" : ""}> Marco Polo: the seeker can type <b>marco</b> to hear roughly where everyone is</label>
-        <label class="check"><input type="checkbox" name="infect" ${f.infect ? "checked" : ""}> Found hiders join the seekers (otherwise they watch)</label>`
+        <label class="check"><input type="checkbox" name="infect" ${f.infect ? "checked" : ""}> Found hiders join the seekers (otherwise they watch)</label>
+        <label>Rounds <select class="input" name="rounds">${[[1, "One round"], [3, "Best of 3"], [5, "Best of 5"]].map(([v, l]) => `<option value="${v}" ${f.rounds === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+          <small class="muted">Several rounds: a new seeker each round (everyone gets a turn before anyone seeks twice). A find scores 1 for the seeker, staying hidden scores 2; most points wins.</small></label>
+        <label class="check"><input type="checkbox" name="peaceful" ${f.peaceful ? "checked" : ""}> No monsters during the game (Peaceful, then back to the server's difficulty): good for playing at night</label>`
       : game === "spleef" ? `
         <label>Floors <select class="input" name="layers">${[1, 2, 3].map((v) => `<option value="${v}" ${f.layers === v ? "selected" : ""}>${v === 1 ? "1 floor" : `${v} floors, ${5} blocks apart`}</option>`).join("")}</select></label>
         <label>Rounds <select class="input" name="best_of">${[1, 3, 5].map((v) => `<option value="${v}" ${f.best_of === v ? "selected" : ""}>${v === 1 ? "One round" : `Best of ${v}`}</option>`).join("")}</select></label>
         <label class="check"><input type="checkbox" name="teams" ${f.teams ? "checked" : ""}> Teams: red against blue, picked at random</label>
-        <label class="check"><input type="checkbox" name="snowballs" ${f.snowballs ? "checked" : ""}> Snowballs: broken snow drops snowballs to knock people around with</label>
+        <label class="check"><input type="checkbox" name="snowballs" ${f.snowballs ? "checked" : ""}> Snowballs: broken snow drops snowballs to throw (they don't knock players back much; off keeps inventories clean)</label>
         <label class="check"><input type="checkbox" name="shrink" ${f.shrink ? "checked" : ""}> Shrinking floor: the edges start falling away after
           <select class="input sm" name="shrink_after">${[30, 60, 90, 120].map((v) => `<option value="${v}" ${f.shrink_after === v ? "selected" : ""}>${v < 60 ? `${v} seconds` : `${v / 60} minute${v > 60 ? "s" : ""}`}</option>`).join("")}</select></label>
         <p class="muted small gm-wide">Everyone online plays. Falling out lands you in a pool of water; nobody takes damage. When it's over everyone goes back to exactly where they were, and anyone offline is sent back when they next join.</p>`
@@ -738,10 +742,11 @@ async function viewGames(sid) {
         ${f.mode === "points" ? `<label class="check gm-wide"><input type="checkbox" name="hot" ${f.hot ? "checked" : ""}> Hot zones: a fiery spot opens somewhere around the target for a while; hits shot from inside it score extra</label>
           ${f.hot ? `<div class="gm-row"><label>Hot zone bonus <select class="input" name="hot_bonus">${[1.5, 2, 3].map((v) => `<option value="${v}" ${f.hot_bonus === v ? "selected" : ""}>×${v}</option>`).join("")}</select></label>
           ${hotTimes(f)}
-          <label>Opens up to <select class="input" name="hot_far">${[20, 30, 40, 60].map((v) => `<option value="${v}" ${f.hot_far === v ? "selected" : ""}>${v} blocks away</option>`).join("")}</select></label></div>` : ""}` : ""}
+          <label>Opens up to <select class="input" name="hot_far">${[25, 30, 40, 60].map((v) => `<option value="${v}" ${f.hot_far === v ? "selected" : ""}>${v} blocks away</option>`).join("")}</select></label></div>` : ""}` : ""}
         ${f.mode === "points" ? `<p class="muted small gm-wide">Aim: an edge hit counts ×0.2, the middle rings about ×1, a dead-centre bullseye ×3. Distance: nothing under 15 blocks, ×1 at 15, ×2 at 25, ×4 at 35, ×14 at 65. Each further hit from within 3 blocks of an earlier one counts half, so moving around pays. Bullseyes from 30, 45 and 60+ blocks get Great, Amazing and Legendary in chat.</p>` : ""}
         ${f.mode === "horse" ? `<label>Word <input class="input" name="word" maxlength="10" value="${esc(f.word)}"></label>` : ""}
-        <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30, 45].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>
+        ${f.mode === "horse" ? `<label>Time limit <select class="input" name="minutes">${[10, 15, 20, 30, 45].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>`
+          : `<label>Time limit <select class="input" name="seconds">${[[30, "30 seconds"], [60, "1 minute"], [120, "2 minutes"], [180, "3 minutes"], [300, "5 minutes"]].map(([v, l]) => `<option value="${v}" ${f.seconds === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>`}
         <label class="check"><input type="checkbox" name="give_bow" ${f.give_bow ? "checked" : ""}> Give everyone a Match Bow (Infinity, one arrow; both taken back at the end, nobody's own bows or arrows touched)</label>`;
     const body = () => `<h2>${GAME_INFO[game][0]} ${esc(GAME_INFO[game][1])}</h2>
       <form id="gm-form" class="gm-form">
@@ -758,8 +763,8 @@ async function viewGames(sid) {
     const sync = (m) => {
       const fm = $("#gm-form", m);
       for (const k of ["seeker", "mode", "word"]) if (fm[k]) f[k] = fm[k].value;
-      for (const k of ["hide_secs", "minutes", "hint_after", "radius", "hot_bonus", "hot_far", "hot_on", "hot_off", "layers", "best_of", "shrink_after"]) if (fm[k]) f[k] = +fm[k].value;
-      for (const k of ["no_dig", "marco", "infect", "give_bow", "hot", "teams", "snowballs", "shrink", "underwater"]) if (fm[k]) f[k] = fm[k].checked;
+      for (const k of ["hide_secs", "minutes", "seconds", "rounds", "hint_after", "radius", "hot_bonus", "hot_far", "hot_on", "hot_off", "layers", "best_of", "shrink_after"]) if (fm[k]) f[k] = +fm[k].value;
+      for (const k of ["no_dig", "marco", "infect", "give_bow", "hot", "teams", "snowballs", "shrink", "underwater", "peaceful"]) if (fm[k]) f[k] = fm[k].checked;
       f.when = fm.when.value; f.at = fm.at.value;
     };
     const show = () => openModal(body(), (m) => {
@@ -777,7 +782,7 @@ async function viewGames(sid) {
           }
           if (f.target && f.mode === "points" && f.hot) {         // where hot zones can open
             const [x, y] = toScreen(f.target.x, f.target.z);
-            ctx.fillStyle = "rgba(255, 110, 40, .16)"; ctx.beginPath(); ctx.arc(x, y, f.hot_far * view.scale, 0, Math.PI * 2); ctx.arc(x, y, 10 * view.scale, 0, Math.PI * 2, true); ctx.fill();
+            ctx.fillStyle = "rgba(255, 110, 40, .16)"; ctx.beginPath(); ctx.arc(x, y, f.hot_far * view.scale, 0, Math.PI * 2); ctx.arc(x, y, 18 * view.scale, 0, Math.PI * 2, true); ctx.fill();
           }
           for (const [p, c] of [[f.spot, "#ffd84a"], [f.target, "#e0503f"]]) {
             if (!p) continue;

@@ -25,11 +25,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import re
 import random
 import secrets
 import time
 
-from . import bossbar, challenges, db, fwshow, hotzone, settings_store
+from . import bossbar, challenges, db, fwshow, hotzone, hud, settings_store
 from . import servers as S
 from .control import check_name, component
 from .races import _direction, _fmt, _pos, _rcon
@@ -90,7 +91,8 @@ def create(server: str, body: dict) -> dict:
         r.update(area={**_point(body.get("center"), "middle of the area"), "r": round(_num(body.get("radius"), 10, 200, 40))},
                  hide_secs=int(_num(body.get("hide_secs"), 15, 300, 60)), minutes=int(_num(body.get("minutes"), 2, 30, 6)),
                  no_dig=bool(body.get("no_dig", True)), marco=bool(body.get("marco", True)), infect=bool(body.get("infect", True)),
-                 find=round(_num(body.get("find"), 2, 6, 3), 1), seeker=(check_name(body["seeker"]) if body.get("seeker") else ""))
+                 find=round(_num(body.get("find"), 2, 6, 3), 1), seeker=(check_name(body["seeker"]) if body.get("seeker") else ""),
+                 rounds=int(_num(body.get("rounds"), 1, 5, 1)), peaceful=bool(body.get("peaceful", True)))
     elif kind == "treasure":
         if not any(prizes) and not body.get("items"):
             raise ValueError("Put something in the treasure chest")
@@ -108,11 +110,14 @@ def create(server: str, body: dict) -> dict:
     else:
         mode = body.get("mode") if body.get("mode") in ("bullseye", "points", "horse") else "bullseye"
         word = "".join(c for c in str(body.get("word") or "HORSE").upper() if c.isalpha())[:10] or "HORSE"
+        # timed modes run 30 seconds to 5 minutes (short rounds keep it lively); HORSE goes by turns
+        minutes = (int(_num(body.get("minutes"), 2, 60, 30)) if mode == "horse"
+                   else round(_num(body.get("seconds") or (float(body["minutes"]) * 60 if body.get("minutes") else None), 30, 300, 120)) / 60)
         r.update(target=_point(body.get("target"), "target"), place_target=bool(body.get("place_target")), mode=mode, word=word,
-                 minutes=int(_num(body.get("minutes"), 2, 60, 10 if mode != "horse" else 30)), give_bow=bool(body.get("give_bow", True)),
+                 minutes=minutes, give_bow=bool(body.get("give_bow", True)),
                  spot_r=round(_num(body.get("spot_r"), 1, 5, 2), 1), min_ring=int(_num(body.get("min_ring"), 1, 15, 1)),
                  hot=bool(body.get("hot")) and mode == "points", **hotzone.settings(body),
-                 hot_far=round(_num(body.get("hot_far"), 15, 80, 40)),
+                 hot_far=round(_num(body.get("hot_far"), HOT_NEAR + 4, 80, 40)),
                  name={"bullseye": "Archery: longest bullseye", "points": "Archery: most points", "horse": f"Archery: {word}"}[mode])
     d = _load()
     d["runs"].append(r)
@@ -198,7 +203,13 @@ async def _hs_start(srv, r: dict) -> None:
     seeker = r["seeker"] if r["seeker"] in names else random.choice(names)
     a, dim = r["area"], r["dim"]
     for n in names:
-        r["players"][n] = {"role": "seeker" if n == seeker else "hider", "gm": await _gamemode(srv, n)}
+        r["players"][n] = {"role": "hider", "gm": await _gamemode(srv, n), "points": 0}
+    r["round"], r["rounds"], r["sought"] = 1, r.get("rounds") or 1, []
+    if r.get("peaceful"):                         # no monsters while people hide in the dark
+        m = re.search(r"difficulty is (\w+)", await _rcon(srv, "difficulty"), re.I)
+        r["difficulty"] = m.group(1).lower() if m else "normal"
+        if r["difficulty"] != "peaceful":
+            await _rcon(srv, "difficulty peaceful")
     await _rcon(srv, "team add solhs_h")
     await _rcon(srv, "team modify solhs_h nametagVisibility never")
     await _rcon(srv, "team modify solhs_h color green")
@@ -206,7 +217,17 @@ async def _hs_start(srv, r: dict) -> None:
     await _rcon(srv, "team modify solhs_s color red")
     from . import gather
     r["gathered"] = await gather.send(srv, {"x": a["x"], "y": a["y"], "z": a["z"], "r": 3, "dim": dim}, list(r["players"]))
+    await _hs_round(srv, r, seeker)
+
+
+async def _hs_round(srv, r: dict, seeker: str) -> None:
+    """A round: one seeker (counting, blind), everyone else hiding."""
+    a = r["area"]
+    r["sought"].append(seeker)
     for n, p in r["players"].items():
+        p["role"] = "seeker" if n == seeker else "hider"
+        p.pop("found_by", None)
+        p.pop("found_at", None)
         await _rcon(srv, f"team join {'solhs_s' if p['role'] == 'seeker' else 'solhs_h'} {n}")
         if r["no_dig"]:
             await _rcon(srv, f"gamemode adventure {n}")
@@ -214,10 +235,17 @@ async def _hs_start(srv, r: dict) -> None:
     await _rcon(srv, f"effect give {seeker} minecraft:slowness {r['hide_secs'] + 2} 255 true")
     r["state"], r["phase_ends"] = "hiding", time.time() + r["hide_secs"]
     hiders = [n for n, p in r["players"].items() if p["role"] == "hider"]
-    await _say(srv, [("★ ", "gold"), ("Hide and seek! ", "yellow"), (seeker, "red"), (f" is seeking. Hiders: {', '.join(hiders)}. Stay within {a['r']} blocks"
+    which = f"Round {r['round']} of {r['rounds']}: " if r["rounds"] > 1 else "Hide and seek! "
+    await _say(srv, [("★ ", "gold"), (which, "yellow"), (seeker, "red"), (f" is seeking. Hiders: {', '.join(hiders)}. Stay within {a['r']} blocks"
                      + (", no digging or building" if r["no_dig"] else "") + ".", None)], "Hide!", f"{r['hide_secs']} seconds")
     await _say(srv, [("You're the seeker. Count to ", None), (str(r["hide_secs"]), "gold"), ("...", None)]
                + ([("  Type ", "gray"), ("marco", "aqua"), (" in chat to hear where they are.", "gray")] if r["marco"] else []), "You're it!", "Count to " + str(r["hide_secs"]), who=seeker)
+    await _hs_scores(srv, r)
+
+
+async def _hs_scores(srv, r: dict) -> None:
+    if r.get("rounds", 1) > 1:
+        await hud.scores(srv, r, f"🙈 Round {r['round']} of {r['rounds']}", {n: p.get("points", 0) for n, p in r["players"].items()})
 
 
 async def _hs_tick(srv, r: dict) -> None:
@@ -233,11 +261,18 @@ async def _hs_tick(srv, r: dict) -> None:
     for n, q in pos.items():
         d = _dist(q, a)
         if d > a["r"] + 1:
-            k = (a["r"] - 3) / d
-            bx, bz = a["x"] + (q[0] - a["x"]) * k, a["z"] + (q[2] - a["z"]) * k
-            await _rcon(srv, f"execute in {dim} run spreadplayers {bx:.1f} {bz:.1f} 0 1 false {n}")
+            back = r["players"][n].get("last_in")
+            if back:                              # back to where they last stood inside (not onto a treetop)
+                await _rcon(srv, f"execute in {dim} run tp {n} {back[0]} {back[1]} {back[2]}")
+            else:
+                k = (a["r"] - 3) / d
+                bx, bz = a["x"] + (q[0] - a["x"]) * k, a["z"] + (q[2] - a["z"]) * k
+                await _rcon(srv, f"execute in {dim} run spreadplayers {bx:.1f} {bz:.1f} 0 1 false {n}")
             await _bar(srv, n, "Stay inside the play area!", "red")
-        elif d > a["r"] - 5:
+            continue
+        if d <= a["r"] - 1:
+            r["players"][n]["last_in"] = [round(q[0], 2), round(q[1], 2), round(q[2], 2)]
+        if d > a["r"] - 5:
             await _bar(srv, n, f"The edge is {int(a['r'] - d) + 1} blocks away", "gold")
     if int(now) % 3 == 0:                        # the edge, as a ring of particles
         for k in range(32):
@@ -282,6 +317,7 @@ async def _hs_tick(srv, r: dict) -> None:
 async def _found(srv, r: dict, hider: str, seeker: str) -> None:
     p = r["players"][hider]
     p["found_by"], p["found_at"] = seeker, time.time()
+    r["players"][seeker]["points"] = r["players"][seeker].get("points", 0) + 1
     if r["infect"]:
         p["role"] = "seeker"
         await _rcon(srv, f"team join solhs_s {hider}")
@@ -295,6 +331,9 @@ async def _found(srv, r: dict, hider: str, seeker: str) -> None:
 
 async def _hs_end(srv, r: dict, seekers_won: bool) -> None:
     hiders = [n for n, p in r["players"].items() if p["role"] == "hider"]
+    if r.get("rounds", 1) > 1:
+        await _hs_round_over(srv, r, hiders)
+        return
     if seekers_won:
         first = [n for n, p in r["players"].items() if p.get("found_by") is None and p["role"] == "seeker"]
         winners = first
@@ -308,7 +347,45 @@ async def _hs_end(srv, r: dict, seekers_won: bool) -> None:
     await _award(srv, r, winners)
 
 
+async def _hs_round_over(srv, r: dict, hiders: list[str]) -> None:
+    """Best of several rounds: hiders still hidden score 2, each find scored 1 for the finder.
+    Then a new seeker (nobody seeks twice until everyone has had a turn), or the final result."""
+    for h in hiders:
+        r["players"][h]["points"] = r["players"][h].get("points", 0) + 2
+    standings = sorted(r["players"].items(), key=lambda kv: -kv[1].get("points", 0))
+    table = " · ".join(f"{n} {p.get('points', 0)}" for n, p in standings)
+    what = f"{' & '.join(hiders)} stayed hidden (+2)" if hiders else "Everyone was found"
+    await _hs_scores(srv, r)
+    online = set((await S.online_players(srv))[0])
+    players = [n for n in r["players"] if n in online]
+    if r["round"] < r["rounds"] and len(players) >= 2:
+        await _say(srv, [("★ ", "gold"), (f"Round {r['round']} over: {what}. ", "yellow"), (table, "gray")], f"Round {r['round']} over", table[:40])
+        for n, p in r["players"].items():                    # found players come back from watching
+            if p["role"] == "found" or not r["no_dig"]:
+                await _rcon(srv, f"gamemode {'adventure' if r['no_dig'] else p.get('gm') or 'survival'} {n}")
+            await _rcon(srv, f"effect clear {n}")
+        fresh = [n for n in players if n not in r["sought"]]
+        seeker = random.choice(fresh or [n for n in players if n != r["sought"][-1]] or players)
+        a = r["area"]
+        await _rcon(srv, f"execute in {r['dim']} run spreadplayers {a['x']} {a['z']} 1 3 false {' '.join(players)}")
+        for n in players:
+            r["players"][n].pop("last_in", None)
+        r["round"] += 1
+        await _hs_round(srv, r, seeker)
+        return
+    top = max((p.get("points", 0) for p in r["players"].values()), default=0)
+    winners = [n for n, p in r["players"].items() if p.get("points", 0) == top and top > 0]
+    result = (f"{' & '.join(winners)} won hide and seek with {top} points! " if winners else "Hide and seek is over. ") + f"({table})"
+    await _say(srv, [("★ ", "gold"), (result, "yellow")], "Game over", (", ".join(winners) + " won")[:40] if winners else "")
+    await _hs_cleanup(srv, r)
+    _finish(srv, r, result)
+    await _award(srv, r, winners)
+
+
 async def _hs_cleanup(srv, r: dict) -> None:
+    await hud.clear(srv, r)
+    if r.get("difficulty") and r["difficulty"] != "peaceful":
+        await _rcon(srv, f"difficulty {r['difficulty']}")
     for n, p in r["players"].items():
         await _rcon(srv, f"team leave {n}")
         await _rcon(srv, f"effect clear {n}")
@@ -493,6 +570,20 @@ def _tier(ring: int, dist: float) -> tuple:
     return next(t for t in _TIERS if dist >= t[0])
 
 
+def _popup_parts(ring: int, d: float, pts: int, hot: float = 1, repeat: int = 0) -> list:
+    """Above the shooter's hotbar: "+48  ring 12 · 31 m  x2.2 aim x3.1 distance"."""
+    if d < MIN_DIST:
+        return [(f"Ring {ring} from {d:.0f} m: too close (under {MIN_DIST} blocks), no points", "gray")]
+    _f, stars, words, color, _snd = _tier(ring, d)
+    parts = [(f"+{pts}", "yellow!"), (f"  {stars}{words}" if ring >= BULLSEYE else "  ", color), (f"ring {ring} · {d:.0f} m", "white"),
+             (f"  ×{_accuracy(ring):g} aim ×{_multiplier(d):g} distance", "gray")]
+    if hot > 1:
+        parts.append((f" ×{hot:g} ♨", "red!"))
+    if repeat:
+        parts.append((f" ×{0.5 ** repeat:g} same spot: move!", "red"))
+    return parts
+
+
 def _hit_parts(who: str, ring: int, d: float, pts: int, total: int, hot: float = 1, repeat: int = 0) -> list:
     _f, stars, words, color, _snd = _tier(ring, d)
     parts = [(stars, color), (words, color), (who, "aqua"), (f": ring {ring} from {d:.0f} blocks", "white")]
@@ -509,6 +600,7 @@ def _hit_parts(who: str, ring: int, d: float, pts: int, total: int, hot: float =
 
 
 HOT_R = 3                                     # how big an archery hot zone is (blocks from its middle)
+HOT_NEAR = MIN_DIST + HOT_R                   # hot zones open at least this far from the target (all of it scores)
 
 
 def _hot_tag(r: dict) -> str:
@@ -525,7 +617,7 @@ async def _hot_tick(srv, r: dict, now: float) -> None:
 
     async def pick():
         ang = random.uniform(0, 2 * math.pi)
-        far = random.uniform(10, max(12, r.get("hot_far", 40)))
+        far = random.uniform(HOT_NEAR, max(HOT_NEAR + 2, r.get("hot_far", 40)))
         x, z = int(math.floor(tx + math.cos(ang) * far)), int(math.floor(tz + math.sin(ang) * far))
         top = await hotzone.surface(srv, r["dim"], x, z, hotzone.tag(r) + "_m")
         y = top[0] if top else int(ty)
@@ -612,20 +704,25 @@ async def _ar_tick(srv, r: dict) -> None:
                 st["points"] += pts
                 if pts:
                     r["spots"][who].append([round(pos[0], 1), round(pos[1], 1), round(pos[2], 1)])
-                await _say(srv, _hit_parts(who, ring, d, pts, st["points"], hot, repeat))
-                if repeat == 1:
-                    await _bar(srv, who, "Same spot again: each hit from here counts half. Move around!", "red")
                 _f, stars, words, _c, snd = _tier(ring, d)
+                await hud.popup(srv, r, who, _popup_parts(ring, d, pts, hot, repeat))
+                if ring >= BULLSEYE and d >= 30:              # great shots and up: everyone hears about it
+                    await _say(srv, _hit_parts(who, ring, d, pts, st["points"], hot, repeat))
                 if snd and d >= MIN_DIST:
                     await _rcon(srv, f"execute as @a at @s run playsound {snd} master @s ~ ~ ~ 1 1")
                 if ring >= BULLSEYE and d >= 45:              # the big ones go in the activity feed
                     db.add_event(srv.id, now, "game", f"{who}: {words.strip().lower().rstrip('!')}, a bullseye from {d:.0f} blocks for {pts} points", who)
             elif ring >= BULLSEYE:
-                if d > st["best"]:
+                best = d > st["best"]
+                if best:
                     st["best"] = round(d, 1)
-                await _say(srv, [("≫ ", "aqua"), (who, "aqua"), (": BULLSEYE", "gold"), (f" from {d:.1f} blocks!", None)])
+                await hud.popup(srv, r, who, [("BULLSEYE", "gold!"), (f" from {d:.1f} blocks" + ("  new best!" if best else ""), "white")])
+                if best and st["best"] >= max(p["best"] for p in r["players"].values()):
+                    await _say(srv, [("≫ ", "aqua"), (who, "aqua"), (" leads: BULLSEYE", "gold"), (f" from {d:.1f} blocks!", None)])
             else:
-                await _bar(srv, who, f"Ring {ring} of 15 from {d:.0f} blocks (bullseye is {BULLSEYE}+)", "white")
+                await hud.popup(srv, r, who, f"Ring {ring} of 15 from {d:.0f} blocks (bullseye is {BULLSEYE}+)", "white")
+        elif r["mode"] != "horse":
+            await hud.popup(srv, r, who, "Miss", "gray")
     if r["mode"] == "horse":
         await _horse_tick(srv, r)
         return
@@ -633,16 +730,16 @@ async def _ar_tick(srv, r: dict) -> None:
     if r.get("hot"):
         await _hot_tick(srv, r, now)
     hz = r.get("hot_zone") if r.get("hot") else None
-    board = sorted(r["players"].items(), key=lambda kv: -(kv[1]["points"] if r["mode"] == "points" else kv[1]["best"]))
-    lead = board[0] if board and (board[0][1]["points"] or board[0][1]["best"]) else None
+    # the scores on the right; time on the boss bar; above the hotbar only the hot zone (and popups)
+    if r["mode"] == "points":
+        await hud.scores(srv, r, "🎯 Points", {n: p["points"] for n, p in r["players"].items()})
+    else:
+        await hud.scores(srv, r, "🎯 Longest bullseye", {n: int(p["best"] * 10) for n, p in r["players"].items()},
+                         {n: (f"{p['best']:.1f} m" if p["best"] else "—") for n, p in r["players"].items()})
     for n in r["players"]:
-        mine = r["players"][n]
-        s = f"{mine['points']} points" if r["mode"] == "points" else f"best bullseye {mine['best']:.1f} m" if mine["best"] else "no bullseye yet"
-        hot_txt, color = "", "yellow"
         if hz and hz["on"]:
             hot_txt, in_it = hotzone.bar(r, await _pos(srv, n), HOT_R)
-            color = "red" if in_it else color
-        await _bar(srv, n, hot_txt + f"{s} · {_fmt(left)} left" + (f" · leader {lead[0]}" if lead and lead[0] != n else ""), color)
+            await hud.status(srv, r, n, hot_txt.rstrip(" ·"), "red" if in_it else "gold")
     if left <= 0:
         key = "points" if r["mode"] == "points" else "best"
         top = max((p[key] for p in r["players"].values()), default=0)
@@ -668,6 +765,7 @@ async def _take_back_match_gear(srv) -> None:
 
 
 async def _ar_end(srv, r: dict, result: str, winners: list[str]) -> None:
+    await hud.clear(srv, r)
     if r.get("give_bow"):
         await _take_back_match_gear(srv)
     if r.get("hot"):
@@ -874,6 +972,7 @@ async def _cancel(srv, rid: str) -> bool:
             await _rcon(srv, f"execute in {r['dim']} run setblock {c['x']} {c['y']} {c['z']} {'minecraft:water' if r.get('underwater_spot') else 'minecraft:air'}")
             await _rcon(srv, f"execute in {r['dim']} run forceload remove {c['x']} {c['z']}")
         elif r["game"] == "archery":
+            await hud.clear(srv, r)
             if r.get("give_bow"):
                 await _take_back_match_gear(srv)
             if r.get("hot"):

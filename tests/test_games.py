@@ -130,7 +130,7 @@ def test_hide_and_seek(game):
     asyncio.run(games.tick([srv]))
     r = _run(games)
     assert r["players"]["Gimli_Jr"]["role"] == "seeker" and srv.teams["Gimli_Jr"] == "solhs_s"      # infection
-    assert any(c.startswith("execute in minecraft:overworld run spreadplayers") and c.endswith("MomCrafts") for c in srv.cmds)
+    assert "execute in minecraft:overworld run tp MomCrafts -20.0 70.0 25.0" in srv.cmds     # back to her last spot inside
     srv.pos["MomCrafts"] = [10.0, 64.0, 10.0]; srv.pos["Gimli_Jr"] = [11.0, 64.0, 11.0]
     asyncio.run(games.tick([srv]))
     r = _run(games)
@@ -240,8 +240,10 @@ def test_archery_hot_zone_and_big_shot_flair(game):
     asyncio.run(games.tick([srv]))
     d = math.dist((z["x"] + 1, 65.0, z["z"]), (0.5, 65.5, 0.5))
     assert _run(games)["players"]["Tyler"]["points"] == games._ring_points(10, d, 2)
-    shout = next(c for c in srv.cmds if c.startswith("tellraw @a") and "ring 10" in c)
-    assert "×2" in shout and "♨" in shout
+    assert not any(c.startswith("tellraw @a") and "ring 10" in c for c in srv.cmds)          # an ordinary hit isn't news
+    pop = next(c for c in srv.cmds if c.startswith("title Tyler actionbar") and "ring 10" in c)   # it pops up for the shooter
+    assert "×2" in pop and "♨" in pop
+    assert any(c.startswith("scoreboard players set Tyler solsb_") for c in srv.cmds)            # scores on the sidebar
     # close it: the marker and sign go, and the next one waits
     _set(games, hot_zone={**z, "until": time.time() - 1})
     asyncio.run(games.tick([srv]))
@@ -419,3 +421,57 @@ def test_treasure_on_the_bottom_when_underwater_is_allowed(game):
     assert any("minecraft:chest[waterlogged=true]" in c for c in srv.cmds)
     asyncio.run(games.cancel(srv, r["id"]))
     assert any(c.endswith("setblock 100 55 -41 minecraft:water") for c in srv.cmds)        # the water put back, no air pocket
+
+
+def test_hide_and_seek_best_of_three_and_no_monsters(game):
+    games, srv = game
+    real = srv.rcon
+
+    async def rcon(cmd):                                   # the server is on Hard
+        if cmd == "difficulty":
+            srv.cmds.append(cmd)
+            return "The difficulty is Hard"
+        return await real(cmd)
+    srv.rcon = rcon
+    games.create(srv.id, {"game": "hideseek", "center": {"x": 0, "y": 64, "z": 0}, "radius": 40, "hide_secs": 30, "minutes": 5,
+                          "seeker": "Tyler", "rounds": 3, "infect": False})
+    asyncio.run(games.tick([srv]))
+    assert "difficulty peaceful" in srv.cmds and _run(games)["difficulty"] == "hard"
+    seekers = []
+    for rnd in range(3):
+        r = _run(games)
+        seeker = next(n for n, p in r["players"].items() if p["role"] == "seeker")
+        seekers.append(seeker)
+        assert r["round"] == rnd + 1
+        hiders = [n for n in r["players"] if n != seeker]
+        for i, n in enumerate(r["players"]):
+            srv.pos[n] = [5.0 * i, 64.0, 5.0 * i]
+        _set(games, phase_ends=time.time() - 1)
+        asyncio.run(games.tick([srv]))                     # hiding over
+        srv.pos[seeker] = [srv.pos[hiders[0]][0] + 1, 64.0, srv.pos[hiders[0]][2]]       # finds the first hider
+        asyncio.run(games.tick([srv]))
+        _set(games, phase_ends=time.time() - 1)
+        asyncio.run(games.tick([srv]))                     # time's up: the other hider stayed hidden
+    assert sorted(seekers) == ["Gimli_Jr", "MomCrafts", "Tyler"]                         # everyone sought once
+    r = _run(games)
+    assert r["state"] == "done" and sum(p["points"] for p in r["players"].values()) == 9   # each round: 1 for the find, 2 for staying hidden
+    top = max(p["points"] for p in r["players"].values())
+    assert f"won hide and seek with {top} points" in r["result"]
+    assert "difficulty hard" in srv.cmds                                                   # monsters back afterwards
+    assert any(c.startswith("scoreboard objectives add solsb_") for c in srv.cmds)
+    assert any(c.startswith("scoreboard objectives remove solsb_") for c in srv.cmds)
+
+
+def test_archery_short_rounds_and_hot_zones_away_from_the_target(game):
+    games, _srv = game
+    r = games.create("x", {"game": "archery", "target": {"x": 0, "y": 64, "z": 0}, "mode": "points", "seconds": 30})
+    assert r["minutes"] == 0.5
+    r = games.create("x", {"game": "archery", "target": {"x": 0, "y": 64, "z": 0}, "mode": "points", "seconds": 900, "hot": True, "hot_far": 5})
+    assert r["minutes"] == 5 and r["hot_far"] >= games.HOT_NEAR + 4                       # 5 minutes at most; zones never near the target
+    assert games.HOT_NEAR >= 15 + games.HOT_R
+
+
+def test_spleef_without_snowballs_by_default():
+    from app import spleef
+    s = spleef.settings({}, lambda v, lo, hi, d: d if v is None else max(lo, min(hi, float(v))))
+    assert s["snowballs"] is False

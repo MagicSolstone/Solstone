@@ -21,7 +21,7 @@ import secrets
 import time
 from datetime import datetime
 
-from . import bossbar, db, fwshow, hotzone, settings_store
+from . import bossbar, db, fwshow, hotzone, hud, settings_store
 from . import servers as S
 from .control import ITEM_RE, clean_text, component
 from .rcon import RconError
@@ -530,7 +530,10 @@ async def _on_catch(srv, player: str, catch: dict) -> bool:
     else:
         extra = " · new best!" if best[player]["weight"] == catch["weight"] else ""
     size = f" · {catch['lb']} lb" if tscore is None else f" · {_lb_oz(catch['lb'])}"
-    await _rcon(srv, f"tellraw @a {component([('≫ ', 'aqua'), (player, 'aqua'), (' caught ', None), (fish, colour), (size, None), (extra, 'yellow')])}")
+    # the catcher sees it above their hotbar; everyone hears about the good ones (the scores are on the sidebar)
+    await hud.popup(srv, c, player, [(fish, colour), (size, "white"), (extra, "yellow")])
+    if catch["quality"] >= 3:
+        await _rcon(srv, f"tellraw @a {component([('≫ ', 'aqua'), (player, 'aqua'), (' caught ', None), (fish, colour), (size, None), (extra, 'yellow')])}")
     return True
 
 

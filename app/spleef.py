@@ -20,6 +20,7 @@ import random
 import re
 import time
 
+from . import hud
 from . import servers as S
 from .races import _new_text, _pos, _rcon
 
@@ -36,7 +37,7 @@ NEED_PACK = 10
 def settings(body: dict, num) -> dict:
     best = int(num(body.get("best_of"), 1, 5, 3))
     return {"size": int(num(body.get("size") or body.get("radius"), 6, 20, 10)), "layers": int(num(body.get("layers"), 1, 3, 1)),
-            "snowballs": bool(body.get("snowballs", True)), "shrink": bool(body.get("shrink", True)),
+            "snowballs": bool(body.get("snowballs", False)),          # off: dug snow drops nothing to throw "shrink": bool(body.get("shrink", True)),
             "shrink_after": int(num(body.get("shrink_after"), 20, 300, 60)), "best_of": best if best % 2 else best + 1,
             "teams": bool(body.get("teams"))}
 
@@ -227,7 +228,7 @@ def _sides(r: dict) -> set[str]:
 
 
 async def tick(srv, r: dict) -> None:
-    from .games import _bar, _say
+    from .games import _say
     now = time.time()
     g = _geo(r)
     await heartbeat(srv, r)
@@ -258,8 +259,9 @@ async def tick(srv, r: dict) -> None:
             await _say(srv, [("✘ ", "red"), (n, "aqua"), (f" {why}! ", None), (f"{left} left", "gray")])
     sides = _sides(r)
     alive = [n for n, p in r["players"].items() if p["alive"]]
+    await _scores(srv, r)
     for n in alive:
-        await _bar(srv, n, f"Round {r['round']} · {len(alive)} left" + (f" · team {r['players'][n]['team']}" if r["teams"] else ""), "aqua")
+        await hud.status(srv, r, n, f"Round {r['round']} of {r['best_of']} · {len(alive)} left" + (f" · team {r['players'][n]['team']}" if r["teams"] else ""), "aqua")
     if len(sides) <= 1:
         await _round_over(srv, r, next(iter(sides)) if sides else None)
         return
@@ -273,6 +275,15 @@ async def tick(srv, r: dict) -> None:
             await _shrink(srv, g, r["ring"])
             if r["ring"] == 1:
                 await _say(srv, [("★ ", "gold"), ("The floor is shrinking!", "red")])
+
+
+async def _scores(srv, r: dict) -> None:
+    """Round wins on the sidebar (per team in team spleef)."""
+    if r["teams"]:
+        wins = r.get("team_wins", {"red": 0, "blue": 0})
+        await hud.scores(srv, r, f"❄ Spleef · best of {r['best_of']}", {"Red team": wins.get("red", 0), "Blue team": wins.get("blue", 0)})
+    else:
+        await hud.scores(srv, r, f"❄ Spleef · best of {r['best_of']}", {n: p["wins"] for n, p in r["players"].items()})
 
 
 async def _round_over(srv, r: dict, winner: str | None) -> None:
@@ -327,6 +338,7 @@ async def send_back(srv, n: str, p: dict) -> bool:
 
 
 async def _end(srv, r: dict, result: str, winners: list[str], pack_did_it: bool = False) -> None:
+    await hud.clear(srv, r)
     from .games import _award, _finish, _say
     g = _geo(r)
     if not pack_did_it:
@@ -349,6 +361,7 @@ async def _end(srv, r: dict, result: str, winners: list[str], pack_did_it: bool 
 
 
 async def cancel(srv, r: dict) -> None:
+    await hud.clear(srv, r)
     await _end(srv, r, "Spleef was called off.", [])
 
 
