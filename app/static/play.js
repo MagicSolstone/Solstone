@@ -151,7 +151,7 @@ async function viewChallenges(sid) {
     const st = fish.status, on = !!st.version, old = on && st.version < st.current;
     const steps = st.writable
       ? `<button class="btn primary" type="button" data-fish="install">Install it in the world</button>`
-      : `<ol class="fish-steps"><li><a class="btn sm" href="/api/fishing/${esc(st.file)}" download>⬇ Download ${esc(st.file)}</a></li>
+      : `<ol class="fish-steps"><li><a class="btn sm" href="/api/fishing/${esc(st.file)}?server=${encodeURIComponent(sid)}" download>⬇ Download ${esc(st.file)}</a></li>
           <li>Put the file (still zipped) in this world's <code>datapacks</code> folder: <code>${esc(st.folder.replace(/^\/servers\//, "…/crafty-4/servers/"))}</code></li>
           <li><button class="btn sm primary" type="button" data-fish="reload">Load it</button> <span class="muted small">(runs /reload in the game and checks)</span></li></ol>`;
     const q = fish.qualities.map((x) => `<span class="fish-q fq-${x.color}">${esc(x.name)} <small>${x.chance}%</small></span>`).join("");
@@ -178,6 +178,7 @@ async function viewChallenges(sid) {
     if (ours.length > 1) warn.push(`There are <b>${ours.length} copies</b> of the Solstone pack in the folder. The game may use the old one: delete all but <code>${esc(st.file)}</code>, then restart the server.`);
     if (ours.some((f) => f.nested)) warn.push("A copy has an extra folder inside the zip, so the game can't read it properly. Use the download as it is, without unzipping and re-zipping it.");
     if (ours.length === 1 && ours[0].version === st.current && st.version && st.version !== st.current) warn.push(`The file is version ${st.current} but the game is still running version ${st.version}. Restart the server (a reload doesn't pick up a replaced file).`);
+    if (ours.some((f) => f.loot_format && st.loot_format && f.loot_format !== st.loot_format)) warn.push(`The pack in the folder is written for ${ours.find((f) => f.loot_format !== st.loot_format).loot_format === "26.3" ? "Minecraft 26.3 and newer" : "Minecraft before 26.3"}, but this server is ${esc(st.mc_version || "?")}. Download it again from here: the download is made for this server.`);
     if (!ours.length && fl.length) warn.push(`No Solstone pack in this folder. Is it the right world? The game reads <code>${esc(st.folder)}</code>.`);
     if (!fl.length) return warn.length ? `<p class="notice small">${warn.join("<br>")}</p>` : "";
     const fmt = (f) => `<li><code>${esc(f.name)}</code>${f.folder ? " (folder)" : ""} ${f.version != null ? `<b>Solstone v${f.version}</b>${f.fish_table ? "" : " · no fish table"}` : `<span class="muted">other pack</span>`}${f.modified ? ` <span class="muted small">${esc(fmtAgo(f.modified))}</span>` : ""}${f.error ? ` <span class="notice small">${esc(f.error)}</span>` : ""}</li>`;

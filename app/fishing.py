@@ -41,6 +41,14 @@ async def check(srv, force: bool = False) -> dict:
     return st
 
 
+def new_format(srv) -> bool:
+    try:
+        dv = srv.level().get("DataVersion")
+    except Exception:
+        dv = None
+    return fishpack.new_loot_format(srv.mc_version, int(dv) if dv else None)
+
+
 def datapacks_dir(srv):
     return srv.world_dir / "datapacks"
 
@@ -76,7 +84,10 @@ def files(srv) -> list[dict]:
                 m = re.search(r"version:\s*(\d+)", read(load))
                 row["version"] = int(m.group(1)) if m else 0
                 row["nested"] = load != "data/solfish/function/load.mcfunction"      # zipped inside an extra folder
-            row["fish_table"] = any(n.endswith("data/minecraft/loot_table/gameplay/fishing/fish.json") for n in names)
+            fish = next((n for n in names if n.endswith("data/minecraft/loot_table/gameplay/fishing/fish.json")), None)
+            row["fish_table"] = bool(fish)
+            if fish:
+                row["loot_format"] = "26.3" if '"modifier"' in read(fish) else "older"
             row["mcmeta"] = "pack.mcmeta" in names
         except (OSError, zipfile.BadZipFile, ValueError) as e:
             row["error"] = str(e)[:120]
@@ -99,7 +110,7 @@ def writable(srv) -> bool:
 async def install(srv) -> dict:
     """Write the pack into the world (only if that folder is writable), reload, check."""
     if writable(srv):
-        (datapacks_dir(srv) / fishpack.PACK_FILE).write_bytes(fishpack.build_zip())
+        (datapacks_dir(srv) / fishpack.PACK_FILE).write_bytes(fishpack.build_zip(new_format(srv)))
     return await reload(srv)
 
 
@@ -278,4 +289,5 @@ async def poll(servers: list) -> None:
 def status(srv) -> dict:
     st = _state.get(srv.id) or {}
     return {"version": st.get("version"), "current": fishpack.VERSION, "error": st.get("error", ""),
-            "writable": writable(srv), "file": fishpack.PACK_FILE, "folder": str(datapacks_dir(srv)), "files": files(srv)}
+            "writable": writable(srv), "file": fishpack.PACK_FILE, "folder": str(datapacks_dir(srv)), "files": files(srv),
+            "loot_format": "26.3" if new_format(srv) else "older", "mc_version": srv.mc_version}

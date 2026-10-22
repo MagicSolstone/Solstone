@@ -1702,9 +1702,11 @@ async def get_fishing(sid: str, request: Request):
 
 
 @app.get("/api/fishing/" + fishpack.PACK_FILE)
-async def fishing_pack(request: Request):
+async def fishing_pack(request: Request, server: str = ""):
     auth.require_admin(request)
-    return Response(fishpack.build_zip(), media_type="application/zip",
+    srv = await S.registry.get(server) if server else None
+    new = fishing.new_format(srv) if srv else request.query_params.get("format") == "26.3"
+    return Response(fishpack.build_zip(new), media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="{fishpack.PACK_FILE}"', "Cache-Control": "no-store"})
 
 

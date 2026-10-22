@@ -23,11 +23,12 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import zipfile
 
 PACK_ID = "solstone-pack"                     # one pack: fishing and the archery games
 PACK_FILE = f"{PACK_ID}.zip"
-VERSION = 6                                   # bump when the pack's content changes
+VERSION = 7                                   # bump when the pack's content changes
 
 # ------------------------------------------------------------------ the water
 _OCEAN = ["ocean", "deep_ocean", "cold_ocean", "deep_cold_ocean", "lukewarm_ocean", "deep_lukewarm_ocean",
@@ -154,24 +155,47 @@ def loot_table() -> dict:
             "random_sequence": "minecraft:gameplay/fishing/fish"}
 
 
-def _stone(**kw) -> dict:
-    return {"pools": [{"rolls": 1, "entries": [{"type": "minecraft:item", "name": "minecraft:stone", **kw.pop("entry", {})}], **kw.pop("pool", {})}], **kw}
+def new_loot_format(version: str | None, data_version: int | None = None) -> bool:
+    """26.3 rewrote loot tables: functions are `modifier` with `type`, conditions are `condition`
+    with `type`. Older games silently ignore the new spelling and 26.3 silently ignores the old
+    one, so the pack is built for the server it's going to."""
+    nums = [int(x) for x in re.findall(r"\d+", version or "")[:2]]
+    if len(nums) == 2 and nums[0] >= 26:
+        return tuple(nums) >= (26, 3)
+    if len(nums) == 2 and nums[0] == 1:
+        return False
+    return bool(data_version and data_version >= 5023)
 
 
-_THREE = [{"function": "minecraft:set_count", "count": 3}]
-# Small test tables, each trying item functions a different way, to find what this game version
-# applies (the answer decides how the fish table has to be written).
-# Not shipped: v5 included these and one stopped a 26.1 server from starting (registry loading
-# is strict there). Kept for reference until we know which.
-PROBES_UNSHIPPED = {
-    "count": _stone(entry={"functions": _THREE}),                   # entry functions, the usual way
-    "pool": _stone(pool={"functions": _THREE}),                     # on the pool
-    "table": _stone(functions=_THREE),                              # on the whole table
-    "name": _stone(entry={"functions": [{"function": "minecraft:set_name", "name": "Probe"}]}),
-    "components": _stone(entry={"functions": [{"function": "minecraft:set_components", "components": {"minecraft:max_stack_size": 7}}]}),
-    "modifiers": _stone(entry={"modifiers": _THREE}),               # in case newer versions renamed the field
-    "modifier": _stone(entry={"modifier": _THREE[0]}),
-}
+def to_263(o):
+    """A loot table in the pre-26.3 shape -> the 26.3 shape."""
+    if isinstance(o, list):
+        return [to_263(x) for x in o]
+    if not isinstance(o, dict):
+        return o
+    out = {}
+    for k, v in o.items():
+        if k == "functions":
+            out["modifier"] = to_263(v)
+        elif k == "conditions":
+            cs = to_263(v)
+            out["condition"] = cs[0] if len(cs) == 1 else {"type": "minecraft:all_of", "terms": cs}
+        elif k in ("function", "condition") and isinstance(v, str):
+            out["type"] = v
+        else:
+            out[k] = to_263(v)
+    return out
+
+
+def fishing_table_263() -> dict:
+    """26.3's own rod table (copied from the game's data), with the fish from solfish:fish."""
+    return {"type": "minecraft:fishing", "pools": [{"rolls": 1, "entries": [
+        {"type": "minecraft:loot_table", "quality": -2, "value": "minecraft:gameplay/fishing/junk", "weight": 10},
+        {"type": "minecraft:loot_table", "quality": 2, "value": "minecraft:gameplay/fishing/treasure", "weight": 5,
+         "condition": {"type": "minecraft:entity_properties", "entity": "this",
+                       "predicate": {"minecraft:type_specific/fishing_hook": {"in_open_water": True}}}},
+        {"type": "minecraft:loot_table", "quality": -1, "value": "solfish:fish", "weight": 85}]}],
+        "random_sequence": "minecraft:gameplay/fishing"}
 
 
 def fishing_table() -> dict:
@@ -281,22 +305,24 @@ execute if data storage solstone:games log[150] run data remove storage solstone
 """
 
 
-def pack_files() -> dict[str, str]:
+def pack_files(new: bool = False) -> dict[str, str]:
+    """`new`: write loot tables the 26.3+ way (see new_loot_format)."""
+    lt = to_263 if new else (lambda t: t)
     files = {
         "pack.mcmeta": json.dumps({"pack": {
             "description": "Solstone: fishing (species, sizes, quality) and archery games",
             # 1.21 (48) up to anything newer; old fields for <1.21.9, min/max for 1.21.9+
             "pack_format": 48, "supported_formats": {"min_inclusive": 48, "max_inclusive": 999},
             "min_format": 48, "max_format": 999}}, indent=1),
-        "data/minecraft/loot_table/gameplay/fishing/fish.json": json.dumps(loot_table()),
+        "data/minecraft/loot_table/gameplay/fishing/fish.json": json.dumps(lt(loot_table())),
         # The same fish under our own name, and the rod's table pointed at it: if something else
         # (a mod) also replaces minecraft:gameplay/fishing/fish, the rod still lands our fish.
-        "data/solfish/loot_table/fish.json": json.dumps(loot_table()),
+        "data/solfish/loot_table/fish.json": json.dumps(lt(loot_table())),
         # the smallest possible test: one stone, named and tagged (do loot functions work at all?)
-        "data/solfish/loot_table/probe.json": json.dumps({"pools": [{"rolls": 1, "entries": [{"type": "minecraft:item", "name": "minecraft:stone", "functions": [
+        "data/solfish/loot_table/probe.json": json.dumps(lt({"pools": [{"rolls": 1, "entries": [{"type": "minecraft:item", "name": "minecraft:stone", "functions": [
             {"function": "minecraft:set_name", "target": "item_name", "name": {"text": "Solstone probe"}},
-            {"function": "minecraft:set_custom_data", "tag": "{solprobe:1b}"}]}]}]}),
-        "data/minecraft/loot_table/gameplay/fishing.json": json.dumps(fishing_table()),
+            {"function": "minecraft:set_custom_data", "tag": "{solprobe:1b}"}]}]}]})),
+        "data/minecraft/loot_table/gameplay/fishing.json": json.dumps(fishing_table_263() if new else fishing_table()),
         "data/minecraft/tags/function/load.json": json.dumps({"values": ["solfish:load", "solgames:load"]}),
         "data/minecraft/tags/function/tick.json": json.dumps({"values": ["solgames:tick"]}),
         "data/solfish/advancement/hooked.json": json.dumps({
@@ -337,10 +363,10 @@ def parse_game_log(reply: str) -> list[dict]:
     return out
 
 
-def build_zip() -> bytes:
+def build_zip(new: bool = False) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for path, body in sorted(pack_files().items()):
+        for path, body in sorted(pack_files(new).items()):
             z.writestr(path, body)
     return buf.getvalue()
 

@@ -163,3 +163,28 @@ def test_reading_a_barrel_slot():
     plain = fishing._read_item('0, 319, 0 has the following block data: [{Slot: 0b, count: 1, id: "minecraft:cod"}]')
     assert plain["item"] == "minecraft:cod" and plain["pack_fish"] is None and plain["named"] is None
     assert fishing._read_item("0, 319, 0 has the following block data: []")["item"] is None
+
+
+def test_pack_written_for_26_3():
+    """26.3 renamed loot table fields (functions -> modifier, function/condition -> type) and
+    silently ignores the old names, so a 26.3 server gets the new spelling."""
+    import io
+    import json
+    import zipfile
+
+    from app import fishpack
+    assert fishpack.new_loot_format("26.3") and fishpack.new_loot_format("26.4") and not fishpack.new_loot_format("26.1")
+    assert not fishpack.new_loot_format("1.21.11") and fishpack.new_loot_format(None, 5023) and not fishpack.new_loot_format(None, 4440)
+    z = zipfile.ZipFile(io.BytesIO(fishpack.build_zip(True)))
+    tables = {n: z.read(n).decode() for n in z.namelist() if "/loot_table/" in n}
+    assert set(tables) >= {"data/minecraft/loot_table/gameplay/fishing/fish.json", "data/solfish/loot_table/fish.json",
+                           "data/minecraft/loot_table/gameplay/fishing.json", "data/solfish/loot_table/probe.json"}
+    for body in tables.values():
+        assert '"functions"' not in body and '"conditions"' not in body and '"function"' not in body and '"type_specific"' not in body
+    fish = json.loads(tables["data/solfish/loot_table/fish.json"])["pools"][0]["entries"]
+    assert all(e["modifier"][0]["type"] == "minecraft:set_name" for e in fish)
+    assert any(e.get("condition", {}).get("type") in ("minecraft:location_check", "minecraft:inverted", "minecraft:any_of") for e in fish)
+    rod = json.loads(tables["data/minecraft/loot_table/gameplay/fishing.json"])
+    assert rod["pools"][0]["entries"][2]["value"] == "solfish:fish"
+    old = zipfile.ZipFile(io.BytesIO(fishpack.build_zip(False)))
+    assert '"functions"' in old.read("data/solfish/loot_table/fish.json").decode()
