@@ -59,7 +59,7 @@ def fake(monkeypatch):
 
 def test_fishing_contest_start_to_prize(fake):
     challenges, srv, pushed = fake
-    c = challenges.create(srv.id, {"kind": "fish", "start": time.time() + 1, "minutes": 10,
+    c = challenges.create(srv.id, {"kind": "fish", "start": time.time() + 60, "minutes": 10,
                                    "prize": {"item": "diamond", "count": 5}, "second": {"item": "minecraft:cookie", "count": 16}})
     assert c["state"] == "scheduled" and c["prize"] == {"item": "minecraft:diamond", "count": 5, "name": ""}
     asyncio.run(challenges.tick([srv]))                              # not yet
