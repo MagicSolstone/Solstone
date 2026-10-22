@@ -274,10 +274,10 @@ async def poll(servers: list) -> None:
         for c in sorted(fresh, key=lambda c: c["i"]):
             who = lookup.get(c["uuid"].lower(), "Someone")
             c["player"] = who
-            # Prime and Exquisite get their own type so the status page's feed shows only those
+            # Trophy and Legendary get their own type so the status page's feed shows only those
             db.add_event(srv.id, time.time(), "bigfish" if c["quality"] >= 3 else "fish", describe(c, who), who if who != "Someone" else None)
             contest = await challenges.on_catch(srv, who, c)
-            if not contest and c["quality"] >= 3:               # Prime and Exquisite are news anyway
+            if not contest and c["quality"] >= 3:               # Trophy and Legendary are news anyway
                 fish = f"{c['quality_name']} {c['name']}"
                 size = f" ({c['lb']} lb)!"
                 try:

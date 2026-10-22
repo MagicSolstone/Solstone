@@ -6,8 +6,8 @@ pack in the game can never disagree. Minecraft 1.21+ (one pack.mcmeta covers 1.2
 In the game
 - The fish loot table (gameplay/fishing/fish) is replaced: what you can catch depends on where
   the bobber lands (rivers and lakes, oceans, warm or cold water, swamps, jungle rivers, deep
-  ocean) and every catch has a species, a weight and one of five qualities: Poor, Normal,
-  Quality, Prime, Exquisite. Rarer quality = heavier fish = more points. The item keeps its
+  ocean) and every catch has a species, a weight and one of five qualities: Poor, Normal
+  (shown without a label), Fine, Trophy, Legendary. Rarer quality = heavier fish = more points. The item keeps its
   vanilla kind (cod, salmon, tropical fish, pufferfish), so it can still be cooked or eaten;
   its name, colour and lore say what it is.
 - Scoring can't be gamed by dropping and picking up fish: an advancement fires when a fish is
@@ -28,7 +28,7 @@ import zipfile
 
 PACK_ID = "solstone-pack"                     # one pack: fishing and the archery games
 PACK_FILE = f"{PACK_ID}.zip"
-VERSION = 7                                   # bump when the pack's content changes
+VERSION = 8                                   # bump when the pack's content changes
 
 # ------------------------------------------------------------------ the water
 _OCEAN = ["ocean", "deep_ocean", "cold_ocean", "deep_cold_ocean", "lukewarm_ocean", "deep_lukewarm_ocean",
@@ -77,9 +77,9 @@ SPECIES: dict[str, tuple[str, str, float, int, list[str], int]] = {
 QUALITIES = [
     ("Poor", "gray", 0.6, 0.5, 30),
     ("Normal", "white", 1.0, 1.0, 40),
-    ("Quality", "green", 1.3, 1.5, 18),
-    ("Prime", "aqua", 1.7, 2.5, 9),
-    ("Exquisite", "gold", 2.3, 4.0, 3),
+    ("Fine", "green", 1.3, 1.5, 18),
+    ("Trophy", "aqua", 1.7, 2.5, 9),
+    ("Legendary", "gold", 2.3, 4.0, 3),
 ]
 STEPS = (0.9, 1.0, 1.12)                       # a little spread inside each quality
 
