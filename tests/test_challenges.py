@@ -47,8 +47,9 @@ class FakeServer:
 
 @pytest.fixture()
 def fake(monkeypatch):
-    from app import challenges, settings_store
+    from app import challenges, gather, settings_store
     from app import servers as S
+    monkeypatch.setattr(gather, "LEAD", 0)               # "right now" means now here (the countdown has its own test)
     settings_store.save_section("challenges", {})
     srv = FakeServer(["Tyler", "Gimli_Jr"])
 

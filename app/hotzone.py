@@ -14,7 +14,19 @@ from __future__ import annotations
 import math
 
 from .control import component
-from .races import _POS, _direction, _rcon, _text_nbt
+from . import races as _races          # (the module, not its names: races imports this one's users)
+
+
+async def _rcon(srv, cmd: str) -> str:
+    return await _races._rcon(srv, cmd)
+
+
+def _direction(dx: float, dz: float) -> str:
+    return _races._direction(dx, dz)
+
+
+def _text_nbt(srv, text: str, color: str) -> str:
+    return _races._text_nbt(srv, text, color)
 
 ON_DEFAULT, OFF_DEFAULT = 45, 20              # seconds open, seconds between
 FIRST_AFTER = 15                              # the first one opens this long after the start
@@ -47,7 +59,7 @@ async def surface(srv, dim: str, x: int, z: int, t: str, at: str | None = None) 
     """The top block at x, z (water counts): its y and what it is ('water', or 'land')."""
     where = f"execute at {at}" if at else f"execute in {dim}"
     await _rcon(srv, f"{where} positioned {x} 320 {z} positioned over motion_blocking_no_leaves run summon minecraft:marker ~ ~ ~ {{Tags:[\"{t}\"]}}")
-    m = _POS.search(await _rcon(srv, f"data get entity @e[tag={t},limit=1] Pos"))
+    m = _races._POS.search(await _rcon(srv, f"data get entity @e[tag={t},limit=1] Pos"))
     await _rcon(srv, f"kill @e[tag={t}]")
     if not m:
         return None

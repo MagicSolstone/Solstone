@@ -1647,3 +1647,11 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .fwe-group > summary { cursor: pointer; padding: 6px 2px; list-style: revert; }
 .fwe-group-list { display: grid; gap: 8px; margin-top: 4px; }
 .fwe-move { width: auto; max-width: 150px; }
+
+/* Teleport everyone to a spot and back */
+.gather-box { display: grid; gap: 8px; margin: 6px 0; }
+.gather-pick { display: grid; gap: 8px; padding: 10px 12px; border-radius: 12px; background: rgba(90, 200, 255, .06); border: 1px solid rgba(90, 200, 255, .2); }
+.gather-pick .btn-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.gather-pick select { width: auto; }
+.gather-map { position: relative; height: 240px; border-radius: 10px; overflow: hidden; }
+.gather-map .rm-canvas { width: 100%; height: 100%; display: block; }

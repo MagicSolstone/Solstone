@@ -76,7 +76,7 @@ async function viewChallenges(sid) {
   const base = `/api/servers/${encodeURIComponent(sid)}/challenges`;
   let [d, fish] = await Promise.all([api(base), api(`/api/servers/${encodeURIComponent(sid)}/fishing`).catch(() => null)]);
   const fishOn = () => !!fish?.status?.version;
-  const draft = { kind: "fish", name: "", when: "now", at: "", minutes: 10, prize: null, second: null, say: true, lure: 0, hot: false, hot_bonus: 2, hot_on: 60, hot_off: 30, hot_far: 40 };
+  const draft = { kind: "fish", name: "", when: "now", at: "", minutes: 10, prize: null, second: null, say: true, lure: 0, hot: false, hot_bonus: 2, hot_on: 60, hot_off: 30, hot_far: 40, g: { on: false, spot: null, r: 4 } };
   const ROD_KINDS = ["fish", "fish_points", "fish_heaviest"];
   // default time for "later": the next 8 PM, or the next hour if that's already past today
   const next8 = () => { const t = new Date(); t.setHours(20, 0, 0, 0); if (t < new Date()) { t.setTime(Date.now() + 3600e3); t.setMinutes(0, 0, 0); } return t; };
@@ -128,6 +128,7 @@ async function viewChallenges(sid) {
           ${hotTimes(draft)}
           <label>Up to <select class="input" name="hot_far">${[24, 40, 64].map((v) => `<option value="${v}" ${draft.hot_far === v ? "selected" : ""}>${v} blocks from a player</option>`).join("")}</select></label>
         </div></div>
+      ${gatherHtml(draft.g, state.servers.find((x) => x.id === sid)?.online || [])}
       <label class="ch-lure" ${ROD_KINDS.includes(draft.kind) ? "" : "hidden"}>Faster bites <select class="input" name="lure">
         <option value="0" ${draft.lure === 0 ? "selected" : ""}>Off: everyone uses their own rod</option>
         <option value="3" ${draft.lure === 3 ? "selected" : ""}>Contest Rod with Lure III (bites within ~15 s)</option>
@@ -240,12 +241,15 @@ async function viewChallenges(sid) {
         pick: (item, count) => { draft[which] = { item: item.id, count, label: item.name }; render(); } });
     }));
     form.querySelector("[data-clear-second]")?.addEventListener("click", () => { sync(); draft.second = null; render(); });
+    wireGather(form, sid, draft.g, () => { sync(); render(); }, d.spawn);
     form.addEventListener("submit", async (e) => {
       e.preventDefault(); sync();
       if (!draft.prize) { showToast("Choose a prize for the winner first", 2500); return; }
+      if (draft.g.on && !draft.g.spot) { showToast("Pick the spot to teleport everyone to (or untick teleporting)", 3000); return; }
       const start = draft.when === "now" ? Date.now() / 1000 : new Date(draft.at).getTime() / 1000;
       try {
         const c = await post(base, { kind: draft.kind, name: draft.name, start, minutes: draft.minutes, say: draft.say, lure: ROD_KINDS.includes(draft.kind) ? draft.lure : 0,
+          gather: gatherBody(draft.g),
           hot: draft.kind === "fish_points" && draft.hot, hot_bonus: draft.hot_bonus, hot_on: draft.hot_on, hot_off: draft.hot_off, hot_far: draft.hot_far,
           prize: { item: draft.prize.item, count: draft.prize.count, name: draft.prize.label }, second: draft.second ? { item: draft.second.item, count: draft.second.count, name: draft.second.label } : null });
         showToast(draft.when === "now" ? `${esc(c.name)} starts in a few seconds` : `${esc(c.name)} is scheduled`, 3000);
@@ -276,6 +280,39 @@ async function viewChallenges(sid) {
 }
 
 // Shown on all three pages while the server echoes RCON commands to operators.
+// Teleport everyone to a spot when an event starts, and back afterwards. `g` = {on, spot, r}.
+function gatherHtml(g, names) {
+  return `<div class="gather-box gm-wide">
+    <label class="check"><input type="checkbox" data-g-on ${g.on ? "checked" : ""}> Teleport everyone to a spot when it starts, then back to where they were afterwards</label>
+    ${g.on ? `<div class="gather-pick">
+      <div class="btn-row"><select class="input sm" data-g-player>${names.map((n) => `<option>${esc(n)}</option>`).join("") || "<option value=''>Nobody online</option>"}</select>
+        <button type="button" class="btn sm" data-g-here>Use where they're standing</button>
+        <label class="small">Spread out <select class="input sm" data-g-r>${[2, 4, 6, 8].map((v) => `<option value="${v}" ${g.r === v ? "selected" : ""}>${v} blocks</option>`).join("")}</select> around it</label></div>
+      <div class="gather-map" data-g-map></div>
+      <p class="small ${g.spot ? "" : "muted"}">${g.spot ? `📍 Everyone goes to <b>${Math.round(g.spot.x)}, ${Math.round(g.spot.y)}, ${Math.round(g.spot.z)}</b> when it starts, and home 10 seconds after it ends (with a countdown).` : "Click the map, or use where someone is standing."}</p></div>` : ""}</div>`;
+}
+function wireGather(root, sid, g, rerender, center) {
+  root.querySelector("[data-g-on]")?.addEventListener("change", (e) => { g.on = e.target.checked; rerender(); });
+  root.querySelector("[data-g-r]")?.addEventListener("change", (e) => { g.r = +e.target.value; map?.draw(); });
+  root.querySelector("[data-g-here]")?.addEventListener("click", async () => {
+    const who = root.querySelector("[data-g-player]").value;
+    if (!who) return;
+    try { g.spot = await api(`/api/servers/${encodeURIComponent(sid)}/races/spot?player=${encodeURIComponent(who)}`); rerender(); } catch (err) { showToast(esc(err.message), 4000); }
+  });
+  const el = root.querySelector("[data-g-map]");
+  const map = el ? worldMapCanvas(el, sid, {
+    center: g.spot || center || { x: 0, z: 0 }, scale: 2,
+    overlay: (ctx, toScreen, view) => {
+      if (!g.spot) return;
+      const [x, y] = toScreen(g.spot.x, g.spot.z);
+      ctx.fillStyle = "rgba(90, 200, 255, .22)"; ctx.beginPath(); ctx.arc(x, y, Math.max(6, g.r * view.scale), 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#5ac8ff"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    },
+    onClick: async (x, z) => { g.spot = await api(`/api/servers/${encodeURIComponent(sid)}/races/spot?x=${x}&z=${z}`).catch(() => ({ x, y: 64, z })); rerender(); },
+  }) : null;
+}
+const gatherBody = (g) => (g.on && g.spot ? { x: g.spot.x, y: g.spot.y, z: g.spot.z, r: g.r } : null);
+
 // How long each hot zone stays open, and the wait before the next (archery and the fishing tournament).
 function hotTimes(f) {
   const opt = (vals, cur, fmt) => vals.map((v) => `<option value="${v}" ${cur === v ? "selected" : ""}>${fmt(v)}</option>`).join("");
@@ -543,7 +580,7 @@ async function viewRaces(sid) {
           <label class="check"><input type="radio" name="when" value="now" checked> Right now (10-second countdown)</label>
           <label class="check"><input type="radio" name="when" value="later"> At <input class="input sm" type="datetime-local" name="at" value="${at}"></label></div>
         <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30].map((m) => `<option value="${m}" ${m === 15 ? "selected" : ""}>${m} minutes</option>`).join("")}</select></label>
-        <label class="check"><input type="checkbox" name="teleport" checked> Teleport everyone to the start line first</label>
+        <label class="check"><input type="checkbox" name="teleport" checked> Line everyone up at the start, held still until GO, and send them back where they were afterwards</label>
         <div class="rs-prizes">${["🥇 1st", "🥈 2nd", "🥉 3rd"].map((l, i) => `<span class="lbl">${l}</span><span id="rs-p${i}">${prizeBtn(i)}</span>`).join("")}</div>
         <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Start</button></div>
       </form>`;
@@ -654,7 +691,7 @@ async function viewGames(sid) {
     const f = { game, when: "now", at: "", center: null, radius: game === "treasure" ? 150 : 40, spot: null, target: null, place_target: false,
       hide_secs: 60, minutes: game === "treasure" ? 15 : game === "archery" ? 10 : 6, seeker: "", no_dig: true, marco: true, infect: true,
       mode: "bullseye", word: "HORSE", give_bow: true, hint_after: 5, items: [], prize: null, hot: false, hot_bonus: 2, hot_far: 40, hot_on: 45, hot_off: 20,
-      underwater: false, layers: 1, best_of: 3, teams: false, snowballs: true, shrink: true, shrink_after: 60 };
+      underwater: false, g: { on: false, spot: null, r: 4 }, layers: 1, best_of: 3, teams: false, snowballs: true, shrink: true, shrink_after: 60 };
     if (game === "spleef") f.radius = 10;
     const at = (() => { const t = new Date(Date.now() + 15 * 60e3); t.setSeconds(0, 0); return new Date(t.getTime() - t.getTimezoneOffset() * 60e3).toISOString().slice(0, 16); })();
     f.at = at;
@@ -708,6 +745,7 @@ async function viewGames(sid) {
         <div class="gm-map" id="gm-map"></div>
         ${where()}
         <div class="gm-opts">${options()}</div>
+        ${game === "archery" || game === "treasure" ? gatherHtml(f.g, online()) : game === "hideseek" ? `<p class="muted small">Everyone is brought to the middle of the area when it starts, and back to where they were when it's over.</p>` : ""}
         ${game !== "treasure" ? `<div class="gm-prize"><span class="lbl">Prize for the winner${game === "hideseek" ? "s" : ""}</span><button type="button" class="btn ch-pick" id="gm-prize">${pickBtn(f.prize, "Optional")}</button></div>` : ""}
         <div class="ch-when"><span class="lbl">When</span>
           <label class="check"><input type="radio" name="when" value="now" ${f.when === "now" ? "checked" : ""}> Right now</label>
@@ -772,6 +810,7 @@ async function viewGames(sid) {
         } catch (e) { showToast(esc(e.message), 4000); }
       });
       const pickItem = (title, then) => { sync(m); openGiveItem(sid, "", { title, pick: (item, count) => { then({ item: item.id, count, name: item.name }); show(); } }); };
+      wireGather(m, sid, f.g, () => { sync(m); show(); }, f.target || f.center || d.spawn);
       $("#gm-prize", m)?.addEventListener("click", () => pickItem("Prize for the winner", (p) => { f.prize = p; }));
       $("#gm-additem", m)?.addEventListener("click", () => pickItem("Treasure for the chest", (p) => { f.items.push(p); }));
       m.querySelectorAll("[data-rmitem]").forEach((b) => b.addEventListener("click", () => { sync(m); f.items.splice(+b.dataset.rmitem, 1); show(); }));
@@ -779,9 +818,10 @@ async function viewGames(sid) {
         e.preventDefault(); sync(m);
         if (game === "archery" ? !f.target : !f.center) { showToast(game === "archery" ? "Choose the target first" : "Choose the play area first", 3000); return; }
         if (game === "treasure" && !f.items.length) { showToast("Put something in the treasure chest", 3000); return; }
+        if (f.g.on && !f.g.spot) { showToast("Pick the spot to teleport everyone to (or untick teleporting)", 3000); return; }
         const start = f.when === "now" ? Date.now() / 1000 : new Date(f.at).getTime() / 1000;
         try {
-          await post(base, { ...f, start, prizes: f.prize ? [f.prize] : [] });
+          await post(base, { ...f, start, prizes: f.prize ? [f.prize] : [], gather: gatherBody(f.g) });
           closeModal(); showToast(f.when === "now" ? `${GAME_INFO[game][1]} is starting` : "Scheduled", 3000); await reload();
         } catch (err) { showToast(esc(err.message), 4000); }
       });

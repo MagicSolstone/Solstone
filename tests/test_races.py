@@ -18,6 +18,8 @@ class FakeServer:
 
     async def rcon(self, cmd):
         self.cmds.append(cmd)
+        if "solgather" in cmd:                                        # height probes for lining up: not race markers
+            return "Summoned new Marker" if "summon" in cmd else ""
         m = re.search(r"summon minecraft:(\w+) ", cmd)
         if m:
             self.entities.append(m.group(1))
@@ -30,9 +32,13 @@ class FakeServer:
             (self.forced.add if m.group(1) == "add" else self.forced.discard)((m.group(2), m.group(3)))
             return "ok"
         m = re.match(r"data get entity (\S+) Pos", cmd)
-        if m:
+        if m and m.group(1) in self.pos:
             x, y, z = self.pos[m.group(1)]
             return f"{m.group(1)} has the following entity data: [{x}d, {y}d, {z}d]"
+        m = re.search(r" run tp (\w+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)", cmd)
+        if m:
+            self.pos[m.group(1)] = [float(m.group(2)), float(m.group(3)), float(m.group(4))]
+            return f"Teleported {m.group(1)}"
         m = re.match(r"give (\S+) (\S+) (\d+)", cmd)
         if m:
             self.given.append((m.group(1), m.group(2), int(m.group(3))))
@@ -44,7 +50,7 @@ class FakeServer:
 def race(monkeypatch):
     from app import challenges, races, settings_store
     from app import servers as S
-    settings_store.save_section("races", {}); settings_store.save_section("challenges", {})
+    settings_store.save_section("races", {}); settings_store.save_section("challenges", {}); settings_store.save_section("gather", {})
     srv = FakeServer()
 
     async def online(_s):
@@ -78,7 +84,10 @@ def test_full_race(race):
     asyncio.run(races.tick([srv]))                                   # countdown: markers, teleport
     r = races.runs_for(srv.id)[0]
     assert r["state"] == "countdown" and srv.entities.count("block_display") == 4 and srv.entities.count("text_display") == 4
-    assert len(srv.forced) == 3 and any(cmd.startswith("execute in minecraft:overworld run tp @a 0") for cmd in srv.cmds)
+    assert len(srv.forced) == 3
+    # lined up side by side on the start line (2 blocks apart, across the way to the first checkpoint)
+    assert sorted(round(srv.pos[n][2]) for n in ("Tyler", "Gimli_Jr")) == [-1, 1] and all(round(srv.pos[n][0]) == 0 for n in ("Tyler", "Gimli_Jr"))
+    assert any(re.search(r"facing 100(\.0)? 91(\.0)? 0", cmd) for cmd in srv.cmds)
     assert any("text:{text:" not in cmd and "text:'" in cmd for cmd in srv.cmds if "text_display" in cmd)     # pre-1.21.5 JSON text
     _shift(races, go_at=-11)
     asyncio.run(races.tick([srv]))                                   # GO
@@ -102,6 +111,9 @@ def test_full_race(race):
     assert r["state"] == "done" and [x["name"] for x in r["results"]] == ["Gimli_Jr", "Tyler"]
     assert ("Gimli_Jr", "minecraft:diamond", 3) in srv.given and not any(g[0] == "Tyler" for g in srv.given)   # Tyler didn't finish
     assert not srv.entities and not srv.forced                       # markers and force-loading gone
+    from app import gather
+    home = gather._load()["returns"]
+    assert len(home) == 1 and set(home[0]["back"]) == {"Tyler", "Gimli_Jr"}   # everyone heads back after a countdown
     assert not races.busy()
 
 
@@ -112,6 +124,12 @@ def test_new_text_format_and_validation(race):
     races.schedule(srv.id, {"course": c["id"], "start": time.time()})
     asyncio.run(races.tick([srv]))
     assert any("text:{text:" in cmd for cmd in srv.cmds if "text_display" in cmd)   # 1.21.5+/26.x: SNBT text
+    # held still until GO (movement and jumping), let go at GO
+    assert "attribute Tyler minecraft:movement_speed modifier add solstone:freeze -1 add_multiplied_total" in srv.cmds
+    assert "attribute Gimli_Jr minecraft:jump_strength modifier add solstone:freeze -1 add_multiplied_total" in srv.cmds
+    _shift(races, go_at=-11)
+    asyncio.run(races.tick([srv]))
+    assert "attribute Tyler minecraft:movement_speed modifier remove solstone:freeze" in srv.cmds
     rid = races.runs_for(srv.id)[0]["id"]
     assert asyncio.run(races.cancel(srv, rid)) and not srv.entities
     with pytest.raises(ValueError):

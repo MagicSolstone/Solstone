@@ -1675,8 +1675,12 @@ def _rcon_echo(srv: S.Server) -> bool:
 async def get_challenges(sid: str, request: Request):
     auth.require_admin(request)
     srv = await _server(sid)
+    try:
+        spawn = (await asyncio.to_thread(S.world_info, srv, False)).get("spawn")
+    except Exception:
+        spawn = None
     return {"kinds": challenges.kinds(), "items": challenges.list_for(srv.id), "gifts": challenges.gifts_for(srv.id),
-            "rcon": bool(srv.rcon_conf()), "now": time.time(), "rcon_echo": _rcon_echo(srv)}
+            "rcon": bool(srv.rcon_conf()), "now": time.time(), "rcon_echo": _rcon_echo(srv), "spawn": spawn}
 
 
 @app.post("/api/servers/{sid}/challenges")

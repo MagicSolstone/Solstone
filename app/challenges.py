@@ -109,12 +109,16 @@ def clean(body: dict, server: str) -> dict:
         raise ValueError("Start time and length need to be numbers") from e
     if start < time.time() - 60:
         raise ValueError("That start time has already passed")
+    from . import gather
+    if start <= time.time() + 2:                         # "right now": a 10-second countdown first
+        start = time.time() + gather.LEAD
     first = _prize(body.get("prize"))
     if not first:
         raise ValueError("Choose a prize for the winner")
     return {"server": server, "kind": kind, "name": clean_text(str(body.get("name") or KINDS[kind][0]), 40),
             "start": start, "minutes": minutes, "prize": first, "second": _prize(body.get("second")),
             "say": bool(body.get("say", True)),
+            "gather": gather.clean_spot(body.get("gather")),
             "hot": bool(body.get("hot")) and kind == "fish_points", **hotzone.settings(body, 60, 30),
             "hot_far": int(max(16, min(96, float(body.get("hot_far") or 40)))),
             "lure": int(body.get("lure") or 0) if kind in ROD_KINDS and str(body.get("lure") or 0) in ("0", "3", "5") else 0}
@@ -195,6 +199,9 @@ async def _give_rod(srv, c: dict, player: str) -> None:
 
 
 async def _start(srv, c: dict) -> None:
+    from . import gather
+    if c.get("gather"):                                  # everyone to the event's spot first (and home afterwards)
+        c["gathered"] = await gather.send(srv, c["gather"])
     label, _emoji, unit, criteria, _div = KINDS[c["kind"]]
     made = []
     if c["kind"] in FISH_KINDS:                       # the pack's own objective, cleared for this contest
@@ -317,6 +324,9 @@ async def _tidy(srv, c: dict) -> None:
     """Remove this contest's objectives and countdown; the fishing pack's own objectives get
     their sidebar and name back."""
     await bossbar.hide(srv, c)
+    if c.get("gathered"):                                # prizes are out: a countdown, then everyone goes home
+        from . import gather
+        gather.come_home(srv, c.pop("gathered"), c["name"])
     if c.get("hot"):
         await hotzone.clear(srv, c)
     if c.get("rodded"):                              # the contest rods go back; whoever's away hands theirs in on joining
@@ -356,6 +366,7 @@ async def cancel(srv, cid: str) -> bool:
     return True
 
 
+LEAD_SECS = 10                         # the countdown on screen before a contest starts (gather.LEAD)
 FISH_HOT_R = 5                         # a fishing hot zone: cast into water within this many blocks of its middle
 _lock = asyncio.Lock()                 # tick and on_catch both change the contest list
 
@@ -414,6 +425,10 @@ async def _tick(servers: list) -> None:
                 changed = True
             elif srv and srv.rcon_conf() and now >= c["start"]:
                 await _start(srv, c)
+                changed = True
+            elif srv and srv.rcon_conf() and 0 < c["start"] - now <= LEAD_SECS:
+                from . import gather
+                await gather.lead_in(srv, c, now, c["name"], "you'll be teleported there" if c.get("gather") else "")
                 changed = True
             elif srv and srv.rcon_conf() and c["say"] and 0 < c["start"] - now <= 60 and db.alert_once(f"ch-soon:{c['id']}"):
                 await _rcon(srv, f"tellraw @a {component([('★ ', 'gold'), (c['name'] + ' starts in 1 minute!', 'yellow')])}")

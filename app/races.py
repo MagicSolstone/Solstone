@@ -5,7 +5,8 @@ Courses are laid out on Solstone's map (or at a player's spot) and saved. When a
   floating label (a text_display) and particles; glowing outlines show through hills;
 - the chunks under the points are force-loaded for the race, so the markers can always be
   removed afterwards;
-- everyone is optionally teleported to the start, then 10-second countdown and GO;
+- everyone is optionally lined up at the start and held still, then a 10-second countdown and GO
+  (and sent back where they were afterwards);
 - once a second each racer's position is read over RCON; reaching the next point in order
   (within its radius) records a split, plays a ding and moves them on; a line above the hotbar
   shows the next point's name, distance and direction;
@@ -218,16 +219,24 @@ async def _say(srv, r: dict, parts, title: str = "", sub: str = "") -> None:
 
 
 async def _begin_countdown(srv, r: dict) -> None:
+    from . import gather
     await _place_markers(srv, r)
     s = r["points"][0]
     if r["teleport"]:
-        await _rcon(srv, f"execute in {r.get('dim') or 'minecraft:overworld'} run tp @a {s['x']} {s['y'] + 0.5} {s['z']}")
+        # side by side on the start line, facing the first checkpoint, held still until GO;
+        # everyone goes back where they were once it's over
+        names, _src = await S.online_players(srv)
+        r["gathered"] = await gather.line_up(srv, s, r["points"][1], r.get("dim") or "minecraft:overworld", names)
+        await gather.freeze(srv, list(r["gathered"]), COUNTDOWN)
     r["state"], r["go_at"] = "countdown", time.time() + COUNTDOWN
     await _say(srv, r, [("★ ", "gold"), (r["name"], "yellow"), (f" starts in {COUNTDOWN} seconds! Reach the checkpoints in order, then the finish.", None)],
                "Get ready", r["name"])
 
 
 async def _go(srv, r: dict) -> None:
+    from . import gather
+    if r.get("gathered"):
+        await gather.unfreeze(srv, list(r["gathered"]))
     names, _src = await S.online_players(srv)
     r["state"], r["started_at"] = "running", time.time()
     r["ends_at"] = r["started_at"] + r["minutes"] * 60
@@ -319,6 +328,9 @@ async def _end(srv, r: dict) -> None:
             await challenges.award(srv, x["name"], prize, f"came {_ordinal(i + 1)} in {r['name']}")
     await _remove_markers(srv, r)
     await bossbar.hide(srv, r)
+    if r.get("gathered"):
+        from . import gather
+        gather.come_home(srv, r.pop("gathered"), r["name"])
     db.add_event(srv.id, time.time(), "race", r["result"], finished[0]["name"] if finished else None)
 
 
@@ -330,6 +342,10 @@ async def cancel(srv, rid: str) -> bool:
     if r["state"] in ("countdown", "running"):
         await _remove_markers(srv, r)
         await bossbar.hide(srv, r)
+        if r.get("gathered"):
+            from . import gather
+            await gather.unfreeze(srv, list(r["gathered"]))
+            gather.come_home(srv, r.pop("gathered"), r["name"])
         await _say(srv, r, [("★ ", "gold"), (f"{r['name']} was called off.", "yellow")])
     if r["state"] in ("scheduled", "countdown", "running"):
         r["state"] = "cancelled"

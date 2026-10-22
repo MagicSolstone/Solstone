@@ -79,9 +79,10 @@ class FakeServer:
 
 @pytest.fixture()
 def game(monkeypatch):
-    from app import games, settings_store
+    from app import games, gather, settings_store
     from app import servers as S
-    settings_store.save_section("games", {}); settings_store.save_section("challenges", {})
+    monkeypatch.setattr(gather, "LEAD", 0)               # "right now" means now here
+    settings_store.save_section("games", {}); settings_store.save_section("challenges", {}); settings_store.save_section("gather", {})
     srv = FakeServer()
 
     async def online(_s):

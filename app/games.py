@@ -78,9 +78,14 @@ def create(server: str, body: dict) -> dict:
     start = _num(body.get("start"), 0, 1e11, 0) or time.time()
     if start < time.time() - 60:
         raise ValueError("That start time has already passed")
+    from . import gather
+    if start <= time.time() + 2:                         # "right now": a 10-second countdown first
+        start = time.time() + gather.LEAD
     prizes = [challenges.clean_prize(p) for p in (body.get("prizes") or [])[:3]]
     r = {"id": secrets.token_hex(4), "server": server, "game": kind, "name": KINDS[kind][0], "start": start, "state": "scheduled",
-         "dim": "minecraft:overworld", "prizes": prizes, "players": {}, "said": [], "result": "", "log": []}
+         "dim": "minecraft:overworld", "prizes": prizes, "players": {}, "said": [], "result": "", "log": [],
+         # treasure and archery can gather everyone at a spot first (hide and seek always gathers at its area)
+         "gather": gather.clean_spot(body.get("gather")) if kind in ("treasure", "archery") else None}
     if kind == "hideseek":
         r.update(area={**_point(body.get("center"), "middle of the area"), "r": round(_num(body.get("radius"), 10, 200, 40))},
                  hide_secs=int(_num(body.get("hide_secs"), 15, 300, 60)), minutes=int(_num(body.get("minutes"), 2, 30, 6)),
@@ -199,9 +204,10 @@ async def _hs_start(srv, r: dict) -> None:
     await _rcon(srv, "team modify solhs_h color green")
     await _rcon(srv, "team add solhs_s")
     await _rcon(srv, "team modify solhs_s color red")
+    from . import gather
+    r["gathered"] = await gather.send(srv, {"x": a["x"], "y": a["y"], "z": a["z"], "r": 3, "dim": dim}, list(r["players"]))
     for n, p in r["players"].items():
         await _rcon(srv, f"team join {'solhs_s' if p['role'] == 'seeker' else 'solhs_h'} {n}")
-        await _rcon(srv, f"execute in {dim} run tp {n} {a['x']} {a['y'] + 0.5} {a['z']}")
         if r["no_dig"]:
             await _rcon(srv, f"gamemode adventure {n}")
     await _rcon(srv, f"effect give {seeker} minecraft:blindness {r['hide_secs'] + 2} 0 true")
@@ -750,7 +756,7 @@ async def on_join(srv, player: str) -> None:
 
 
 async def _tick(servers: list) -> None:
-    from . import spleef
+    from . import gather, spleef
     d = _load()
     live = [r for r in d["runs"] if r["state"] in ("scheduled", *ACTIVE)]
     if not live:
@@ -765,7 +771,12 @@ async def _tick(servers: list) -> None:
                 r["state"], r["result"] = "skipped", "The server wasn't running with RCON at the start time"
             elif srv and srv.rcon_conf() and now >= r["start"]:
                 r["started"] = now
+                if r.get("gather"):
+                    r["gathered"] = await gather.send(srv, r["gather"])
                 await {"hideseek": _hs_start, "treasure": _th_start, "archery": _ar_start, "spleef": spleef.start}[r["game"]](srv, r)
+            elif srv and srv.rcon_conf() and 0 < r["start"] - now <= gather.LEAD:
+                moved = r.get("gather") or r["game"] in ("hideseek", "spleef")
+                await gather.lead_in(srv, r, now, r["name"], "you'll be teleported there" if moved else "")
             else:
                 continue
             changed = True
@@ -780,6 +791,9 @@ async def _tick(servers: list) -> None:
                     await bossbar.hide(srv, r)
             except Exception:
                 log.exception("game %s failed", r["id"])
+            changed = True
+        if srv and r["state"] not in ACTIVE and r.get("gathered"):
+            gather.come_home(srv, r.pop("gathered"), r["name"])         # winners announced: everyone home after a countdown
             changed = True
     if changed:
         _save(d)
@@ -825,6 +839,9 @@ async def _cancel(srv, rid: str) -> bool:
         await _say(srv, [("★ ", "gold"), (f"{r['name']} was called off.", "yellow")])
     if was_live:
         r["state"] = "cancelled"
+        if r.get("gathered"):
+            from . import gather
+            gather.come_home(srv, r.pop("gathered"), r["name"])
     elif not r.get("owed"):                          # removing a finished one (kept while it still owes someone a trip back)
         d["runs"] = [x for x in d["runs"] if x["id"] != rid]
     _save(d)

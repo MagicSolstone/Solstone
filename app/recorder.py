@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import backups, board, challenges, db, fishing, fwshow, games, guard, music, notify, races, recap
+from . import backups, board, challenges, db, fishing, fwshow, games, gather, guard, music, notify, races, recap
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -126,8 +126,8 @@ class Recorder:
 
     async def race_tick(self) -> None:
         """Races need a once-a-second look at where everyone is; nothing happens otherwise."""
-        race, game, contest = races.busy(), games.busy(), challenges.busy()
-        if not (race or game or contest):
+        race, game, contest, moving = races.busy(), games.busy(), challenges.busy(), gather.busy()
+        if not (race or game or contest or moving):
             return
         await S.registry.refresh()
         visible = [s for s in S.registry.servers.values() if not s.settings.get("hidden")]
@@ -137,6 +137,8 @@ class Recorder:
             await games.tick(visible)
         if contest:
             await challenges.tick(visible)
+        if moving:
+            await gather.tick(visible)
 
     async def fish_poll(self) -> None:
         """Catches from the Solstone Fishing pack (only where it's loaded and someone's on)."""
@@ -273,6 +275,7 @@ class Recorder:
             for n in joined:
                 await challenges.on_join(srv, n)        # prizes won while away
                 await games.on_join(srv, n)             # back from a game that ended while they were away
+                await gather.on_join(srv, n)            # back from an event they were taken to
                 if not fwshow.pushed_recently(srv.id, "join", n):
                     fwshow.push(srv.id, srv.display_name, "join", n, f"{n} joined the game")
 

@@ -75,8 +75,9 @@ class FakeServer:
 
 @pytest.fixture()
 def pond(monkeypatch):
-    from app import challenges, fishing, settings_store
+    from app import challenges, fishing, gather, settings_store
     from app import servers as S
+    monkeypatch.setattr(gather, "LEAD", 0)
     settings_store.save_section("challenges", {})
     srv = FakeServer()
     fishing._state.pop(srv.id, None)
