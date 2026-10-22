@@ -199,6 +199,7 @@ async function viewChallenges(sid) {
           : `<p class="notice small"><b>The game isn't applying the pack's loot tables</b> (even the one-line probe).</p>`;
         const lines = [`Tested ${t.where} · pack version ${t.version ?? "?"}${t.barrel && !/changed/i.test(t.barrel) ? ` · barrel: ${t.barrel}` : ""}`,
           `fish table: ${what(t)}`, `solfish:fish: ${what(t.own)}`, `probe: ${what(t.probe)}`, ...t.rod.map((r, i) => `rod cast ${i + 1}: ${what(r)}`),
+          "", "probes (3 or 7 = that way works):", ...Object.entries(t.probes || {}).map(([k, v]) => `  ${k}: ${v}`),
           "", "raw:", ...[t, t.own, t.probe].map((r) => `${r.table}: ${r.command_reply} | ${r.item_reply}`),
           "", `packs: ${t.packs}`, ...(t.log?.length ? ["", "game log:", ...t.log] : [])];
         diag(`${verdict}<pre class="mc-out">${esc(lines.join("\n"))}</pre><p class="muted small">Send this to get it fixed.</p>`);

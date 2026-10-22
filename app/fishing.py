@@ -162,7 +162,7 @@ def _read_item(reply: str) -> dict:
         fish = data.get("solfish")
         if fish:
             res["pack_fish"] = {"name": str(fish["n"]), "quality": str(fish["ql"]), "lb": str(fish["lb"]), "points": int(fish["p"])}
-        res["probe"] = "solprobe" in data
+        res["probe"] = bool(hasattr(data, "get") and data.get("solprobe"))
     except Exception as e:
         res["parse_error"] = str(e)[:200]
     return res
@@ -201,13 +201,21 @@ async def test_catch(srv) -> dict:
         fish = await roll("fish", "minecraft:gameplay/fishing/fish")
         own = await roll("fish", "solfish:fish")
         probe = await roll("loot", "solfish:probe")
+        probes = {}
+        for k in fishpack.PROBES:
+            probes[k] = (await roll("loot", f"solfish:probe_{k}"))["item_reply"].split("data:", 1)[-1].strip()[:200]
+        # an item modifier applied to what's in the barrel (a plain stone put there first)
+        await _rcon(srv, f"{pre} run item replace block {x} {top} {z} container.0 with minecraft:stone")
+        mod = await _rcon(srv, f"{pre} run item modify block {x} {top} {z} container.0 solfish:probe")
+        got = await _rcon(srv, f"{pre} run data get block {x} {top} {z} Items")
+        probes["item_modifier"] = (mod[:120] + " → " + got.split("data:", 1)[-1].strip())[:300]
         rod = [await roll("fish", "minecraft:gameplay/fishing") for _ in range(4)]
     finally:
         await _rcon(srv, f"{pre} run setblock {x} {top} {z} minecraft:air")
         if forced:
             await _rcon(srv, f"{pre} run forceload remove {forced[0]} {forced[1]}")
     packs = await _rcon(srv, "datapack list enabled")
-    return {**fish, "where": where, "barrel": placed[:200], "rod": rod, "own": own, "probe": probe, "packs": packs[:1500],
+    return {**fish, "where": where, "barrel": placed[:200], "rod": rod, "own": own, "probe": probe, "probes": probes, "packs": packs[:1500],
             "version": (await check(srv, force=True)).get("version"), "log": _log_mentions(srv)}
 
 
