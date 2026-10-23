@@ -257,3 +257,47 @@ def test_fishing_reset(client, sid, viewer, monkeypatch):
     assert r.status_code == 409 and "online" in r.json()["detail"]
     assert client.post(url, json={"player": "not a name!"}).status_code == 400
     assert viewer.post(url, json={"player": "Tyler"}).status_code == 403
+
+
+# ---------------------------------------------------------------- item descriptions
+class _DescServer:
+    id = "desc"
+
+    def __init__(self, reply=None, fail=False):
+        self.reply, self.fail, self.cmds = reply, fail, []
+
+    def rcon_conf(self):
+        return ("localhost", 25575, "pw")
+
+    async def rcon(self, cmd):
+        self.cmds.append(cmd)
+        if self.fail:
+            from app.rcon import RconError
+            raise RconError("Nothing is listening")
+        return self.reply
+
+
+def test_describe_uses_the_game_tooltip(monkeypatch):
+    from app import tide
+    tide._described.clear()
+    monkeypatch.setattr(tide, "installed", lambda _s: True)
+    srv = _DescServer("tooltip tide:golden_hook\nFF55FF\t+1 luck\nAAAAAA\titem.tide.golden_hook.desc\nAAAAAA\t ")
+    d = asyncio.run(tide.describe_item(srv, "tide:golden_hook", {"item.tide.golden_hook.desc": "Shiny."}))
+    assert srv.cmds == ["fishing describe tide:golden_hook"] and d["source"] == "game"
+    assert d["lines"] == [{"text": "+1 luck", "color": "#FF55FF"}, {"text": "Shiny.", "color": "#AAAAAA"}]
+    asyncio.run(tide.describe_item(srv, "tide:golden_hook", {}))                    # cached
+    assert len(srv.cmds) == 1
+
+
+def test_describe_falls_back_to_the_language_files(monkeypatch):
+    from app import tide
+    tide._described.clear()
+    monkeypatch.setattr(tide, "installed", lambda _s: True)
+    lang = {"item.tide.fish_satchel.desc_0": "Holds fish.", "item.tide.fish_satchel.desc_1": "§7Right-click to open."}
+    for srv in (_DescServer("Unknown or incomplete command"), _DescServer(fail=True)):   # older Tide; server down
+        d = asyncio.run(tide.describe_item(srv, "tide:fish_satchel", lang))
+        assert d["source"] == "lang" and [x["text"] for x in d["lines"]] == ["Holds fish.", "Right-click to open."]
+    d = asyncio.run(tide.describe_item(_DescServer(), "minecraft:stone", lang))
+    assert d == {"item": "minecraft:stone", "lines": [], "source": "none"}
+    d = asyncio.run(tide.describe_item(_DescServer(), "bad id; op me", lang))
+    assert d["source"] == "none"

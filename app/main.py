@@ -1722,6 +1722,16 @@ async def assets_items(sid: str):
     return JSONResponse(await asyncio.to_thread(a.items), headers={"Cache-Control": "private, max-age=600"})
 
 
+@app.get("/api/servers/{sid}/assets/describe")
+async def assets_describe(sid: str, item: str, request: Request):
+    """What an item does (its tooltip), for the give-item and prize pickers."""
+    auth.require_admin(request)
+    srv = await _server(sid)
+    a = _assets(srv)
+    lang = (await asyncio.to_thread(a.lang_cached)) if a and a.ready else {}
+    return await tide.describe_item(srv, item.strip().lower()[:200], lang)
+
+
 @app.get("/api/servers/{sid}/assets/advancements")
 async def assets_advancements(sid: str):
     a = _assets(await _server(sid))

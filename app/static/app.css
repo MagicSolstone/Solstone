@@ -1452,6 +1452,13 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .gv-item.on { border-color: var(--gold); background: rgba(242, 193, 78, .12); }
 .gv-pick { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 8px 10px; border-radius: var(--radius-m); background: var(--well); }
 .gv-pick .item { width: 36px; height: 36px; }
+.gv-pick { align-items: flex-start; }
+.gv-pick-text { min-width: 0; flex: 1; }
+.gv-desc:empty { display: none; }
+.gv-desc { margin-top: 6px; }
+/* the game's own tooltip look, so its colours read the same in light and dark themes */
+.mc-tip { background: #100010f0; border: 2px solid #2a0a5c; border-radius: 4px; padding: 6px 8px; font-size: 13px; line-height: 1.35;
+  max-height: 220px; overflow-y: auto; overflow-wrap: anywhere; }
 .gv-amount { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0 4px; }
 .gv-chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .gv-chips .chip { cursor: pointer; }

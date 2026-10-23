@@ -438,6 +438,17 @@ async function itemCatalog(sid) {
   state.itemCatalog[sid] = list;
   return list;
 }
+// What an item does: its in-game tooltip when the server can tell us, otherwise the language files' description.
+async function describeItem(sid, id) {
+  state.itemDesc ||= {};
+  const key = `${sid}|${id}`;
+  if (state.itemDesc[key]) return state.itemDesc[key];
+  const d = await api(`/api/servers/${encodeURIComponent(sid)}/assets/describe?item=${encodeURIComponent(id)}`).catch(() => ({ lines: [], source: "none" }));
+  const srv = (state.servers || []).find((s) => s.id === sid);
+  d.offline = d.source !== "game" && srv?.running === false;
+  if (d.source === "game") state.itemDesc[key] = d;      // keep live answers for the session
+  return d;
+}
 const GIVE_RECENT = "solstone-give-recent";
 function giveRecent() { try { return JSON.parse(localStorage.getItem(GIVE_RECENT) || "[]").slice(0, 10); } catch { return []; } }
 function giveRemember(id) { try { localStorage.setItem(GIVE_RECENT, JSON.stringify([id, ...giveRecent().filter((x) => x !== id)].slice(0, 10))); } catch { /* private window */ } }
@@ -481,7 +492,14 @@ async function openGiveItem(sid, player, opts = {}) {
     const choose = (x) => {
       pick = x; go.disabled = !pick;
       const pk = $("#gv-pick", m); pk.hidden = false;
-      pk.innerHTML = `${itemIcon({ id: x.id })}<div><b>${esc(x.name)}</b><div class="muted small">${esc(x.id)}</div></div>`;
+      pk.innerHTML = `${itemIcon({ id: x.id })}<div class="gv-pick-text"><b>${esc(x.name)}</b><div class="muted small">${esc(x.id)}</div><div class="gv-desc" aria-live="polite"></div></div>`;
+      describeItem(sid, x.id).then((d) => {
+        if (pick?.id !== x.id) return;                       // picked something else meanwhile
+        const box = $(".gv-desc", pk);
+        box.innerHTML = d.lines.length
+          ? `<div class="mc-tip">${d.lines.map((l) => `<div style="color:${esc(l.color)}">${esc(l.text)}</div>`).join("")}</div>`
+          : `<div class="muted small">${d.offline ? "Start the server to see what this does." : "No description for this item."}</div>`;
+      });
       grid.querySelectorAll(".gv-item").forEach((b) => { const on = b.dataset.id === x.id; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
       go.textContent = opts.pick ? "Use this" : `Give ${Math.max(1, +num.value || 1)}`;
     };

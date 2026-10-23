@@ -134,6 +134,13 @@ def main() -> int:
             if not pg.locator(".gv-modal").count():
                 problems.append("give items: dialog didn't open")
             pg.fill("#gv-q", "a"); pg.wait_for_timeout(200)
+            # picking an item shows what it does (the server's answer is faked here: there's no game running)
+            tip = {"item": "x", "source": "game", "lines": [{"text": "Rod: +1 luck, +10% bite speed", "color": "#55FFFF"},
+                                                             {"text": "Part of: Storm rig (1/3)", "color": "#FF55FF"}]}
+            pg.route("**/assets/describe*", lambda r: r.fulfill(json=tip))
+            pg.locator(".gv-item").first.click(); pg.wait_for_timeout(400)
+            if "Storm rig" not in (pg.locator(".gv-desc").text_content() or ""):
+                problems.append("give items: picking an item didn't show its description")
             check(pg, "give-items")
             pg.click(".gv-modal [data-close]")
 

@@ -346,3 +346,73 @@ def record_catch(srv, ts: float, c: dict) -> tuple[str, str] | None:
     msg = describe(catch, who)
     db.add_event(srv.id, ts, etype, msg, who)
     return etype, msg
+
+
+# ---------------------------------------------------------------- item descriptions
+# The give-item picker shows what an item does. Tide+ 1.0.5 and later answer "fishing describe <item>" with the
+# item's tooltip ("tooltip <id>", then "RRGGBB<tab>text" a line); without it (server offline, older Tide, no RCON)
+# we fall back to the description lines in the language files, which most mods (Tide included) have for some items.
+_ITEM_ID = re.compile(r"^[a-z0-9_.-]+:[a-z0-9_./-]+$")
+_LANG_KEY = re.compile(r"^[a-z0-9_]+(\.[a-z0-9_]+){2,}$")
+_described: dict[tuple[str, str], tuple[float, dict]] = {}
+DESCRIBE_TTL = 600
+
+
+def parse_tooltip(reply: str | None, item: str, lang: dict) -> list[dict] | None:
+    """Lines from a "fishing describe" reply, or None when it isn't one (an older Tide, an error)."""
+    text = (reply or "").replace("\r", "")
+    if not text.startswith("tooltip "):
+        return None
+    rows = text.split("\n")
+    if rows[0].strip() != f"tooltip {item}":
+        return None
+    out = []
+    for row in rows[1:]:
+        colour, _, line = row.partition("\t")
+        if not line.strip():
+            continue
+        line = line.strip()
+        if _LANG_KEY.match(line) and line in lang:           # a key the server couldn't translate
+            line = lang[line]
+        out.append({"text": line[:300], "color": f"#{colour}" if re.fullmatch(r"[0-9A-F]{6}", colour) else "#AAAAAA"})
+    return out[:40]
+
+
+def lang_description(item: str, lang: dict) -> list[dict]:
+    ns, _, name = item.partition(":")
+    out = []
+    for kind in ("item", "block"):
+        base = f"{kind}.{ns}.{name}"
+        for suffix in ("desc", "description", "tooltip"):
+            if f"{base}.{suffix}" in lang:
+                out.append(lang[f"{base}.{suffix}"])
+            for i in range(10):
+                for key in (f"{base}.{suffix}_{i}", f"{base}.{suffix}.{i}"):
+                    if key in lang:
+                        out.append(lang[key])
+        if out:
+            break
+    return [{"text": re.sub(r"§.", "", t)[:300], "color": "#AAAAAA"} for t in out[:12]]
+
+
+async def describe_item(srv, item: str, lang: dict) -> dict:
+    import time
+    if not _ITEM_ID.match(item):
+        return {"item": item, "lines": [], "source": "none"}
+    hit = _described.get((srv.id, item))
+    if hit and time.monotonic() - hit[0] < DESCRIBE_TTL:
+        return hit[1]
+    result = None
+    if installed(srv) and srv.rcon_conf():
+        try:
+            lines = parse_tooltip(await srv.rcon(f"fishing describe {item}"), item, lang)
+        except Exception:                                     # offline or RCON trouble: the language files will do
+            lines = None
+        if lines is not None:
+            result = {"item": item, "lines": lines, "source": "game"}
+    if result is None:
+        lines = lang_description(item, lang)
+        result = {"item": item, "lines": lines, "source": "lang" if lines else "none"}
+    if result["source"] == "game":                            # only keep live answers; retry the rest next time
+        _described[(srv.id, item)] = (time.monotonic(), result)
+    return result
