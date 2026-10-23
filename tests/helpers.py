@@ -109,7 +109,8 @@ def build(root: Path) -> Path:
         else:
             return None
         return Compound({"TidePlayerData": Compound({"fish_data": List[Compound](data), "got_journal": Byte(1)}),
-                         "TideAngler": Compound({"xp": Long(xp), "fair": Byte(0), "backfilled": Byte(1), "version": Int(2)})})
+                         "TideAngler": Compound({"xp": Long(xp), "fair": Byte(0), "backfilled": Byte(1), "version": Int(2)}),
+                         "TideTackle": Compound({"found": String("bamboo_fishing_rod,glow_lure,tackle_box,not_a_real_item" if i == 0 else "")})})
 
     for i, (_n, u) in enumerate(players):
         nbt = player_nbt(i)
@@ -166,6 +167,9 @@ def build(root: Path) -> Path:
                 prof["rarity"] = rarity
             z.writestr(f"data/tide/fishing/fish/{group}/{fid}.json", json.dumps({"fish": f"tide:{fid}", "journal_profile": prof,
                                                                                   "size": {"typical_low_cm": 20, "typical_high_cm": 40, "record_high_cm": 60}}))
+        # a little of the tackle the journal lists (plus the six gear pieces Solstone adds)
+        for tag, vals in (("fishing_rods", ["minecraft:fishing_rod", "tide:bamboo_fishing_rod", "tide:bone_fishing_rod"]), ("lures", ["tide:glow_lure"])):
+            z.writestr(f"data/tide/tags/item/{tag}.json", json.dumps({"values": vals}))
     (srv / "config").mkdir(exist_ok=True)
     (srv / "config" / "tide.json").write_text(json.dumps({"server": {"leveling": {"enabled": True, "xpPerLevel": 20.0, "xpGrowth": 0.2}}}))
     with zipfile.ZipFile(srv / "mods" / "lithium.jar", "w") as z:

@@ -956,6 +956,21 @@ function fmtLength(cm) {
 }
 const qMarks = (q) => "◆".repeat(Math.max(0, q)) + "◇".repeat(Math.max(0, 5 - q));
 
+// An angler's title as a badge that gets grander every 20 levels, and their collection (fish and tackle found).
+function anglerBadge(p) {
+  const tier = p.level >= 99 ? 5 : Math.min(4, Math.floor(p.level / 20));
+  return `<span class="tf-badge t${tier}" title="Fishing level ${p.level} · ${p.xp.toLocaleString()} XP">${"★".repeat(tier + 1)} ${esc(p.title)}</span>`;
+}
+function anglerHead(p, d, extra = "") {
+  const total = d.species.length, have = Object.keys(p.species).length;
+  const tt = d.tackle_total || 0, tg = Math.min(p.tackle || 0, tt);
+  const pct = Math.round(((have + tg) / Math.max(1, total + tt)) * 100);
+  const bar = (label, n, of) => `<div class="fj-progress"><span>${label} <b>${n} of ${of}</b></span><div class="fj-bar"><i style="width:${(n / Math.max(1, of)) * 100}%"></i></div></div>`;
+  return `<div class="tf-level">${faceHtml(p, 40)}<div><span><b class="tf-lv">Level ${p.level}</b> ${anglerBadge(p)}${p.fair ? ' <span class="fish-q fq-gold">Fair play</span>' : ""}</span>
+        <span class="muted small">${pct}% of the collection · ${p.caught.toLocaleString()} fish caught</span></div></div>
+      ${bar("Kinds of fish", have, total)}${tt ? bar("Tackle found", tg, tt) : ""}${extra}`;
+}
+
 function viewTideFishing(s, sid, d, who) {
   const QC = d.qualities.map((q) => q.color);
   const qLabel = (q) => q >= 0 ? `<span class="fq-${QC[q]}">${qMarks(q)} ${esc(d.qualities[q].name)}</span>` : "";
@@ -992,10 +1007,7 @@ function viewTideFishing(s, sid, d, who) {
     const have = p ? Object.keys(p.species).length : d.family_species;
     const head = p
       ? `<div class="panel fj-head">
-          <div class="tf-level">${faceHtml(p, 40)}<div><b class="tf-lv">Fishing level ${p.level}</b> <span class="muted">${esc(p.title)}</span>${p.fair ? ' <span class="fish-q fq-gold">Fair play</span>' : ""}
-            <div class="fj-bar" title="${p.next == null ? "Max level" : `${p.next.toLocaleString()} XP to level ${p.level + 1}`}"><i style="width:${p.progress * 100}%"></i></div>
-            <span class="muted small">${p.xp.toLocaleString()} XP${p.next == null ? " · max level" : ` · ${p.next.toLocaleString()} to level ${p.level + 1}`}</span></div></div>
-          <div class="fj-progress"><span><b>${have} of ${total}</b> kinds of fish · <b>${p.caught.toLocaleString()}</b> caught</span><div class="fj-bar"><i style="width:${(have / Math.max(1, total)) * 100}%"></i></div></div>
+          ${anglerHead(p, d)}
           <div class="fish-qs">${d.qualities.map((q, i) => `<span class="fish-q fq-${q.color}">${qMarks(i)} ${esc(q.name)} <small>${p.qualities[i] || 0}</small></span>`).join("")}</div>
           ${isAdmin() ? `<div class="tf-reset"><button type="button" class="btn" data-reset="${esc(p.name)}">Change level…</button></div>` : ""}</div>`
       : `<div class="panel fj-head">
@@ -1005,9 +1017,8 @@ function viewTideFishing(s, sid, d, who) {
             <div class="fj-bar"><i style="width:${(t.family / t.total) * 100}%"></i></div></div>`).join("")}</div></div>`;
     const anglers = !p && d.players.length ? `<section class="section"><div class="section-head"><h2>Anglers</h2>${d.levels_on ? "" : '<span class="muted">Levels are switched off on this server</span>'}</div>
         <ol class="panel tf-anglers">${d.players.map((x) => `<li><button type="button" class="linkish" data-fj="${esc(x.name)}">${faceHtml(x, 24)}<b>${esc(x.name)}</b></button>
-          <span class="tf-lvl">Lv <b>${x.level}</b></span><span class="muted">${esc(x.title)}</span>
-          <div class="fj-bar" title="${x.xp.toLocaleString()} XP"><i style="width:${x.progress * 100}%"></i></div>
-          <span class="muted small">${Object.keys(x.species).length}/${total} fish · ${x.caught.toLocaleString()} caught</span></li>`).join("")}</ol></section>` : "";
+          <span class="tf-lvl">Lv <b>${x.level}</b></span>${anglerBadge(x)}
+          <span class="muted small">${Object.keys(x.species).length}/${total} fish${d.tackle_total ? ` · ${Math.min(x.tackle || 0, d.tackle_total)}/${d.tackle_total} tackle` : ""} · ${x.caught.toLocaleString()} caught</span></li>`).join("")}</ol></section>` : "";
     const groups = d.groups.map((g) => {
       const list = d.species.filter((sp) => sp.group === g.key);
       if (!list.length) return "";
@@ -1078,10 +1089,7 @@ async function renderPlayerFishing(el, sid, player) {
   const records = Object.entries(d.records).filter(([, r]) => r.player === p.name).map(([id]) => names[id]?.name).filter(Boolean);
   const best = Object.entries(p.species).filter(([, m]) => m.heaviest_g).sort((a, b) => b[1].heaviest_g - a[1].heaviest_g).slice(0, 8);
   el.innerHTML = `<section class="section"><div class="panel fj-head">
-      <div class="tf-level">${faceHtml(p, 40)}<div><b class="tf-lv">Fishing level ${p.level}</b> <span class="muted">${esc(p.title)}</span>${p.fair ? ' <span class="fish-q fq-gold">Fair play</span>' : ""}
-        <div class="fj-bar"><i style="width:${p.progress * 100}%"></i></div>
-        <span class="muted small">${p.xp.toLocaleString()} XP${p.next == null ? " · max level" : ` · ${p.next.toLocaleString()} to level ${p.level + 1}`}</span></div></div>
-      <div class="fj-progress"><span><b>${have} of ${total}</b> kinds of fish · <b>${p.caught.toLocaleString()}</b> caught</span><div class="fj-bar"><i style="width:${(have / Math.max(1, total)) * 100}%"></i></div></div>
+      ${anglerHead(p, d)}
       <div class="fish-qs">${d.qualities.map((q, i) => `<span class="fish-q fq-${q.color}">${esc(q.name)} <small>${p.qualities[i] || 0}</small></span>`).join("")}</div>
       ${records.length ? `<p class="small">🏆 Family record holder: ${records.map(esc).join(", ")}</p>` : ""}
     </div></section>

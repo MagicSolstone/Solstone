@@ -36,6 +36,7 @@ def test_family_journal(client, sid):
     tyler = next(p for p in d["players"] if p["name"] == "Tyler")
     assert tyler["level"] == 11 and tyler["title"] == "Apprentice Angler" and tyler["caught"] == 16
     assert tyler["qualities"] == [4, 8, 3, 1, 0, 0] and tyler["species"]["tide:bluegill"]["shortest_cm"] > 0
+    assert d["tackle_total"] == 3 + 6 and tyler["tackle"] == 3                              # unknown names don't count
     assert d["players"][0]["name"] == "Tyler"                                               # most XP first
     assert all(p["name"] != "MomCrafts" for p in d["players"])                             # never fished with Tide
 

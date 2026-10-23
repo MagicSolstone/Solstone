@@ -97,6 +97,40 @@ def species(srv) -> list[dict]:
     return S._cache.get(("tide-species", str(j)), j, _read_species) or []
 
 
+_TACKLE_TAGS = ("fishing_rods", "lines", "hooks", "bobbers", "lures", "bait_items")
+_GEAR = ("angler_hat", "fishing_vest", "waders", "wading_boots", "tackle_box", "fish_satchel")
+
+
+def _read_tackle(path: Path) -> list[str]:
+    """Every piece of tackle the journal's tackle section lists (by item path): the mod's tackle tags, plus gear."""
+    out: set[str] = set()
+    with zipfile.ZipFile(path) as z:
+        names = set(z.namelist())
+        for tag in _TACKLE_TAGS:
+            f = f"data/tide/tags/item/{tag}.json"
+            if f not in names:
+                continue
+            try:
+                vals = json.loads(z.read(f).decode("utf-8", "replace")).get("values") or []
+            except ValueError:
+                continue
+            for v in vals:
+                v = v.get("id", "") if isinstance(v, dict) else str(v)
+                if v.startswith("tide:"):
+                    out.add(v[5:])
+    if out:
+        out.update(_GEAR)
+    return sorted(out)
+
+
+def tackle(srv) -> list[str]:
+    """Every piece of tackle there is to find (empty for a Tide without the tackle journal)."""
+    j = jar(srv)
+    if not j:
+        return []
+    return S._cache.get(("tide-tackle", str(j)), j, _read_tackle) or []
+
+
 # ------------------------------------------------------------------ levels (same maths as the mod)
 def _config(srv) -> dict:
     raw = S._cache.get(("tide-config", srv.id), srv.dir / "config" / "tide.json", S._json) or {}
@@ -148,7 +182,9 @@ def _player_tide(srv, uuid: str) -> dict:
             "qualities": [int(x) for x in (st.get("quality_counts") or [])][:len(QUALITIES)],
         }
     ang = tide.get("TideAngler") or {}
-    return {"fish": fish, "xp": int(ang.get("xp", 0) or 0), "fair": bool(ang.get("fair", False))}
+    found = str((tide.get("TideTackle") or {}).get("found") or "")
+    return {"fish": fish, "xp": int(ang.get("xp", 0) or 0), "fair": bool(ang.get("fair", False)),
+            "tackle": {t for t in found.split(",") if t}}
 
 
 def _level_info(xp: int, cfg: dict) -> dict:
@@ -191,6 +227,7 @@ def journal(srv) -> dict:
     ids = {s["id"] for s in sp}
     known = S.known_players(srv)
     players, entries = [], {s["id"]: [] for s in sp}
+    all_tackle = set(tackle(srv))
     for uuid, p in known.items():
         t = _player_tide(srv, uuid)
         if not t["fish"] and not t["xp"]:
@@ -203,7 +240,8 @@ def journal(srv) -> dict:
                 entries[fid].append({"player": p["name"], "uuid": uuid, **f})
         players.append({"uuid": uuid, "name": p["name"], **_level_info(t["xp"], cfg), "fair": t["fair"],
                         "species": {fid: f for fid, f in t["fish"].items() if fid in ids},
-                        "caught": sum(f["count"] for f in t["fish"].values()), "qualities": quals})
+                        "caught": sum(f["count"] for f in t["fish"].values()), "qualities": quals,
+                        "tackle": len(t["tackle"] & all_tackle)})
     # catches seen in the log since the last save: count toward records too (save files lag a few minutes)
     uuids = {p["name"]: u for u, p in known.items()}
     for r in db.fish_catches(srv.id):
@@ -246,7 +284,7 @@ def journal(srv) -> dict:
     return {"source": "tide", "species": sp, "groups": [{"key": k, "label": lbl} for k, lbl in GROUPS],
             "qualities": [{"name": n, "color": c, "chance": QUALITY_ODDS[i]} for i, (n, c) in enumerate(QUALITIES)],
             "players": players, "records": records, "top": top, "tiers": tiers, "family_species": len(family),
-            "recent": recent, "levels_on": cfg["enabled"], "baseline": cfg["baseline"]}
+            "recent": recent, "levels_on": cfg["enabled"], "baseline": cfg["baseline"], "tackle_total": len(all_tackle)}
 
 
 # ------------------------------------------------------------------ catches from the log

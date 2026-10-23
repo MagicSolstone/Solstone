@@ -1731,7 +1731,7 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .tf-level > div { flex: 1; display: grid; gap: 4px; }
 .tf-lv { font-size: 1.15rem; }
 .tf-anglers { list-style: none; margin: 0; padding: 6px 0; }
-.tf-anglers li { display: grid; grid-template-columns: minmax(120px, 1fr) auto minmax(0, 1.2fr) 2fr auto; align-items: center; gap: 10px; padding: 6px 14px; }
+.tf-anglers li { display: grid; grid-template-columns: minmax(120px, 1fr) auto minmax(0, 1.4fr) auto; align-items: center; gap: 10px; padding: 6px 14px; }
 .tf-anglers .linkish { display: inline-flex; align-items: center; gap: 8px; background: none; border: 0; color: inherit; cursor: pointer; padding: 0; font: inherit; text-align: left; }
 .tf-anglers .fj-bar { height: 6px; }
 @media (max-width: 640px) { .tf-anglers li { grid-template-columns: 1fr auto; } .tf-anglers li > :nth-child(n+3) { grid-column: 1 / -1; } }
@@ -1769,3 +1769,12 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .fr-form .check small { color: var(--muted); }
 .row-end { display: flex; justify-content: flex-end; gap: 8px; }
 .fr-lv { width: 4.5em; margin-left: 6px; padding: 2px 6px; }
+/* an angler's title badge: grander every 20 levels (5 = Legendary at 99) */
+.tf-badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .8rem; font-weight: 700; margin-left: 6px; letter-spacing: .01em;
+  border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: #cfd6dc; white-space: nowrap; }
+.tf-badge.t1 { color: #8be38b; border-color: rgba(139,227,139,.4); background: rgba(139,227,139,.08); }
+.tf-badge.t2 { color: #6fd6ff; border-color: rgba(111,214,255,.45); background: rgba(111,214,255,.09); }
+.tf-badge.t3 { color: #e08bff; border-color: rgba(224,139,255,.5); background: rgba(224,139,255,.1); }
+.tf-badge.t4 { color: #ffd24a; border-color: rgba(255,210,74,.55); background: rgba(255,210,74,.12); }
+.tf-badge.t5 { color: #1a1a1a; border-color: #ffd24a; background: linear-gradient(90deg, #ffd24a, #ff9a4a, #ff6ad5, #6fd6ff); }
+.tf-anglers .tf-badge { margin-left: 0; justify-self: start; }
