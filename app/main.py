@@ -1408,12 +1408,23 @@ async def get_mods(sid: str):
 
 
 # ---- the family modpack (packwiz): Prism updates every PC's mods from here
+def _public_base(request: Request) -> str:
+    """The address the person (or Prism) used to reach Solstone: PUBLIC_URL if set, else this request's,
+    corrected by a reverse proxy's X-Forwarded-Proto/Host (so it's https://playsolstone.com behind
+    Cloudflare or a proxy, not the container's own http address)."""
+    if config.public_url:
+        return config.public_url
+    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme).split(",")[0].strip()
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc).split(",")[0].strip()
+    return f"{proto}://{host}"
+
+
 def _pack_view(srv, request: Request) -> dict:
     cfg = modpack.get(srv.id)
-    base = str(request.base_url).rstrip("/")
+    base = _public_base(request)
     url = f"{base}/api/public/pack/{cfg['token']}/pack.toml" if cfg["token"] else ""
     return {"enabled": cfg["enabled"], "url": url, "command": modpack.prism_command(url) if url else "",
-            "bootstrap": f"{base}/api/public/packwiz-installer-bootstrap.jar", "mc": srv.mc_version,
+            "bootstrap": "/api/public/packwiz-installer-bootstrap.jar", "mc": srv.mc_version,       # same site as the page
             "loader": modpack.fabric_loader_version(srv), "server_mods": modpack.server_mods(srv),
             "extra": [{k: e.get(k) for k in ("slug", "title", "kind", "version", "filename", "icon")} for e in cfg["extra"]]}
 
@@ -1516,7 +1527,7 @@ async def pack_file(token: str, path: str, request: Request):
         if not jar:
             raise HTTPException(404, "Not in the pack")
         return FileResponse(jar, media_type="application/java-archive", filename=jar.name)
-    files = await asyncio.to_thread(modpack.files, srv, str(request.base_url))
+    files = await asyncio.to_thread(modpack.files, srv, _public_base(request))
     if path not in files:
         raise HTTPException(404, "Not in the pack")
     return Response(files[path], media_type="application/toml", headers={"Cache-Control": "no-cache"})

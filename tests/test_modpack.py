@@ -120,3 +120,18 @@ def test_server_mod_choice_and_updates(client, sid, modrinth):
 def test_modpack_is_admin_only(viewer, anon, sid):
     assert viewer.get(f"/api/servers/{sid}/modpack").status_code == 403
     assert anon.get(f"/api/servers/{sid}/modpack").status_code == 401
+
+
+def test_pack_links_use_the_address_people_came_in_on(client, sid, modrinth, monkeypatch):
+    """Behind Cloudflare or a reverse proxy the page is https://playsolstone.com, not the container's
+    http address: the pack's links must say so (a browser won't download http from an https page)."""
+    from app import config as C
+    base = f"/api/servers/{sid}/modpack"
+    behind = {"x-forwarded-proto": "https", "x-forwarded-host": "playsolstone.com"}
+    v = client.put(base, json={"enabled": True}, headers=behind).json()
+    assert v["url"].startswith("https://playsolstone.com/api/public/pack/") and v["bootstrap"] == "/api/public/packwiz-installer-bootstrap.jar"
+    token = v["url"].split("/api/public/pack/")[1].split("/")[0]
+    tide = client.get(f"/api/public/pack/{token}/mods/tide.pw.toml", headers=behind).text
+    assert 'url = "https://playsolstone.com/api/public/pack/' in tide
+    monkeypatch.setattr(C.config, "public_url", "https://mc.example.org")           # PUBLIC_URL wins
+    assert client.get(base).json()["url"].startswith("https://mc.example.org/")

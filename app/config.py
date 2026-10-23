@@ -37,6 +37,9 @@ class Config:
 
     # App data (settings + downloaded game assets)
     data_dir: Path = Path(os.getenv("DATA_DIR", "/data"))
+    # The address people reach Solstone at (https://playsolstone.com), for links Solstone hands out
+    # (the family modpack). Optional: otherwise worked out from each request and the proxy's headers.
+    public_url: str = os.getenv("PUBLIC_URL", "").rstrip("/")
 
     # Optional: require this token for changing settings (header X-Admin-Token)
     admin_token: str = os.getenv("ADMIN_TOKEN", "")

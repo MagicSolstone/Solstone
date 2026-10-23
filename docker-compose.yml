@@ -20,6 +20,7 @@ services:
       # RCON_HOST: 192.168.150.10       # where Minecraft RCON ports are published (defaults to the Crafty host)
       # ADMIN_PASSWORD: choose-something-long   # first admin's password; generated into the log if unset
       # TRUST_PROXY_HEADERS: "true"     # ONLY behind Cloudflare Tunnel or a reverse proxy you control
+      # PUBLIC_URL: https://playsolstone.com   # the address people use; links Solstone hands out (the modpack) use it
       # NTFY_URL: https://ntfy.sh/your-secret-topic   # or set notifications up in the UI
       # MUSIC_LIBRARY_DIR: /music       # with the music folder mounted below
     volumes:
