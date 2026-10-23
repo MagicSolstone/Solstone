@@ -1768,3 +1768,4 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .fr-form .check span { display: grid; gap: 2px; }
 .fr-form .check small { color: var(--muted); }
 .row-end { display: flex; justify-content: flex-end; gap: 8px; }
+.fr-lv { width: 4.5em; margin-left: 6px; padding: 2px 6px; }

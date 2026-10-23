@@ -1921,23 +1921,27 @@ async def fishing_reset(sid: str, request: Request):
     body = await _body(request)
     player = str(body.get("player", "")).strip()
     everything = bool(body.get("everything"))
+    level = body.get("level")
     if not re.fullmatch(r"[A-Za-z0-9_]{1,16}", player):
         raise HTTPException(400, "That isn't a Minecraft name")
+    if level is not None and (not isinstance(level, int) or isinstance(level, bool) or not 1 <= level <= 99):
+        raise HTTPException(400, "Pick a level from 1 to 99")
     if not srv.rcon_conf():
         raise HTTPException(409, "Turn on RCON for this server first")
     try:
-        reply = await srv.rcon(f"fishinglevel reset {player}{' everything' if everything else ''}") or ""
+        cmd = f"fishinglevel set {player} {level}" if level is not None else f"fishinglevel reset {player}{' everything' if everything else ''}"
+        reply = await srv.rcon(cmd) or ""
     except RconError as e:
         raise HTTPException(502, f"The server didn't answer: {e}") from e
     if "No player was found" in reply or "Unknown or incomplete command" in reply or "Incorrect argument" in reply:
         raise HTTPException(409, f"{player} needs to be online for this (the fishing mod changes their save itself)"
                             if "No player" in reply else "This server's Tide is too old for resets; update the mod")
-    removed = await asyncio.to_thread(db.clear_fishing, srv.id, player) if everything else 0
+    removed = await asyncio.to_thread(db.clear_fishing, srv.id, player) if everything and level is None else 0
     try:
         await srv.rcon("save-all")          # so this page shows the fresh start straight away
     except RconError:
         pass
-    auth.audit(user, srv.id, "fishing:reset", f"{player} {'everything' if everything else 'level'}")
+    auth.audit(user, srv.id, "fishing:reset", f"{player} " + (f"set level {level}" if level is not None else "everything" if everything else "level"))
     return {"ok": True, "reply": reply, "catches_removed": removed}
 
 

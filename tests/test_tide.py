@@ -243,6 +243,10 @@ def test_fishing_reset(client, sid, viewer, monkeypatch):
     r = client.post(url, json={"player": "Tyler", "everything": True}).json()
     assert resets()[-1] == "fishinglevel reset Tyler everything" and "save-all" in sent and r["catches_removed"] == had >= 1
     assert not db.fish_catches(sid, "Tyler") and not db.events(sid, ["fish"], "Tyler")
+    r = client.post(url, json={"player": "Tyler", "level": 99}).json()
+    assert resets()[-1] == "fishinglevel set Tyler 99" and r["catches_removed"] == 0
+    assert client.post(url, json={"player": "Tyler", "level": 100}).status_code == 400
+    assert client.post(url, json={"player": "Tyler", "level": "99"}).status_code == 400
 
     async def offline(self, cmd):
         return "No player was found"
