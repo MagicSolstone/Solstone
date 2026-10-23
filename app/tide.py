@@ -22,7 +22,7 @@ from .nbtutil import load_dat
 
 MOD_ID = "tide"
 # Tide's catch qualities, best last; colours match the in-game tooltip (CSS classes fq-*)
-QUALITIES = [("Poor", "gray"), ("Average", "white"), ("Fine", "green"), ("Prime", "aqua"), ("Trophy", "light_purple"), ("Mythic", "gold")]
+QUALITIES = [("Poor", "gray"), ("Average", "white"), ("Good", "green"), ("Great", "aqua"), ("Trophy", "light_purple"), ("Mythic", "gold")]
 QUALITY_ODDS = [30.0, 48.0, 17.0, 4.0, 0.9, 0.1]           # % at the baseline level, a normal hook
 RARITIES = [("common", "Common", 1), ("uncommon", "Uncommon", 2), ("rare", "Rare", 3), ("very_rare", "Very rare", 4), ("legendary", "Legendary", 5)]
 RARITY_XP = {"common": 10, "uncommon": 20, "rare": 40, "very_rare": 80, "legendary": 200}

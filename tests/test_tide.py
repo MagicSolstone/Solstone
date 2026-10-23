@@ -90,7 +90,7 @@ def test_recorder_reads_tide_lines(client, sid):
         fh.write('[10:00:01] [Server thread/INFO]: [Tide catch] {"player": "Tyler", "fish": "tide:bluegill", "rarity": "common", "quality": 2, "weight_g": 300.0}\n')
     recorder.tail_server(srv)
     after = [r for r in db.fish_catches(sid) if r["species"] == "tide:bluegill"]
-    assert len(after) == before + 1 and after[-1]["quality_name"] == "Fine" and after[-1]["points"] == 15
+    assert len(after) == before + 1 and after[-1]["quality_name"] == "Good" and after[-1]["points"] == 15
 
 
 # ------------------------------------------------------------------ contests scored from Tide catches
@@ -157,7 +157,7 @@ def test_biggest_catch_with_tide_and_fair_play(lake):
     asyncio.run(challenges.on_catch(srv, "Gimli_Jr", pike))
     asyncio.run(challenges.on_catch(srv, "Gimli_Jr", small))
     asyncio.run(challenges.on_catch(srv, "Tyler", small))
-    assert any("Prime Pike" in x and "10.2 lb" in x and "new best" in x for x in srv.cmds)
+    assert any("Great Pike" in x and "10.2 lb" in x and "new best" in x for x in srv.cmds)
     srv.online = ["Tyler"]                                                               # Gimli_Jr logs off before the end
     _end(challenges)
     asyncio.run(challenges.tick([srv]))
@@ -186,7 +186,7 @@ def test_tournament_points_from_tide_and_no_fair_play(lake):
     _end(challenges)
     asyncio.run(challenges.tick([srv]))
     c = challenges.list_for(srv.id)[0]
-    assert c["scores"]["Tyler"] == 30 and c["winners"] == ["Tyler"]                       # Fine common: 10 x 1.5 = 15 each
+    assert c["scores"]["Tyler"] == 30 and c["winners"] == ["Tyler"]                       # Good common: 10 x 1.5 = 15 each
 
 
 def test_plain_fishing_contest_still_uses_the_game_stat_with_tide(lake):
@@ -234,8 +234,8 @@ def test_fishing_reset(client, sid, viewer, monkeypatch):
         return "Reset 1 player(s) to a fresh start" if cmd.startswith("fishinglevel") else ""
     monkeypatch.setattr(S.Server, "rcon", online)
     monkeypatch.setattr(S.Server, "rcon_conf", lambda self: {"host": "127.0.0.1", "port": 1, "password": "x"})
-    db.add_catch(sid, 1.0, "Tyler", {"species": "tide:bluegill", "name": "Bluegill", "quality": 2, "quality_name": "Fine", "weight": 300.0, "points": 3})
-    db.add_event(sid, 1.0, "fish", "Tyler caught a Fine Bluegill", "Tyler")
+    db.add_catch(sid, 1.0, "Tyler", {"species": "tide:bluegill", "name": "Bluegill", "quality": 2, "quality_name": "Good", "weight": 300.0, "points": 3})
+    db.add_event(sid, 1.0, "fish", "Tyler caught a Good Bluegill", "Tyler")
     url = f"/api/servers/{sid}/fishing/reset"
 
     resets = lambda: [c for c in sent if c.startswith("fishinglevel")]   # noqa: E731 (other tests' background loops send commands too)

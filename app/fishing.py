@@ -341,7 +341,7 @@ async def _journal(srv, who: str, c: dict) -> None:
         await _rcon(srv, f"tellraw {who} {line}")
 
 
-_OLD_QUALITY = {"Poor": 0, "Normal": 1, "Quality": 2, "Fine": 2, "Prime": 3, "Trophy": 3, "Exquisite": 4, "Legendary": 4, "Mythic": 5}
+_OLD_QUALITY = {"Poor": 0, "Normal": 1, "Quality": 2, "Fine": 2, "Prime": 3, "Good": 2, "Great": 3, "Trophy": 3, "Exquisite": 4, "Legendary": 4, "Mythic": 5}
 _CAUGHT = re.compile(r"^(?P<who>\S+) caught an? (?P<fish>.+?) · (?P<lb>[\d.]+) lb · (?P<p>\d+) points$")
 
 
