@@ -178,6 +178,7 @@ def _player_tide(srv, uuid: str) -> dict:
             "longest_cm": float(st.get("largest_catch", 0) or 0),
             "shortest_cm": smallest if 0 < smallest < 1e9 else 0.0,
             "heaviest_g": float(st.get("heaviest_catch", 0) or 0),
+            "heaviest_quality": int(st.get("heaviest_quality", -1)),   # quality of that heaviest fish (newer Tide+ only)
             "best_quality": int(st.get("best_quality", -1)),
             "qualities": [int(x) for x in (st.get("quality_counts") or [])][:len(QUALITIES)],
         }
@@ -251,13 +252,14 @@ def journal(srv) -> dict:
         row = next((e for e in entries[r["species"]] if e["player"] == r["player"]), None)
         if row is None:                                    # caught since their last save
             row = {"player": r["player"], "uuid": uuids.get(r["player"]), "count": 0, "longest_cm": 0.0, "shortest_cm": 0.0,
-                   "heaviest_g": 0.0, "best_quality": -1, "qualities": [], "logged": 0}
+                   "heaviest_g": 0.0, "heaviest_quality": -1, "best_quality": -1, "qualities": [], "logged": 0}
             entries[r["species"]].append(row)
         if "logged" in row:
             row["logged"] += 1
             row["count"] = max(row["count"], row["logged"])
         if grams > row["heaviest_g"]:
             row["heaviest_g"] = grams
+            row["heaviest_quality"] = r["quality"]
         row["best_quality"] = max(row["best_quality"], r["quality"])
 
     records, top = {}, {}
@@ -266,7 +268,7 @@ def journal(srv) -> dict:
             continue
         ranked = sorted(rows, key=lambda e: (e["heaviest_g"], e["longest_cm"]), reverse=True)
         top[fid] = [{"player": e["player"], "uuid": e["uuid"], "weight_g": round(e["heaviest_g"], 1), "length_cm": round(e["longest_cm"], 1),
-                     "quality": e["best_quality"], "count": e["count"]} for e in ranked[:3]]
+                     "quality": e["best_quality"], "fish_quality": e.get("heaviest_quality", -1), "count": e["count"]} for e in ranked[:3]]
         records[fid] = top[fid][0]
 
     family = {fid for fid, rows in entries.items() if rows}

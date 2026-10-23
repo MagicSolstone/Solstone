@@ -979,14 +979,16 @@ function viewTideFishing(s, sid, d, who) {
   const stars = (n) => `<span class="tf-stars" title="${n} star rarity">${"★".repeat(n)}</span>`;
   const size = (e) => [fmtWeight(e.weight_g), fmtLength(e.length_cm)].filter(Boolean).join(" · ");
 
+  // the quality of a record fish, as a diamond in its quality colour like the game tooltip (nothing when the save does not say)
+  const qStar = (e) => (e.fish_quality >= 0 ? `<span class="tf-qstar fq-${QC[e.fish_quality]}" title="${esc(d.qualities[e.fish_quality].name)}">◆</span>` : "");
   const familyCard = (sp) => {
     const rec = d.records[sp.id], top = d.top[sp.id] || [];
     if (!rec) return `<div class="fj-card"><div class="fj-top fj-dark">${itemIcon({ id: sp.id })}<b class="muted">${esc(sp.name)}</b>${stars(sp.stars)}</div>
         <span class="muted small">Nobody has caught one yet</span>${sp.where ? `<span class="muted small">Look in: ${esc(sp.where)}</span>` : ""}</div>`;
     return `<div class="fj-card got"><div class="fj-top">${itemIcon({ id: sp.id })}<b>${esc(sp.name)}</b>${stars(sp.stars)}</div>
-        <span class="fj-best" title="Family record, caught by ${esc(rec.player)}${rec.quality >= 0 ? ` · ${esc(d.qualities[rec.quality].name)}` : ""}">🏆 <b>${esc(size(rec) || `${rec.count} caught`)}</b> <span class="muted small">${esc(rec.player)}</span></span>
-        <ol class="tf-top">${top.map((e, i) => `<li title="${esc(e.player)}: ${esc(size(e))}${e.quality >= 0 ? ` · best quality ${esc(d.qualities[e.quality].name)}` : ""} · ${e.count} caught">
-          <span class="rank">${i + 1}</span>${faceHtml({ name: e.player, uuid: e.uuid }, 16)}<span>${esc(e.player)}</span><span class="muted small">${esc(fmtWeight(e.weight_g) || fmtLength(e.length_cm))}</span></li>`).join("")}</ol></div>`;
+        <span class="fj-best" title="Family record, caught by ${esc(rec.player)}${rec.length_cm ? ` · ${esc(fmtLength(rec.length_cm))} long` : ""}${rec.fish_quality >= 0 ? ` · ${esc(d.qualities[rec.fish_quality].name)}` : ""}">🏆 <b>${esc(fmtWeight(rec.weight_g) || fmtLength(rec.length_cm) || `${rec.count} caught`)}</b>${qStar(rec)} <span class="muted small">${esc(rec.player)}</span></span>
+        <ol class="tf-top">${top.map((e, i) => `<li title="${esc(e.player)}: ${esc(size(e))}${e.fish_quality >= 0 ? ` · ${esc(d.qualities[e.fish_quality].name)}` : ""} · ${e.count} caught">
+          <span class="rank">${i + 1}</span>${faceHtml({ name: e.player, uuid: e.uuid }, 16)}<span>${esc(e.player)}</span><span class="muted small">${esc(fmtWeight(e.weight_g) || fmtLength(e.length_cm))}${qStar(e)}</span></li>`).join("")}</ol></div>`;
   };
   const playerCard = (p) => (sp) => {
     const mine = p.species[sp.id], rec = d.records[sp.id];

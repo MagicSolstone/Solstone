@@ -99,7 +99,7 @@ def build(root: Path) -> Path:
         def fish(fid, n, longest, heaviest, best, counts):
             return Compound({"fish": String(f"tide:{fid}"), "data": Compound({"stats": Compound({
                 "amount_caught": Int(n), "largest_catch": Double(longest), "smallest_catch": Double(longest * 0.6),
-                "best_quality": Int(best), "heaviest_catch": Double(heaviest), "quality_counts": List[Int]([Int(c) for c in counts])})})})
+                "best_quality": Int(best), "heaviest_catch": Double(heaviest), "heaviest_quality": Int(best - 1), "quality_counts": List[Int]([Int(c) for c in counts])})})})
         if i == 0:
             data = [fish("bluegill", 12, 31.0, 410.0, 3, [3, 6, 2, 1, 0, 0]), fish("largemouth_bass", 4, 55.0, 2300.0, 2, [1, 2, 1, 0, 0, 0])]
             xp = 300

@@ -29,6 +29,7 @@ def test_family_journal(client, sid):
     assert d["source"] == "tide" and len(d["species"]) == 3 and d["family_species"] == 2
     bass = d["records"]["tide:largemouth_bass"]
     assert bass["player"] == "Gimli_Jr" and bass["weight_g"] == 3400.0                    # heaviest wins the record
+    assert bass["fish_quality"] == 3                                                       # the quality of that very fish
     assert [e["player"] for e in d["top"]["tide:largemouth_bass"]] == ["Gimli_Jr", "Tyler"]
     assert "tide:great_white_shark" not in d["records"]
     tiers = {t["key"]: t for t in d["tiers"]}

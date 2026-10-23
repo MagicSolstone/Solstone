@@ -1778,3 +1778,4 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .tf-badge.t4 { color: #ffd24a; border-color: rgba(255,210,74,.55); background: rgba(255,210,74,.12); }
 .tf-badge.t5 { color: #1a1a1a; border-color: #ffd24a; background: linear-gradient(90deg, #ffd24a, #ff9a4a, #ff6ad5, #6fd6ff); }
 .tf-anglers .tf-badge { margin-left: 0; justify-self: start; }
+.tf-qstar { margin-left: 3px; font-size: .95em; text-shadow: 0 0 2px rgba(0,0,0,.6); }
