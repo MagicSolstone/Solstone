@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from . import auth, backups, board, challenges, control, db, fishing, fishpack, games, modpack, races, fireworks, fwshow, guard, music, notify, recap, selfcheck, skins, tide, upcoming, worldmap
 from . import servers as S
 from . import settings_store
+from .rcon import RconError
 from .recorder import recorder
 from .assets import assets_for, safe_texture_path, store
 from .config import config
@@ -1909,6 +1910,35 @@ async def fishing_pack(request: Request, server: str = ""):
     with_fishing = not (srv and await asyncio.to_thread(tide.installed, srv))      # Tide does fishing its own way
     return Response(fishpack.build_zip(new, fishing=with_fishing), media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="{fishpack.PACK_FILE}"', "Cache-Control": "no-store"})
+
+
+@app.post("/api/servers/{sid}/fishing/reset")
+async def fishing_reset(sid: str, request: Request):
+    """Tide: back to fishing level 1 (and, with everything, an empty journal, tackle log and Solstone catch
+    history). The player has to be online: the mod changes their save itself."""
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    body = await _body(request)
+    player = str(body.get("player", "")).strip()
+    everything = bool(body.get("everything"))
+    if not re.fullmatch(r"[A-Za-z0-9_]{1,16}", player):
+        raise HTTPException(400, "That isn't a Minecraft name")
+    if not srv.rcon_conf():
+        raise HTTPException(409, "Turn on RCON for this server first")
+    try:
+        reply = await srv.rcon(f"fishinglevel reset {player}{' everything' if everything else ''}") or ""
+    except RconError as e:
+        raise HTTPException(502, f"The server didn't answer: {e}") from e
+    if "No player was found" in reply or "Unknown or incomplete command" in reply or "Incorrect argument" in reply:
+        raise HTTPException(409, f"{player} needs to be online for this (the fishing mod changes their save itself)"
+                            if "No player" in reply else "This server's Tide is too old for resets; update the mod")
+    removed = await asyncio.to_thread(db.clear_fishing, srv.id, player) if everything else 0
+    try:
+        await srv.rcon("save-all")          # so this page shows the fresh start straight away
+    except RconError:
+        pass
+    auth.audit(user, srv.id, "fishing:reset", f"{player} {'everything' if everything else 'level'}")
+    return {"ok": True, "reply": reply, "catches_removed": removed}
 
 
 @app.post("/api/servers/{sid}/fishing/{action}")

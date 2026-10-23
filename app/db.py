@@ -502,6 +502,15 @@ def add_catch(server_id: str, ts: float, player: str, c: dict) -> dict:
     return {"new_species": prev["n"] == 0, "personal_best": prev["n"] > 0 and c["weight"] > (prev["best"] or 0), "species_caught": kinds}
 
 
+def clear_fishing(server_id: str, player: str) -> int:
+    """Forget a player's catches and fishing feed lines (for a fresh start). Returns how many catches went."""
+    with _lock:
+        c = conn()
+        n = c.execute("DELETE FROM fish_catches WHERE server_id=? AND lower(player)=lower(?)", (server_id, player)).rowcount
+        c.execute("DELETE FROM events WHERE server_id=? AND type IN ('fish','bigfish') AND lower(player)=lower(?)", (server_id, player))
+    return n
+
+
 def fish_catches(server_id: str, player: str | None = None) -> list[dict]:
     if player:
         rows = q("SELECT * FROM fish_catches WHERE server_id=? AND player=? ORDER BY ts", (server_id, player))

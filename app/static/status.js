@@ -160,8 +160,29 @@ const EVENT_ICON = { join: "→", leave: "←", death: "☠", advancement: "★"
 // Sections are only replaced when their content changes, so the web map iframe and the
 // position canvas aren't rebuilt on every refresh.
 function setHtml(el, html) { if (el && el._html !== html) { el._html = html; el.innerHTML = html; } }
+// Routine lines (every catch, every bullseye) fold into one line per kind, placed at the newest of
+// them, so a busy afternoon doesn't push everything else off the list. Rare fish stay as their own line.
+const ROUTINE = { fish: ["catch", "catches"], game: ["game moment", "game moments"], bigfish: ["big catch", "big catches"] };
+const ROUTINE_MIN = { fish: 2, game: 2, bigfish: 3 };
+function condenseRecent(list) {
+  const routine = (e) => ROUTINE[e.type] && !/\b(Trophy|Mythic)\b|every kind/.test(e.message || "");
+  const byType = {};
+  list.forEach((e) => { if (routine(e)) (byType[e.type] = byType[e.type] || []).push(e); });
+  const out = [], done = new Set();
+  for (const e of list) {
+    const g = routine(e) ? byType[e.type] : null;
+    if (!g || g.length < ROUTINE_MIN[e.type]) { out.push(e); continue; }
+    if (done.has(e.type)) continue;
+    done.add(e.type);
+    const who = [...new Set(g.map((x) => x.player).filter(Boolean))];
+    const names = who.length <= 2 ? who.join(" and ") : `${who.slice(0, 2).join(", ")} and ${who.length - 2} more`;
+    const [one, many] = ROUTINE[e.type];
+    out.push({ ...e, player: null, message: `${g.length} ${g.length === 1 ? one : many}${names ? ` · ${names}` : ""}` });
+  }
+  return out;
+}
 function feedHtml(b) {
-  return `<ul class="sp-feed">${b.recent.map((e) => `
+  return `<ul class="sp-feed">${condenseRecent(b.recent).map((e) => `
     <li class="ev-${esc(e.type)}"><span class="ev-icon" aria-hidden="true">${EVENT_ICON[e.type] || "•"}</span><span class="ev-time">${esc(fmtAgo(e.ts))}</span><span>${esc(e.message).replace(/\[(.+)\]$/, '<span class="adv-name">$1</span>')}</span></li>`).join("")}</ul>`;
 }
 function render(b) {
@@ -224,7 +245,7 @@ function heroHtml(b) {
 function playersHtml(b) {
   if (b.running === false) return `<div class="sp-empty glass"><h2>${b.crashed ? "The server crashed" : "The server is offline"}</h2><p class="muted">Check back later.</p>${recentlyHtml(b)}</div>`;
   if (!b.players.length) return `<div class="sp-empty glass"><h2>Nobody's playing right now</h2><p class="muted">The server is up. Players show here the moment they join.</p>${recentlyHtml(b)}</div>`;
-  return `<div class="sp-players ${b.players.length === 1 ? "solo" : ""}">${b.players.map(playerCardHtml).join("")}</div>${b.recently.length ? `<div class="sp-recent-wrap">${recentlyHtml(b)}</div>` : ""}`;
+  return `<div class="sp-players ${b.players.length === 1 ? "solo" : b.players.length > 4 ? "many" : ""}">${b.players.map(playerCardHtml).join("")}</div>${b.recently.length ? `<div class="sp-recent-wrap">${recentlyHtml(b)}</div>` : ""}`;
 }
 function recentlyHtml(b) {
   if (!b.recently.length) return "";
@@ -524,7 +545,7 @@ function tvNewsHtml() {
 }
 // Always beside the slides: what's playing, and the last few things that happened.
 function tvSideFeedHtml(b) {
-  const list = b.recent.slice(0, 7);
+  const list = condenseRecent(b.recent).slice(0, 7);
   if (!list.length) return "";
   const uuids = Object.fromEntries([...b.players, ...b.recently].filter((p) => p.uuid).map((p) => [p.name.toLowerCase(), p.uuid]));
   return `<section class="tv-side-box glass"><h3>Lately</h3><ul class="tv-events">${list.map((e) => {

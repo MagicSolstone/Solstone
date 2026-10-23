@@ -5,7 +5,9 @@
 // ================================================================ colours
 // Categorical slots (validated for the dark surface, see README). Colour follows the
 // player, not their rank: slots are assigned by alphabetical order of everyone known.
-const SERIES = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"];
+// 16 colours far enough apart to tell players apart in charts; a 17th player onward is grey.
+const SERIES = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767",
+  "#1aa3c4", "#86b81c", "#b85bd6", "#a0663a", "#d4c21a", "#4a55c9", "#ff8c69", "#5fcf9f"];
 const OTHER = "#737a86";
 let playerSlots = {};
 function setPlayerSlots(names) {
@@ -209,6 +211,42 @@ function nameInk(player) {
   return `rgb(${mix((n >> 16) & 255)} ${mix((n >> 8) & 255)} ${mix(n & 255)})`;
 }
 
+// Routine game and fishing lines (every catch, every bullseye) fold into one line per kind inside a
+// session, which opens to show them all. Big catches, challenge and race results, chat, deaths and
+// advancements stay as their own lines.
+const BUNDLES = {
+  fish: { types: ["fish"], icon: "🎣", one: "catch", many: "catches", min: 2 },
+  big: { types: ["bigfish"], icon: "🐟", one: "big catch", many: "big catches", min: 3 },
+  game: { types: ["game"], icon: "🎲", one: "game moment", many: "game moments", min: 2 },
+};
+// Trophy and Mythic fish and "caught every kind" are rare enough to always get their own line.
+const ALWAYS_SHOWN = /\b(Trophy|Mythic)\b|every kind/;
+function bundleOf(e) {
+  if (ALWAYS_SHOWN.test(e.message || "")) return null;
+  for (const [k, b] of Object.entries(BUNDLES)) if (b.types.includes(e.type)) return k;
+  return null;
+}
+// Lines for a block's events, with routine ones bundled where the first of them happened.
+function condensedLines(evs, withName, colorNames) {
+  const groups = {};
+  evs.forEach((e) => { const k = bundleOf(e); if (k) (groups[k] = groups[k] || []).push(e); });
+  const out = [];
+  const placed = new Set();
+  for (const e of evs) {
+    const k = bundleOf(e);
+    if (!k || groups[k].length < BUNDLES[k].min) { out.push(eventLineHtml(e, withName, colorNames)); continue; }
+    if (placed.has(k)) continue;
+    placed.add(k);
+    const g = groups[k], b = BUNDLES[k];
+    const who = [...new Set(g.map((x) => x.player).filter(Boolean))];
+    const span = `${hm(g[0].ts)}–${hm(g[g.length - 1].ts)}`;
+    const whoText = withName && who.length ? ` · ${who.length > 3 ? `${who.length} players` : who.map(esc).join(", ")}` : "";
+    out.push(`<li class="feed-item ev-bundle ev-${k}"><details><summary><span class="ev-icon" aria-hidden="true">${b.icon}</span><span class="ev-time">${esc(span)}</span><span class="ev-msg"><b>${g.length} ${g.length === 1 ? b.one : b.many}</b>${whoText}</span></summary>
+      <ul class="nested">${g.map((x) => eventLineHtml(x, withName, colorNames)).join("")}</ul></details></li>`);
+  }
+  return out;
+}
+
 function groupBlockHtml(b) {
   const range = b.open
     ? `${hm(b.start)} – now <span class="live-tag"><span class="status-dot on"></span>playing</span>`
@@ -221,14 +259,14 @@ function groupBlockHtml(b) {
   }).join("");
   const summary = Object.entries(COUNT_LABELS).filter(([k]) => b.counts[k])
     .map(([k, [one, many]]) => `<span class="cnt ev-${k}"><span aria-hidden="true">${EVENT_ICON[k]}</span> ${b.counts[k]} ${b.counts[k] === 1 ? one : many}</span>`).join("");
-  const evs = b.events;
+  const evs = condensedLines(b.events, true, true);
   const hidden = Math.max(0, evs.length - NEST_SHOWN * 2);
   const stripes = b.players.map((n, i, a) => `${playerColor(n)} ${(i / a.length) * 100}% ${((i + 1) / a.length) * 100}%`).join(", ");
   return `<li class="tl-session tl-group" style="--stripe:linear-gradient(${stripes})">
     <div class="tl-head"><span class="tl-together">Played together</span><span class="tl-range">${range}</span><span class="tl-dur">${b.seconds >= 60 ? fmtSeconds(b.seconds) : "under a minute"}</span></div>
     <div class="tl-people">${people}</div>
     ${summary ? `<div class="tl-sum">${summary}</div>` : ""}
-    ${evs.length ? `<ul class="nested">${evs.map((e, i) => eventLineHtml(e, true, true).replace('<li class="', `<li ${i >= NEST_SHOWN * 2 ? "hidden " : ""}class="`)).join("")}</ul>
+    ${evs.length ? `<ul class="nested">${evs.map((line, i) => line.replace('<li class="', `<li ${i >= NEST_SHOWN * 2 ? "hidden " : ""}class="`)).join("")}</ul>
       ${hidden ? `<button class="link-btn show-all" type="button">Show ${hidden} more</button>` : ""}` : ""}
   </li>`;
 }
@@ -240,10 +278,10 @@ function sessionBlockHtml(b, showPlayer) {
     : `${hm(b.start)} – ${hm(b.end || b.last_seen)}`;
   const summary = Object.entries(COUNT_LABELS).filter(([k]) => b.counts[k])
     .map(([k, [one, many]]) => `<span class="cnt ev-${k}"><span aria-hidden="true">${EVENT_ICON[k]}</span> ${b.counts[k]} ${b.counts[k] === 1 ? one : many}</span>`).join("");
-  const evs = b.events;
+  const evs = condensedLines(b.events, false, false);
   const hidden = Math.max(0, evs.length - NEST_SHOWN);
   const body = evs.length
-    ? `<ul class="nested">${evs.map((e, i) => eventLineHtml(e, false).replace('<li class="', `<li ${i >= NEST_SHOWN ? "hidden " : ""}class="`)).join("")}</ul>
+    ? `<ul class="nested">${evs.map((line, i) => line.replace('<li class="', `<li ${i >= NEST_SHOWN ? "hidden " : ""}class="`)).join("")}</ul>
        ${hidden ? `<button class="link-btn show-all" type="button">Show ${hidden} more</button>` : ""}`
     : "";
   const head = showPlayer
@@ -288,7 +326,7 @@ function mountTimeline(el, sid, player = "") {
   list.addEventListener("click", (e) => {
     const btn = e.target.closest(".show-all");
     if (!btn) return;
-    btn.parentElement.querySelectorAll(".nested li[hidden]").forEach((li) => (li.hidden = false));
+    btn.parentElement.querySelectorAll(":scope > .nested > li[hidden]").forEach((li) => (li.hidden = false));
     btn.remove();
     st.expanded = true;
   });

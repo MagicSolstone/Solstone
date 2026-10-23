@@ -218,3 +218,36 @@ def test_fishing_tab_only_with_something_to_fish_with(client, sid, tmp_path):
     (tmp_path / "world" / "datapacks").mkdir(parents=True)
     (tmp_path / "world" / "datapacks" / "solstone-pack.zip").write_bytes(b"PK")
     assert fishing.available(Plain()) == "pack"
+
+
+def test_fishing_reset(client, sid, viewer, monkeypatch):
+    """Admins can send someone back to level 1, or to a completely fresh start (journal, tackle log and
+    Solstone's catch history too). The mod does the save, so the player has to be online."""
+    from app import db
+    from app import servers as S
+    sent = []
+
+    async def online(self, cmd):
+        sent.append(cmd)
+        return "Reset 1 player(s) to a fresh start" if cmd.startswith("fishinglevel") else ""
+    monkeypatch.setattr(S.Server, "rcon", online)
+    monkeypatch.setattr(S.Server, "rcon_conf", lambda self: {"host": "127.0.0.1", "port": 1, "password": "x"})
+    db.add_catch(sid, 1.0, "Tyler", {"species": "tide:bluegill", "name": "Bluegill", "quality": 2, "quality_name": "Fine", "weight": 300.0, "points": 3})
+    db.add_event(sid, 1.0, "fish", "Tyler caught a Fine Bluegill", "Tyler")
+    url = f"/api/servers/{sid}/fishing/reset"
+
+    resets = lambda: [c for c in sent if c.startswith("fishinglevel")]   # noqa: E731 (other tests' background loops send commands too)
+    r = client.post(url, json={"player": "Tyler"}).json()
+    assert resets() == ["fishinglevel reset Tyler"] and r["catches_removed"] == 0
+    had = len(db.fish_catches(sid, "Tyler"))
+    r = client.post(url, json={"player": "Tyler", "everything": True}).json()
+    assert resets()[-1] == "fishinglevel reset Tyler everything" and "save-all" in sent and r["catches_removed"] == had >= 1
+    assert not db.fish_catches(sid, "Tyler") and not db.events(sid, ["fish"], "Tyler")
+
+    async def offline(self, cmd):
+        return "No player was found"
+    monkeypatch.setattr(S.Server, "rcon", offline)
+    r = client.post(url, json={"player": "Tyler"})
+    assert r.status_code == 409 and "online" in r.json()["detail"]
+    assert client.post(url, json={"player": "not a name!"}).status_code == 400
+    assert viewer.post(url, json={"player": "Tyler"}).status_code == 403

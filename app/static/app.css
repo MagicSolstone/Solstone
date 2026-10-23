@@ -487,6 +487,14 @@ a.rail-btn[hidden] { display: none; }
 .tl-loose { padding: 2px 16px; }
 .tl-loose .nested { border-top: 0; margin: 0; padding: 0; }
 .tl-loose .feed-item { color: var(--muted); }
+/* bundled routine lines (catches, game moments): one line that opens */
+.nested .feed-item.ev-bundle { display: block; padding: 2px 0; }
+.ev-bundle summary { display: grid; grid-template-columns: 22px auto 1fr; gap: 8px; align-items: baseline; cursor: pointer; padding: 2px 0; list-style: none; }
+.ev-bundle summary::-webkit-details-marker { display: none; }
+.ev-bundle summary .ev-msg::after { content: " ▸"; color: var(--faint); }
+.ev-bundle details[open] summary .ev-msg::after { content: " ▾"; }
+.ev-bundle summary:hover .ev-msg b, .ev-bundle summary:focus-visible .ev-msg b { text-decoration: underline; }
+.ev-bundle .nested { margin: 2px 0 6px 30px; padding-left: 10px; border-left: 2px solid var(--line); }
 .link-btn { background: none; border: 0; color: #9fb6f0; cursor: pointer; padding: 4px 0; font-weight: 700; font-size: .88rem; }
 .link-btn:hover { text-decoration: underline; }
 .toggle { display: inline-flex !important; align-items: center; gap: 8px; font-weight: 700; font-size: .92rem; color: var(--muted); cursor: pointer; }
@@ -688,6 +696,17 @@ body.status-page { min-height: 100vh; }
 .sp-players { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 430px), 1fr)); gap: 16px; }
 .sp-player { border-radius: 16px; padding: 18px; display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 18px; align-items: start; }
 .sp-players.solo .sp-player { grid-template-columns: 150px minmax(0, 1fr); }
+/* five or more online: smaller cards, two to a row, so everyone fits on a screen or two */
+.sp-players.many { grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; align-items: start; }
+.sp-players.many .sp-player { grid-template-columns: 64px minmax(0, 1fr); padding: 12px; gap: 12px; border-radius: 12px; }
+.sp-players.many .sp-body { min-height: 0; }
+.sp-players.many .sp-body img { max-height: 120px; }
+.sp-players.many .sp-body .face { --s: 56px !important; }
+.sp-players.many .sp-info h2 { font-size: 1.15rem; overflow-wrap: anywhere; }
+.sp-players.many .sp-vitals { margin-top: 8px; gap: 4px; }
+.sp-players.many .hud-row.hearts { max-width: calc(10 * 15px); }
+.sp-players.many .hud-row img, .sp-players.many .hud-row svg { width: 14px; height: 14px; }
+.sp-players.many .sp-info .chips, .sp-players.many .sp-gear { margin-top: 8px; }
 .sp-body { display: grid; place-items: end center; min-height: 180px; }
 .sp-body img { max-width: 100%; max-height: 230px; image-rendering: pixelated; filter: drop-shadow(0 10px 10px rgba(0,0,0,.4)); }
 .sp-body img.fallback { width: 88px; height: 88px; border-radius: 6px; }
@@ -1741,3 +1760,11 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .pk .linkish { background: none; border: 0; color: var(--accent, #7dc4ff); cursor: pointer; padding: 0; font: inherit; text-decoration: underline; }
 .pk-t { display: grid; min-width: 0; flex: 1; }
 .pk-t b, .pk-t small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* fishing reset (admin) */
+.tf-reset { display: flex; justify-content: flex-end; margin-top: 10px; }
+.fr-form { display: grid; gap: 12px; }
+.fr-form .check { display: flex; gap: 10px; align-items: flex-start; }
+.fr-form .check span { display: grid; gap: 2px; }
+.fr-form .check small { color: var(--muted); }
+.row-end { display: flex; justify-content: flex-end; gap: 8px; }

@@ -984,7 +984,8 @@ function viewTideFishing(s, sid, d, who) {
             <div class="fj-bar" title="${p.next == null ? "Max level" : `${p.next.toLocaleString()} XP to level ${p.level + 1}`}"><i style="width:${p.progress * 100}%"></i></div>
             <span class="muted small">${p.xp.toLocaleString()} XP${p.next == null ? " · max level" : ` · ${p.next.toLocaleString()} to level ${p.level + 1}`}</span></div></div>
           <div class="fj-progress"><span><b>${have} of ${total}</b> kinds of fish · <b>${p.caught.toLocaleString()}</b> caught</span><div class="fj-bar"><i style="width:${(have / Math.max(1, total)) * 100}%"></i></div></div>
-          <div class="fish-qs">${d.qualities.map((q, i) => `<span class="fish-q fq-${q.color}">${qMarks(i)} ${esc(q.name)} <small>${p.qualities[i] || 0}</small></span>`).join("")}</div></div>`
+          <div class="fish-qs">${d.qualities.map((q, i) => `<span class="fish-q fq-${q.color}">${qMarks(i)} ${esc(q.name)} <small>${p.qualities[i] || 0}</small></span>`).join("")}</div>
+          ${isAdmin() ? `<div class="tf-reset"><button type="button" class="btn" data-reset="${esc(p.name)}">Reset fishing…</button></div>` : ""}</div>`
       : `<div class="panel fj-head">
           <div class="fj-progress"><span>The family has caught <b>${have} of ${total}</b> kinds of fish</span><div class="fj-bar"><i style="width:${(have / Math.max(1, total)) * 100}%"></i></div></div>
           <div class="tf-tiers">${d.tiers.map((t) => `<div class="tf-tier ${t.family === t.total ? "done" : ""}" title="${esc(Object.entries(t.players).map(([n, c]) => `${n}: ${c}/${t.total}`).join("\n"))}">
@@ -1014,6 +1015,35 @@ function viewTideFishing(s, sid, d, who) {
         <div class="fish-qs">${d.qualities.map((q, i) => `<span class="fish-q fq-${q.color}">${qMarks(i)} ${esc(q.name)} <small>${q.chance >= 1 ? `${q.chance}%` : `1 in ${Math.round(100 / q.chance).toLocaleString()}`}</small></span>`).join("")}</div></section>`);
     wireHeader(s);
     $$("[data-fj]").forEach((b) => b.addEventListener("click", () => { pick = b.dataset.fj; render(); window.scrollTo({ top: 0 }); }));
+    $("[data-reset]")?.addEventListener("click", (e) => openFishingReset(sid, e.currentTarget.dataset.reset));
   };
   render();
+}
+
+// Back to a fresh angler, for testing or a new season. Tide changes the player's own save, so they need to be online.
+function openFishingReset(sid, name) {
+  openModal(`<h2>Reset ${esc(name)}'s fishing</h2>
+    <form id="fr-form" class="fr-form">
+      <label class="check"><input type="radio" name="what" value="level" checked> <span><b>Level only</b><small>Back to fishing level 1. Their journal, records and tackle stay.</small></span></label>
+      <label class="check"><input type="radio" name="what" value="everything"> <span><b>Everything</b><small>Level 1, an empty fish journal (catches, records, quality counts), an empty tackle log, and their catch history here in Solstone.</small></span></label>
+      <p class="muted small">${esc(name)} has to be online. This can't be undone.</p>
+      <div class="row-end"><button type="button" class="btn" data-close>Cancel</button><button type="submit" class="btn danger">Reset</button></div>
+    </form>`, (m) => {
+    m.querySelector("[data-close]").addEventListener("click", closeModal);
+    m.querySelector("#fr-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const everything = m.querySelector("input[name=what]:checked").value === "everything";
+      const btn = m.querySelector("button[type=submit]");
+      btn.disabled = true;
+      try {
+        const r = await post(`/api/servers/${encodeURIComponent(sid)}/fishing/reset`, { player: name, everything });
+        closeModal();
+        showToast(everything ? `${name} is starting fresh at level 1${r.catches_removed ? ` (${r.catches_removed} catches cleared)` : ""}` : `${name} is back to fishing level 1`, 5000);
+        setTimeout(() => viewFishingJournal(sid, name), 1500);
+      } catch (err) {
+        btn.disabled = false;
+        showToast(err.message, 6000);
+      }
+    });
+  });
 }
