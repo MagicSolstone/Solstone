@@ -166,10 +166,22 @@ async function viewChallenges(sid) {
           <li><button class="btn sm primary" type="button" data-fish="reload">Load it</button> <span class="muted small">(runs /reload in the game and checks)</span></li></ol>`;
     const q = fish.qualities.map((x) => `<span class="fish-q fq-${x.color}">${esc(x.name)} <small>${x.one_in <= 2 ? `${x.chance}%` : `1 in ${x.one_in}`}</small></span>`).join("");
     const rows = fish.guide.map((g) => `<tr><td>${itemIcon({ id: g.item })}<b>${esc(g.name)}</b></td><td>${esc(g.waters.join(", "))}</td><td>${g.min_lb}–${g.max_lb} lb</td><td>${g.min_points}–${g.max_points}</td><td class="muted">${esc(g.rarity)}</td></tr>`).join("");
+    const download = `<a class="link-btn" href="/api/fishing/${esc(st.file)}?server=${encodeURIComponent(sid)}" download>Download it again</a>`;
+    if (fish.tide) {      // Tide does the fishing: the pack is only for archery and spleef here
+      return `<section class="section" id="fish-sec"><div class="section-head"><h2>🎯 Solstone data pack</h2><span class="muted">${on ? `In the world${old ? " (an update is ready)" : " ✓"}` : "Not in this world yet"}</span></div>
+        <div class="panel fish-panel">
+          <p>The archery and spleef games need this pack in the world: it notes where each arrow was shot from and how close it hit, and builds the spleef arena. Fishing on this server is tracked through the Tide mod instead: see the Fishing tab.</p>
+          ${!fish.rcon ? `<p class="notice">Needs RCON turned on for this server.</p>` : on && !old ? `<p class="muted small">Loaded (version ${st.version}). <button class="link-btn" type="button" data-fish="reload">Reload</button> · ${download}</p>` : steps}
+          <div id="fish-diag"></div>
+          ${filesHtml(st)}
+          ${old && !st.writable ? `<p class="muted small">Replace the old file with the new download, then load it.</p>` : ""}
+          ${st.error ? `<p class="notice small">${esc(st.error)}</p>` : ""}
+        </div></section>`;
+    }
     return `<section class="section" id="fish-sec"><div class="section-head"><h2>🎣 Solstone data pack</h2><span class="muted">${on ? `In the world${old ? " (an update is ready)" : " ✓"}` : "Not in this world yet"}</span></div>
       <div class="panel fish-panel">
         <p>One data pack for fishing and archery. Fishing: every catch is a species with a weight and a quality: <b>${fish.guide.length} kinds of fish</b> that depend on where you cast (rivers and lakes, oceans, warm or cold water, swamps, jungle rivers, the deep ocean). It unlocks the <b>Fishing tournament</b> (most points) and <b>Biggest catch</b> contests, and Trophy and Legendary catches are announced to everyone. Archery: it notes where each shot was taken from and how close to the centre it hit, for the archery games.</p>
-        ${!fish.rcon ? `<p class="notice">Needs RCON turned on for this server.</p>` : on && !old ? `<p class="muted small">Loaded (version ${st.version}). <button class="link-btn" type="button" data-fish="reload">Reload</button> · <button class="link-btn" type="button" data-fish="test">Test a catch</button></p>` : steps}
+        ${!fish.rcon ? `<p class="notice">Needs RCON turned on for this server.</p>` : on && !old ? `<p class="muted small">Loaded (version ${st.version}). <button class="link-btn" type="button" data-fish="reload">Reload</button> · <button class="link-btn" type="button" data-fish="test">Test a catch</button> · ${download}</p>` : steps}
         <div id="fish-diag"></div>
         ${filesHtml(st)}
         ${old && !st.writable ? `<p class="muted small">Replace the old file with the new download, then load it.</p>` : ""}
@@ -1046,4 +1058,32 @@ function openFishingReset(sid, name) {
       }
     });
   });
+}
+
+
+// ================================================================ a player's fishing (player page tab)
+async function renderPlayerFishing(el, sid, player) {
+  el.innerHTML = '<p class="muted">Loading…</p>';
+  let d;
+  try { d = await api(`/api/servers/${encodeURIComponent(sid)}/fishing/journal`); } catch (e) { el.innerHTML = `<div class="notice">${esc(e.message)}</div>`; return; }
+  const p = (d.players || []).find((x) => x.name.toLowerCase() === player.name.toLowerCase());
+  const full = `#/s/${encodeURIComponent(sid)}/fishing/${encodeURIComponent(player.name)}`;
+  if (!p) { el.innerHTML = `<div class="empty"><h3>No fishing yet</h3><p>${esc(player.name)} hasn't caught anything yet.</p></div>`; return; }
+  if (d.source !== "tide") { el.innerHTML = `<p><a class="btn" href="${full}">Open ${esc(player.name)}'s fishing journal</a></p>`; return; }
+  const QC = d.qualities.map((q) => q.color);
+  const names = Object.fromEntries(d.species.map((sp) => [sp.id, sp]));
+  const total = d.species.length, have = Object.keys(p.species).length;
+  const records = Object.entries(d.records).filter(([, r]) => r.player === p.name).map(([id]) => names[id]?.name).filter(Boolean);
+  const best = Object.entries(p.species).filter(([, m]) => m.heaviest_g).sort((a, b) => b[1].heaviest_g - a[1].heaviest_g).slice(0, 8);
+  el.innerHTML = `<section class="section"><div class="panel fj-head">
+      <div class="tf-level">${faceHtml(p, 40)}<div><b class="tf-lv">Fishing level ${p.level}</b> <span class="muted">${esc(p.title)}</span>${p.fair ? ' <span class="fish-q fq-gold">Fair play</span>' : ""}
+        <div class="fj-bar"><i style="width:${p.progress * 100}%"></i></div>
+        <span class="muted small">${p.xp.toLocaleString()} XP${p.next == null ? " · max level" : ` · ${p.next.toLocaleString()} to level ${p.level + 1}`}</span></div></div>
+      <div class="fj-progress"><span><b>${have} of ${total}</b> kinds of fish · <b>${p.caught.toLocaleString()}</b> caught</span><div class="fj-bar"><i style="width:${(have / Math.max(1, total)) * 100}%"></i></div></div>
+      <div class="fish-qs">${d.qualities.map((q, i) => `<span class="fish-q fq-${q.color}">${esc(q.name)} <small>${p.qualities[i] || 0}</small></span>`).join("")}</div>
+      ${records.length ? `<p class="small">🏆 Family record holder: ${records.map(esc).join(", ")}</p>` : ""}
+    </div></section>
+    ${best.length ? `<section class="section"><div class="section-head"><h2>Heaviest catches</h2></div><ul class="panel fj-recent">${best.map(([id, m]) => `<li>${itemIcon({ id })}<b>${esc(names[id]?.name || id)}</b>
+      <span class="muted small">${esc(fmtWeight(m.heaviest_g))}${m.longest_cm ? ` · ${esc(fmtLength(m.longest_cm))}` : ""} · caught ${m.count}×</span>${m.best_quality >= 0 ? `<span class="fq-${QC[m.best_quality]} small">best ${esc(d.qualities[m.best_quality].name)}</span>` : ""}</li>`).join("")}</ul></section>` : ""}
+    <p><a class="btn" href="${full}">Open ${esc(p.name)}'s whole journal</a></p>`;
 }

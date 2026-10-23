@@ -642,11 +642,9 @@ function playerRow(p) {
   const vitals = p.online && p.health != null
     ? `<span title="Health">❤ ${p.health}</span>${p.food != null ? `<span title="Hunger">🍗 ${p.food}</span>` : ""}`
     : "";
-  const right = p.online && p.today_seconds ? `<span class="pr-val" title="Played today">${fmtSeconds(p.today_seconds)}<small>today</small></span>`
-    : `<span class="pr-val" title="Time played in total">${fmtDuration(h.play_time)}<small>total</small></span>`;
   const inner = `${headHtml(p, 40)}
     <div class="pr-main"><div class="pr-name">${esc(p.name)}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}${p.op ? '<span class="op-badge">OP</span>' : ""}</div>
-      <div class="pr-sub">${sub}${vitals}</div></div>${right}`;
+      <div class="pr-sub">${sub}${vitals}</div></div>`;
   const cls = `pl-row ${p.online ? "is-online" : ""}`;
   return href ? `<a class="${cls}" href="${href}">${inner}</a>` : `<div class="${cls}">${inner}</div>`;
 }
@@ -704,7 +702,8 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
   try { p = await api(`/api/servers/${sid}/players/${uuid}`); }
   catch (e) { setView(serverHeader(s, "overview") + `<div class="empty"><h3>Player not found</h3><p>${esc(e.message)}</p></div>`); wireHeader(s); return; }
   const base = `#/s/${encodeURIComponent(sid)}/p/${uuid}`;
-  const tabs = [["inventory", "Inventory"], ["history", "Play history"], ["stats", "Statistics"], ["advancements", "Advancements"]];
+  const tabs = [["inventory", "Inventory"], ["history", "Play history"], ["stats", "Statistics"], ["advancements", "Advancements"],
+    ...(s.fishing ? [["fishing", "Fishing"]] : [])];
   setView(`<a class="back" href="#/s/${encodeURIComponent(sid)}">← ${esc(s.name)}</a>
     <div id="hero">${playerHero(p)}</div>
     <div id="strip">${statStrip(p)}</div>
@@ -719,6 +718,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
     else if (tab === "stats") renderStats(el, p);
     else if (tab === "advancements") el.innerHTML = advancementsHtml(p);
     else if (tab === "history") renderPlayerHistory(el, sid, p);
+    else if (tab === "fishing") renderPlayerFishing(el, sid, p);
   };
   renderTab();
   $("#hero").addEventListener("click", (e) => { if (e.target.closest("[data-give]")) openGiveItem(sid, p.name); });

@@ -177,7 +177,7 @@ main:focus, main:focus-visible { outline: none; }
 .pl-group { display: grid; gap: 6px; margin-bottom: 16px; }
 .pl-label { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin: 0 2px 2px; }
 .pl-none { margin: 0 2px 14px; font-size: .92rem; }
-.pl-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px;
+.pl-row { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; align-items: center; padding: 8px 10px;
   background-color: var(--tuff); border-radius: var(--radius-m); text-decoration: none; }
 .pl-row:hover { border-color: rgba(255,255,255,.24); }
 .pl-row.is-online { box-shadow: inset 3px 0 0 var(--copper), inset 0 1px 0 var(--glass-hi); background-color: rgba(48, 74, 70, .42); }
