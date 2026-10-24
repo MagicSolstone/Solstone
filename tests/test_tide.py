@@ -297,7 +297,8 @@ def test_describe_falls_back_to_the_language_files(monkeypatch):
     for srv in (_DescServer("Unknown or incomplete command"), _DescServer(fail=True)):   # older Tide; server down
         d = asyncio.run(tide.describe_item(srv, "tide:fish_satchel", lang))
         assert d["source"] == "lang" and [x["text"] for x in d["lines"]] == ["Holds fish.", "Right-click to open."]
+        assert ("Update it to 1.0.5" in d["why"]) if not srv.fail else ("isn't answering" in d["why"])
     d = asyncio.run(tide.describe_item(_DescServer(), "minecraft:stone", lang))
-    assert d == {"item": "minecraft:stone", "lines": [], "source": "none"}
+    assert d["lines"] == [] and d["source"] == "none"
     d = asyncio.run(tide.describe_item(_DescServer(), "bad id; op me", lang))
     assert d["source"] == "none"

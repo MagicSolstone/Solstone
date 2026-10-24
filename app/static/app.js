@@ -446,6 +446,7 @@ async function describeItem(sid, id) {
   const d = await api(`/api/servers/${encodeURIComponent(sid)}/assets/describe?item=${encodeURIComponent(id)}`).catch(() => ({ lines: [], source: "none" }));
   const srv = (state.servers || []).find((s) => s.id === sid);
   d.offline = d.source !== "game" && srv?.running === false;
+  if (d.offline) d.why = "";
   if (d.source === "game") state.itemDesc[key] = d;      // keep live answers for the session
   return d;
 }
@@ -499,6 +500,7 @@ async function openGiveItem(sid, player, opts = {}) {
         box.innerHTML = d.lines.length
           ? `<div class="mc-tip">${d.lines.map((l) => `<div style="color:${esc(l.color)}">${esc(l.text)}</div>`).join("")}</div>`
           : `<div class="muted small">${d.offline ? "Start the server to see what this does." : "No description for this item."}</div>`;
+        if (d.why) box.insertAdjacentHTML("beforeend", `<div class="muted small gv-why">${esc(d.why)}</div>`);
       });
       grid.querySelectorAll(".gv-item").forEach((b) => { const on = b.dataset.id === x.id; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
       go.textContent = opts.pick ? "Use this" : `Give ${Math.max(1, +num.value || 1)}`;

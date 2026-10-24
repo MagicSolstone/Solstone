@@ -396,23 +396,38 @@ def lang_description(item: str, lang: dict) -> list[dict]:
 
 
 async def describe_item(srv, item: str, lang: dict) -> dict:
+    """{"item", "lines", "source": game|lang|none, "why"}: "why" says, when the game didn't answer, what to fix."""
     import time
     if not _ITEM_ID.match(item):
-        return {"item": item, "lines": [], "source": "none"}
+        return {"item": item, "lines": [], "source": "none", "why": ""}
     hit = _described.get((srv.id, item))
     if hit and time.monotonic() - hit[0] < DESCRIBE_TTL:
         return hit[1]
-    result = None
-    if installed(srv) and srv.rcon_conf():
+    why = ""
+    if not installed(srv):
+        why = "Tide+ isn't installed on this server, so only the basic descriptions show."
+    elif not srv.rcon_conf():
+        why = "Turn on RCON for this server to see full descriptions."
+    else:
         try:
-            lines = parse_tooltip(await srv.rcon(f"fishing describe {item}"), item, lang)
-        except Exception:                                     # offline or RCON trouble: the language files will do
-            lines = None
+            reply = await srv.rcon(f"fishing describe {item}")
+        except Exception:
+            reply, why = None, "The server isn't answering (is it running?), so only the basic descriptions show."
+        lines = parse_tooltip(reply, item, lang)
         if lines is not None:
-            result = {"item": item, "lines": lines, "source": "game"}
-    if result is None:
-        lines = lang_description(item, lang)
-        result = {"item": item, "lines": lines, "source": "lang" if lines else "none"}
-    if result["source"] == "game":                            # only keep live answers; retry the rest next time
-        _described[(srv.id, item)] = (time.monotonic(), result)
-    return result
+            result = {"item": item, "lines": lines, "source": "game", "why": ""}
+            _described[(srv.id, item)] = (time.monotonic(), result)
+            return result
+        if reply is not None:
+            low = reply.lower()
+            if "unknown or incomplete command" in low or "incorrect argument" in low and "describe" in low:
+                try:
+                    ver = next((m.get("version") for m in S.mods(srv) if m.get("id") == MOD_ID), None)
+                except Exception:
+                    ver = None
+                why = (f"This server runs Tide+ {ver}" if ver else "This server's Tide+ is older than 1.0.5") \
+                    + ". Update it to 1.0.5 (and restart) for full descriptions."
+            else:
+                why = f"The server said: {reply.strip()[:160]}"
+    lines = lang_description(item, lang)
+    return {"item": item, "lines": lines, "source": "lang" if lines else "none", "why": why}

@@ -1456,6 +1456,7 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .gv-pick-text { min-width: 0; flex: 1; }
 .gv-desc:empty { display: none; }
 .gv-desc { margin-top: 6px; }
+.gv-why { margin-top: 4px; }
 /* the game's own tooltip look, so its colours read the same in light and dark themes */
 .mc-tip { background: #100010f0; border: 2px solid #2a0a5c; border-radius: 4px; padding: 6px 8px; font-size: 13px; line-height: 1.35;
   max-height: 220px; overflow-y: auto; overflow-wrap: anywhere; }
