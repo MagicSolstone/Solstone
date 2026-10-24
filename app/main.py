@@ -18,7 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, backups, board, challenges, control, db, fishing, fishpack, games, modpack, races, fireworks, fwshow, guard, music, notify, recap, selfcheck, skins, tide, upcoming, worldmap
+from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, modpack, races, fireworks, fwshow, guard, music, notify, recap, selfcheck, skins, tide, upcoming, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -1914,6 +1914,57 @@ async def fishing_tackle(sid: str, request: Request):
     a = _assets(srv)
     lang = (await asyncio.to_thread(a.lang_cached)) if a and a.ready else {}
     return await tide.guide(srv, lang)
+
+
+# ---- Adventures: replays of play sessions
+@app.get("/api/servers/{sid}/adventures")
+async def adventures_list(sid: str, request: Request, days: int = 30):
+    auth.require_user(request)
+    srv = await _server(sid)
+    return {"sessions": await asyncio.to_thread(adventures.sessions, srv.id, max(1, min(365, days)))}
+
+
+@app.get("/api/servers/{sid}/adventures/timeline")
+async def adventures_timeline(sid: str, request: Request, start: float, end: float):
+    auth.require_user(request)
+    srv = await _server(sid)
+    return await asyncio.to_thread(adventures.timeline, srv.id, start, end)
+
+
+@app.post("/api/servers/{sid}/adventures")
+async def adventures_save(sid: str, request: Request):
+    """Save (or, with an id, change) an adventure: a stretch of play with a title and a note. Anyone signed in."""
+    user = auth.require_user(request)
+    srv = await _server(sid)
+    body = await _body(request)
+    aid = int(body["id"]) if body.get("id") else None
+    if aid:
+        a = adventures.get(aid)
+        if not a or a["server_id"] != srv.id:
+            raise HTTPException(404, "Adventure not found")
+        if not user.is_admin and a["created_by"] != user.username:
+            raise HTTPException(403, "Only whoever saved it (or an admin) can change it")
+    try:
+        saved = await asyncio.to_thread(adventures.save, srv.id, float(body.get("start", 0)), float(body.get("end", 0)),
+                                        str(body.get("title") or ""), str(body.get("note") or ""), user.username, aid)
+    except (TypeError, ValueError) as e:
+        raise HTTPException(400, str(e)) from e
+    auth.audit(user, srv.id, "adventure", saved["title"])
+    return saved
+
+
+@app.delete("/api/servers/{sid}/adventures/{aid}")
+async def adventures_delete(sid: str, aid: int, request: Request):
+    user = auth.require_user(request)
+    srv = await _server(sid)
+    a = adventures.get(aid)
+    if not a or a["server_id"] != srv.id:
+        raise HTTPException(404, "Adventure not found")
+    if not user.is_admin and a["created_by"] != user.username:
+        raise HTTPException(403, "Only whoever saved it (or an admin) can delete it")
+    adventures.delete(aid)
+    auth.audit(user, srv.id, "adventure_deleted", a["title"])
+    return {"ok": True}
 
 
 @app.get("/api/servers/{sid}/fishing")

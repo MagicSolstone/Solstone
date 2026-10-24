@@ -54,6 +54,29 @@ def start_app(root: Path, port: int) -> subprocess.Popen:
     raise SystemExit("Solstone didn't start")
 
 
+def seed_adventure(path: Path, sid: str) -> None:
+    """A finished play session with two players walking about and a few things happening, for the Adventures pages."""
+    import math
+    import sqlite3
+    c = sqlite3.connect(path)
+    t0 = time.time() - 3 * 3600
+    c.execute("INSERT INTO sessions(server_id, player, start_ts, last_seen_ts, end_ts) VALUES (?,?,?,?,?)", (sid, "Tyler", t0, t0 + 3600, t0 + 3600))
+    c.execute("INSERT INTO sessions(server_id, player, start_ts, last_seen_ts, end_ts) VALUES (?,?,?,?,?)", (sid, "Gimli_Jr", t0 + 300, t0 + 3300, t0 + 3300))
+    for i in range(0, 3600, 20):
+        c.execute("INSERT INTO positions(server_id, ts, player, dim, x, y, z) VALUES (?,?,?,?,?,?,?)",
+                  (sid, t0 + i, "Tyler", "minecraft:overworld", 40 * math.cos(i / 400), 64, 40 * math.sin(i / 400) + i / 40))
+        if 300 <= i <= 3300:
+            c.execute("INSERT INTO positions(server_id, ts, player, dim, x, y, z) VALUES (?,?,?,?,?,?,?)",
+                      (sid, t0 + i, "Gimli_Jr", "minecraft:overworld", -i / 30, 70, 20 * math.sin(i / 300)))
+    for dt, kind, who, msg in [(5, "join", "Tyler", "Tyler joined the game"), (300, "join", "Gimli_Jr", "Gimli_Jr joined the game"),
+                               (900, "progress", "Tyler", "Tyler defeated 3 zombies, 1 skeleton · mined 2 diamond ore"),
+                               (1500, "fish", "Gimli_Jr", "Gimli_Jr caught a Great Bluegill"), (2000, "death", "Tyler", "Tyler was slain by Zombie"),
+                               (2400, "chat", "Gimli_Jr", "found a cave!")]:
+        c.execute("INSERT INTO events(server_id, ts, type, player, message) VALUES (?,?,?,?,?)", (sid, t0 + dt, kind, who, msg))
+    c.commit()
+    c.close()
+
+
 def main() -> int:
     from playwright.sync_api import sync_playwright
 
@@ -64,6 +87,7 @@ def main() -> int:
     port = free_port()
     base = f"http://127.0.0.1:{port}"
     app = start_app(root, port)
+    seed_adventure(root / "data" / "solstone.db", helpers.SID)
     problems: list[str] = []
     sid, (pname, puuid) = helpers.SID, helpers.PLAYERS[0]
     try:
@@ -100,7 +124,7 @@ def main() -> int:
                 "player-stats": f"#/s/{sid}/p/{puuid}/stats", "player-history": f"#/s/{sid}/p/{puuid}/history", "player-fishing": f"#/s/{sid}/p/{puuid}/fishing",
                 "player-advancements": f"#/s/{sid}/p/{puuid}/advancements", "world": f"#/s/{sid}/world",
                 "control": f"#/s/{sid}/control", "check": f"#/s/{sid}/check", "chat": f"#/s/{sid}/chat", "challenges": f"#/s/{sid}/challenges", "races": f"#/s/{sid}/challenges/races", "games": f"#/s/{sid}/challenges/games", "performance": f"#/s/{sid}/performance",
-                "leaderboards": f"#/s/{sid}/leaderboards", "fishing": f"#/s/{sid}/fishing", "fishing-player": f"#/s/{sid}/fishing/Tyler", "mods": f"#/s/{sid}/mods", "coming-up": "#/coming-up",
+                "leaderboards": f"#/s/{sid}/leaderboards", "fishing": f"#/s/{sid}/fishing", "fishing-player": f"#/s/{sid}/fishing/Tyler", "mods": f"#/s/{sid}/mods", "adventures": f"#/s/{sid}/adventures", "coming-up": "#/coming-up",
                 "fireworks-editor": "#/fireworks", "fireworks-settings": "#/fireworks/settings",
                 "music": "#/music", "announcements": "#/announcements", "admin": "#/admin",
             }
@@ -143,6 +167,20 @@ def main() -> int:
                 problems.append("give items: picking an item didn't show its description")
             check(pg, "give-items")
             pg.click(".gv-modal [data-close]")
+
+            # an adventure replay: open the first session, jump to an event, screenshot
+            pg.goto(f"{base}/#/s/{sid}/adventures"); pg.wait_for_timeout(800)
+            if not pg.locator(".rp-row").count():
+                problems.append("adventures: no sessions listed")
+            else:
+                pg.locator(".rp-row").first.click(); pg.wait_for_timeout(1200)
+                if not pg.locator("#rp-map canvas").count() or pg.locator(".rp-ev").count() < 5:
+                    problems.append("adventures: replay didn't show the map and the feed")
+                pg.locator(".rp-ev").nth(3).click(); pg.wait_for_timeout(300)
+                check(pg, "adventure-replay")
+                pg.fill("#rp-save input[name=title]", "Smoke test cave"); pg.click("#rp-save button[type=submit]"); pg.wait_for_timeout(800)
+                if "Smoke test cave" not in (pg.locator(".section-head h2").first.text_content() or ""):
+                    problems.append("adventures: saving didn't take")
 
             # the tackle guide (the game's answer is faked: no server is running)
             guide = {"live": True, "why": "", "fetched_at": time.time() - 90, "whens": {"THUNDER": "in a thunderstorm", "JUNGLE": "in jungles"},

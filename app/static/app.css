@@ -1822,3 +1822,33 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .tg-piece .item { width: 22px; height: 22px; }
 .tg-unfound { filter: brightness(0); opacity: .55; }
 .tg-foot { margin-top: 10px; }
+
+/* ---- Adventures */
+.rp-list { list-style: none; margin: 0; padding: 4px; display: grid; gap: 2px; }
+.rp-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--radius-m); color: inherit; text-decoration: none; }
+.rp-row:hover { background: var(--well); }
+.rp-when { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.rp-faces { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.rp-saved { color: var(--gold); font-size: 1.1rem; }
+.rp .section-head { flex-wrap: wrap; gap: 8px 14px; }
+.rp-note { white-space: pre-wrap; margin: 0 0 12px; }
+.rp-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; align-items: start; }
+@media (max-width: 900px) { .rp-grid { grid-template-columns: 1fr; } }
+.rp-map { position: relative; height: min(62vh, 560px); border-radius: var(--radius-m); overflow: hidden; background: #101826; }
+.rp-map .rm-canvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+.rp-controls { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.rp-controls input[type=range] { flex: 1; min-width: 0; accent-color: var(--gold); }
+.rp-clock { font-variant-numeric: tabular-nums; min-width: 72px; text-align: right; }
+.rp-who { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
+.rp-who .chip-btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--well);
+  border: 1px solid var(--c, var(--line)); color: inherit; font-weight: 600; }
+.rp-who .chip-btn.on { background: color-mix(in srgb, var(--c) 25%, transparent); }
+.rp-feed { max-height: min(62vh, 560px); overflow-y: auto; padding: 6px; display: grid; gap: 2px; align-content: start; }
+.rp-ev { display: grid; grid-template-columns: 62px 20px 1fr; gap: 4px; text-align: left; background: none; border: 0; color: inherit;
+  font: inherit; font-size: .88rem; padding: 5px 6px; border-radius: 6px; cursor: pointer; }
+.rp-ev:hover { background: var(--well); }
+.rp-ev.future { opacity: .4; }
+.rp-ev.now { background: rgba(255, 200, 80, .12); }
+.rp-ev-t { color: var(--muted); font-variant-numeric: tabular-nums; }
+.rp-save { margin-top: 14px; display: grid; gap: 4px; padding: 14px; }
+.rp-save label { display: grid; gap: 4px; font-weight: 700; font-size: .92rem; }

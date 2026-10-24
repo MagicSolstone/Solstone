@@ -350,11 +350,12 @@ function worldMapCanvas(el, sid, o) {
     <div class="rm-zoom"><button type="button" class="icon-btn" data-z="1" aria-label="Zoom in">＋</button><button type="button" class="icon-btn" data-z="-1" aria-label="Zoom out">－</button></div>
     <div class="rm-note muted small"></div>`;
   const cv = el.querySelector("canvas"), ctx = cv.getContext("2d"), note = el.querySelector(".rm-note");
-  const dim = o.dim || "minecraft:overworld";
+  let dim = o.dim || "minecraft:overworld";
   const view = { cx: o.center?.x ?? 0, cz: o.center?.z ?? 0, scale: o.scale || 1 };     // scale: pixels per block
-  const tiles = {}; let regions = null;
-  fetch(`/api/public/map/${encodeURIComponent(sid)}/regions?dim=${encodeURIComponent(dim)}`, { credentials: "same-origin" })
+  let tiles = {}, regions = null;
+  const loadRegions = () => fetch(`/api/public/map/${encodeURIComponent(sid)}/regions?dim=${encodeURIComponent(dim)}`, { credentials: "same-origin" })
     .then((r) => (r.ok ? r.json() : null)).then((d) => { regions = new Set((d?.regions || []).map(([x, z]) => `${x},${z}`)); draw(); }).catch(() => { regions = new Set(); draw(); });
+  loadRegions();
   const tile = (rx, rz) => {
     const k = `${rx},${rz}`;
     let t = tiles[k];
@@ -420,7 +421,8 @@ function worldMapCanvas(el, sid, o) {
   el.querySelectorAll("[data-z]").forEach((b) => b.addEventListener("click", () => zoom(b.dataset.z === "1" ? 1.5 : 1 / 1.5, cv.clientWidth / 2, cv.clientHeight / 2)));
   const ro = new ResizeObserver(() => draw()); ro.observe(cv);
   return {
-    draw,
+    draw, view,
+    setDim(d) { if (d === dim) return; dim = d; tiles = {}; regions = null; loadRegions(); },
     fit(points) {
       if (!points.length) return;
       const xs = points.map((p) => p.x), zs = points.map((p) => p.z);

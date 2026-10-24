@@ -88,6 +88,24 @@ CREATE TABLE IF NOT EXISTS alerts (
     ts REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS positions (
+    server_id TEXT NOT NULL,
+    ts REAL NOT NULL,
+    player TEXT NOT NULL,
+    dim TEXT NOT NULL,
+    x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS positions_by_time ON positions(server_id, ts);
+CREATE TABLE IF NOT EXISTS adventures (
+    id INTEGER PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    start_ts REAL NOT NULL,
+    end_ts REAL NOT NULL,
+    title TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_by TEXT,
+    created_ts REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS log_state (
     server_id TEXT PRIMARY KEY,
     inode INTEGER,

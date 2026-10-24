@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import backups, board, challenges, db, fishing, fwshow, games, gather, guard, music, notify, races, recap, tide
+from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, music, notify, races, recap, tide
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -89,6 +89,7 @@ class Recorder:
         self._offsets: dict[str, float] = {}     # server id -> seconds its log clock is ahead
         self._chat: dict[str, list[tuple[str, str]]] = {}    # server id -> new chat lines (player, text)
         self._catches: dict[str, list[tuple[str, dict]]] = {}  # server id -> new Tide catches (player, catch)
+        self._online: dict[str, list[str]] = {}       # server id -> who was on at the last poll (for the adventure trail)
 
     def start(self) -> None:
         self.started = time.time()
@@ -100,7 +101,8 @@ class Recorder:
                        asyncio.create_task(self._loop(self.recaps, 3600)),
                        asyncio.create_task(self._loop(self.music_scan, 6 * 3600)),
                        asyncio.create_task(self._loop(self.race_tick, 1)),
-                       asyncio.create_task(self._loop(self.fish_poll, 3))]
+                       asyncio.create_task(self._loop(self.fish_poll, 3)),
+                       asyncio.create_task(self._loop(self.track, adventures.TRACK_INTERVAL))]
 
     async def stop(self) -> None:
         for t in self._tasks:
@@ -141,6 +143,13 @@ class Recorder:
         if moving:
             await gather.tick(visible)
 
+    async def track(self) -> None:
+        """Where everyone is, every few seconds while anyone's on (the Adventures replay)."""
+        for sid, names in list(self._online.items()):
+            srv = S.registry.servers.get(sid)
+            if srv and names and srv.is_java and not srv.settings.get("hidden"):
+                await adventures.track(srv, names)
+
     async def fish_poll(self) -> None:
         """Catches from the Solstone Fishing pack (only where it's loaded and someone's on)."""
         await S.registry.refresh()
@@ -168,6 +177,7 @@ class Recorder:
 
     async def prune(self) -> None:
         db.prune(METRICS_DAYS, EVENTS_DAYS)
+        await asyncio.to_thread(adventures.prune)
 
     # ------------------------------------------------------------ polling
     async def poll_all(self) -> None:
@@ -255,6 +265,12 @@ class Recorder:
         name_to_uuid = {p["name"].lower(): u for u, p in S.known_players(srv).items()}
         online = {n: name_to_uuid.get(n.lower()) for n in names} if running else {}
         joined, left = db.update_sessions(srv.id, online, now)
+        self._online[srv.id] = list(online)
+        if online and srv.is_java:
+            try:
+                await asyncio.to_thread(adventures.progress, srv, online)
+            except Exception:
+                log.exception("adventure statistics failed for %s", srv.id)
 
         # Joins/leaves come from the log when we can read it (exact times, no 30s lag);
         # otherwise the poll is the source.
