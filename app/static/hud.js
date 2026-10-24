@@ -82,9 +82,9 @@ function fmtStat(kind, v) {
   }
   if (kind === "cm") { const m = v / 100; return m >= 1000 ? `${n(m / 1000, m >= 100000 ? 0 : 1)} km` : `${Math.round(m)} m`; }
   if (kind === "hearts") return `${n(v / 20)} ♥`;
-  if (kind === "grams") {                         // a fish's weight: "0.38 lb", "3.4 lb", "1,298 lb"
-    const lb = v / 453.59237;
-    if (lb < 1) return `${Math.max(lb, 0.01).toFixed(2)} lb`;
+  if (kind === "grams") {                         // a fish's weight: "0.16 oz", "5.3 oz", "3.4 lb", "1,298 lb" (as Tide+ shows it)
+    const lb = v / 453.59237, oz = lb * 16;
+    if (lb < 1) return oz < 1 ? `${Math.max(oz, 0.01).toFixed(2)} oz` : `${oz.toFixed(1)} oz`;
     return lb < 100 ? `${lb.toFixed(1)} lb` : `${n(lb)} lb`;
   }
   return n(v);
