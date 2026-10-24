@@ -215,6 +215,18 @@ def main() -> int:
             for name, url in (("status", "/status"), ("status-tv", f"/status/{sid}?tv=1")):
                 anon.goto(f"{base}{url}"); anon.wait_for_timeout(2000)
                 check(anon, name)
+            # the status page's screens are tabs when it isn't in TV mode
+            anon.goto(f"{base}/status/{sid}"); anon.wait_for_timeout(1500)
+            tabs = anon.locator(".tv-dots [data-tv]")
+            if tabs.count() < 2:
+                problems.append("status: the screens aren't offered as tabs")
+            else:
+                tabs.nth(1).click(); anon.wait_for_timeout(500)
+                if anon.locator(".tv-slide.on").count() != 1:
+                    problems.append("status: picking a screen didn't show it")
+                check(anon, "status-tab")
+            anon.set_viewport_size({"width": 390, "height": 800}); anon.goto(f"{base}/status/{sid}"); anon.wait_for_timeout(1500)
+            check(anon, "m-status")
 
             # phone width
             m = page(390, 800)

@@ -143,19 +143,21 @@ def sessions(server_id: str, days: int = 30) -> list[dict]:
         else:
             out.append({"start": r["start_ts"], "end": r["end_ts"], "players": {r["player"]}})
     saved = [dict(a) for a in db.q("SELECT * FROM adventures WHERE server_id=? ORDER BY start_ts DESC", (server_id,))]
+    hidden = db.q("SELECT start_ts, end_ts FROM adventures_hidden WHERE server_id=?", (server_id,))
     result = []
     for s in reversed(out):
         if s["end"] - s["start"] < 60:
             continue
         mine = [a for a in saved if a["start_ts"] < s["end"] and a["end_ts"] > s["start"]]
         result.append({"start": s["start"], "end": s["end"], "players": sorted(s["players"], key=str.lower),
-                       "saved": [_public(a) for a in mine]})
+                       "saved": [_public(a) for a in mine],
+                       "hidden": not mine and any(h["start_ts"] < s["end"] and h["end_ts"] > s["start"] for h in hidden)})
     # saved adventures older than the list still show
     shown = {a["id"] for s in result for a in s["saved"]}
     for a in saved:
         if a["id"] not in shown:
             result.append({"start": a["start_ts"], "end": a["end_ts"], "players": _players_between(server_id, a["start_ts"], a["end_ts"]),
-                           "saved": [_public(a)]})
+                           "saved": [_public(a)], "hidden": False})
     result.sort(key=lambda s: -s["start"])
     return result
 
@@ -195,6 +197,7 @@ def save(server_id: str, start: float, end: float, title: str, note: str, who: s
         raise ValueError("Give it a title")
     if end <= start:
         raise ValueError("The end has to be after the start")
+    hide(server_id, start, end, who, False)                   # a saved one is never hidden
     if aid:
         db.x("UPDATE adventures SET title=?, note=?, start_ts=?, end_ts=? WHERE id=? AND server_id=?", (title, note, start, end, aid, server_id))
     else:
@@ -210,3 +213,21 @@ def get(aid: int) -> dict | None:
 
 def delete(aid: int) -> None:
     db.x("DELETE FROM adventures WHERE id=?", (aid,))
+
+
+def hide(server_id: str, start: float, end: float, who: str, hidden: bool = True) -> None:
+    """Hide a session from the Adventures list (or show it again). Saving one shows it again too."""
+    db.x("DELETE FROM adventures_hidden WHERE server_id=? AND start_ts < ? AND end_ts > ?", (server_id, end, start))
+    if hidden:
+        db.x("INSERT INTO adventures_hidden(server_id, start_ts, end_ts, hidden_by, hidden_ts) VALUES (?,?,?,?,?)",
+             (server_id, start, end, who, time.time()))
+
+
+def erase(server_id: str, start: float, end: float) -> dict:
+    """Delete a stretch of play's trail, its statistics lines and any saved adventure over it. The play time,
+    joins, chat and the rest of the history stay (other pages use them)."""
+    n = db.x("DELETE FROM positions WHERE server_id=? AND ts BETWEEN ? AND ?", (server_id, start, end))
+    e = db.x("DELETE FROM events WHERE server_id=? AND type='progress' AND ts BETWEEN ? AND ?", (server_id, start, end))
+    db.x("DELETE FROM adventures WHERE server_id=? AND start_ts < ? AND end_ts > ?", (server_id, end, start))
+    hide(server_id, start, end, "", True)
+    return {"positions": n, "lines": e}

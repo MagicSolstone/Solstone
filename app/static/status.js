@@ -185,27 +185,12 @@ function feedHtml(b) {
   return `<ul class="sp-feed">${condenseRecent(b.recent).map((e) => `
     <li class="ev-${esc(e.type)}"><span class="ev-icon" aria-hidden="true">${EVENT_ICON[e.type] || "•"}</span><span class="ev-time">${esc(fmtAgo(e.ts))}</span><span>${esc(e.message).replace(/\[(.+)\]$/, '<span class="adv-name">$1</span>')}</span></li>`).join("")}</ul>`;
 }
+// One page for everyone: the screens (Playing now, the map, leaderboards...) with their names as tabs. In TV mode
+// (📺, or ?tv=1) they go full screen and play by themselves; otherwise you pick one and the page scrolls normally.
 function render(b) {
   document.title = `${b.name} · Live status`;
   loadExtras(b);
-  if (st.tv) { renderTv(b); return; }
-  const main = $("#sp-main");
-  if (main.dataset.sid !== b.id || main.dataset.mode !== "page") {
-    main.dataset.sid = b.id; main.dataset.mode = "page";
-    main.innerHTML = `<div id="sp-hero"></div><div id="sp-live"></div><div class="sp-grid"><section class="sp-col" id="sp-players" aria-label="Players online"></section>
-      <aside class="sp-col"><div id="sp-mapwrap"></div><div id="sp-webwrap"></div><div id="sp-recapwrap"></div><div id="sp-feedwrap"></div></aside></div>`;
-  }
-  setHtml($("#sp-hero"), heroHtml(b));
-  setHtml($("#sp-players"), playersHtml(b));
-  setHtml($("#sp-live"), liveHtml(b));
-  const hasPos = hasMap(b);
-  setHtml($("#sp-mapwrap"), hasPos ? `<section class="sp-panel glass"><div class="sp-h"><h2>${mapPeople(b).away ? "Where everyone was last" : "Where everyone is"}</h2><span class="muted" id="sp-map-dim"></span></div><div class="sp-map" id="sp-map"></div></section>` : "");
-  setHtml($("#sp-webwrap"), b.web_map ? `<section class="sp-panel glass"><div class="sp-h"><h2>World map</h2><a class="muted" href="${esc(b.web_map)}" target="_blank" rel="noopener">Open full screen</a></div><iframe class="sp-webmap" src="${esc(b.web_map)}" title="World map" loading="lazy"></iframe></section>` : "");
-  setHtml($("#sp-feedwrap"), b.recent.length ? `<section class="sp-panel glass"><div class="sp-h"><h2>Recent activity</h2></div>${feedHtml(b)}</section>` : "");
-  setHtml($("#sp-recapwrap"), recapPanelHtml());
-  if (hasPos) mountMap($("#sp-map"), b, st.map);
-  else st.map = null;
-  tick();
+  renderTv(b);
 }
 
 // Contests, races and games that are on right now: the scoreboard and a countdown.
@@ -486,7 +471,7 @@ async function loadExtras(b) {
     st.recapAt = now;
     getJSON(`/api/public/recap/${encodeURIComponent(sid)}`).then((r) => { if (sid === st.sid) { st.recap = r; if (st.board) render(st.board); } }).catch(() => { st.recap = null; });
   }
-  if (st.tv && st.tvCfg.slides.leaders !== false && now - st.leadersAt > 300000) {
+  if (st.tvCfg.slides.leaders !== false && now - st.leadersAt > 300000) {
     st.leadersAt = now;
     getJSON(`/api/public/leaderboard/${encodeURIComponent(sid)}`).then((r) => { if (sid === st.sid) { st.leaders = r; if (st.board) render(st.board); } }).catch(() => { st.leaders = null; });
   }
@@ -504,7 +489,7 @@ function recapPanelHtml() {
 // ------------------------------------------------------------------ TV mode
 // One slide at a time, big, for a screen on the wall. Slides with nothing to show are skipped;
 // long ones scroll gently while they're up.
-const TV_SLIDES = [["live", "Happening now"], ["now", "Playing now"], ["map", "Where everyone is"], ["leaders", "Leaderboards"], ["recap", "Today on the server"], ["feed", "Recent activity"], ["news", "Announcements"]];
+const TV_SLIDES = [["live", "Happening now"], ["now", "Playing now"], ["map", "Where everyone is"], ["web", "World map"], ["leaders", "Leaderboards"], ["recap", "Today on the server"], ["feed", "Recent activity"], ["news", "Announcements"]];
 const tv = { idx: -1, rot: -1, timer: 0, shown: null, loops: 0, dur: 0 };
 const TV_SCROLL_PX_S = 34;                    // how fast a long screen glides down (pixels per second)
 function nf(n) { return new Intl.NumberFormat([], { maximumFractionDigits: n < 10 ? 1 : 0 }).format(n || 0); }
@@ -514,6 +499,7 @@ function tvAvailable(k, b) {
   if (k === "now") return true;
   if (k === "live") return (b.live || []).length > 0;
   if (k === "map") return hasMap(b);
+  if (k === "web") return !!b.web_map && !st.tv;          // an embedded web map is for browsing, not the wall
   if (k === "leaders") return !!st.leaders?.players?.some((r) => r.play_time > 0);
   if (k === "recap") return !!st.recap && (st.recap.recap.players.length || st.recap.yesterday?.players.length || st.recap.on_this_day.length);
   if (k === "feed") return b.recent.length > 0;
@@ -596,6 +582,7 @@ function renderTv(b) {
   setHtml($("#tv-map"), hasPos ? `<div class="sp-map tv-map" id="sp-map"></div><span class="muted" id="sp-map-dim"></span>` : "");
   if (hasPos && tv.shown === "map") mountMap($("#sp-map"), b, st.map);
   setHtml($("#tv-live"), liveHtml(b, true));
+  setHtml($("#tv-web"), b.web_map && !st.tv ? `<p class="muted"><a href="${esc(b.web_map)}" target="_blank" rel="noopener">Open the map full screen</a></p><iframe class="sp-webmap" src="${esc(b.web_map)}" title="World map" loading="lazy"></iframe>` : "");
   setHtml($("#tv-leaders"), tvLeadersHtml());
   setHtml($("#tv-recap"), tvRecapHtml());
   setHtml($("#tv-feed"), b.recent.length ? `<div class="glass tv-feed">${feedHtml(b)}</div>` : "");
@@ -605,7 +592,10 @@ function renderTv(b) {
   renderTvMusic();
   const sub = $('[data-sub="now"]');
   if (sub) sub.textContent = ` on ${b.name}`;
-  if (tv.idx < 0) tvNext();
+  if (tv.idx < 0) {
+    if (st.tv) tvNext();
+    else tvShow(tvAvailable("live", b) ? "live" : tv.pick && tvAvailable(tv.pick, b) ? tv.pick : "now");
+  }
   else if (tv.shown) {                     // the showing screen got more (or less) to scroll through: start it again
     const inner = $(`.tv-slide[data-slide="${tv.shown}"] .tv-inner`);
     if (inner && Math.abs(inner.scrollHeight - (tv.measured || 0)) > 40) tvShow(tv.shown);
@@ -650,7 +640,8 @@ function tvNext() {
 function tvShow(key) {
   clearTimeout(tv.timer);
   const b = st.board;
-  if (!b || !st.tv) return;
+  if (!b) return;
+  if (!st.tv) tv.pick = key;
   const keys = TV_SLIDES.map(([k]) => k);
   tv.idx = keys.indexOf(key); tv.shown = key;
   document.querySelectorAll(".tv-slide").forEach((el) => {
@@ -658,6 +649,10 @@ function tvShow(key) {
     el.classList.toggle("on", on); el.setAttribute("aria-hidden", String(!on));
   });
   if (tv.shown === "map" && hasMap(b)) { st.map = null; mountMap($("#sp-map"), b, null); }
+  if (!st.tv) {                            // picked by hand: it stays, and the page scrolls as usual
+    document.querySelectorAll(".tv-inner").forEach((el) => el.getAnimations?.().forEach((a) => a.cancel()));
+    tv.dur = 0; tvDots(b); return;
+  }
   // A screen taller than the display stays up long enough to glide through all of it.
   tv.dur = tvScroll($(`.tv-slide[data-slide="${tv.shown}"] .tv-scroll`));
   tvDots(b);

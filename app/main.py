@@ -1953,6 +1953,35 @@ async def adventures_save(sid: str, request: Request):
     return saved
 
 
+@app.post("/api/servers/{sid}/adventures/hide")
+async def adventures_hide(sid: str, request: Request):
+    """Hide a session from the list, or show it again ({start, end, hidden}). Anyone signed in."""
+    user = auth.require_user(request)
+    srv = await _server(sid)
+    body = await _body(request)
+    try:
+        start, end = float(body["start"]), float(body["end"])
+    except (KeyError, TypeError, ValueError) as e:
+        raise HTTPException(400, "Which session?") from e
+    await asyncio.to_thread(adventures.hide, srv.id, start, end, user.username, bool(body.get("hidden", True)))
+    return {"ok": True}
+
+
+@app.post("/api/servers/{sid}/adventures/erase")
+async def adventures_erase(sid: str, request: Request):
+    """Admins: delete a session's trail and statistics lines for good (and any saved adventure over it)."""
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    body = await _body(request)
+    try:
+        start, end = float(body["start"]), float(body["end"])
+    except (KeyError, TypeError, ValueError) as e:
+        raise HTTPException(400, "Which session?") from e
+    r = await asyncio.to_thread(adventures.erase, srv.id, start, end)
+    auth.audit(user, srv.id, "adventure_erased", f"{start:.0f}-{end:.0f}: {r['positions']} positions")
+    return r
+
+
 @app.delete("/api/servers/{sid}/adventures/{aid}")
 async def adventures_delete(sid: str, aid: int, request: Request):
     user = auth.require_user(request)

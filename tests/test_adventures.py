@@ -68,3 +68,25 @@ def test_sessions_timeline_and_saving(client, viewer, sid):
         db.x("DELETE FROM events WHERE id=?", (eid,))
         db.x("DELETE FROM sessions WHERE server_id=?", (sid,))
         db.x("DELETE FROM positions WHERE server_id=?", (sid,))
+
+
+def test_hide_and_erase(client, viewer, sid):
+    from app import db
+    now = time.time()
+    db.x("DELETE FROM sessions WHERE server_id=?", (sid,))
+    db.x("INSERT INTO sessions(server_id, player, start_ts, last_seen_ts, end_ts) VALUES (?,?,?,?,?)", (sid, "Tyler", now - 7200, now - 3600, now - 3600))
+    db.x("INSERT INTO positions(server_id, ts, player, dim, x, y, z) VALUES (?,?,?,?,?,?,?)", (sid, now - 5000, "Tyler", "minecraft:overworld", 1, 64, 2))
+    try:
+        s = viewer.get(f"/api/servers/{sid}/adventures").json()["sessions"][0]
+        assert not s["hidden"]
+        assert viewer.post(f"/api/servers/{sid}/adventures/hide", json={"start": s["start"], "end": s["end"]}).json()["ok"]
+        assert viewer.get(f"/api/servers/{sid}/adventures").json()["sessions"][0]["hidden"]
+        viewer.post(f"/api/servers/{sid}/adventures/hide", json={"start": s["start"], "end": s["end"], "hidden": False})
+        assert not viewer.get(f"/api/servers/{sid}/adventures").json()["sessions"][0]["hidden"]
+        assert viewer.post(f"/api/servers/{sid}/adventures/erase", json={"start": s["start"], "end": s["end"]}).status_code == 403
+        r = client.post(f"/api/servers/{sid}/adventures/erase", json={"start": s["start"], "end": s["end"]}).json()
+        assert r["positions"] == 1
+        assert viewer.get(f"/api/servers/{sid}/adventures").json()["sessions"][0]["hidden"]      # erased ones are hidden too
+    finally:
+        db.x("DELETE FROM sessions WHERE server_id=?", (sid,))
+        db.x("DELETE FROM adventures_hidden WHERE server_id=?", (sid,))

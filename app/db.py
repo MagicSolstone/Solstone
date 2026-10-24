@@ -106,6 +106,13 @@ CREATE TABLE IF NOT EXISTS adventures (
     created_by TEXT,
     created_ts REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS adventures_hidden (
+    server_id TEXT NOT NULL,
+    start_ts REAL NOT NULL,
+    end_ts REAL NOT NULL,
+    hidden_by TEXT,
+    hidden_ts REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS log_state (
     server_id TEXT PRIMARY KEY,
     inode INTEGER,

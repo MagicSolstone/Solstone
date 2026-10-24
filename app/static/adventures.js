@@ -25,21 +25,38 @@ async function viewAdventures(sid, which) {
   setView(serverHeader(s, "adventures") + `<section class="section"><p class="muted">Loading…</p></section>`);
   wireHeader(s);
   const d = await api(`/api/servers/${encodeURIComponent(sid)}/adventures?days=60`);
+  let showHidden = false;
   const row = (x) => {
     const saved = x.saved[0];
     const key = saved ? `a${saved.id}` : `${Math.floor(x.start)}-${Math.ceil(x.end)}`;
-    return `<li><a class="rp-row" href="#/s/${encodeURIComponent(sid)}/adventures/${key}">
+    return `<li class="${x.hidden ? "rp-hidden" : ""}"><a class="rp-row" href="#/s/${encodeURIComponent(sid)}/adventures/${key}">
       <span class="rp-when"><b>${esc(saved ? saved.title : advDay(x.start))}</b>
         <span class="muted small">${saved ? `${esc(advDay(x.start))} · ` : ""}${esc(advClock(x.start))}–${esc(advClock(x.end))} · ${esc(advLength(x.end - x.start))}</span></span>
       <span class="rp-faces">${x.players.slice(0, 8).map((n) => faceHtml({ name: n }, 22)).join("")}${x.players.length > 8 ? `<small>+${x.players.length - 8}</small>` : ""}</span>
-      ${saved ? '<span class="rp-saved" title="Saved">★</span>' : ""}</a></li>`;
+      ${saved ? '<span class="rp-saved" title="Saved">★</span>' : ""}</a>
+      ${saved ? "" : `<button type="button" class="icon-btn rp-hide" data-hide="${x.start}:${x.end}:${x.hidden ? 0 : 1}" title="${x.hidden ? "Show it in the list again" : "Hide from the list"}" aria-label="${x.hidden ? "Show again" : "Hide"}">${x.hidden ? "↩" : "✕"}</button>`}</li>`;
   };
-  setView(serverHeader(s, "adventures") + `
-    <section class="section"><div class="section-head"><h2>🗺️ Adventures</h2><span class="muted">Every play session, replayed on the map. Save the good ones.</span></div>
-      ${d.sessions.length ? `<ul class="panel rp-list">${d.sessions.map(row).join("")}</ul>`
-        : `<div class="empty"><h3>No adventures yet</h3><p>Once people play, each session shows up here to replay: where everyone went and what happened. Solstone needs RCON to follow where players are.</p></div>`}
-    </section>`);
-  wireHeader(s);
+  const draw = () => {
+    const nHidden = d.sessions.filter((x) => x.hidden).length;
+    const list = d.sessions.filter((x) => showHidden || !x.hidden);
+    setView(serverHeader(s, "adventures") + `
+      <section class="section"><div class="section-head"><h2>🗺️ Adventures</h2><span class="muted">Every play session, replayed on the map. Save the good ones.</span>
+        ${nHidden ? `<button type="button" class="btn sm" id="rp-show-hidden">${showHidden ? "Hide the hidden ones" : `Show hidden (${nHidden})`}</button>` : ""}</div>
+        ${list.length ? `<ul class="panel rp-list">${list.map(row).join("")}</ul>`
+          : `<div class="empty"><h3>No adventures yet</h3><p>Once people play, each session shows up here to replay: where everyone went and what happened. Solstone needs RCON to follow where players are.</p></div>`}
+      </section>`);
+    wireHeader(s);
+    $("#rp-show-hidden")?.addEventListener("click", () => { showHidden = !showHidden; draw(); });
+    document.querySelectorAll("[data-hide]").forEach((b) => b.addEventListener("click", async () => {
+      const [start, end, hide] = b.dataset.hide.split(":").map(Number);
+      try {
+        await post(`/api/servers/${encodeURIComponent(sid)}/adventures/hide`, { start, end, hidden: !!hide });
+        d.sessions.forEach((x) => { if (x.start === start && x.end === end) x.hidden = !!hide; });
+        draw();
+      } catch (err) { showToast(esc(err.message), 4000); }
+    }));
+  };
+  draw();
 }
 
 async function viewAdventure(sid, key) {
@@ -97,7 +114,8 @@ async function viewAdventure(sid, key) {
         <label>Title<input class="input" name="title" maxlength="80" required value="${esc(saved?.title || "")}" placeholder="The day we found the stronghold"></label>
         <label>Note<textarea class="input" name="note" rows="3" maxlength="2000" placeholder="What happened, who was there, what to remember">${esc(saved?.note || "")}</textarea></label>
         <div class="btn-row"><button class="btn primary" type="submit">${saved ? "Save changes" : "Save adventure"}</button>
-          ${saved ? `<button type="button" class="btn danger" id="rp-del">Delete</button>` : ""}</div>
+          ${saved ? `<button type="button" class="btn danger" id="rp-del">Delete</button>` : ""}
+          ${isAdmin() ? `<button type="button" class="btn danger" id="rp-erase" title="Admins: delete this session's trail and statistics lines for good">Delete the trail</button>` : ""}</div>
       </form>
     </section>`);
   wireHeader(s);
@@ -188,6 +206,11 @@ async function viewAdventure(sid, key) {
       location.replace(`#/s/${encodeURIComponent(sid)}/adventures/a${a.id}`);
       if (saved) route();
     } catch (err) { showToast(esc(err.message), 5000); }
+  });
+  $("#rp-erase")?.addEventListener("click", async () => {
+    if (!confirm("Delete this session's trail and its kill/ore lines for good? Joins, chat and play time stay. This can't be undone.")) return;
+    try { await post(`${base}/erase`, { start, end }); showToast("Trail deleted", 2500); location.hash = `#/s/${encodeURIComponent(sid)}/adventures`; }
+    catch (err) { showToast(esc(err.message), 5000); }
   });
   $("#rp-del")?.addEventListener("click", async () => {
     if (!confirm(`Delete "${saved.title}"? The session stays in the list; only the title and note go.`)) return;
