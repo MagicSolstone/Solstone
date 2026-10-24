@@ -211,13 +211,15 @@ def player_summary(srv, uuid: str) -> dict | None:
 
 
 def leaderboard_values(srv, uuid: str) -> dict:
-    """fishing_level and heaviest_fish (grams) for the leaderboards; zeros without Tide."""
+    """fishing_level, heaviest_fish (grams) and, with Tide, fish_caught from the journal (real fish only, and it
+    follows a fishing reset; Minecraft's own count includes junk and crates and never resets)."""
     if not installed(srv):
         return {"fishing_level": 0, "heaviest_fish": 0}
     t = _player_tide(srv, uuid)
     has_any = t["xp"] > 0 or t["fish"]
     return {"fishing_level": level_for_xp(t["xp"], _config(srv)) if has_any else 0,
-            "heaviest_fish": round(max((f["heaviest_g"] for f in t["fish"].values()), default=0))}
+            "heaviest_fish": round(max((f["heaviest_g"] for f in t["fish"].values()), default=0)),
+            "fish_caught": sum(f["count"] for f in t["fish"].values())}
 
 
 # ------------------------------------------------------------------ the family journal

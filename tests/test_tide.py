@@ -48,6 +48,7 @@ def test_leaderboards_and_player_page(client, sid, tyler):
     assert "fishing_level" in keys and next(b for b in lb["boards"] if b["key"] == "heaviest_fish")["kind"] == "grams"
     rows = {r["name"]: r for r in lb["players"]}
     assert rows["Tyler"]["fishing_level"] == 11 and rows["Gimli_Jr"]["heaviest_fish"] == 3400 and rows["MomCrafts"]["fishing_level"] == 0
+    assert rows["Tyler"]["fish_caught"] == 16 and rows["Gimli_Jr"]["fish_caught"] == 2      # the journal, not Minecraft's count
     p = client.get(f"/api/servers/{sid}/players/{tyler}").json()
     f = p["fishing"]
     assert f["level"] == 11 and f["species"] == 2 and f["species_total"] == 3 and f["biggest"]["name"] == "Largemouth Bass"

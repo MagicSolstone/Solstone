@@ -916,7 +916,7 @@ async def player_detail(srv: Server, uuid: str) -> dict | None:
 #   ticks -> a duration, cm -> a distance, hearts -> damage in hearts, count -> a plain number
 LEADERBOARDS = [
     ("play_time", "Time played", "ticks"),
-    ("xp_level", "Highest level", "count"),
+    ("xp_level", "Experience level", "count"),           # the level now (it drops on death)
     ("advancements", "Advancements", "count"),
     ("mob_kills", "Mobs defeated", "count"),
     ("blocks_mined", "Blocks mined", "count"),
@@ -926,7 +926,7 @@ LEADERBOARDS = [
     ("deaths", "Most deaths", "count"),
     ("time_since_death", "Longest alive right now", "ticks"),
     ("jumps", "Jumps", "count"),
-    ("fish_caught", "Fish caught", "count"),
+    ("fish_caught", "Fish caught", "count"),               # with Tide: fish in the journal (tide.leaderboard_values)
     ("fishing_level", "Fishing level", "count"),             # Tide (fishing mod) only
     ("heaviest_fish", "Heaviest fish", "grams"),              # Tide only
     ("animals_bred", "Animals bred", "count"),
