@@ -183,6 +183,29 @@ class Server:
         return out
 
 
+def _crafty_list_file() -> Path:
+    return config.data_dir / "crafty-servers.json"
+
+
+def _save_crafty_list(listed: list[dict]) -> None:
+    keep = [{k: v for k, v in s.items() if not k.startswith("_")} for s in listed if isinstance(s, dict)]
+    try:
+        f = _crafty_list_file()
+        if f.is_file() and json.loads(f.read_text(encoding="utf-8")) == keep:
+            return
+        f.write_text(json.dumps(keep), encoding="utf-8")
+    except (OSError, ValueError):
+        pass
+
+
+def _load_crafty_list() -> list[dict]:
+    try:
+        data = json.loads(_crafty_list_file().read_text(encoding="utf-8"))
+        return [s for s in data if isinstance(s, dict)]
+    except (OSError, ValueError):
+        return []
+
+
 class Registry:
     def __init__(self) -> None:
         self.servers: dict[str, Server] = {}
@@ -195,7 +218,16 @@ class Registry:
                 return
             found: dict[str, Server] = {}
             if crafty.enabled:
-                for s in await crafty.servers():
+                listed = await crafty.servers()
+                if listed is None:
+                    # Crafty is down (or restarting): keep the servers we knew, so pages, links and ids stay put
+                    # and show what's on disk; the saved list covers a Solstone restart while Crafty is down.
+                    listed = [s.crafty for s in self.servers.values() if s.crafty] or _load_crafty_list()
+                    for s in listed:
+                        s["_unreachable"] = True
+                else:
+                    _save_crafty_list(listed)
+                for s in listed:
                     sid = str(s.get("server_id"))
                     crafty_path = str(s.get("path", ""))
                     local = config.servers_dir / Path(crafty_path).name
@@ -272,13 +304,15 @@ async def server_summary(srv: Server) -> dict:
     props = srv.props
     lvl = srv.level()
     online, source = await online_players(srv)
-    running = bool(stats.get("running")) if srv.crafty else None
+    # None = unknown (no Crafty, or Crafty can't be reached right now)
+    running = bool(stats.get("running")) if srv.crafty and stats else None
     rcon = srv.rcon_conf()
     return {
         "id": srv.id,
         "name": srv.display_name,
         "type": srv.type,
         "managed_by_crafty": srv.crafty is not None,
+        "crafty_unreachable": bool(srv.crafty and srv.crafty.get("_unreachable")),
         "folder_found": srv.dir.is_dir(),
         "folder": str(srv.dir),
         "running": running,

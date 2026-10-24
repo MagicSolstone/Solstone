@@ -54,7 +54,8 @@ class CraftyClient:
             return body
         raise RuntimeError("unreachable")
 
-    async def servers(self) -> list[dict]:
+    async def servers(self) -> list[dict] | None:
+        """Crafty's servers, or None when Crafty can't be reached (not the same as "no servers")."""
         try:
             body = await self._get("/api/v2/servers", ttl=30)
             self.last_error = None
@@ -62,7 +63,7 @@ class CraftyClient:
         except Exception as e:  # network / auth problems should not kill the app
             self.last_error = f"{type(e).__name__}: {e}"
             log.warning("Crafty server list failed: %s", self.last_error)
-            return []
+            return None
 
     async def stats(self, server_id: str) -> dict | None:
         try:

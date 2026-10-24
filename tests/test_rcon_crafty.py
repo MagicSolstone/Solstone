@@ -123,3 +123,28 @@ def test_one_dropped_connection_is_retried_not_backed_off():
     assert srv.rcon_error is None and srv._rcon_backoff == 0.0
     del srv.rcon_conf
     srv._rcon = None
+
+
+def test_registry_keeps_crafty_servers_while_crafty_is_down(monkeypatch, tmp_path):
+    """Crafty restarting used to empty the server list (pages blank, links broken) until it came back."""
+    from app import servers as S
+    from app.config import config
+    from app.crafty import crafty
+    monkeypatch.setattr(config, "data_dir", tmp_path)
+    monkeypatch.setattr(config, "servers_dir", tmp_path / "none")
+    monkeypatch.setattr(type(crafty), "enabled", property(lambda _s: True))
+    up = [{"server_id": "abc", "server_name": "Family", "path": "/crafty/servers/abc"}]
+    state = {"list": up}
+
+    async def servers():
+        return state["list"]
+    monkeypatch.setattr(crafty, "servers", servers)
+    reg = S.Registry()
+    asyncio.run(reg.refresh(force=True))
+    assert list(reg.servers) == ["abc"]
+    state["list"] = None                                    # Crafty goes away
+    asyncio.run(reg.refresh(force=True))
+    assert list(reg.servers) == ["abc"] and reg.servers["abc"].crafty.get("_unreachable")
+    fresh = S.Registry()                                    # and Solstone restarts while it's away
+    asyncio.run(fresh.refresh(force=True))
+    assert list(fresh.servers) == ["abc"] and fresh.servers["abc"].name == "Family"
