@@ -94,6 +94,18 @@ async function signedIn(user) {
   route();
 }
 
+// Phones: the rail is a bar at the top (logo, where you are, ☰); ☰ opens the servers and pages as a full menu.
+function wireMobileMenu() {
+  const btn = $("#btn-menu");
+  if (!btn || btn._wired) return;
+  btn._wired = true;
+  const set = (open) => { document.body.classList.toggle("menu-open", open); btn.setAttribute("aria-expanded", String(open)); btn.textContent = open ? "✕" : "☰"; };
+  btn.addEventListener("click", () => set(!document.body.classList.contains("menu-open")));
+  $(".rail").addEventListener("click", (e) => { if (e.target.closest("a[href]") && document.body.classList.contains("menu-open")) set(false); });
+  addEventListener("hashchange", () => set(false));
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && document.body.classList.contains("menu-open")) set(false); });
+}
+
 function wireAccountMenu() {
   const btn = $("#btn-account"), menu = $("#account-menu");
   // The sidebar scrolls, which clips anything that pops out of it, so the menu lives on
@@ -586,6 +598,11 @@ async function loadServers() {
   try { state.servers = await api("/api/servers"); } catch (e) { state.servers = state.servers || []; }
   await uuids;
   $("#rail-servers").innerHTML = railHtml(curSid);
+  setRailTitle();
+}
+function setRailTitle() {
+  const t = $("#rail-title");
+  if (t) t.textContent = state.servers.find((x) => x.id === curSid)?.name || "Solstone";
 }
 
 // ================================================================ views
@@ -660,6 +677,7 @@ async function serverFrame(sid, tab) {
   curSid = sid;
   if (!state.servers.find((s) => s.id === sid)) await loadServers();
   else $("#rail-servers").innerHTML = railHtml(sid);
+  setRailTitle();
   const s = await api(`/api/servers/${encodeURIComponent(sid)}`);
   const idx = state.servers.findIndex((x) => x.id === sid);
   if (idx >= 0) state.servers[idx] = s;
@@ -669,6 +687,9 @@ async function serverFrame(sid, tab) {
   return s;
 }
 function wireHeader(s) {
+  // phones: the section tabs scroll sideways; keep the one you're on in view
+  const cur = document.querySelector(".server-head ~ .tabs a[aria-current], .tabs a[aria-current]");
+  if (cur && innerWidth < 900) cur.scrollIntoView({ inline: "center", block: "nearest" });
   $("#btn-settings")?.addEventListener("click", () => openSettings(s));
 }
 
@@ -1250,7 +1271,7 @@ addEventListener("hashchange", async () => {
 });
 document.addEventListener("DOMContentLoaded", async () => {
   $("#btn-notify")?.addEventListener("click", openNotifications);
-  wireAccountMenu();
+  wireAccountMenu(); wireMobileMenu();
   const ch = $("#build-channel");
   if (ch && BUILD_CHANNEL === "beta") { ch.textContent = "Beta build"; ch.hidden = false; }
   try { signedIn((await api("/api/auth/me")).user); }

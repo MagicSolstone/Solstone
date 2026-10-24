@@ -233,6 +233,15 @@ def main() -> int:
             for name, hash_ in (("m-overview", f"#/s/{sid}"), ("m-player", f"#/s/{sid}/p/{puuid}"), ("m-fireworks", "#/fireworks")):
                 m.goto(f"{base}/{hash_}"); m.wait_for_timeout(1200)
                 check(m, name)
+            m.goto(f"{base}/#/s/{sid}/fishing"); m.wait_for_timeout(1000)
+            check(m, "m-fishing")
+            m.click("#btn-menu"); m.wait_for_timeout(300)
+            if not m.locator(".rail-foot").is_visible():
+                problems.append("phone: the menu didn't open")
+            check(m, "m-menu")
+            m.locator(".rail-foot a[href='#/coming-up']").click(); m.wait_for_timeout(800)
+            if m.locator("body.menu-open").count():
+                problems.append("phone: the menu stayed open after picking a page")
             browser.close()
     finally:
         app.terminate()
