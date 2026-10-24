@@ -302,3 +302,46 @@ def test_describe_falls_back_to_the_language_files(monkeypatch):
     assert d["lines"] == [] and d["source"] == "none"
     d = asyncio.run(tide.describe_item(_DescServer(), "bad id; op me", lang))
     assert d["source"] == "none"
+
+
+GUIDE = {"rigs": [{"name": "Storm", "when": "THUNDER", "when_text": "in a thunderstorm", "two": "+8% bite speed in a thunderstorm",
+                   "full": "+15% bite speed, +1 luck in a thunderstorm", "members": ["tide:copper_bobber", "tide:storm_line"]}],
+         "whens": {"THUNDER": "in a thunderstorm", "NIGHT": "at night"},
+         "items": [{"id": "tide:copper_bobber", "name": "item.tide.copper_bobber", "category": "Bobbers",
+                    "lines": [["#FF55FF", "Part of: Storm rig"], ["#AAAAAA", ""]], "when": ["THUNDER"], "rig": "Storm",
+                    "recipe": {"kind": "crafting", "width": 1, "height": 2, "slots": [["minecraft:copper_ingot"], ["minecraft:string", "bad id!"]], "note": ""}},
+                   {"id": "tide:echo_fishing_rod", "name": "Echo Fishing Rod", "category": "Rods", "lines": [], "when": [], "rig": "",
+                    "recipe": {"kind": "found", "width": 0, "height": 0, "slots": [], "note": "Found in ancient city chests."}},
+                   {"id": "nope", "name": "x"}]}
+
+
+def test_tackle_guide_from_the_game_then_the_saved_copy(monkeypatch):
+    from app import tide
+    from app import servers as S
+    tide._guide_mem.clear()
+    monkeypatch.setattr(tide, "installed", lambda _s: True)
+    monkeypatch.setattr(tide, "jar", lambda _s: None)
+    monkeypatch.setattr(S, "known_players", lambda _s: {"u1": {"name": "Tyler"}})
+    monkeypatch.setattr(tide, "_player_tide", lambda _s, _u: {"tackle": {"copper_bobber"}})
+    srv = _DescServer("tackleguide " + json.dumps(GUIDE))
+    srv.id = "guide-test"
+    lang = {"item.tide.copper_bobber": "Copper Bobber"}
+    g = asyncio.run(tide.guide(srv, lang))
+    assert srv.cmds == ["fishing guide"] and g["live"] and not g["why"]
+    assert [x["id"] for x in g["items"]] == ["tide:copper_bobber", "tide:echo_fishing_rod"]
+    cb = g["items"][0]
+    assert cb["name"] == "Copper Bobber" and cb["lines"] == [{"text": "Part of: Storm rig", "color": "#FF55FF"}]
+    assert cb["recipe"]["slots"] == [["minecraft:copper_ingot"], ["minecraft:string"]] and cb["when"] == ["THUNDER"]
+    assert g["rigs"][0]["members"] == ["tide:copper_bobber", "tide:storm_line"]
+    assert g["found"] == {"tide:copper_bobber": ["Tyler"]}
+    # the server goes away: the saved copy still opens, and says why it isn't live
+    tide._guide_mem.clear()
+    down = _DescServer(fail=True)
+    down.id = "guide-test"
+    g2 = asyncio.run(tide.guide(down, lang))
+    assert not g2["live"] and "isn't answering" in g2["why"] and len(g2["items"]) == 2
+    # an older Tide+ that doesn't know the command, and no saved copy
+    old = _DescServer("Unknown or incomplete command, see below for error")
+    old.id = "guide-test-old"
+    g3 = asyncio.run(tide.guide(old, lang))
+    assert g3["items"] == [] and "older than 1.0.6" in g3["why"]

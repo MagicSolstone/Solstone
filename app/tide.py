@@ -431,3 +431,116 @@ async def describe_item(srv, item: str, lang: dict) -> dict:
                 why = f"The server said: {reply.strip()[:160]}"
     lines = lang_description(item, lang)
     return {"item": item, "lines": lines, "source": "lang" if lines else "none", "why": why}
+
+
+# ---------------------------------------------------------------- tackle guide
+# Tide+ 1.0.6 answers "fishing guide" with every piece of tackle as JSON (name, kind, tooltip, where its perks work,
+# its rig, its recipe or where it's found) plus the rigs. We keep the last answer in Solstone's data folder, so the
+# guide still opens while the server is off.
+_guide_mem: dict[str, tuple[float, dict]] = {}
+GUIDE_TTL = 600
+
+
+def _guide_file(sid: str) -> Path:
+    from .config import config
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", sid)[:80]
+    return config.data_dir / "tide-guide" / f"{safe}.json"
+
+
+def _jar_stamp(srv) -> str:
+    j = jar(srv)
+    try:
+        return f"{j.name}:{int(j.stat().st_mtime)}" if j else ""
+    except OSError:
+        return ""
+
+
+def parse_guide(reply: str | None, lang: dict) -> dict | None:
+    text = (reply or "").strip()
+    if not text.startswith("tackleguide "):
+        return None
+    try:
+        g = json.loads(text[len("tackleguide "):])
+    except ValueError:
+        return None
+    if not isinstance(g, dict) or not isinstance(g.get("items"), list):
+        return None
+    items = []
+    for it in g["items"]:
+        if not isinstance(it, dict) or not _ITEM_ID.match(str(it.get("id", ""))):
+            continue
+        name = str(it.get("name") or "")
+        if not name or _LANG_KEY.match(name):
+            name = lang.get(name) or _humanize(it["id"].split(":")[-1])
+        lines = []
+        for row in it.get("lines") or []:
+            if isinstance(row, list) and len(row) == 2:
+                t = str(row[1]).strip()
+                if _LANG_KEY.match(t) and t in lang:
+                    t = lang[t]
+                if t:
+                    c = str(row[0])
+                    lines.append({"text": t[:300], "color": c if re.fullmatch(r"#[0-9A-Fa-f]{6}", c) else "#AAAAAA"})
+        r = it.get("recipe") if isinstance(it.get("recipe"), dict) else None
+        recipe = None
+        if r:
+            slots = [[str(x) for x in s if _ITEM_ID.match(str(x))][:8] for s in (r.get("slots") or []) if isinstance(s, list)][:9]
+            recipe = {"kind": str(r.get("kind") or ""), "width": int(r.get("width") or 0), "height": int(r.get("height") or 0),
+                      "slots": slots, "note": str(r.get("note") or "")[:300]}
+        items.append({"id": it["id"], "name": name[:80], "category": str(it.get("category") or ""), "lines": lines[:40],
+                      "when": [str(w) for w in (it.get("when") or [])][:10], "rig": str(it.get("rig") or ""), "recipe": recipe})
+    rigs = [{"name": str(r.get("name")), "when": str(r.get("when")), "when_text": str(r.get("when_text") or ""),
+             "two": str(r.get("two") or ""), "full": str(r.get("full") or ""),
+             "members": [str(m) for m in (r.get("members") or []) if _ITEM_ID.match(str(m))]}
+            for r in g.get("rigs") or [] if isinstance(r, dict) and r.get("name")]
+    whens = {str(k): str(v) for k, v in (g.get("whens") or {}).items()}
+    return {"items": items, "rigs": rigs, "whens": whens}
+
+
+async def guide(srv, lang: dict) -> dict:
+    """The tackle guide: {"items", "rigs", "whens", "fetched_at", "live", "why", "found": {item id: [player names]}}."""
+    import time
+    stamp = _jar_stamp(srv)
+    data, why, live = None, "", False
+    hit = _guide_mem.get(srv.id)
+    if hit and time.monotonic() - hit[0] < GUIDE_TTL and hit[1].get("stamp") == stamp:
+        data, live = hit[1], True
+    elif not installed(srv):
+        why = "Tide+ isn't installed on this server."
+    elif not srv.rcon_conf():
+        why = "Turn on RCON for this server so Solstone can read the tackle from the game."
+    else:
+        try:
+            reply = await srv.rcon("fishing guide")
+        except Exception:
+            reply, why = None, "The server isn't answering, so this is the copy from the last time it was."
+        g = parse_guide(reply, lang)
+        if g:
+            data, live = {**g, "fetched_at": time.time(), "stamp": stamp}, True
+            _guide_mem[srv.id] = (time.monotonic(), data)
+            try:
+                f = _guide_file(srv.id)
+                f.parent.mkdir(parents=True, exist_ok=True)
+                f.write_text(json.dumps(data), encoding="utf-8")
+            except OSError:
+                pass
+        elif reply is not None:
+            why = ("This server's Tide+ is older than 1.0.6. Update it (and restart) for the tackle guide."
+                   if "unknown or incomplete command" in reply.lower() or "incorrect argument" in reply.lower()
+                   else f"The server said: {reply.strip()[:160]}")
+    if data is None:
+        try:
+            data = json.loads(_guide_file(srv.id).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = None
+    if data is None:
+        return {"items": [], "rigs": [], "whens": {}, "fetched_at": None, "live": False, "why": why or "No tackle guide yet.", "found": {}}
+    found: dict[str, list[str]] = {}
+    try:
+        for uuid, p in S.known_players(srv).items():
+            for t in _player_tide(srv, uuid)["tackle"]:
+                found.setdefault(f"tide:{t}", []).append(p["name"])
+    except Exception:
+        pass
+    return {"items": data["items"], "rigs": data["rigs"], "whens": data.get("whens", {}), "fetched_at": data.get("fetched_at"),
+            "live": live, "why": "" if live else why, "found": {k: sorted(v, key=str.lower) for k, v in found.items()}}

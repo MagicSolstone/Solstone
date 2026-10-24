@@ -1897,6 +1897,15 @@ async def fishing_journal(sid: str, request: Request):
     return await asyncio.to_thread(fishing.journal, srv.id)
 
 
+@app.get("/api/servers/{sid}/fishing/tackle")
+async def fishing_tackle(sid: str, request: Request):
+    """The tackle guide (anyone signed in): every rod, line, hook, bobber, lure, bait and piece of gear."""
+    srv = await _server(sid)
+    a = _assets(srv)
+    lang = (await asyncio.to_thread(a.lang_cached)) if a and a.ready else {}
+    return await tide.guide(srv, lang)
+
+
 @app.get("/api/servers/{sid}/fishing")
 async def get_fishing(sid: str, request: Request):
     auth.require_admin(request)

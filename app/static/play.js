@@ -1028,7 +1028,7 @@ function viewTideFishing(s, sid, d, who) {
       return `<h3 class="tf-group">${esc(g.label)} <span class="muted small">${got} / ${list.length}</span></h3><div class="fj-grid">${list.map(card).join("")}</div>`;
     }).join("");
     setView(`${serverHeader(s, "fishing")}
-      <section class="section"><div class="section-head"><h2>🎣 Fishing</h2><span class="muted">From the Tide fishing mod</span></div>
+      <section class="section"><div class="section-head"><h2>🎣 Fishing</h2><span class="muted">From the Tide fishing mod</span>${d.tackle_total ? `<button type="button" class="btn sm" data-tackle-guide>🧰 Tackle guide</button>` : ""}</div>
         <div class="fj-players"><button type="button" class="chip-btn ${!p ? "on" : ""}" data-fj="">👪 Family</button>${d.players.map((x) => `<button type="button" class="chip-btn ${x.name === pick ? "on" : ""}" data-fj="${esc(x.name)}">${faceHtml(x, 20)} ${esc(x.name)} <small>Lv ${x.level}</small></button>`).join("")}</div>
         ${d.players.length ? "" : `<p class="muted">Nobody has caught anything with Tide yet.</p>`}
         ${head}</section>
@@ -1041,6 +1041,7 @@ function viewTideFishing(s, sid, d, who) {
     wireHeader(s);
     $$("[data-fj]").forEach((b) => b.addEventListener("click", () => { pick = b.dataset.fj; render(); window.scrollTo({ top: 0 }); }));
     $("[data-reset]")?.addEventListener("click", (e) => openFishingReset(sid, e.currentTarget.dataset.reset));
+    $("[data-tackle-guide]")?.addEventListener("click", () => openTackleGuide(sid));
   };
   render();
 }
@@ -1098,4 +1099,118 @@ async function renderPlayerFishing(el, sid, player) {
     ${best.length ? `<section class="section"><div class="section-head"><h2>Heaviest catches</h2></div><ul class="panel fj-recent">${best.map(([id, m]) => `<li>${itemIcon({ id })}<b>${esc(names[id]?.name || id)}</b>
       <span class="muted small">${esc(fmtWeight(m.heaviest_g))}${m.longest_cm ? ` · ${esc(fmtLength(m.longest_cm))}` : ""} · caught ${m.count}×</span>${m.best_quality >= 0 ? `<span class="fq-${QC[m.best_quality]} small">best ${esc(d.qualities[m.best_quality].name)}</span>` : ""}</li>`).join("")}</ul></section>` : ""}
     <p><a class="btn" href="${full}">Open ${esc(p.name)}'s whole journal</a></p>`;
+}
+
+
+// ================================================================ the tackle guide (Tide+)
+// Every rod, line, hook, bobber, lure, bait and piece of gear: what it does (the game's own tooltip), how to get it,
+// which rig it's part of and who in the family has found one. Filter by kind, by where and when its perks work,
+// by who has found it, or search. The Rigs tab lists the rigs with their pieces and both bonuses.
+async function openTackleGuide(sid) {
+  openModal(`<h2>🧰 Tackle guide</h2><p class="muted">Loading the tackle from the game…</p>`, (m) => m.classList.add("tg-modal"));
+  let d;
+  try { d = await api(`/api/servers/${encodeURIComponent(sid)}/fishing/tackle`); }
+  catch (e) { openModal(`<h2>🧰 Tackle guide</h2><div class="notice">${esc(e.message)}</div><div class="actions"><button class="btn" data-close>Close</button></div>`, (m) => { m.classList.add("tg-modal"); $("[data-close]", m).addEventListener("click", closeModal); }); return; }
+  const KINDS = ["Rods", "Lines", "Hooks", "Bobbers", "Lures", "Bait", "Gear"];
+  const items = [...d.items].sort((a, b) => (KINDS.indexOf(a.category) - KINDS.indexOf(b.category)) || a.name.localeCompare(b.name));
+  const byId = new Map(items.map((x) => [x.id, x]));
+  const players = [...new Set(Object.values(d.found).flat())].sort((a, b) => a.localeCompare(b));
+  const st = { kind: "", when: "", who: "", q: "", rig: "" };
+  const whenLabel = (k) => { const t = d.whens[k] || k.toLowerCase(); return t.charAt(0).toUpperCase() + t.slice(1); };
+  const usedWhens = Object.keys(d.whens).filter((k) => items.some((x) => x.when.includes(k)) || d.rigs.some((r) => r.when === k));
+  const nameOf = (id) => byId.get(id)?.name || itemName({ id });
+
+  const slot = (ids) => ids?.length
+    ? `<span class="tg-slot" title="${esc(ids.map(nameOf).join(" or "))}">${itemIcon({ id: ids[0] })}</span>`
+    : `<span class="tg-slot"></span>`;
+  const how = (x) => {
+    const r = x.recipe;
+    if (!r) return "";
+    if (r.kind === "found") return `<div class="tg-how"><span class="tg-how-k">How to get it</span>${esc(r.note)}</div>`;
+    const label = r.kind === "smithing" ? "Smithing table" : r.kind === "shapeless" ? "Crafting (any arrangement)" : "Crafting";
+    const grid = r.kind === "smithing"
+      ? `<div class="tg-grid" style="--w:3">${r.slots.map(slot).join("")}</div>`
+      : `<div class="tg-grid" style="--w:${Math.max(1, r.width)}">${r.slots.map(slot).join("")}</div>`;
+    return `<div class="tg-how"><span class="tg-how-k">${label}</span><div class="tg-recipe">${grid}<span class="tg-arrow" aria-hidden="true">→</span>${itemIcon({ id: x.id })}</div></div>`;
+  };
+  const foundBy = (id) => {
+    const who = d.found[id] || [];
+    return who.length ? `<div class="tg-found" title="${esc(`Found by ${who.join(", ")}`)}">${who.map((n) => faceHtml({ name: n }, 18)).join("")}<span class="muted small">${who.length === 1 ? esc(who[0]) : `${who.length} found it`}</span></div>`
+      : `<div class="tg-found muted small">Nobody has found one yet</div>`;
+  };
+  const card = (x) => `<article class="tg-card" id="tg-${esc(x.id.replace(/[^a-z0-9_]/g, "_"))}">
+      <div class="tg-top">${itemIcon({ id: x.id })}<div><b>${esc(x.name)}</b><div class="tg-tags"><span class="tg-tag">${esc(x.category)}</span>${x.rig ? `<button type="button" class="tg-tag rig" data-rig="${esc(x.rig)}" title="See the ${esc(x.rig)} rig">${esc(x.rig)} rig</button>` : ""}</div></div></div>
+      ${x.lines.length ? `<div class="mc-tip">${x.lines.map((l) => `<div style="color:${esc(l.color)}">${esc(l.text)}</div>`).join("")}</div>` : ""}
+      ${how(x)}${foundBy(x.id)}</article>`;
+  const rigCard = (r) => `<article class="tg-card tg-rig ${st.rig === r.name ? "on" : ""}" id="tg-rig-${esc(r.name.replace(/\W/g, "_"))}">
+      <div class="tg-top"><div><b>${esc(r.name)} rig</b><div class="muted small">Works ${esc(r.when_text)}</div></div></div>
+      <div class="tg-pieces">${r.members.map((id) => `<button type="button" class="tg-piece" data-item="${esc(id)}" title="${esc(nameOf(id))}${d.found[id] ? "" : " · nobody has found one yet"}">${itemIcon({ id: id }, d.found[id] ? "" : "tg-unfound")}<span>${esc(nameOf(id))}</span></button>`).join("")}</div>
+      <div class="mc-tip"><div style="color:#55FFFF">2 pieces: ${esc(r.two)}</div><div style="color:#FF55FF">3+ pieces: ${esc(r.full)}</div></div></article>`;
+
+  const matches = (x) => {
+    if (st.kind && st.kind !== "Rigs" && x.category !== st.kind) return false;
+    if (st.when && !x.when.includes(st.when)) return false;
+    const who = d.found[x.id] || [];
+    if (st.who === "*found" && !who.length) return false;
+    if (st.who === "*none" && who.length) return false;
+    if (st.who.startsWith("+") && !who.includes(st.who.slice(1))) return false;
+    if (st.who.startsWith("-") && who.includes(st.who.slice(1))) return false;
+    if (st.q) {
+      const h = `${x.name} ${x.id} ${x.rig} ${x.lines.map((l) => l.text).join(" ")} ${x.recipe?.note || ""}`.toLowerCase();
+      if (!st.q.split(/\s+/).every((w) => h.includes(w))) return false;
+    }
+    return true;
+  };
+  const rigMatches = (r) => (!st.when || r.when === st.when)
+    && (!st.q || `${r.name} ${r.when_text} ${r.two} ${r.full} ${r.members.map(nameOf).join(" ")}`.toLowerCase().includes(st.q));
+
+  openModal(`<div class="tg-head"><h2>🧰 Tackle guide</h2><button type="button" class="btn sm" data-close>Close</button></div>
+    ${d.why ? `<div class="notice small">${esc(d.why)}</div>` : ""}
+    ${items.length ? `<div class="tg-filters">
+      <input class="input" id="tg-q" type="search" placeholder="Search: a name, a perk like luck or night, a rig" autocomplete="off" aria-label="Search tackle">
+      <div class="tg-selects">
+        <select class="input sm" id="tg-when" aria-label="Where or when"><option value="">Any place or time</option>${usedWhens.map((k) => `<option value="${esc(k)}">${esc(whenLabel(k))}</option>`).join("")}</select>
+        <select class="input sm" id="tg-who" aria-label="Found by"><option value="">Found or not</option><option value="*found">Found by someone</option><option value="*none">Nobody has found it</option>
+          ${players.map((p) => `<option value="+${esc(p)}">Found by ${esc(p)}</option><option value="-${esc(p)}">Not found by ${esc(p)}</option>`).join("")}</select>
+      </div>
+      <div class="tg-kinds" role="tablist">${["", ...KINDS.filter((k) => items.some((x) => x.category === k)), "Rigs"].map((k) => `<button type="button" class="chip-btn" data-kind="${esc(k)}">${esc(k || "All")}</button>`).join("")}</div>
+    </div>
+    <div class="muted small" id="tg-count"></div>
+    <div class="tg-list" id="tg-list"></div>
+    ${d.fetched_at ? `<p class="muted small tg-foot">${d.live ? "From the game" : "Saved copy"}, read ${esc(fmtAgo(d.fetched_at))}.</p>` : ""}` : ""}`, (m) => {
+    m.classList.add("tg-modal");
+    $("[data-close]", m).addEventListener("click", closeModal);
+    if (!items.length) return;
+    const list = $("#tg-list", m), count = $("#tg-count", m);
+    const draw = () => {
+      m.querySelectorAll("[data-kind]").forEach((b) => { const on = b.dataset.kind === st.kind; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
+      if (st.kind === "Rigs") {
+        const rigs = d.rigs.filter(rigMatches);
+        count.textContent = `${rigs.length} of ${d.rigs.length} rigs · 2 pieces on one rod give the small bonus, 3 or more the full one`;
+        list.innerHTML = rigs.map(rigCard).join("") || `<p class="muted">No rig matches.</p>`;
+      } else {
+        const shown = items.filter(matches);
+        count.textContent = `${shown.length} of ${items.length}`;
+        list.innerHTML = shown.map(card).join("") || `<p class="muted">Nothing matches.</p>`;
+      }
+    };
+    const q = $("#tg-q", m);
+    q.addEventListener("input", () => { st.q = q.value.trim().toLowerCase(); st.rig = ""; draw(); });
+    $("#tg-when", m).addEventListener("change", (e) => { st.when = e.target.value; draw(); });
+    $("#tg-who", m).addEventListener("change", (e) => { st.who = e.target.value; draw(); });
+    m.querySelectorAll("[data-kind]").forEach((b) => b.addEventListener("click", () => { st.kind = b.dataset.kind; st.rig = ""; draw(); }));
+    list.addEventListener("click", (e) => {
+      const rig = e.target.closest("[data-rig]"), piece = e.target.closest("[data-item]");
+      if (rig) {
+        st.kind = "Rigs"; st.rig = rig.dataset.rig; st.q = ""; q.value = ""; draw();
+        $(`#tg-rig-${CSS.escape(st.rig.replace(/\W/g, "_"))}`, m)?.scrollIntoView({ block: "nearest" });
+      } else if (piece) {
+        const x = byId.get(piece.dataset.item);
+        if (!x) return;
+        st.kind = ""; st.when = ""; st.who = ""; $("#tg-when", m).value = ""; $("#tg-who", m).value = "";
+        st.q = x.name.toLowerCase(); q.value = x.name; draw();
+      }
+    });
+    draw();
+  });
 }

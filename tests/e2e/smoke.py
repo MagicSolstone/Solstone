@@ -144,6 +144,32 @@ def main() -> int:
             check(pg, "give-items")
             pg.click(".gv-modal [data-close]")
 
+            # the tackle guide (the game's answer is faked: no server is running)
+            guide = {"live": True, "why": "", "fetched_at": time.time() - 90, "whens": {"THUNDER": "in a thunderstorm", "JUNGLE": "in jungles"},
+                     "found": {"tide:copper_bobber": ["Tyler", "Gimli_Jr"]},
+                     "rigs": [{"name": "Storm", "when": "THUNDER", "when_text": "in a thunderstorm", "two": "+8% bite speed in a thunderstorm",
+                               "full": "+15% bite speed, +1 fishing luck in a thunderstorm", "members": ["tide:copper_bobber", "tide:storm_line", "tide:lightning_hook"]}],
+                     "items": [{"id": "tide:copper_bobber", "name": "Copper Bobber", "category": "Bobbers", "when": ["THUNDER"], "rig": "Storm",
+                                "lines": [{"text": "+5% hook window", "color": "#00AAAA"}, {"text": "+10% bite speed in a thunderstorm", "color": "#FF55FF"}, {"text": "Part of: Storm rig", "color": "#FF55FF"}],
+                                "recipe": {"kind": "crafting", "width": 3, "height": 3, "slots": [[], ["minecraft:copper_ingot"], [], ["minecraft:copper_ingot"], ["minecraft:string"], ["minecraft:copper_ingot"], [], ["minecraft:copper_ingot"], []], "note": ""}},
+                               {"id": "tide:bamboo_fishing_rod", "name": "Bamboo Fishing Rod", "category": "Rods", "when": ["JUNGLE"], "rig": "",
+                                "lines": [{"text": "+5% casting range", "color": "#00AAAA"}, {"text": "+25% bite speed in jungles", "color": "#FF55FF"}],
+                                "recipe": {"kind": "found", "width": 0, "height": 0, "slots": [], "note": "Found in jungle temple chests."}}]}
+            pg.route("**/fishing/tackle", lambda r: r.fulfill(json=guide))
+            pg.evaluate(f"openTackleGuide({sid!r})"); pg.wait_for_timeout(600)
+            if pg.locator(".tg-card").count() != 2:
+                problems.append(f"tackle guide: expected 2 items, saw {pg.locator('.tg-card').count()}")
+            pg.select_option("#tg-when", "JUNGLE"); pg.wait_for_timeout(150)
+            if pg.locator(".tg-card").count() != 1:
+                problems.append("tackle guide: the place/time filter didn't filter")
+            pg.select_option("#tg-when", ""); pg.wait_for_timeout(150)
+            check(pg, "tackle-guide")
+            pg.locator(".tg-tag.rig").first.click(); pg.wait_for_timeout(200)
+            if "3+ pieces" not in (pg.locator(".tg-list").text_content() or ""):
+                problems.append("tackle guide: the rig link didn't open the rig")
+            check(pg, "tackle-guide-rigs")
+            pg.click(".tg-modal [data-close]")
+
             # public status page and TV mode, signed out
             anon = browser.new_page(viewport={"width": 1280, "height": 800})
             anon.add_init_script("window.__csp = []; document.addEventListener('securitypolicyviolation', (e) => window.__csp.push(e.violatedDirective + ' ' + (e.blockedURI || 'inline')));")
