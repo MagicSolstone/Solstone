@@ -19,7 +19,9 @@ def test_level_curve_matches_the_mod():
     cfg = {"base": 20.0, "growth": 0.2}
     assert tide.xp_for_level(1, cfg) == 0 and tide.xp_for_level(2, cfg) == 20                 # ~2 fish
     assert tide.xp_for_level(29, cfg) - tide.xp_for_level(28, cfg) == round(20 + 0.2 * 28 * 28)  # ~15 fish
-    assert 60_000 < tide.xp_for_level(99, cfg) < 70_000
+    assert 40_000 < tide.xp_for_level(99, cfg) < 41_500                                      # half the growth above 30
+    assert tide.xp_for_level(31, cfg) - tide.xp_for_level(30, cfg) == round(20 + 0.2 * 30 * 30)
+    assert tide.xp_for_level(51, cfg) - tide.xp_for_level(50, cfg) == round(20 + 0.2 * 900 + 0.1 * (2500 - 900))
     assert tide.level_for_xp(19, cfg) == 1 and tide.level_for_xp(20, cfg) == 2
     assert tide.title(9) == "Novice Angler" and tide.title(30) == "Angler" and tide.title(95) == "Grandmaster Angler" and tide.title(99) == "Legendary Angler"
 

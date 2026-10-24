@@ -136,12 +136,23 @@ def _config(srv) -> dict:
     raw = S._cache.get(("tide-config", srv.id), srv.dir / "config" / "tide.json", S._json) or {}
     lv = (raw.get("server") or {}).get("leveling") or {}
     return {"enabled": lv.get("enabled", True) is not False, "base": float(lv.get("xpPerLevel", 20.0)),
-            "growth": float(lv.get("xpGrowth", 0.2)), "baseline": int(lv.get("baselineLevel", 40))}
+            "growth": float(lv.get("xpGrowth", 0.2)), "baseline": int(lv.get("baselineLevel", 40)),
+            "soft_from": int(lv.get("softenFromLevel", 30)), "soft": float(lv.get("growthAboveSoften", 0.5))}
+
+
+def _sq(n: int) -> int:
+    return n * (n + 1) * (2 * n + 1) // 6
 
 
 def xp_for_level(level: int, cfg: dict) -> int:
+    """Each level costs base + growth x level^2, but above the soften level the growth is scaled down."""
     n = max(1, min(99, level)) - 1
-    return round(max(1.0, cfg["base"]) * n + max(0.0, cfg["growth"]) * n * (n + 1) * (2 * n + 1) / 6)
+    g = max(0.0, cfg["growth"])
+    total = max(1.0, cfg["base"]) * n + g * _sq(n)
+    k, f = max(1, cfg.get("soft_from", 30)), min(1.0, max(0.0, cfg.get("soft", 0.5)))
+    if n >= k:
+        total -= g * (1 - f) * (_sq(n) - _sq(k - 1) - k * k * (n - k + 1))
+    return round(total)
 
 
 def level_for_xp(xp: int, cfg: dict) -> int:
