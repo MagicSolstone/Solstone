@@ -1129,7 +1129,8 @@ async function openTackleGuide(sid) {
     const r = x.recipe;
     if (!r) return "";
     if (r.kind === "found") return `<div class="tg-how"><span class="tg-how-k">How to get it</span>${esc(r.note)}</div>`;
-    const label = r.kind === "smithing" ? "Smithing table" : r.kind === "shapeless" ? "Crafting (any arrangement)" : "Crafting";
+    // Tide+ 1.0.17 moved fishing gear to the Angling Table (its recipes carry that note)
+    const label = r.note ? "Angling Table" : r.kind === "smithing" ? "Smithing table" : r.kind === "shapeless" ? "Crafting (any arrangement)" : "Crafting";
     const grid = r.kind === "smithing"
       ? `<div class="tg-grid" style="--w:3">${r.slots.map(slot).join("")}</div>`
       : `<div class="tg-grid" style="--w:${Math.max(1, r.width)}">${r.slots.map(slot).join("")}</div>`;
