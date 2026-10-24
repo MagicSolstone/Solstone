@@ -40,7 +40,7 @@ async function viewAdventures(sid, which) {
     const nHidden = d.sessions.filter((x) => x.hidden).length;
     const list = d.sessions.filter((x) => showHidden || !x.hidden);
     setView(serverHeader(s, "adventures") + `
-      <section class="section"><div class="section-head"><h2>🗺️ Adventures</h2><span class="muted">Every play session, replayed on the map. Save the good ones.</span>
+      <section class="section"><div class="section-head"><h2>🗺️ Adventures</h2><span class="muted">Every play session of the last 45 days, replayed on the map. Save the good ones to keep them for good.</span>
         ${nHidden ? `<button type="button" class="btn sm" id="rp-show-hidden">${showHidden ? "Hide the hidden ones" : `Show hidden (${nHidden})`}</button>` : ""}</div>
         ${list.length ? `<ul class="panel rp-list">${list.map(row).join("")}</ul>`
           : `<div class="empty"><h3>No adventures yet</h3><p>Once people play, each session shows up here to replay: where everyone went and what happened. Solstone needs RCON to follow where players are.</p></div>`}

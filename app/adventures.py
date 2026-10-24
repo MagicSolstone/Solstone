@@ -125,6 +125,9 @@ def progress(srv, online: dict[str, str | None]) -> int:
 
 def prune() -> None:
     cutoff = time.time() - POSITIONS_DAYS * 86400
+    db.x("DELETE FROM adventures_hidden WHERE end_ts < ?", (cutoff,))
+    db.x("DELETE FROM events WHERE type='progress' AND ts < ? AND NOT EXISTS (SELECT 1 FROM adventures a "
+         "WHERE a.server_id = events.server_id AND events.ts BETWEEN a.start_ts AND a.end_ts)", (cutoff,))
     db.x("""DELETE FROM positions WHERE ts < ? AND NOT EXISTS (
             SELECT 1 FROM adventures a WHERE a.server_id = positions.server_id AND positions.ts BETWEEN a.start_ts AND a.end_ts)""", (cutoff,))
 
@@ -132,7 +135,8 @@ def prune() -> None:
 # ------------------------------------------------------------------ reading
 def sessions(server_id: str, days: int = 30) -> list[dict]:
     """Play sessions (anyone on), newest first, with who played and any saved adventure in them."""
-    since = time.time() - days * 86400
+    # unsaved sessions only as far back as their trail is kept: past that they're gone from the list too
+    since = time.time() - min(days, POSITIONS_DAYS) * 86400
     rows = db.q("SELECT player, start_ts, COALESCE(end_ts, last_seen_ts) AS end_ts FROM sessions "
                 "WHERE server_id=? AND COALESCE(end_ts, last_seen_ts) >= ? ORDER BY start_ts", (server_id, since))
     out: list[dict] = []

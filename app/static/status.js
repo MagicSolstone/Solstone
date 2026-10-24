@@ -555,16 +555,25 @@ function renderTvMusic() {
     <div class="tv-np-times"><span id="tv-np-t">0:00</span><span>${FWMusic.duration ? fmtClockSecs(FWMusic.duration) : ""}</span></div>
     ${next && !FWMusic.shuffle ? `<p class="tv-np-next">Up next: <b>${esc(next.title)}</b>${next.artist ? ` · ${esc(next.artist)}` : ""}</p>` : FWMusic.shuffle ? `<p class="tv-np-next">🔀 Shuffling ${esc(FWMusic.source?.name || "")}</p>` : ""}
   </section>`);
-  tvMusicTime();
+  if (!npClock.at) tvMusicTime(); else tvMusicPaint();        // a redraw mustn't pull the bar back to the last update
 }
 const fmtClockSecs = (t) => { t = Math.max(0, Math.floor(t || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+// The song's progress moves every quarter second, between the player's own updates (which can be seconds apart
+// when the music is playing somewhere else), so the bar glides instead of jumping.
+const npClock = { t: 0, at: 0 };
 function tvMusicTime() {
+  npClock.t = FWMusic.time || 0; npClock.at = performance.now();
+  tvMusicPaint();
+}
+function tvMusicPaint() {
   const f = $("#tv-np-fill"), tt = $("#tv-np-t");
   if (!f) return;
   const d = FWMusic.duration;
-  f.style.width = `${d ? Math.min(100, (FWMusic.time / d) * 100) : 0}%`;
-  if (tt) tt.textContent = fmtClockSecs(FWMusic.time);
+  const t = Math.min(d || Infinity, npClock.t + (FWMusic.playing ? (performance.now() - npClock.at) / 1000 : 0));
+  f.style.width = `${d ? Math.min(100, (t / d) * 100) : 0}%`;
+  if (tt) tt.textContent = fmtClockSecs(t);
 }
+setInterval(() => { if (st.board && FWMusic.playing) tvMusicPaint(); }, 250);
 FWMusic.on((what) => { if (!st.tv) return; if (what === "time") tvMusicTime(); else renderTvMusic(); });
 
 function renderTv(b) {

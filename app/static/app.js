@@ -654,12 +654,26 @@ function serverHeader(s, tab) {
   ].filter(Boolean).join("");
   const base = `#/s/${encodeURIComponent(s.id)}`;
   const java = !s.game || s.game === "minecraft-java";
-  const tabs = [["overview", "Overview", base], ["performance", "Performance", `${base}/performance`],
-    ...(java ? [["world", "World", `${base}/world`], ["leaderboards", "Leaderboards", `${base}/leaderboards`], ...(s.fishing ? [["fishing", "Fishing", `${base}/fishing`]] : []), ["mods", "Mods", `${base}/mods`]] : []),
-    ...(java ? [["adventures", "Adventures", `${base}/adventures`], ["chat", "Chat", `${base}/chat`]] : []),
-    ...(isAdmin() && java ? [["challenges", "Challenges", `${base}/challenges`]] : []),
-    ...(isAdmin() ? [["control", "Control", `${base}/control`]] : []),
-    ...(isAdmin() && java ? [["check", "Check", `${base}/check`]] : [])];
+  // Sections in groups: the everyday ones on their own, the extras under Play, the running of it under Server.
+  // The group you're in shows its own row of tabs underneath.
+  const groups = [
+    ["overview", "Overview", [["overview", "Overview", base]]],
+    ...(java ? [["world", "World", [["world", "World", `${base}/world`]]],
+      ["leaderboards", "Leaderboards", [["leaderboards", "Leaderboards", `${base}/leaderboards`]]],
+      ["play", "Play", [...(s.fishing ? [["fishing", "Fishing", `${base}/fishing`]] : []), ["adventures", "Adventures", `${base}/adventures`],
+        ...(isAdmin() ? [["challenges", "Challenges", `${base}/challenges`]] : [])]]] : []),
+    ["server", "Server", [...(java ? [["chat", "Chat", `${base}/chat`], ["mods", "Mods", `${base}/mods`]] : []), ["performance", "Performance", `${base}/performance`],
+      ...(isAdmin() ? [["control", "Control", `${base}/control`]] : []), ...(isAdmin() && java ? [["check", "Check", `${base}/check`]] : [])]],
+  ].filter(([, , items]) => items.length);
+  const inGroup = groups.find(([, , items]) => items.some(([k]) => k === tab));
+  if (inGroup && inGroup[2].length > 1) { try { localStorage.setItem(`solstone-tab-${inGroup[0]}`, tab); } catch { /* private window */ } }
+  const groupHref = ([g, , items]) => {
+    let last = null;
+    try { last = localStorage.getItem(`solstone-tab-${g}`); } catch { /* private window */ }
+    return (items.find(([k]) => k === last) || items[0])[2];
+  };
+  const tabsHtml = `<nav class="tabs" aria-label="Server sections">${groups.map((gr) => `<a href="${groupHref(gr)}" ${gr === inGroup ? 'aria-current="page"' : ""}>${gr[1]}${gr[2].length > 1 ? ' <span class="tab-more" aria-hidden="true">▾</span>' : ""}</a>`).join("")}</nav>
+    ${inGroup && inGroup[2].length > 1 ? `<nav class="subtabs" aria-label="${esc(inGroup[1])}">${inGroup[2].map(([k, label, href]) => `<a href="${href}" ${k === tab ? 'aria-current="page"' : ""}>${label}</a>`).join("")}</nav>` : ""}`;
   return `<header class="server-head">
       <div class="big-icon">${s.has_icon ? `<img src="/api/servers/${encodeURIComponent(s.id)}/icon.png" alt="">` : esc((s.name || "?")[0])}</div>
       <div><h1>${esc(s.name)}</h1><div class="motd">${motdHtml(s.motd)}</div><div class="facts">${facts}</div></div>
@@ -670,7 +684,7 @@ function serverHeader(s, tab) {
     ${s.rcon?.error && s.running ? `<div class="notice">Live data is unavailable: ${esc(s.rcon.error)}. Showing the last saved data instead.</div>` : ""}
     ${s.backup?.found && s.backup.stale ? `<div class="notice">The last backup was ${esc(fmtAgo(s.backup.latest.ts))}. Check the backup schedule in Crafty.</div>` : ""}
     ${s.backup?.configured && !s.backup.found ? `<div class="notice">No backups found for this server in Crafty's backups folder.</div>` : ""}
-    <nav class="tabs" aria-label="Server sections">${tabs.map(([k, label, href]) => `<a href="${href}" ${k === tab ? 'aria-current="page"' : ""}>${label}</a>`).join("")}</nav>`;
+    ${tabsHtml}`;
 }
 
 async function serverFrame(sid, tab) {
@@ -1063,9 +1077,18 @@ async function viewWorld(sid) {
   const ruleVal = (v) => v === "true" || v === true ? '<span class="on">On</span>' : v === "false" || v === false ? '<span class="off">Off</span>' : esc(v);
   const maxChunks = Math.max(1, ...w.dimensions.map((d) => d.chunks));
   const located = pl.players.filter((p) => p.position);
-  const map = s.map_url
+  // Two maps: Solstone's own (drawn from the world files, with everyone's last spot) and a web map (BlueMap...) if set
+  const webMap = s.map_url
     ? `<iframe class="map-frame" src="${esc(s.map_url)}" title="World map" loading="lazy"></iframe><p class="muted" style="margin-top:8px;font-size:.9rem"><a href="${esc(s.map_url)}" target="_blank" rel="noopener">Open the map full screen</a></p>`
-    : `<div class="empty"><h3>Add a live map</h3><p>Install the <b>BlueMap</b> or <b>squaremap</b> Fabric mod on this server, then paste its web address (for example <code>http://your-server:8100</code>) in server settings. The map will show here.</p><p style="margin-top:12px"><button class="btn primary" id="btn-map">Add map address</button></p></div>`;
+    : `<div class="empty"><h3>Add a 3D web map too</h3><p>Install the <b>BlueMap</b> or <b>squaremap</b> Fabric mod on this server, then paste its web address (for example <code>http://your-server:8100</code>) in server settings. It shows here beside Solstone's map.</p><p style="margin-top:12px"><button class="btn primary" id="btn-map">Add map address</button></p></div>`;
+  const DIM_ORDER = ["minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"];
+  const mapDims = w.dimensions.filter((d) => d.chunks > 0).map((d) => d.id)
+    .sort((a, b) => ((DIM_ORDER.indexOf(a) + 1 || 9) - (DIM_ORDER.indexOf(b) + 1 || 9)));
+  let pick = "own";
+  try { if (localStorage.getItem("solstone-world-map") === "web" && s.map_url) pick = "web"; } catch { /* private window */ }
+  const map = `<div class="world-map-pick"><span class="seg" role="group" aria-label="Which map"><button type="button" data-wm="own" aria-pressed="${pick === "own"}">🗺️ Solstone map</button><button type="button" data-wm="web" aria-pressed="${pick === "web"}">${s.map_url ? "🧊 Web map" : "＋ Web map"}</button></span>
+      ${mapDims.length > 1 ? `<select class="input sm" id="wm-dim" aria-label="Dimension">${mapDims.map((d) => `<option value="${esc(d)}">${esc(dimName(d))}</option>`).join("")}</select>` : ""}</div>
+    <div id="wm-own" class="world-own-map" ${pick === "own" ? "" : "hidden"}></div><div id="wm-web" ${pick === "web" ? "" : "hidden"}>${webMap}</div>`;
   setView(serverHeader(s, "world") + `
     <div class="world-top"><div id="world-sky" class="world-sky">${skyHtml(w)}</div>
       <div class="panel"><dl class="kv">
@@ -1093,6 +1116,37 @@ async function viewWorld(sid) {
     ${w.datapacks.enabled.length ? `<section class="section"><div class="section-head"><h2>Data packs</h2></div><div class="chips">${w.datapacks.enabled.map((d) => `<span class="chip">${esc(d.replace(/^file\//, ""))}</span>`).join("")}</div></section>` : ""}`);
   wireHeader(s);
   $("#btn-mapcheck")?.addEventListener("click", () => openMapCheck(sid, w.dimensions.map((d) => d.id)));
+  // Solstone's own map, centred on whoever's around, with everyone's (last) spot
+  let ownMap = null;
+  const mountOwn = (dim) => {
+    const here = located.filter((p) => (p.position.dimension || "minecraft:overworld") === dim);
+    const c = here[0]?.position || (dim === "minecraft:overworld" && w.spawn) || { x: 0, z: 0 };
+    ownMap = worldMapCanvas($("#wm-own"), sid, { dim, center: { x: c.x, z: c.z }, scale: 1,
+      overlay: (ctx, toScreen) => {
+        if (dim === "minecraft:overworld" && w.spawn) {
+          const [x, y] = toScreen(w.spawn.x, w.spawn.z);
+          ctx.fillStyle = "#f2c14e"; ctx.save(); ctx.translate(x, y); ctx.rotate(Math.PI / 4); ctx.fillRect(-5, -5, 10, 10); ctx.restore();
+        }
+        for (const p of here) {
+          const [x, y] = toScreen(p.position.x, p.position.z);
+          ctx.fillStyle = p.online ? "#5ac8ff" : "rgba(200,210,230,.75)"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.font = "bold 12px system-ui"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.8)"; ctx.fillStyle = "#fff";
+          const label = p.online ? p.name : `${p.name} · ${fmtAgo(p.last_seen)}`;
+          ctx.strokeText(label, x + 10, y + 4); ctx.fillText(label, x + 10, y + 4);
+        }
+      } });
+    if (here.length > 1) ownMap.fit(here.map((p) => ({ x: p.position.x, z: p.position.z })));
+  };
+  if (pick === "own") mountOwn(mapDims[0] || "minecraft:overworld");
+  $("#wm-dim")?.addEventListener("change", (e) => mountOwn(e.target.value));
+  document.querySelectorAll("[data-wm]").forEach((b) => b.addEventListener("click", () => {
+    const which = b.dataset.wm;
+    try { localStorage.setItem("solstone-world-map", which); } catch { /* private window */ }
+    document.querySelectorAll("[data-wm]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    $("#wm-own").hidden = which !== "own"; $("#wm-web").hidden = which !== "web";
+    if (which === "own" && !ownMap) mountOwn($("#wm-dim")?.value || mapDims[0] || "minecraft:overworld");
+  }));
   // The clock moves on its own (20 ticks a second while people play) and checks back with
   // the server every 20 seconds, so the time, sun and weather stay current.
   let wd = w, readAt = Date.now() - (w.age || 0) * 1000;

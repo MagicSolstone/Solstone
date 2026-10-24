@@ -120,6 +120,13 @@ main:focus, main:focus-visible { outline: none; }
 }
 .tabs a:hover { color: var(--bone); }
 .tabs a[aria-current="page"] { color: var(--bone); border-bottom-color: var(--gold); }
+.tab-more { font-size: .7em; opacity: .7; }
+.server-head ~ .tabs:has(+ .subtabs) { margin-bottom: 10px; }
+.subtabs { display: flex; gap: 6px; margin: 0 0 22px; overflow-x: auto; scrollbar-width: none; }
+.subtabs a { padding: 6px 14px; border-radius: 999px; text-decoration: none; color: var(--muted); font-weight: 700; font-size: .92rem;
+  background: rgba(255,255,255,.05); border: 1px solid transparent; white-space: nowrap; }
+.subtabs a:hover { color: var(--bone); }
+.subtabs a[aria-current="page"] { color: var(--bone); background: rgba(242, 193, 78, .14); border-color: rgba(242, 193, 78, .5); }
 
 .section { margin-bottom: 36px; }
 .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -1457,7 +1464,7 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .tv-np b { display: block; font-size: 1.1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tv-np span:not(.tv-np-art) { color: var(--muted); font-size: .9rem; }
 .tv-np-bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,.15); margin-top: 12px; overflow: hidden; }
-.tv-np-bar i { display: block; height: 100%; width: 0; background: var(--gold); transition: width 1s linear; }
+.tv-np-bar i { display: block; height: 100%; width: 0; background: var(--gold); transition: width .25s linear; }
 .tv-np-times { display: flex; justify-content: space-between; font-size: .75rem; color: var(--faint); margin-top: 4px; font-variant-numeric: tabular-nums; }
 .tv-np-next { margin: 8px 0 0; font-size: .85rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 1000px) { .tv-wrap { grid-template-columns: 1fr; } body.tv .tv-side { display: none; } }
@@ -1879,3 +1886,9 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .rp-ev-t { color: var(--muted); font-variant-numeric: tabular-nums; }
 .rp-save { margin-top: 14px; display: grid; gap: 4px; padding: 14px; }
 .rp-save label { display: grid; gap: 4px; font-weight: 700; font-size: .92rem; }
+
+/* World tab: Solstone's own map beside the web map */
+.world-map-pick { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.world-map-pick select { margin-left: auto; }
+.world-own-map { position: relative; height: min(64vh, 600px); border-radius: var(--radius-m); overflow: hidden; background: #101826; }
+.world-own-map .rm-canvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
