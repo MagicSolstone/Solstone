@@ -74,6 +74,11 @@ class CraftyClient:
         data = body.get("data") if isinstance(body.get("data"), dict) else None
         if data is None or "running" not in data:
             data = {**body, **(data or {})}
+        # When Crafty can't ping the game (starting up, or the ping fails) it fills these with the text "False";
+        # treat that as unknown so pages fall back to server.properties and the icon file instead of showing "False".
+        for k in ("desc", "icon", "version", "players", "max", "online"):
+            if data.get(k) in (False, "False", "false", "None", ""):
+                data[k] = None
         return data
 
     async def _post(self, path: str, *, content: str | None = None) -> dict:

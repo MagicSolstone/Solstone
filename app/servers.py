@@ -286,11 +286,21 @@ async def online_players(srv: Server) -> tuple[list[str], str]:
     return [], "none"
 
 
+_last_seen_stats: dict[str, dict] = {}       # server id -> the last MOTD, icon and version Crafty could read
+
+
 async def _crafty_stats(srv: Server) -> dict | None:
     if not srv.crafty:
         return None
     stats = await crafty.stats(srv.id)
     if stats is not None:
+        # Crafty's ping of the game fails now and then (it then has no MOTD or icon): keep showing the last ones
+        keep = _last_seen_stats.setdefault(srv.id, {})
+        for k in ("desc", "icon", "version"):
+            if stats.get(k):
+                keep[k] = stats[k]
+            elif keep.get(k):
+                stats[k] = keep[k]
         srv.crafty["_stats"] = stats
     return stats
 

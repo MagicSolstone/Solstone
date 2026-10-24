@@ -148,3 +148,17 @@ def test_registry_keeps_crafty_servers_while_crafty_is_down(monkeypatch, tmp_pat
     fresh = S.Registry()                                    # and Solstone restarts while it's away
     asyncio.run(fresh.refresh(force=True))
     assert list(fresh.servers) == ["abc"] and fresh.servers["abc"].name == "Family"
+
+
+def test_crafty_false_placeholders_are_unknown():
+    def handler(request: httpx.Request):
+        return httpx.Response(200, json={"status": "ok", "data": {"running": True, "desc": "False", "icon": "False", "version": "False", "players": "False"}})
+
+    async def run():
+        c = CraftyClient()
+        c.base, c._token = "https://crafty.test", "tok"
+        c._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        st = await c.stats("abc")
+        assert st["running"] is True and st["desc"] is None and st["icon"] is None and st["version"] is None
+        await c.close()
+    asyncio.run(run())
