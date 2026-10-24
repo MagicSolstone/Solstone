@@ -86,7 +86,7 @@ def test_skins_from_mojang(client, anon, monkeypatch):
 
     async def fake_fetch(uuid):
         calls.append(uuid)
-        return png if uuid.startswith("069a") else None
+        return (png, False) if uuid.startswith("069a") else None
     monkeypatch.setattr(skins, "_fetch", fake_fetch)
     u = "069a79f4-44e9-4726-a5be-fca90e38aaf5"
     r = client.get(f"/api/skins/{u}.png")
@@ -95,6 +95,30 @@ def test_skins_from_mojang(client, anon, monkeypatch):
     assert client.get("/api/skins/00000000000000000000000000000001.png").status_code == 404
     assert client.get("/api/skins/not-a-uuid.png").status_code == 404
     assert anon.get(f"/api/skins/{u}.png").status_code == 401
+    # Browsers re-ask each time and hear "not changed" until the skin is new.
+    tag = r.headers["etag"]
+    assert "no-cache" in r.headers["cache-control"]
+    assert client.get(f"/api/skins/{u}.png", headers={"If-None-Match": tag}).status_code == 304
+    png = b"\x89PNG new skin"
+    skins.stale(u)                                   # what a join does
+    r = client.get(f"/api/skins/{u}.png", headers={"If-None-Match": tag})
+    assert r.status_code == 200 and r.content == png and len(calls) == 3
+
+
+def test_body_render_endpoint(client, monkeypatch):
+    import io
+
+    from PIL import Image
+
+    from app import skins
+    img = Image.new("RGBA", (64, 64), (10, 20, 30, 255))
+    buf = io.BytesIO(); img.save(buf, "PNG")
+
+    async def fake_fetch(uuid):
+        return buf.getvalue(), True
+    monkeypatch.setattr(skins, "_fetch", fake_fetch)
+    r = client.get("/api/skins/169a79f444e94726a5befca90e38aaf5/body.png?size=160")
+    assert r.status_code == 200 and Image.open(io.BytesIO(r.content)).size == (80, 160)
 
 
 def test_skin_profile_parsing(monkeypatch):
@@ -113,7 +137,7 @@ def test_skin_profile_parsing(monkeypatch):
         return httpx.Response(200, content=b"\x89PNGskin")
     real = httpx.AsyncClient
     monkeypatch.setattr(skins.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
-    assert asyncio.run(skins._fetch("069a79f444e94726a5befca90e38aaf5")) == b"\x89PNGskin"
+    assert asyncio.run(skins._fetch("069a79f444e94726a5befca90e38aaf5")) == (b"\x89PNGskin", False)
 
 
 def test_custom_firework_editor(client, viewer, anon):

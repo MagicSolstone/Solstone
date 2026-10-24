@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, music, notify, races, recap, tide
+from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, music, notify, races, recap, skins, tide
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -266,6 +266,9 @@ class Recorder:
         online = {n: name_to_uuid.get(n.lower()) for n in names} if running else {}
         joined, left = db.update_sessions(srv.id, online, now)
         self._online[srv.id] = list(online)
+        for n in joined:                                # a new skin is picked up when they sign in
+            if online.get(n):
+                skins.stale(online[n])
         if online and srv.is_java:
             try:
                 await asyncio.to_thread(adventures.progress, srv, online)

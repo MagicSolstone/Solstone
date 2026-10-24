@@ -840,7 +840,7 @@ const giveBtn = (p) => {
 
 function playerHero(p) {
   const d = p.data;
-  const body = p.uuid ? `<img src="https://mc-heads.net/body/${p.uuid.replace(/-/g, "")}/240" alt="${esc(p.name)}'s skin" data-fail="letter" data-letter="${esc(p.name[0])}">` : "";
+  const body = p.uuid ? `<img src="/api/skins/${p.uuid.replace(/-/g, "")}/body.png?size=256" alt="${esc(p.name)}'s skin" data-fail="letter" data-letter="${esc(p.name[0])}">` : "";
   let presence;
   if (p.online) {
     presence = p.source === "live"
@@ -890,7 +890,7 @@ function inventoryHtml(p) {
   const d = p.data;
   if (!d) return `<div class="empty"><h3>No inventory saved yet</h3><p>Minecraft writes player data when the world saves or the player logs out.</p></div>`;
   const inv = d.inventory;
-  const body = p.uuid ? `<img src="https://mc-heads.net/body/${p.uuid.replace(/-/g, "")}/160" alt="" data-fail="remove">` : "";
+  const body = p.uuid ? `<img src="/api/skins/${p.uuid.replace(/-/g, "")}/body.png?size=160" alt="" data-fail="remove">` : "";
   const armor = [["head", "helmet"], ["chest", "chestplate"], ["legs", "leggings"], ["feet", "boots"]]
     .map(([k, g]) => slotHtml(inv.armor[k], { ghost: g })).join("");
   const hotbar = inv.hotbar.map((it, i) => slotHtml(it, { selected: i === d.selected_slot })).join("");

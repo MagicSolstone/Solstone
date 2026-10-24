@@ -48,7 +48,8 @@ function tpsInfo(tps) {
   if (tps >= 15) return { label: "A little laggy", cls: "warn" };
   return { label: "Very laggy", cls: "bad" };
 }
-const bodyUrl = (p) => `https://mc-heads.net/body/${p.uuid ? p.uuid.replace(/-/g, "") : encodeURIComponent(p.name)}/220`;
+// A front view of the player in their current skin, drawn by Solstone from Mojang's copy.
+const bodyUrl = (p) => p.uuid && st.sid ? `/api/public/skin/${encodeURIComponent(st.sid)}/${String(p.uuid).replace(/-/g, "")}/body.png?size=224` : "data:,";
 function itemImg(it, cls = "") {
   if (!it) return "";
   const [ns, n] = it.id.includes(":") ? it.id.split(":") : ["minecraft", it.id];

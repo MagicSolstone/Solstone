@@ -603,20 +603,37 @@ async def public_item_icon(sid: str, ns: str, name: str):
 
 
 @app.get("/api/public/skin/{sid}/{uuid}.png")
-async def public_skin(sid: str, uuid: str):
+async def public_skin(sid: str, uuid: str, request: Request):
     """Skins for the status page: only players who have joined a visible server."""
     _require_status()
     srv = await _public_server(sid)
     if S.norm_uuid(uuid) not in S.known_players(srv):
         raise HTTPException(404)
-    return await _skin_response(uuid, "public, max-age=3600")
+    return await _skin_response(request, uuid, "public")
 
 
-async def _skin_response(uuid: str, cache: str) -> Response:
+@app.get("/api/public/skin/{sid}/{uuid}/body.png")
+async def public_body(sid: str, uuid: str, request: Request, size: int = 256):
+    _require_status()
+    srv = await _public_server(sid)
+    if S.norm_uuid(uuid) not in S.known_players(srv):
+        raise HTTPException(404)
+    return await _skin_response(request, uuid, "public", size)
+
+
+async def _skin_response(request: Request, uuid: str, scope: str, body_size: int | None = None) -> Response:
+    """The skin (or a front view of the player in it). Browsers ask again each time and get a
+    "not changed" answer until the skin really changes, so a new skin shows up right away."""
     data = await skins.skin(uuid)
     if not data:
         raise HTTPException(404)
-    return Response(data, media_type="image/png", headers={"Cache-Control": cache})
+    tag = '"' + hashlib.sha1(data).hexdigest()[:16] + (f"-b{body_size}" if body_size else "") + '"'
+    headers = {"Cache-Control": f"{scope}, no-cache", "ETag": tag}
+    if request.headers.get("if-none-match") == tag:
+        return Response(status_code=304, headers=headers)
+    if body_size:
+        data = await asyncio.to_thread(skins.body, data, uuid, max(32, min(512, body_size)))
+    return Response(data, media_type="image/png", headers=headers)
 
 
 # Fireworks: which kinds go off, their colours and pace. Public so the sign-in and
@@ -1762,8 +1779,13 @@ async def item_icon(sid: str, ns: str, name: str):
 
 
 @app.get("/api/skins/{uuid}.png")
-async def player_skin(uuid: str):
-    return await _skin_response(uuid, "private, max-age=3600")
+async def player_skin(uuid: str, request: Request):
+    return await _skin_response(request, uuid, "private")
+
+
+@app.get("/api/skins/{uuid}/body.png")
+async def player_body(uuid: str, request: Request, size: int = 256):
+    return await _skin_response(request, uuid, "private", size)
 
 
 @app.get("/api/servers/{sid}/assets/texture/{path:path}")
