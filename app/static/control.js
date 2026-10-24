@@ -352,7 +352,7 @@ async function viewAdmin() {
   setView(`<h1 style="margin-bottom:20px">Users &amp; activity</h1>
     <section class="section"><div class="section-head"><h2>Users</h2><span class="muted">Viewers can see everything but can't change anything. Admins can also control servers.</span></div>
       <div class="table-wrap"><table class="data users-table"><thead><tr><th>Username</th><th>Role</th><th>Last signed in</th><th></th></tr></thead><tbody>
-      ${users.map((u) => `<tr data-uid="${u.id}"><td><b>${esc(u.username)}</b>${u.id === me.user.id ? ' <span class="muted">(you)</span>' : ""}</td>
+      ${users.map((u) => `<tr data-uid="${u.id}"><td><b>${esc(u.username)}</b>${u.display_name ? ` <span class="muted">shown as ${esc(u.display_name)}</span>` : ""}${u.id === me.user.id ? ' <span class="muted">(you)</span>' : ""}</td>
         <td><select class="input sm" data-role ${u.id === me.user.id ? "disabled" : ""} aria-label="Role for ${esc(u.username)}"><option value="viewer" ${u.role === "viewer" ? "selected" : ""}>Viewer</option><option value="admin" ${u.role === "admin" ? "selected" : ""}>Admin</option></select></td>
         <td>${esc(fmtWhen(u.last_login))}</td>
         <td class="row-actions"><button class="btn sm" data-reset>Set password</button>${u.id === me.user.id ? "" : `<button class="btn sm danger" data-del>Remove</button>`}</td></tr>`).join("")}

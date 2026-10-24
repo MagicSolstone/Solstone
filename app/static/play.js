@@ -3,7 +3,6 @@
 
 // ---------------------------------------------------------------- chat
 async function viewChat(sid) {
-  if (!isAdmin()) { location.replace(`#/s/${encodeURIComponent(sid)}`); return; }
   const s = await serverFrame(sid, "chat");
   const base = `/api/servers/${encodeURIComponent(sid)}`;
   setView(serverHeader(s, "chat") + `

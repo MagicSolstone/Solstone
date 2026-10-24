@@ -150,7 +150,7 @@ def test_api(client, viewer, sid):
 
 def test_chat_api(client, viewer, sid):
     from app import db
-    assert viewer.get(f"/api/servers/{sid}/chat").status_code == 403
+    assert viewer.get(f"/api/servers/{sid}/chat").status_code == 200        # everyone signed in can chat now
     eid = db.add_event(sid, time.time(), "chat", "hello from the game", "Tyler")
     try:
         _chat_checks(client, sid)
@@ -234,3 +234,26 @@ def test_fishing_hot_zone_bonus(fake):
     asyncio.run(challenges.on_catch(srv, "Gimli_Jr", {**fish, "pos": None}))                      # an older pack: no position, no bonus
     assert not any("players add" in x for x in srv.cmds[n:])
     assert "hot zone open" in challenges.live(srv.id)[0]["sub"]
+
+
+def test_display_name_is_used_in_chat(client, viewer, sid):
+    from app import control, db
+    sent = []
+
+    async def run(srv, cmd):
+        sent.append(cmd)
+        return {"ok": True, "output": ""}
+    import pytest
+    mp = pytest.MonkeyPatch()
+    mp.setattr(control, "run", run)
+    try:
+        assert viewer.post("/api/auth/profile", json={"display_name": "Little Fisher"}).json()["user"]["shown"] == "Little Fisher"
+        assert viewer.post("/api/auth/profile", json={"display_name": "bad<name>"}).status_code == 400
+        assert client.post("/api/auth/profile", json={"display_name": "little fisher"}).status_code == 400   # taken
+        r = viewer.post(f"/api/servers/{sid}/chat", json={"message": "hi grandpa"})
+        assert r.status_code == 200 and "Little Fisher" in sent[-1]
+        assert db.q("SELECT player FROM events WHERE id=?", (r.json()["id"],))[0]["player"] == "Little Fisher"
+        db.x("DELETE FROM events WHERE id=?", (r.json()["id"],))
+        assert viewer.post("/api/auth/profile", json={"display_name": ""}).json()["user"]["display_name"] is None
+    finally:
+        mp.undo()

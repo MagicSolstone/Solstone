@@ -1292,6 +1292,16 @@ async def me(request: Request):
     return {"user": auth.require_user(request).public(), "version": VERSION}
 
 
+@app.post("/api/auth/profile")
+async def change_profile(request: Request):
+    """Your display name (shown in chat and the activity feed instead of your login)."""
+    user = auth.require_user(request)
+    body = await _body(request)
+    u = await asyncio.to_thread(auth.set_display_name, user.id, str(body.get("display_name") or ""))
+    auth.audit(user, None, "display_name", u.shown)
+    return {"user": u.public()}
+
+
 @app.post("/api/auth/password")
 async def change_password(request: Request):
     user = auth.require_user(request)
@@ -2114,7 +2124,7 @@ CHAT_TYPES = ["chat", "webchat", "webdm", "join", "leave", "death", "advancement
 
 @app.get("/api/servers/{sid}/chat")
 async def get_chat(sid: str, request: Request, after: int = 0):
-    auth.require_admin(request)
+    auth.require_user(request)                                 # everyone signed in can read and send chat
     srv = await _server(sid)
     rows = db.events_after(srv.id, CHAT_TYPES, max(0, after), 300 if not after else 200)
     out = []
@@ -2130,7 +2140,8 @@ async def get_chat(sid: str, request: Request, after: int = 0):
 
 @app.post("/api/servers/{sid}/chat")
 async def send_chat(sid: str, request: Request):
-    user = auth.require_admin(request)
+    user = auth.require_user(request)
+    name = user.shown
     srv = await _server(sid)
     body = await _body(request)
     text = control.clean_text(str(body.get("message") or ""))
@@ -2139,15 +2150,15 @@ async def send_chat(sid: str, request: Request):
     to = str(body.get("to") or "").strip()
     if to:
         to = control.check_name(to)
-        cmd = f"tellraw {to} {control.component([(f'{user.username} whispers to you: ', 'light_purple'), (text, 'light_purple')])}"
+        cmd = f"tellraw {to} {control.component([(f'{name} whispers to you: ', 'light_purple'), (text, 'light_purple')])}"
     else:
-        cmd = f"tellraw @a {control.component([('<', None), (user.username, 'aqua'), ('> ', None), (text, None)])}"
+        cmd = f"tellraw @a {control.component([('<', None), (name, 'aqua'), ('> ', None), (text, None)])}"
     r = await control.run(srv, cmd)
     if r.get("ok") is False:
         raise HTTPException(409, (r.get("output") or "The game said no")[:200])
     if to and r.get("output") and "no player" in r["output"].lower():
         raise HTTPException(409, f"{to} isn't online")
-    eid = db.add_event(srv.id, time.time(), "webdm" if to else "webchat", f"{to}\x1f{text}" if to else text, user.username)
+    eid = db.add_event(srv.id, time.time(), "webdm" if to else "webchat", f"{to}\x1f{text}" if to else text, name)
     return {"ok": True, "id": eid}
 
 

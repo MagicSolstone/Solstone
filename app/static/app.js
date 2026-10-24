@@ -82,8 +82,8 @@ async function signedIn(user) {
   }
   const root = $("#login-root"); root.hidden = true; root.innerHTML = "";
   if (!appSky.board) appSky.board = startBoard($("#app-board"), { where: "app", sid: () => curSid || "", scene: () => appSky.scene, dismiss: true, max: innerWidth < 700 ? 1 : 2 });
-  $("#account-name").textContent = user.username;
-  $("#account-role").textContent = user.role === "admin" ? "Admin" : "Viewer (read-only)";
+  $("#account-name").textContent = user.shown || user.username;
+  $("#account-role").textContent = user.role === "admin" ? "Admin" : "Viewer";
   fetch("/api/public/status").then((r) => r.json()).then((d) => { $("#btn-status").hidden = !d.enabled; appBuild = d.build; }).catch(() => {});
   // Left open for a while? Say when Solstone has been updated (a reload loads it).
   clearInterval(state.buildCheck);
@@ -114,6 +114,26 @@ function wireAccountMenu() {
   addEventListener("scroll", close, { passive: true });
   $("#btn-logout").addEventListener("click", async () => { close(); await post("/api/auth/logout").catch(() => {}); showLogin(); });
   $("#btn-password").addEventListener("click", () => { close(); openPasswordChange(); });
+  $("#btn-display-name").addEventListener("click", () => { close(); openDisplayName(); });
+}
+
+// The name other people see in chat and the activity feed; the login name stays the same.
+function openDisplayName() {
+  const cur = me.user || {};
+  openModal(`<h2>Display name</h2><form id="dn-form">
+      <label>Name shown in chat and on the site <small>Your login stays <b>${esc(cur.username || "")}</b>. Leave empty to use it.</small>
+        <input class="input" name="display_name" maxlength="24" value="${esc(cur.display_name || "")}" placeholder="${esc(cur.username || "")}" autocomplete="nickname"></label>
+      <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Save</button></div>
+    </form>`, (m) => {
+    $("#dn-form", m).addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const r = await post("/api/auth/profile", { display_name: new FormData(e.target).get("display_name") });
+        me.user = r.user; $("#account-name").textContent = r.user.shown;
+        closeModal(); showToast(`You're now shown as ${esc(r.user.shown)}`, 2500);
+      } catch (err) { showToast(esc(err.message), 4000); }
+    });
+  });
 }
 
 function openPasswordChange() {
@@ -619,7 +639,8 @@ function serverHeader(s, tab) {
   const java = !s.game || s.game === "minecraft-java";
   const tabs = [["overview", "Overview", base], ["performance", "Performance", `${base}/performance`],
     ...(java ? [["world", "World", `${base}/world`], ["leaderboards", "Leaderboards", `${base}/leaderboards`], ...(s.fishing ? [["fishing", "Fishing", `${base}/fishing`]] : []), ["mods", "Mods", `${base}/mods`]] : []),
-    ...(isAdmin() && java ? [["chat", "Chat", `${base}/chat`], ["challenges", "Challenges", `${base}/challenges`]] : []),
+    ...(java ? [["chat", "Chat", `${base}/chat`]] : []),
+    ...(isAdmin() && java ? [["challenges", "Challenges", `${base}/challenges`]] : []),
     ...(isAdmin() ? [["control", "Control", `${base}/control`]] : []),
     ...(isAdmin() && java ? [["check", "Check", `${base}/check`]] : [])];
   return `<header class="server-head">

@@ -79,6 +79,9 @@ def _init() -> None:
         if _ready:
             return
         db.conn().executescript(SCHEMA)
+        cols = {r["name"] for r in db.q("PRAGMA table_info(users)")}
+        if "display_name" not in cols:                       # added later: the name shown in chat and on the site
+            db.conn().execute("ALTER TABLE users ADD COLUMN display_name TEXT")
         _ready = True
 
 
@@ -107,17 +110,44 @@ class User:
     id: int
     username: str
     role: str
+    display_name: str | None = None
 
     @property
     def is_admin(self) -> bool:
         return self.role == "admin"
 
+    @property
+    def shown(self) -> str:
+        """The name other people see (chat, the activity feed): the display name, else the login."""
+        return self.display_name or self.username
+
     def public(self) -> dict:
-        return {"id": self.id, "username": self.username, "role": self.role}
+        return {"id": self.id, "username": self.username, "role": self.role, "display_name": self.display_name, "shown": self.shown}
 
 
 def _row_user(r) -> User:
-    return User(id=r["id"], username=r["username"], role=r["role"])
+    keys = r.keys() if hasattr(r, "keys") else []
+    return User(id=r["id"], username=r["username"], role=r["role"], display_name=r["display_name"] if "display_name" in keys else None)
+
+
+_DISPLAY_NAME = re.compile(r"^[A-Za-z0-9 _.'-]{1,24}$")
+
+
+def set_display_name(uid: int, name: str | None) -> User:
+    """Empty clears it (back to the login name). Letters, numbers, spaces and _ . ' -, up to 24, and not someone else's."""
+    _init()
+    name = " ".join((name or "").split())
+    if name and not _DISPLAY_NAME.match(name):
+        raise HTTPException(400, "Use up to 24 letters, numbers, spaces and _ . ' -")
+    if name:
+        taken = db.q("SELECT id FROM users WHERE id<>? AND (display_name=? COLLATE NOCASE OR username=? COLLATE NOCASE)", (uid, name, name))
+        if taken:
+            raise HTTPException(400, "Someone else already goes by that name")
+    db.x("UPDATE users SET display_name=? WHERE id=?", (name or None, uid))
+    u = get_user(uid)
+    if not u:
+        raise HTTPException(404, "User not found")
+    return u
 
 
 def count_users() -> int:
@@ -152,7 +182,7 @@ def create_user(username: str, password: str, role: str, check: bool = True) -> 
 
 def list_users() -> list[dict]:
     _init()
-    return [{"id": r["id"], "username": r["username"], "role": r["role"], "created": r["created_ts"],
+    return [{"id": r["id"], "username": r["username"], "display_name": r["display_name"], "role": r["role"], "created": r["created_ts"],
              "last_login": r["last_login_ts"]} for r in db.q("SELECT * FROM users ORDER BY username COLLATE NOCASE")]
 
 
