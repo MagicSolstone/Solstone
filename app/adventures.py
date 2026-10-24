@@ -161,7 +161,9 @@ def sessions(server_id: str, days: int = 30) -> list[dict]:
 
 
 def _players_between(server_id: str, start: float, end: float) -> list[str]:
-    rows = db.q("SELECT DISTINCT player FROM positions WHERE server_id=? AND ts BETWEEN ? AND ?", (server_id, start, end))
+    # from the play sessions (a few rows a day), not the positions (thousands): the list stays quick with many saved
+    rows = db.q("SELECT DISTINCT player FROM sessions WHERE server_id=? AND start_ts <= ? AND COALESCE(end_ts, last_seen_ts) >= ?",
+                (server_id, end, start))
     return sorted((r["player"] for r in rows), key=str.lower)
 
 
