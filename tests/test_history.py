@@ -266,7 +266,7 @@ def test_join_and_leave_alerts_come_from_the_online_check(client, sid, monkeypat
     srv.dir.joinpath("logs").mkdir(exist_ok=True)
     srv.dir.joinpath("logs", "latest.log").touch()
     sent = []
-    monkeypatch.setattr(rec_mod, "maybe_notify", lambda t, name, msg: sent.append((t, msg)))
+    monkeypatch.setattr(rec_mod, "maybe_notify", lambda t, name, msg, sid=None: sent.append((t, msg)))
     online = {"names": ["Tyler"]}
 
     async def fake_online(_srv):

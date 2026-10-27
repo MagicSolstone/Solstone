@@ -19,6 +19,12 @@ _JOIN = re.compile(rf"^{_NAME} joined the game$")
 _LEAVE = re.compile(rf"^{_NAME} left the game$")
 _CHAT = re.compile(rf"^(?:\[Not Secure\] )?<{_NAME}> (.*)$")
 _ADV = re.compile(rf"^{_NAME} has (made the advancement|completed the challenge|reached the goal) \[(.+)\]$")
+# Turned away by the whitelist. The game words it a few ways across versions:
+#   "Tyler (/1.2.3.4:5678) lost connection: You are not white-listed on this server!"
+#   "Disconnecting Tyler (/1.2.3.4:5678): You are not white-listed on this server!"
+#   "GameProfile[id=..., name=Tyler, properties=...] (/1.2.3.4:5678) lost connection: You are not white-listed..."
+_NOT_LISTED = re.compile(r"not white-?listed", re.I)
+_BLOCKED_NAME = re.compile(rf"name=({mcname.PATTERN})[,\]]|^(?:Disconnecting )?({mcname.PATTERN}) \(")
 _DONE = re.compile(r"^Done \([\d.,]+s\)! For help")
 _STOP = re.compile(r"^Stopping (the )?server$")
 _DEATH_VERBS = re.compile(
@@ -68,6 +74,9 @@ def parse_line(line: str, known_players: set[str]) -> LogEvent | None:
         return ev("chat", mm.group(2), mm.group(1))
     if mm := _ADV.match(msg):
         return ev("advancement", msg, mm.group(1))
+    if _NOT_LISTED.search(msg) and (mm := _BLOCKED_NAME.search(msg)):
+        name = mm.group(1) or mm.group(2)            # their address is left out on purpose
+        return ev("blocked", f"{name} tried to join but isn't on the whitelist", name)
     if _DONE.match(msg):
         return ev("server", "Server started")
     if _STOP.match(msg):

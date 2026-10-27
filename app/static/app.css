@@ -1772,3 +1772,12 @@ a.glance-me:hover { border-color: var(--gold); }
 .su-bday { display: grid; gap: 6px; margin: 6px 0 4px; }
 .su-bday small { display: block; color: var(--muted); }
 .su-bday-row { display: flex; gap: 8px; }
+.turned-away { margin-top: 14px; }
+.turned-away ul { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 6px; }
+.turned-away li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; background: rgba(255, 154, 60, .1); border: 1px solid rgba(255, 154, 60, .35); }
+.turned-away .ta-name { font-size: 1rem; font-weight: 700; }
+.turned-away li .btn:first-of-type { margin-left: auto; }
+.ns-server { padding: 8px 0; border-top: 1px solid var(--line); }
+.ns-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.ns-own { margin-top: 8px; display: grid; gap: 4px; }
+.ns-own[hidden] { display: none; }

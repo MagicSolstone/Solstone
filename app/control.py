@@ -240,15 +240,21 @@ async def power(srv: S.Server, action: str) -> dict:
     return {"ok": True}
 
 
+def _names(path: Path) -> list[str]:
+    try:
+        return sorted((e.get("name") for e in json.loads(path.read_text()) if e.get("name")), key=str.lower)
+    except Exception:
+        return []
+
+
+def whitelist_names(srv: S.Server) -> list[str]:
+    return _names(srv.dir / "whitelist.json")
+
+
 async def whitelist(srv: S.Server) -> dict:
     """Read-only view of whitelist/ops files plus whether the whitelist is on."""
-    def names(path: Path) -> list[str]:
-        try:
-            return sorted((e.get("name") for e in json.loads(path.read_text()) if e.get("name")), key=str.lower)
-        except Exception:
-            return []
     return {"enabled": srv.props.get("white-list", "false") == "true",
-            "whitelist": names(srv.dir / "whitelist.json"), "ops": names(srv.dir / "ops.json")}
+            "whitelist": _names(srv.dir / "whitelist.json"), "ops": _names(srv.dir / "ops.json")}
 
 
 # ---------------------------------------------------------------- live console

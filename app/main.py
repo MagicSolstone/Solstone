@@ -1707,11 +1707,28 @@ async def activity(sid: str, days: int = 14):
     }
 
 
+def _turned_away(srv: S.Server, days: int = 14) -> list[dict]:
+    """Who the whitelist turned away lately (newest first, once each), leaving out anyone let in since."""
+    listed = {n.lower() for n in control.whitelist_names(srv)}
+    seen: dict[str, dict] = {}
+    for e in db.events(srv.id, ["blocked"], None, 200):
+        if e["ts"] < time.time() - days * 86400:
+            break
+        n = e["player"] or ""
+        if n and n.lower() not in seen and n.lower() not in listed and n.lower().lstrip(".") not in listed:
+            seen[n.lower()] = {"name": n, "ts": e["ts"], "bedrock": mcname.is_bedrock(n)}
+    return list(seen.values())
+
+
 @app.get("/api/servers/{sid}/events")
 async def events(sid: str, types: str = "", player: str = "", limit: int = 100, before: float | None = None):
     srv = await _server(sid)
     tlist = [t for t in types.split(",") if t] or None
-    return db.events(srv.id, tlist, player or None, limit, before)
+    evs = db.events(srv.id, tlist, player or None, limit, before)
+    u = _viewer.get()
+    if not (u and u.is_admin):                     # who the whitelist turned away is for admins (Control)
+        evs = [e for e in evs if e["type"] != "blocked"]
+    return evs
 
 
 @app.get("/api/servers/{sid}/timeline")
@@ -1903,6 +1920,7 @@ async def control_info(sid: str, request: Request):
         "online_source": source,
         "known_players": sorted((p["name"] for p in S.known_players(srv).values()), key=str.lower) if srv.is_java else [],
         "lists": await control.whitelist(srv) if srv.is_java else None,
+        "blocked": _turned_away(srv),
         "bedtime": guard.bedtime_config(srv),
         "audit": auth.audit_log(srv.id, 40),
     }

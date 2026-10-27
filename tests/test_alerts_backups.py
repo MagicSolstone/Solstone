@@ -70,3 +70,24 @@ def test_backup_status(client, sid):
     os.utime(new, (time.time() - 3 * 86400,) * 2)
     backups._cache.clear()
     assert client.get(f"/api/servers/{sid}").json()["backup"]["stale"] is True
+
+
+def test_each_server_its_own_notifications(client, sid, monkeypatch):
+    from app import notify
+    sent = []
+
+    async def fake_send(title, message, tag="video_game", force=False, sid=None):
+        sent.append((title, message, sid))
+        return []
+    try:
+        client.put("/api/settings/notifications", json={"ntfy_url": "https://ntfy.example/t", "events": ["join"],
+                                                         "servers": {sid: {"mode": "off"}, "other": {"mode": "own", "events": ["death", "blocked"],
+                                                                     "quiet_enabled": True, "quiet_start": "00:00", "quiet_end": "23:59"}}})
+        c = notify.get_config()
+        assert notify.for_server(c, sid) is None                               # off: nothing from it
+        assert notify.for_server(c, "other")["events"] == ["death", "blocked"]
+        assert notify.for_server(c, "third")["events"] == ["join"]             # not set: same as everywhere
+        assert notify._in_quiet_hours(notify.for_server(c, "other"))           # its own quiet hours
+        assert client.get("/api/settings/notifications").json()["servers"][sid]["mode"] == "off"
+    finally:
+        client.put("/api/settings/notifications", json={"ntfy_url": "", "events": ["join"], "servers": {}})

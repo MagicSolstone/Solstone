@@ -227,12 +227,15 @@ class Recorder:
             if db.alert_once(f"digest:{week.year}-{week.week}"):
                 await notify.send("Solstone weekly digest", self.digest(servers), notify.TAGS["digest"])
 
-        if "backup" in c["events"] and channels:
+        if channels:
             for srv in servers:
+                rules = notify.for_server(c, srv.id)
+                if not rules or "backup" not in rules["events"]:
+                    continue
                 b = backups.status(srv)
                 if b.get("found") and b.get("stale") and db.alert_once(f"backup:{srv.id}:{today}"):
                     await notify.send(srv.display_name, f"No new backup for {int(b['age_hours'])} hours "
-                                      f"(last: {b['latest']['name']})", notify.TAGS["backup"])
+                                      f"(last: {b['latest']['name']})", notify.TAGS["backup"], sid=srv.id)
 
     @staticmethod
     def digest(servers: list) -> str:
@@ -291,9 +294,9 @@ class Recorder:
             # The log records the event, but join/leave notifications come from here: the
             # online list doesn't depend on the log's clock or time zone.
             for n in joined:
-                maybe_notify("join", srv.display_name, f"{n} joined the game")
+                maybe_notify("join", srv.display_name, f"{n} joined the game", sid=srv.id)
             for n in left:
-                maybe_notify("leave", srv.display_name, f"{n} left the game")
+                maybe_notify("leave", srv.display_name, f"{n} left the game", sid=srv.id)
         # Join fireworks from the online check too, in case the log line was missed or its
         # clock is off (each join sets off one firework, whichever notices first).
         if self._running_state.get(srv.id) is not None:
@@ -349,7 +352,7 @@ class Recorder:
                uuid: str | None = None, notify: bool = True) -> None:
         db.add_event(srv.id, ts, etype, message, player, uuid)
         if notify:
-            maybe_notify(etype, srv.display_name, message)
+            maybe_notify(etype, srv.display_name, message, sid=srv.id)
 
     # ------------------------------------------------------------ log tailing
     @staticmethod
@@ -362,7 +365,7 @@ class Recorder:
             try:
                 # File reading happens in a thread; notifications need the event loop, so send them here.
                 for etype, message in await asyncio.to_thread(self.tail_server, srv):
-                    maybe_notify(etype, srv.display_name, message)
+                    maybe_notify(etype, srv.display_name, message, sid=srv.id)
                     if etype == "join":
                         await board.greet(srv, message.split(" ", 1)[0])
                 for player, text in self._chat.pop(srv.id, []):
@@ -461,7 +464,7 @@ class Recorder:
             ev = parse_line(raw, names)
             if not ev or ev.type == "server":  # start/stop comes from Crafty's state instead
                 continue
-            if ev.player:
+            if ev.player and ev.type != "blocked":       # turned away at the door: not one of the players
                 names.add(ev.player.lower())
             ts_dt = now.replace(hour=ev.hour, minute=ev.minute, second=ev.second, microsecond=0)
             if ts_dt > now + timedelta(seconds=60):

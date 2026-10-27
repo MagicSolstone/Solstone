@@ -497,7 +497,7 @@ async function openNotifications() {
   const [c, everyone] = await Promise.all([api("/api/settings/notifications").catch(() => null), api("/api/players/all").catch(() => [])]);
   if (!c) return showError("Couldn't load notification settings", 4000);
   const labels = { join: "Someone joins", leave: "Someone leaves", death: "Someone dies", advancement: "Advancements",
-    server: "Server starts, stops or crashes", backup: "Backups are overdue" };
+    server: "Server starts, stops or crashes", backup: "Backups are overdue", blocked: "Someone the whitelist turned away (with their exact name, to let them in from Control)" };
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const hourLabel = (h) => new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: "numeric" });
   openModal(`<h2>Notifications</h2>
@@ -526,7 +526,16 @@ async function openNotifications() {
         <button type="button" class="link-btn" id="btn-digest">Preview this week's digest</button>
         <pre class="digest-preview" id="digest-preview" hidden></pre>
       </fieldset>
-      <label class="switch-row"><span><b>Quiet hours</b><br><small class="muted">No notifications between these times${c.quiet_now ? " (they're on right now)" : ""}</small></span>
+      <fieldset class="checks"><legend>Each server</legend>
+        <p class="muted" style="font-size:.85rem;margin:0 0 8px">Leave a server on <b>Same as above</b>, turn it off, or give it its own choices and quiet hours.</p>
+        ${(state.servers || []).map((s) => { const o = c.servers?.[s.id] || { mode: "same", events: c.events, quiet_enabled: false, quiet_start: "22:00", quiet_end: "07:00" };
+          return `<div class="ns-server" data-sid="${esc(s.id)}"><div class="ns-head"><b>${esc(s.name)}</b>
+            <select class="input sm" data-ns-mode aria-label="Notifications for ${esc(s.name)}">${[["same", "Same as above"], ["off", "No notifications"], ["own", "Its own choices"]].map(([k, l]) => `<option value="${k}" ${o.mode === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+            <div class="ns-own" ${o.mode === "own" ? "" : "hidden"}>${c.event_types.map((t) => `<label class="check"><input type="checkbox" data-ns-ev value="${t}" ${(o.events || []).includes(t) ? "checked" : ""}> ${esc(labels[t] || t)}</label>`).join("")}
+              <label class="check"><input type="checkbox" data-ns-quiet ${o.quiet_enabled ? "checked" : ""}> Quiet hours for this server</label>
+              <div class="row2"><label>From<input class="input" type="time" data-ns-from value="${esc(o.quiet_start || "22:00")}"></label><label>Until<input class="input" type="time" data-ns-until value="${esc(o.quiet_end || "07:00")}"></label></div></div></div>`; }).join("")}
+      </fieldset>
+      <label class="switch-row"><span><b>Quiet hours</b><br><small class="muted">No notifications between these times${c.quiet_now ? " (they're on right now)" : ""}. A server with its own choices uses its own.</small></span>
         <input type="checkbox" role="switch" name="quiet_enabled" ${c.quiet_enabled ? "checked" : ""}></label>
       <div class="row2" id="quiet-times">
         <label>Quiet from<input class="input" type="time" name="quiet_start" value="${esc(c.quiet_start || "22:00")}"></label>
@@ -538,12 +547,19 @@ async function openNotifications() {
     const form = $("#notify-form", m);
     const quiet = () => { const on = form.quiet_enabled.checked; $$("#quiet-times input", form).forEach((i) => { i.disabled = !on; }); $("#quiet-times", form).classList.toggle("off", !on); };
     form.quiet_enabled.addEventListener("change", quiet); quiet();
+    $$("[data-ns-mode]", form).forEach((sel) => sel.addEventListener("change", () => { sel.closest(".ns-server").querySelector(".ns-own").hidden = sel.value !== "own"; }));
     const body = () => {
       const f = new FormData(form);
       const limits = {};
       $$('input[name="limit"]', form).forEach((i) => { if (i.value) limits[i.dataset.player] = Number(i.value); });
       const b = { ntfy_url: f.get("ntfy_url"), events: f.getAll("ev"), quiet_enabled: !!f.get("quiet_enabled"), quiet_start: form.quiet_start.value, quiet_end: form.quiet_end.value,
         limits, limit_action: f.get("limit_action"), digest_enabled: !!f.get("digest_enabled"), digest_day: Number(f.get("digest_day")), digest_hour: Number(f.get("digest_hour")) };
+      b.servers = {};
+      $$(".ns-server", form).forEach((el) => {
+        const mode = $("[data-ns-mode]", el).value;
+        b.servers[el.dataset.sid] = { mode, events: $$("[data-ns-ev]", el).filter((i) => i.checked).map((i) => i.value),
+          quiet_enabled: $("[data-ns-quiet]", el).checked, quiet_start: $("[data-ns-from]", el).value, quiet_end: $("[data-ns-until]", el).value };
+      });
       if (f.get("ntfy_token")) b.ntfy_token = f.get("ntfy_token");
       if (f.get("discord_webhook")) b.discord_webhook = f.get("discord_webhook");
       return b;

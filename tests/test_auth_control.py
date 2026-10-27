@@ -368,3 +368,17 @@ def test_hidden_servers_can_be_shown_again(client, viewer):
         client.put(f"/api/servers/{SID}/settings", json={"hidden": False})
     assert client.get("/api/servers-hidden").json() == []
     assert SID in [s["id"] for s in client.get("/api/servers").json()]
+
+
+def test_turned_away_by_the_whitelist(client, viewer, sid):
+    import time
+
+    from app import db
+    db.add_event(sid, time.time() - 60, "blocked", "NewKid tried to join but isn't on the whitelist", "NewKid", None)
+    try:
+        info = client.get(f"/api/servers/{sid}/control").json()
+        assert [b["name"] for b in info["blocked"]] == ["NewKid"]
+        assert not [e for e in viewer.get(f"/api/servers/{sid}/events").json() if e["type"] == "blocked"]    # admins only
+        assert [e for e in client.get(f"/api/servers/{sid}/events").json() if e["type"] == "blocked"]
+    finally:
+        db.x("DELETE FROM events WHERE type='blocked'")

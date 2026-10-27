@@ -275,10 +275,22 @@ async function viewControl(sid) {
     el.innerHTML = `<p class="muted small" style="margin-bottom:10px">The whitelist is <b>${L.enabled ? "on" : "off"}</b>${L.enabled ? ": only these players can join." : ". Anyone with the address can join. Turn it on in server.properties (white-list=true) or with /whitelist on."}</p>
       <div class="lists"><div><h3>Whitelist</h3><div class="chips">${chips(L.whitelist, "whitelist_remove", "Remove")}</div></div>
       <div><h3>Operators</h3><div class="chips">${chips(L.ops, "deop", "Remove operator")}</div></div></div>
+      ${(info.blocked || []).length ? `<div class="turned-away"><h3>Tried to join <small class="muted">turned away by the whitelist in the last two weeks</small></h3>
+        <ul>${info.blocked.map((b) => `<li><code class="ta-name">${esc(b.name)}</code>${b.bedrock ? ' <span class="chip">Bedrock</span>' : ""}<span class="muted small">${esc(fmtAgo(b.ts))}</span>
+          <button class="btn sm" type="button" data-copy-name="${esc(b.name)}">Copy</button><button class="btn sm primary" type="button" data-allow="${esc(b.name)}">Let them in</button></li>`).join("")}</ul></div>` : ""}
       <form class="btn-row" id="list-form" style="margin-top:12px"><input class="input sm" name="name" placeholder="Name (.Name for Bedrock)" pattern="\.?[A-Za-z0-9_]{1,16}" required>
         <button class="btn sm" name="do" value="whitelist_add">Add to whitelist</button><button class="btn sm" name="do" value="op">Make operator</button></form>`;
   }
   $("#ctl-lists")?.addEventListener("click", async (e) => {
+    const copy = e.target.closest("[data-copy-name]"), allow = e.target.closest("[data-allow]");
+    if (copy) { navigator.clipboard?.writeText(copy.dataset.copyName).then(() => showToast("Copied", 1500), () => showToast(esc(copy.dataset.copyName), 4000)); return; }
+    if (allow) {
+      const n = allow.dataset.allow;
+      if (await confirmBox(`Let ${n} in?`, "They're added to the whitelist and can join straight away.", "Let them in")) {
+        if (await act(`player/${encodeURIComponent(n)}/whitelist_add`, {}, `${esc(n)} can join now`)) { info.blocked = info.blocked.filter((b) => b.name !== n); renderLists(); }
+      }
+      return;
+    }
     const x = e.target.closest("[data-list]");
     if (!x) return;
     const what = x.dataset.list === "deop" ? `Remove ${x.dataset.name} as an operator?` : `Remove ${x.dataset.name} from the whitelist?`;

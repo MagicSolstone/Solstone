@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 
 import httpx
 
@@ -11,10 +12,10 @@ from . import settings_store
 
 log = logging.getLogger("solstone.notify")
 
-EVENT_TYPES = ["join", "leave", "death", "advancement", "server", "backup"]
+EVENT_TYPES = ["join", "leave", "death", "advancement", "server", "backup", "blocked"]
 DEFAULT_EVENTS = ["join"]
 TAGS = {"join": "green_circle", "leave": "wave", "death": "skull", "advancement": "trophy", "server": "gear",
-        "backup": "floppy_disk", "screen_time": "hourglass", "digest": "bar_chart"}
+        "backup": "floppy_disk", "blocked": "no_entry", "screen_time": "hourglass", "digest": "bar_chart"}
 
 
 def get_config() -> dict:
@@ -35,7 +36,30 @@ def get_config() -> dict:
         "digest_hour": int(stored.get("digest_hour", 18)),
         "limit_action": stored.get("limit_action", "notify"),   # "notify" or "kick" (warn, then disconnect)
         "limit_grace_minutes": int(stored.get("limit_grace_minutes", 5)),
+        # each server: "same" (the choices above), "off" (nothing from it), or "own" (its own events and quiet hours)
+        "servers": {sid: _server_cfg(v) for sid, v in (stored.get("servers") or {}).items() if isinstance(v, dict)},
     }
+
+
+_TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def _server_cfg(v: dict) -> dict:
+    mode = v.get("mode") if v.get("mode") in ("same", "off", "own") else "same"
+    return {"mode": mode, "events": [e for e in v.get("events") or [] if e in EVENT_TYPES],
+            "quiet_enabled": bool(v.get("quiet_enabled")),
+            "quiet_start": v.get("quiet_start") if _TIME.match(str(v.get("quiet_start") or "")) else "",
+            "quiet_end": v.get("quiet_end") if _TIME.match(str(v.get("quiet_end") or "")) else ""}
+
+
+def for_server(c: dict, sid: str | None) -> dict | None:
+    """The choices that apply to one server: None means nothing is sent for it."""
+    o = c["servers"].get(sid or "")
+    if not o or o["mode"] == "same":
+        return c
+    if o["mode"] == "off":
+        return None
+    return {**c, "events": o["events"], "quiet_enabled": o["quiet_enabled"], "quiet_start": o["quiet_start"], "quiet_end": o["quiet_end"]}
 
 
 def public_config() -> dict:
@@ -56,6 +80,7 @@ def public_config() -> dict:
         "digest_hour": c["digest_hour"],
         "limit_action": c["limit_action"],
         "limit_grace_minutes": c["limit_grace_minutes"],
+        "servers": c["servers"],
     }
 
 
@@ -90,6 +115,9 @@ def save_config(values: dict) -> dict:
             pass
     if "quiet_enabled" in values:
         cur["quiet_enabled"] = bool(values["quiet_enabled"])
+    if isinstance(values.get("servers"), dict):
+        cur["servers"] = {str(sid)[:64]: _server_cfg(v) for sid, v in list(values["servers"].items())[:50]
+                          if isinstance(v, dict) and _server_cfg(v)["mode"] != "same"}
     if "digest_enabled" in values:
         cur["digest_enabled"] = bool(values["digest_enabled"])
     for k, lo, hi in (("digest_day", 0, 6), ("digest_hour", 0, 23)):
@@ -116,10 +144,12 @@ def _in_quiet_hours(c: dict) -> bool:
     return (s <= now < e) if s <= e else (now >= s or now < e)
 
 
-async def send(title: str, message: str, tag: str = "video_game", force: bool = False) -> list[str]:
-    """Send to every configured channel. Returns error strings (empty = all good)."""
+async def send(title: str, message: str, tag: str = "video_game", force: bool = False, sid: str | None = None) -> list[str]:
+    """Send to every configured channel. Returns error strings (empty = all good). sid: the server it's about,
+    for that server's own quiet hours (or none at all, if it's switched off)."""
     c = get_config()
-    if not force and _in_quiet_hours(c):
+    rules = for_server(c, sid) if sid else c
+    if not force and (rules is None or _in_quiet_hours(rules)):
         return []
     errors: list[str] = []
     async with httpx.AsyncClient(timeout=8) as client:
@@ -145,13 +175,14 @@ async def send(title: str, message: str, tag: str = "video_game", force: bool = 
     return errors
 
 
-def maybe_notify(etype: str, server_name: str, message: str) -> None:
-    """Fire-and-forget notification if this event type is enabled."""
+def maybe_notify(etype: str, server_name: str, message: str, sid: str | None = None) -> None:
+    """Fire-and-forget notification if this event type is enabled (for this server)."""
     c = get_config()
-    if etype not in c["events"] or not (c["ntfy_url"] or c["discord_webhook"]):
+    rules = for_server(c, sid)
+    if rules is None or etype not in rules["events"] or not (c["ntfy_url"] or c["discord_webhook"]):
         return
     try:
-        asyncio.get_running_loop().create_task(send(server_name, message, TAGS.get(etype, "video_game")))
+        asyncio.get_running_loop().create_task(send(server_name, message, TAGS.get(etype, "video_game"), sid=sid))
     except RuntimeError:
         pass
 
