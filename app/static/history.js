@@ -495,7 +495,7 @@ async function renderPlayerHistory(el, sid, p) {
 // ================================================================ notification settings
 async function openNotifications() {
   const [c, everyone] = await Promise.all([api("/api/settings/notifications").catch(() => null), api("/api/players/all").catch(() => [])]);
-  if (!c) return showToast("Couldn't load notification settings", 4000);
+  if (!c) return showError("Couldn't load notification settings", 4000);
   const labels = { join: "Someone joins", leave: "Someone leaves", death: "Someone dies", advancement: "Advancements",
     server: "Server starts, stops or crashes", backup: "Backups are overdue" };
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -552,7 +552,7 @@ async function openNotifications() {
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       try { await adminFetch("/api/settings/notifications", { method: "PUT", body: JSON.stringify(body()) }); closeModal(); showToast("Notifications saved", 2500); }
-      catch (err) { showToast(`Couldn't save notifications: ${esc(err.message)}`, 5000); }
+      catch (err) { showError(`Couldn't save notifications: ${esc(err.message)}`, 5000); }
     });
     $("#btn-digest", m).addEventListener("click", async () => {
       const pre = $("#digest-preview", m);

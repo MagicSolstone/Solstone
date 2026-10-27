@@ -63,7 +63,7 @@ function wsPosts(el) {
       const b = e.currentTarget;
       if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Really delete?"; return; }
       try { await api(`/api/posts/${id}`, { method: "DELETE" }); showToast("Deleted", 2000); ws.data = await api("/api/posts"); renderWebsite(); }
-      catch (err) { showToast(esc(err.message), 5000); }
+      catch (err) { showError(esc(err.message), 5000); }
     });
   });
   const form = $("#ws-edit");
@@ -77,7 +77,7 @@ function wsPosts(el) {
       if (ws.editing === "new") await post("/api/posts", body); else await post(`/api/posts/${ws.editing}`, body, "PUT");
       showToast(body.published ? "Saved — it's on the website" : "Saved as a draft", 2500);
       ws.editing = null; ws.data = await api("/api/posts"); renderWebsite();
-    } catch (err) { showToast(esc(err.message), 5000); }
+    } catch (err) { showError(esc(err.message), 5000); }
   });
 }
 
@@ -107,11 +107,11 @@ function wsSite(el) {
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.detail || `Upload failed (${r.status})`);
       ws.data.logo = d.logo; $("#ws-logo-img").src = d.logo; showToast("Logo saved. Reload to see it everywhere.", 3000);
-    } catch (err) { showToast(esc(err.message), 5000); }
+    } catch (err) { showError(esc(err.message), 5000); }
   });
   $("#ws-logo-reset").addEventListener("click", async () => {
     try { const d = await post("/api/settings/site/logo", {}, "DELETE"); ws.data.logo = d.logo; $("#ws-logo-img").src = d.logo; showToast("Back to Solstone's logo", 2500); }
-    catch (err) { showToast(esc(err.message), 5000); }
+    catch (err) { showError(esc(err.message), 5000); }
   });
   $("#ws-site").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -119,6 +119,6 @@ function wsSite(el) {
     const body = Object.fromEntries(["name", "tagline", "java_address", "bedrock_address", "bedrock_port", "discord", "about"].map((k) => [k, f.get(k)]));
     body.home_live = !!f.get("home_live");
     try { ws.data.site = await post("/api/settings/site", body, "PUT"); showToast("Saved", 2000); renderWebsite(); }
-    catch (err) { showToast(esc(err.message), 5000); }
+    catch (err) { showError(esc(err.message), 5000); }
   });
 }

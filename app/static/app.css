@@ -429,7 +429,11 @@ table.data tr:hover td { background: var(--line); }
 .btn.primary { background: var(--lapis); color: #fff; }
 .btn:hover { filter: brightness(1.1); }
 .check { display: flex !important; grid-template-columns: none; align-items: center; gap: 8px; }
-.toast { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); background: rgba(16, 20, 32, .88); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--basalt); padding: 10px 16px; border-radius: var(--radius-m); z-index: 120; font-size: .92rem; }
+.toast { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); background: rgba(16, 20, 32, .94); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid rgba(242, 193, 78, .55); border-left: 4px solid var(--gold); padding: 12px 18px; border-radius: var(--radius-m); z-index: 120; font-size: 1rem; font-weight: 600; max-width: min(92vw, 640px); box-shadow: 0 10px 34px rgba(0, 0, 0, .55); }
+.toast.warn { border-color: #ff9a3c; border-left-color: #ff9a3c; background: rgba(48, 26, 8, .95); }
+.toast.pop { animation: toastpop .35s ease-out; }
+@keyframes toastpop { 0% { transform: translate(-50%, -18px); opacity: 0; } 70% { transform: translate(-50%, 3px); opacity: 1; } 100% { transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) { .toast.pop { animation: none; } }
 
 .skeleton { color: var(--faint); padding: 40px 0; }
 

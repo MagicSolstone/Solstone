@@ -126,7 +126,7 @@ async function viewControl(sid) {
   };
   const act = async (path, body, okMsg) => {
     try { const r = await post(`${base}/control/${path}`, body); report(r, okMsg); refreshInfo(); return r; }
-    catch (err) { showToast(esc(err.message), 6000); }
+    catch (err) { showError(esc(err.message), 6000); }
   };
 
   // ---- power + quick + broadcast
@@ -137,7 +137,7 @@ async function viewControl(sid) {
     const online = info.online.length ? `${info.online.length} player${info.online.length === 1 ? " is" : "s are"} online and will be disconnected.` : "Nobody is online.";
     if (a !== "backup_server" && a !== "start_server" && !(await confirmBox(words[0], esc(online), words[1], a === "stop_server"))) return;
     try { await post(`${base}/control/power/${a}`); showToast(`${words[1]} requested. Crafty is on it.`, 4000); setTimeout(() => route(), 4000); }
-    catch (err) { showToast(esc(err.message), 6000); }
+    catch (err) { showError(esc(err.message), 6000); }
   }));
   $$("[data-quick]").forEach((q) => q.addEventListener("click", () => act("quick", { action: q.dataset.quick, value: q.dataset.value }, "Done")));
   $("#bc-form").addEventListener("submit", async (e) => {
@@ -314,7 +314,7 @@ async function viewControl(sid) {
       const bedtime = { enabled: !!f.get("enabled"), start: f.get("start"), end: f.get("end"), days: f.getAll("day").map(Number),
         warn_minutes: String(f.get("warn")).split(/[,\s]+/).filter(Boolean).map(Number).filter((n) => n > 0), exempt: f.getAll("exempt"), message: f.get("message") };
       try { const r = await post(`${base}/settings`, { bedtime }, "PUT"); info.bedtime = r.bedtime; renderBedtime(); showToast("Bedtime saved", 2500); refreshInfo(); }
-      catch (err) { showToast(esc(err.message), 5000); }
+      catch (err) { showError(esc(err.message), 5000); }
     });
   }
 
@@ -394,12 +394,12 @@ async function viewAdmin(section = "users") {
     const body = {};
     $$("[data-sp]").forEach((i) => { body[i.dataset.sp] = i.checked; });
     try { await post("/api/settings/status", body, "PUT"); showToast(body.enabled ? 'Saved. <a href="/#live" target="_blank" rel="noopener">See it on the home page</a>' : "Live info is off the home page", 3500); }
-    catch (err) { showToast(esc(err.message), 5000); }
+    catch (err) { showError(esc(err.message), 5000); }
   });
   $("#ann-backfill")?.addEventListener("click", async (e) => {
     e.target.disabled = true; e.target.textContent = "Reading…";
     try { const r = await post("/api/recap/backfill"); showToast(r.days ? `Filled in ${r.days} days` : "Nothing new in the old logs", 3500); }
-    catch (err) { showToast(esc(err.message), 5000); }
+    catch (err) { showError(esc(err.message), 5000); }
     e.target.disabled = false; e.target.textContent = "Read old logs again";
   });
   $("#hidden-servers")?.addEventListener("click", async (e) => {
@@ -410,21 +410,21 @@ async function viewAdmin(section = "users") {
       await post(`/api/servers/${encodeURIComponent(row.dataset.hsid)}/settings`, { hidden: false }, "PUT");
       showToast(`${esc(row.querySelector("b").textContent)} is back`, 2500);
       await loadServers(); viewAdmin(section);
-    } catch (err) { showToast(esc(err.message), 5000); }
+    } catch (err) { showError(esc(err.message), 5000); }
   });
   $("#add-user")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
     try { await post("/api/users", { username: f.get("username"), password: f.get("password"), role: f.get("role") }); showToast(`Added ${esc(f.get("username"))}`, 2500); viewAdmin(section); }
-    catch (err) { showToast(esc(err.message), 5000); }
+    catch (err) { showError(esc(err.message), 5000); }
   });
   $("#players-map-on")?.addEventListener("change", async (e) => {
     try { await post("/api/settings/players", { see_map: e.target.checked }, "PUT"); showToast(e.target.checked ? "Players can see the map (World tab)" : "The map is for Trusted and Admins only", 2500); }
-    catch (err) { showToast(esc(err.message), 5000); e.target.checked = !e.target.checked; }
+    catch (err) { showError(esc(err.message), 5000); e.target.checked = !e.target.checked; }
   });
   $("#signup-on")?.addEventListener("change", async (e) => {
     try { await post("/api/settings/site", { signup: e.target.checked }, "PUT"); showToast(e.target.checked ? "Players can make their own account" : "Sign-up turned off", 2500); }
-    catch (err) { showToast(esc(err.message), 5000); }
+    catch (err) { showError(esc(err.message), 5000); }
   });
   $$("[data-link]").forEach((b) => b.addEventListener("click", () => {
     const tr = b.closest("tr"), name = tr.querySelector("b").textContent;
@@ -434,14 +434,14 @@ async function viewAdmin(section = "users") {
       $("#link-form", m).addEventListener("submit", async (e) => {
         e.preventDefault();
         try { await post(`/api/users/${tr.dataset.uid}`, { player: new FormData(e.target).get("player") }, "PATCH"); closeModal(); showToast("Saved", 2000); viewAdmin(section); }
-        catch (err) { showToast(esc(err.message), 5000); }
+        catch (err) { showError(esc(err.message), 5000); }
       });
     });
   }));
   $$("[data-role]").forEach((sel) => sel.addEventListener("change", async () => {
     const uid = sel.closest("tr").dataset.uid;
     try { await post(`/api/users/${uid}`, { role: sel.value }, "PATCH"); showToast("Level changed", 2500); }
-    catch (err) { showToast(esc(err.message), 5000); viewAdmin(section); }
+    catch (err) { showError(esc(err.message), 5000); viewAdmin(section); }
   }));
   // which servers a login sees (admins always see all)
   $$("[data-srv]").forEach((b) => b.addEventListener("click", () => {
@@ -458,7 +458,7 @@ async function viewAdmin(section = "users") {
         const picked = [...f.querySelectorAll('[name="sid"]:checked')].map((x) => x.value);
         if (!f.all.checked && !picked.length) { showToast("Pick at least one server", 3000); return; }
         try { await post(`/api/users/${u.id}`, { servers: f.all.checked ? null : picked }, "PATCH"); closeModal(); showToast("Saved", 2000); viewAdmin(section); }
-        catch (err) { showToast(esc(err.message), 5000); }
+        catch (err) { showError(esc(err.message), 5000); }
       });
     });
   }));
@@ -470,7 +470,7 @@ async function viewAdmin(section = "users") {
       $("#reset-form", m).addEventListener("submit", async (e) => {
         e.preventDefault();
         try { await post(`/api/users/${tr.dataset.uid}`, { password: new FormData(e.target).get("password") }, "PATCH"); closeModal(); showToast("Password set", 2500); }
-        catch (err) { showToast(esc(err.message), 5000); }
+        catch (err) { showError(esc(err.message), 5000); }
       });
     });
   }));
@@ -478,7 +478,7 @@ async function viewAdmin(section = "users") {
     const tr = b.closest("tr"), name = tr.querySelector("b").textContent;
     if (!(await confirmBox(`Remove ${name}?`, "They'll be signed out and won't be able to sign in again.", "Remove"))) return;
     try { await api(`/api/users/${tr.dataset.uid}`, { method: "DELETE" }); showToast(`Removed ${esc(name)}`, 2500); viewAdmin(section); }
-    catch (err) { showToast(esc(err.message), 5000); }
+    catch (err) { showError(esc(err.message), 5000); }
   }));
 }
 
@@ -518,7 +518,7 @@ function wireFireworksSettings(el, fw) {
       const cfg = await post("/api/settings/fireworks", body, "PUT");
       applyFireworkSettings(cfg); Object.assign(fw, cfg);
       showToast("Fireworks updated", 1800);
-    } catch (err) { showToast(esc(err.message), 4000); el.innerHTML = fireworksSettingsHtml(fw); wireFireworksSettings(el, fw); }
+    } catch (err) { showError(esc(err.message), 4000); el.innerHTML = fireworksSettingsHtml(fw); wireFireworksSettings(el, fw); }
   };
   el.addEventListener("click", (e) => {
     const t = e.target.closest("button");

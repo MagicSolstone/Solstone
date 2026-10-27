@@ -63,7 +63,7 @@ async function viewChat(sid) {
     if (!text) return;
     input.disabled = true;
     try { await post(`${base}/chat`, { message: text, to: toSel.value }); input.value = ""; await load(); }
-    catch (err) { showToast(esc(err.message), 4000); }
+    catch (err) { showError(esc(err.message), 4000); }
     input.disabled = false; input.focus();
   });
 }
@@ -235,7 +235,7 @@ async function viewChallenges(sid) {
       showToast(r.version ? `Solstone Fishing is loaded (version ${r.version})` : r.listed === false ? "The game didn't load it. Is the file in the world's datapacks folder?" : "Reloaded, but the pack didn't start. Check the server log for errors.", 5000);
       fish = await api(`/api/servers/${encodeURIComponent(sid)}/fishing`); render();
       if (r.packs) diag(`<details class="fish-files" open><summary>What the game says it has</summary><pre class="mc-out">${esc(r.packs)}</pre></details>`);
-    } catch (e) { showToast(esc(e.message), 5000); b.disabled = false; }
+    } catch (e) { showError(esc(e.message), 5000); b.disabled = false; }
   }));
   const wire = () => {
     const form = $("#ch-form");
@@ -267,13 +267,13 @@ async function viewChallenges(sid) {
           prize: { item: draft.prize.item, count: draft.prize.count, name: draft.prize.label }, second: draft.second ? { item: draft.second.item, count: draft.second.count, name: draft.second.label } : null });
         showToast(draft.when === "now" ? `${esc(c.name)} starts in a few seconds` : `${esc(c.name)} is scheduled`, 3000);
         draft.name = ""; await reload();
-      } catch (err) { showToast(esc(err.message), 4000); }
+      } catch (err) { showError(esc(err.message), 4000); }
     });
     $$(".ch-card").forEach((el) => {
       const c = d.items.find((x) => x.id === el.dataset.cid);
       el.querySelector("[data-cancel]")?.addEventListener("click", async () => {
         if ((c.state === "running" || c.state === "scheduled") && !(await confirmBox(c.state === "running" ? `Stop ${c.name}?` : `Cancel ${c.name}?`, c.state === "running" ? "Nobody wins and the scores are cleared from the game." : "It won't start.", c.state === "running" ? "Stop it" : "Cancel it"))) return;
-        try { await api(`${base}/${encodeURIComponent(c.id)}`, { method: "DELETE" }); await reload(); } catch (err) { showToast(esc(err.message), 4000); }
+        try { await api(`${base}/${encodeURIComponent(c.id)}`, { method: "DELETE" }); await reload(); } catch (err) { showError(esc(err.message), 4000); }
       });
       el.querySelector("[data-again]")?.addEventListener("click", () => {
         Object.assign(draft, { kind: c.kind, name: c.name, minutes: c.minutes, say: c.say, lure: c.lure || 0, fair: c.fair !== false, hot: !!c.hot, hot_bonus: c.hot_bonus || 2, hot_on: c.hot_on || 60, hot_off: c.hot_off || 30, hot_far: c.hot_far || 40, when: "now",
@@ -310,7 +310,7 @@ function wireGather(root, sid, g, rerender, center) {
   root.querySelector("[data-g-here]")?.addEventListener("click", async () => {
     const who = root.querySelector("[data-g-player]").value;
     if (!who) return;
-    try { g.spot = await api(`/api/servers/${encodeURIComponent(sid)}/races/spot?player=${encodeURIComponent(who)}`); rerender(); } catch (err) { showToast(esc(err.message), 4000); }
+    try { g.spot = await api(`/api/servers/${encodeURIComponent(sid)}/races/spot?player=${encodeURIComponent(who)}`); rerender(); } catch (err) { showError(esc(err.message), 4000); }
   });
   const el = root.querySelector("[data-g-map]");
   const map = el ? worldMapCanvas(el, sid, {
@@ -507,7 +507,7 @@ async function viewRaces(sid) {
       el.querySelector("[data-edit]").addEventListener("click", () => { editing = JSON.parse(JSON.stringify(c)); render(); });
       el.querySelector("[data-del]").addEventListener("click", async () => {
         if (!(await confirmBox(`Delete ${c.name}?`, "The course is removed. Past results stay.", "Delete"))) return;
-        await api(`${base}/courses/${encodeURIComponent(c.id)}`, { method: "DELETE" }).catch((e) => showToast(esc(e.message), 4000)); await reload();
+        await api(`${base}/courses/${encodeURIComponent(c.id)}`, { method: "DELETE" }).catch((e) => showError(esc(e.message), 4000)); await reload();
       });
       el.querySelector("[data-race]").addEventListener("click", () => openRaceStart(c));
     });
@@ -515,7 +515,7 @@ async function viewRaces(sid) {
       const r = d.runs.find((x) => x.id === el.dataset.rid);
       const active = ["scheduled", "countdown", "running"].includes(r.state);
       if (active && !(await confirmBox(r.state === "scheduled" ? `Cancel ${r.name}?` : `Stop ${r.name}?`, "The markers are removed and nobody gets a prize.", r.state === "scheduled" ? "Cancel it" : "Stop it"))) return;
-      await api(`${base}/runs/${encodeURIComponent(r.id)}`, { method: "DELETE" }).catch((e) => showToast(esc(e.message), 4000)); await reload();
+      await api(`${base}/runs/${encodeURIComponent(r.id)}`, { method: "DELETE" }).catch((e) => showError(esc(e.message), 4000)); await reload();
     }));
     tickLeft();
   };
@@ -553,7 +553,7 @@ async function viewRaces(sid) {
         drawCourse(ctx, toScreen, editing.points, { selected });
       },
       onClick: async (x, z) => {
-        try { const p = await api(`${base}/spot?x=${x}&z=${z}`); addPoint(p); } catch (e) { showToast(esc(e.message), 3000); }
+        try { const p = await api(`${base}/spot?x=${x}&z=${z}`); addPoint(p); } catch (e) { showError(esc(e.message), 3000); }
       },
     });
     if (pts.length > 1) setTimeout(() => map.fit(pts), 0);
@@ -563,7 +563,7 @@ async function viewRaces(sid) {
     };
     const addPoint = (p) => { sync(); editing.points.push({ x: p.x, y: p.y, z: p.z, radius: 4, name: "" }); selected = editing.points.length - 1; renderEditor(); };
     $("#rc-addhere").addEventListener("click", async () => {
-      try { addPoint(await api(`${base}/spot?player=${encodeURIComponent($("#rc-player").value)}`)); } catch (e) { showToast(esc(e.message), 4000); }
+      try { addPoint(await api(`${base}/spot?player=${encodeURIComponent($("#rc-player").value)}`)); } catch (e) { showError(esc(e.message), 4000); }
     });
     $$(".rc-points li", form).forEach((li) => {
       const i = +li.dataset.i;
@@ -580,7 +580,7 @@ async function viewRaces(sid) {
         const body = { name: editing.name, points: editing.points, dim: "minecraft:overworld" };
         await (editing.id ? post(`${base}/courses/${encodeURIComponent(editing.id)}`, body, "PUT") : post(`${base}/courses`, body));
         showToast("Course saved", 2000); editing = null; await reload();
-      } catch (err) { showToast(esc(err.message), 4000); }
+      } catch (err) { showError(esc(err.message), 4000); }
     });
   };
 
@@ -620,7 +620,7 @@ async function viewRaces(sid) {
           try {
             await post(`${base}/runs`, { course: c.id, start, minutes: +f.minutes.value, teleport: f.teleport.checked, prizes });
             closeModal(); showToast(f.when.value === "now" ? "Race starting: 10-second countdown in the game" : "Race scheduled", 3000); await reload();
-          } catch (err) { showToast(esc(err.message), 4000); }
+          } catch (err) { showError(esc(err.message), 4000); }
         });
       };
       wireAll(m);
@@ -694,7 +694,7 @@ async function viewGames(sid) {
       const r = d.runs.find((x) => x.id === el.dataset.gid);
       const active = ["scheduled", "countdown", "hiding", "running"].includes(r.state);
       if (active && !(await confirmBox(`Stop ${r.name}?`, "Everything is put back (game modes, the chest or target) and nobody gets a prize.", "Stop it"))) return;
-      await api(`${base}/${encodeURIComponent(r.id)}`, { method: "DELETE" }).catch((e) => showToast(esc(e.message), 4000)); await reload();
+      await api(`${base}/${encodeURIComponent(r.id)}`, { method: "DELETE" }).catch((e) => showError(esc(e.message), 4000)); await reload();
     }));
     tickLeft();
   };
@@ -820,7 +820,7 @@ async function viewGames(sid) {
       fm.mode?.addEventListener("change", () => { sync(m); if (f.mode === "horse" && f.minutes < 30) f.minutes = 30; show(); });
       $("#gm-here", m)?.addEventListener("click", async () => {
         sync(m);
-        try { f.center = await api(`/api/servers/${encodeURIComponent(sid)}/races/spot?player=${encodeURIComponent($("#gm-player", m).value)}`); f.spot = null; show(); } catch (e) { showToast(esc(e.message), 4000); }
+        try { f.center = await api(`/api/servers/${encodeURIComponent(sid)}/races/spot?player=${encodeURIComponent($("#gm-player", m).value)}`); f.spot = null; show(); } catch (e) { showError(esc(e.message), 4000); }
       });
       $("#gm-under", m)?.addEventListener("click", async () => {
         sync(m);
@@ -828,7 +828,7 @@ async function viewGames(sid) {
           const t = await api(`${base}/target?player=${encodeURIComponent($("#gm-player", m).value)}`);
           if (!t.is_target) { showToast("That isn't a target block. Stand right on top of it and try again", 4000); return; }
           f.target = t; f.place_target = false; show();
-        } catch (e) { showToast(esc(e.message), 4000); }
+        } catch (e) { showError(esc(e.message), 4000); }
       });
       const pickItem = (title, then) => { sync(m); openGiveItem(sid, "", { title, pick: (item, count) => { then({ item: item.id, count, name: item.name }); show(); } }); };
       wireGather(m, sid, f.g, () => { sync(m); show(); }, f.target || f.center || d.spawn);
@@ -844,7 +844,7 @@ async function viewGames(sid) {
         try {
           await post(base, { ...f, start, prizes: f.prize ? [f.prize] : [], gather: gatherBody(f.g) });
           closeModal(); showToast(f.when === "now" ? `${GAME_INFO[game][1]} is starting` : "Scheduled", 3000); await reload();
-        } catch (err) { showToast(esc(err.message), 4000); }
+        } catch (err) { showError(esc(err.message), 4000); }
       });
     });
     show();
@@ -892,7 +892,7 @@ async function viewCheck(sid) {
     $("#ck-run")?.addEventListener("click", async () => {
       busy = true; render();
       try { d.last = await post(`/api/servers/${encodeURIComponent(sid)}/check`, {}); d.version = d.last.version; }
-      catch (err) { showToast(esc(err.message), 5000); }
+      catch (err) { showError(esc(err.message), 5000); }
       busy = false; render();
     });
   };

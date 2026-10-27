@@ -63,7 +63,7 @@ async function fwsSave(body, msg = "Saved") {
     fws.data = await post("/api/fireworks/show", body, "PUT");
     fwLoaded = null; loadFireworkSettings();     // the sky on this page picks it up
     renderToday(); showToast(msg, 1800);
-  } catch (err) { showToast(esc(err.message), 4000); }
+  } catch (err) { showError(esc(err.message), 4000); }
 }
 
 function renderFws() {
@@ -114,7 +114,7 @@ function renderCommunity(el) {
   }));
   const updateDesign = async (id, body) => {
     try { await post(`/api/fireworks/${id}`, body, "PUT"); fws.designs = await api("/api/fireworks"); fwLoaded = null; loadFireworkSettings(); showToast("Saved", 1200); }
-    catch (err) { showToast(esc(err.message), 3000); }
+    catch (err) { showError(esc(err.message), 3000); }
     fws.data = await api("/api/fireworks/show"); renderCommunity(el);
   };
   el.querySelectorAll("[data-design-weight] button").forEach((b) => b.addEventListener("click", () => updateDesign(b.closest("[data-id]").dataset.id, { weight: +b.dataset.freq })));
@@ -155,7 +155,7 @@ function renderEvents(el) {
         const r = await post("/api/fireworks/test-event", { event: k, player, preview: true });
         const label = FWS_EVENTS.find(([x]) => x === k)?.[1] || k;
         openFwPreview({ title: label, sub: player ? `As if ${player} did it` : "", run: (sc, ui) => pvRunShow(sc, r.show, ui) });
-      } catch (err) { showToast(esc(err.message), 3000); }
+      } catch (err) { showError(esc(err.message), 3000); }
     });
   });
 }
@@ -177,7 +177,7 @@ function renderJoin(el) {
     try {
       const r = await post("/api/fireworks/test-event", { event: "join", player: b.dataset.try, preview: true });
       openFwPreview({ title: `${b.dataset.try} joins`, sub: "Their join firework", run: (sc, ui) => pvRunShow(sc, r.show, ui) });
-    } catch (err) { showToast(esc(err.message), 3000); }
+    } catch (err) { showError(esc(err.message), 3000); }
   }));
 }
 
@@ -337,7 +337,7 @@ function renderSky(el) {
       fws.fw = { ...fws.fw, ...cfg };
       fwLoaded = null; await loadFireworkSettings(); appSky.bar?.skyChanged(true);
       showToast("Saved", 1200);
-    } catch (err) { showToast(esc(err.message), 3000); }
+    } catch (err) { showError(esc(err.message), 3000); }
     renderSky(el);
   };
   el.querySelectorAll("[data-sky] button").forEach((b) => b.addEventListener("click", () => save({ [b.closest("[data-sky]").dataset.sky]: b.dataset.v })));

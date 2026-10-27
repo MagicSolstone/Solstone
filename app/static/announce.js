@@ -33,7 +33,7 @@ function renderAnn() {
 }
 async function annSave(part, msg = "Saved") {
   try { ann.data = await post("/api/board", part, "PUT"); showToast(msg, 2000); appSky.board?.refresh(); return true; }
-  catch (e) { showToast(esc(e.message), 5000); return false; }
+  catch (e) { showError(esc(e.message), 5000); return false; }
 }
 
 // ---------------------------------------------------------------- banners

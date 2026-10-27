@@ -522,7 +522,7 @@ function wirePainter() {
     const uuid = e.target.value;
     if (!uuid) return;
     try { await faceStamp(uuid, ed.faceBig !== false); renderControls(); fweLaunch(); }
-    catch { showToast("Couldn't get that player's skin", 3000); e.target.value = ""; }
+    catch { showError("Couldn't get that player's skin", 3000); e.target.value = ""; }
   });
   $("#fwe-copyframe")?.addEventListener("click", () => { fweSetPicture((ed.grids[1] || fwePicture(1)).map((r) => [...r]), 2); renderControls(); fweLaunch(); });
 }
@@ -568,7 +568,7 @@ async function fweSave(asNew) {
     showToast(`Saved “${esc(saved.name)}”${saved.in_show ? " · it's in the show" : ""}`, 2500);
     await fweRefresh();
     location.hash = `#/fireworks/${saved.id}`;
-  } catch (err) { showToast(esc(err.message), 4000); }
+  } catch (err) { showError(esc(err.message), 4000); }
 }
 async function fweRefresh() {
   ed.list = await api("/api/fireworks").catch(() => ed.list);
@@ -596,7 +596,7 @@ function renderGallery() {
     $("#fwe-q", filt)?.addEventListener("input", (e) => { ed.q = e.target.value; renderGallery(); });
     $("#fwe-limit", filt)?.addEventListener("change", async (e) => {
       try { ed.limit = { ...ed.limit, ...(await post("/api/fireworks/limit", { per_person: +e.target.value }, "PUT")) }; showToast("Saved", 1500); renderGallery(); }
-      catch (err) { showToast(esc(err.message), 4000); }
+      catch (err) { showError(esc(err.message), 4000); }
     });
   }
   const q = ed.q.trim().toLowerCase();
@@ -639,7 +639,7 @@ function renderGallery() {
     });
     card.querySelector('[data-act="show"]')?.addEventListener("change", async (e) => {
       try { await post(`/api/fireworks/${f.id}`, { in_show: e.target.checked }, "PUT"); await fweRefresh(); }
-      catch (err) { showToast(esc(err.message), 4000); }
+      catch (err) { showError(esc(err.message), 4000); }
     });
     card.querySelector('[data-act="del"]')?.addEventListener("click", async () => {
       if (!(await confirmBox(`Delete “${f.name}”?`, "It will stop appearing in the show.", "Delete"))) return;
@@ -647,7 +647,7 @@ function renderGallery() {
         await api(`/api/fireworks/${f.id}`, { method: "DELETE" });
         if (ed.id === f.id) { ed.id = null; ed.base = fweSnap(fweCopy(FWE_DEFAULT)); }
         await fweRefresh();
-      } catch (err) { showToast(esc(err.message), 4000); }
+      } catch (err) { showError(esc(err.message), 4000); }
     });
   });
 }
@@ -775,13 +775,13 @@ function wireSfx(root) {
         ed.sounds = await api("/api/sounds");
         showToast(`Saved “${esc(name)}”. It's in Saved sounds for every firework now.`, 3000);
         renderControls();
-      } catch (err) { showToast(esc(err.message), 4000); }
+      } catch (err) { showError(esc(err.message), 4000); }
     });
     del.addEventListener("click", async () => {
       const x = (ed.sounds || []).find((o) => o.id === lib.value);
       if (!x || !(await confirmBox(`Delete the sound “${x.name}”?`, "Fireworks already using it keep their own copy.", "Delete"))) return;
       try { await api(`/api/sounds/${x.id}`, { method: "DELETE" }); ed.sounds = await api("/api/sounds"); renderControls(); }
-      catch (err) { showToast(esc(err.message), 4000); }
+      catch (err) { showError(esc(err.message), 4000); }
     });
     box.querySelectorAll("[data-sfx-wave]").forEach((b) => b.addEventListener("click", () => { p().wave = b.dataset.sfxWave; rebuild(); }));
     box.querySelectorAll("[data-sfx]").forEach((inp) => {

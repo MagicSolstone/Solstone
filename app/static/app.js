@@ -191,7 +191,7 @@ function openDisplayName() {
         const r = await post("/api/auth/profile", { display_name: new FormData(e.target).get("display_name") });
         me.user = r.user; $("#account-name").textContent = r.user.shown;
         closeModal(); showToast(`You're now shown as ${esc(r.user.shown)}`, 2500);
-      } catch (err) { showToast(esc(err.message), 4000); }
+      } catch (err) { showError(esc(err.message), 4000); }
     });
   });
 }
@@ -206,7 +206,7 @@ function openPasswordChange() {
       e.preventDefault();
       const f = new FormData(e.target);
       try { await post("/api/auth/password", { current: f.get("current"), new: f.get("new") }); closeModal(); showToast("Password changed", 2500); }
-      catch (err) { showToast(esc(err.message), 4000); }
+      catch (err) { showError(esc(err.message), 4000); }
     });
   });
 }
@@ -605,7 +605,7 @@ async function openGiveItem(sid, player, opts = {}) {
         const bad = (r.results || []).find((x) => x.ok === false);
         if (bad) showToast(esc((bad.output || "The game said no").slice(0, 160)), 6000);
         else { showToast(`Gave ${n} × ${esc(pick.name)} to ${esc(player)}`, 2500); giveRemember(pick.id); }
-      } catch (err) { showToast(esc(err.message), 6000); }
+      } catch (err) { showError(esc(err.message), 6000); }
       go.disabled = false;
     });
     draw();
@@ -621,10 +621,15 @@ function openContainer(item) {
     <div class="actions"><button class="btn" data-close-modal>Close</button></div>`);
 }
 let toastTimer;
-function showToast(msg, ms = 0) {
+// A message at the top of the page. kind "warn" (something went wrong, or needs attention) stands out in orange
+// and stays up a little longer; the others are the everyday "Saved" kind.
+function showToast(msg, ms = 0, kind = "") {
   const t = $("#toast"); t.innerHTML = msg; t.hidden = false;
+  t.classList.toggle("warn", kind === "warn");
+  t.classList.remove("pop"); void t.offsetWidth; t.classList.add("pop");     // a little bounce each time, so it's noticed
   clearTimeout(toastTimer); if (ms) toastTimer = setTimeout(hideToast, ms);
 }
+function showError(msg, ms = 6000) { showToast(`⚠️ ${msg}`, Math.max(ms, 5000), "warn"); }
 function hideToast() { $("#toast").hidden = true; }
 
 // ================================================================ rail
@@ -891,7 +896,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
       const r = await post(`/api/servers/${encodeURIComponent(sid)}/control/player/${encodeURIComponent(p.name)}/${action}`, { target });
       const bad = (r.results || []).find((x) => x.ok === false);
       showToast(bad ? esc((bad.output || "The game said no").slice(0, 160)) : `${esc(text)}: done`, bad ? 5000 : 2500);
-    } catch (err) { showToast(esc(err.message), 5000); }
+    } catch (err) { showError(esc(err.message), 5000); }
   });
   if (p.online) {
     let last = JSON.stringify(p.data);
@@ -1363,7 +1368,7 @@ async function openSettings(s) {
         await post(`/api/servers/${encodeURIComponent(s.id)}/settings`, body, "PUT");
         closeModal(); showToast("Settings saved", 2500);
         await loadServers(); route();
-      } catch (err) { showToast(`Couldn't save settings: ${esc(err.message)}`, 5000); }
+      } catch (err) { showError(`Couldn't save settings: ${esc(err.message)}`, 5000); }
     });
   });
 }

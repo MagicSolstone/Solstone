@@ -53,7 +53,7 @@ async function viewAdventures(sid, which) {
         await post(`/api/servers/${encodeURIComponent(sid)}/adventures/hide`, { start, end, hidden: !!hide });
         d.sessions.forEach((x) => { if (x.start === start && x.end === end) x.hidden = !!hide; });
         draw();
-      } catch (err) { showToast(esc(err.message), 4000); }
+      } catch (err) { showError(esc(err.message), 4000); }
     }));
   };
   draw();
@@ -205,17 +205,17 @@ async function viewAdventure(sid, key) {
       showToast(`Saved “${esc(a.title)}”`, 2500);
       location.replace(`#/s/${encodeURIComponent(sid)}/adventures/a${a.id}`);
       if (saved) route();
-    } catch (err) { showToast(esc(err.message), 5000); }
+    } catch (err) { showError(esc(err.message), 5000); }
   });
   $("#rp-erase")?.addEventListener("click", async () => {
     if (!confirm("Delete this session's trail and its kill/ore lines for good? Joins, chat and play time stay. This can't be undone.")) return;
     try { await post(`${base}/erase`, { start, end }); showToast("Trail deleted", 2500); location.hash = `#/s/${encodeURIComponent(sid)}/adventures`; }
-    catch (err) { showToast(esc(err.message), 5000); }
+    catch (err) { showError(esc(err.message), 5000); }
   });
   $("#rp-del")?.addEventListener("click", async () => {
     if (!confirm(`Delete "${saved.title}"? The session stays in the list; only the title and note go.`)) return;
     try { await api(`${base}/${saved.id}`, { method: "DELETE" }); location.hash = `#/s/${encodeURIComponent(sid)}/adventures`; }
-    catch (err) { showToast(esc(err.message), 5000); }
+    catch (err) { showError(esc(err.message), 5000); }
   });
   state.cleanups.push(() => { st.playing = false; cancelAnimationFrame(timer); });
   show();
