@@ -246,6 +246,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   try { hp.site = await getJSON("/api/public/site"); } catch { hp.site = { name: "Solstone", servers: [], status_page: false }; }
   $("#hp-name").textContent = $("#hp-foot-name").textContent = hp.site.name;
   $("#hp-status-link").hidden = !hp.site.status_page;
+  // Signed in: the website stays the front door, with a way straight into the servers.
+  fetch("/api/auth/me", { credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null)).then((d) => {
+    if (!d?.user) return;
+    $("#hp-servers-link").hidden = false;
+    const b = $("#hp-signin"); b.textContent = `👤 ${d.user.shown || d.user.username}`; b.title = "Open the servers"; b.href = "/app";
+  }).catch(() => {});
   const sky = $("#home-sky");
   if (sky && typeof startSkyScene === "function") {
     hp.scene = startSkyScene(sky, { auto: false, sound: (t, i) => FWAudio.play(t, i), dim: () => (document.body.classList.contains("ui-hidden") ? 0 : 0.35) });

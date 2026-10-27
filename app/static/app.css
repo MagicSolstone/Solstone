@@ -1017,6 +1017,12 @@ body.ui-hidden.pointer-idle, body.ui-hidden.pointer-idle * { cursor: none; }
 
 /* ------------------------------------------------------------ announcement banners */
 .main-col { min-width: 0; display: flex; flex-direction: column; }
+/* The website's pages, always one click away from inside the app. */
+.app-site { display: flex; gap: 4px; flex-wrap: wrap; padding: 14px clamp(16px, 4vw, 48px) 0; max-width: 1280px; }
+.app-site a { text-decoration: none; padding: 5px 11px; border-radius: var(--radius-m); color: var(--muted); font-weight: 700; font-size: .9rem; }
+.app-site a:hover { color: var(--bone); background: rgba(255,255,255,.06); }
+body.ui-hidden .app-site { display: none; }
+@media (max-width: 900px) { .app-site { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-top: 8px; } .app-site a { white-space: nowrap; } }
 #app-board { padding: 16px clamp(16px, 4vw, 48px) 0; max-width: 1280px; width: 100%; }
 #app-board + main { padding-top: 18px; }
 .board-stack { display: grid; gap: 8px; }

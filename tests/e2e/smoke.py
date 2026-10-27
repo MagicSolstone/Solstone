@@ -268,6 +268,13 @@ def main() -> int:
                 problems.append(f"player account: wrong tabs ({tabs.strip()})")
             pl.goto(f"{base}/app#/s/{sid}/p/{puuid}"); pl.wait_for_timeout(1300)
             check(pl, "player-account-own-page")
+            # signed in, the website offers the way back to the servers, and the app links back to the website
+            pl.goto(f"{base}/"); pl.wait_for_timeout(1200)
+            if not pl.locator("#hp-servers-link").is_visible():
+                problems.append("home: no Servers link when signed in")
+            pl.goto(f"{base}/app#/s/{sid}"); pl.wait_for_timeout(1200)
+            if not pl.locator(".app-site a[href='/']").is_visible():
+                problems.append("app: no link back to the website")
             for name, url in (("status", "/status"), ("status-tv", f"/status/{sid}?tv=1")):
                 anon.goto(f"{base}{url}"); anon.wait_for_timeout(2000)
                 check(anon, name)

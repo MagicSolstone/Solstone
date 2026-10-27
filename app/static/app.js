@@ -29,7 +29,8 @@ const me = { user: null };
 const appSky = { scene: null, bar: null, board: null };
 let appBuild = null;  // the night sky behind the signed-in app
 // The server's own name (Website → Site details); Solstone itself only says so in small print.
-const SITE_NAME = document.querySelector('meta[name="site-name"]')?.content || SITE_NAME;
+const SITE_NAME = document.querySelector('meta[name="site-name"]')?.content || "Solstone";
+const SITE_LOGO = document.querySelector('link[rel="icon"]')?.getAttribute("href") || "/static/solstone.svg";
 const isAdmin = () => me.user?.role === "admin";
 // Players (often signed up from the game) see the servers, who's on, leaderboards and their own page.
 const isPlayer = () => me.user?.role === "player";
@@ -139,7 +140,7 @@ async function signedIn(user) {
   if (!appSky.board) appSky.board = startBoard($("#app-board"), { where: "app", sid: () => curSid || "", scene: () => appSky.scene, dismiss: true, max: innerWidth < 700 ? 1 : 2 });
   $("#account-name").textContent = user.shown || user.username;
   $("#account-role").textContent = (ROLE_NAMES.find(([v]) => v === user.role) || [, "Signed in"])[1] + (user.player ? ` · ${user.player.name}` : "");
-  fetch("/api/public/status").then((r) => r.json()).then((d) => { $("#btn-status").hidden = !d.enabled; appBuild = d.build; }).catch(() => {});
+  fetch("/api/public/status").then((r) => r.json()).then((d) => { $("#btn-status").hidden = !d.enabled; $("#app-live").hidden = !d.enabled; appBuild = d.build; }).catch(() => {});
   // Left open for a while? Say when Solstone has been updated (a reload loads it).
   clearInterval(state.buildCheck);
   state.buildCheck = setInterval(async () => {

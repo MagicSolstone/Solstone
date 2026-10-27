@@ -112,7 +112,7 @@ const FWE_STAMPS = {
   Pickaxe: tpl("pickaxe"),
 };
 
-const ed = { d: null, id: null, list: [], scene: null, loop: true, debounce: 0, brush: "0", mirror: true, painting: false, frame: 1, grids: {}, tab: "launch", show: "all", q: "", by: "", open: {}, limit: null };
+const ed = { d: null, id: null, list: [], scene: null, loop: true, debounce: 0, brush: "0", mirror: true, painting: false, frame: 1, grids: {}, tab: "launch", show: "mine", q: "", open: {}, limit: null };
 
 function fweCopy(d) { return JSON.parse(JSON.stringify(d)); }
 // The painter works on a full 25×25 grid per frame; the saved picture is trimmed to what's painted.
@@ -162,7 +162,7 @@ async function viewFireworkEditor(editId) {
   if (!resume && (found || ed.base == null)) fweMarkSaved();
   setView(`<div class="fwe-head"><h1>Fireworks</h1>
       <nav class="tabs" aria-label="Fireworks"><a href="#/fireworks" aria-current="page">Editor</a>${isAdmin() ? '<a href="#/fireworks/settings">Show settings</a>' : ""}</nav>
-      <p class="muted">Design a firework, watch it go off, and save it. Fireworks marked <b>In the show</b> join the sky on every page of Solstone, including the sign-in and status pages.</p></div>
+      <p class="muted">Design a firework, watch it go off, and save it. Fireworks marked <b>In the show</b> join the sky on every page of the site, including the home, sign-in and status pages.</p></div>
     <div class="fwe-mode" id="fwe-mode" aria-live="polite"></div>
     <div class="fwe">
       <div class="fwe-left">
@@ -173,8 +173,6 @@ async function viewFireworkEditor(editId) {
             <button class="btn" id="fwe-sound" type="button" aria-pressed="${FWAudio.isOn("editor")}" title="Sound for this preview only">${FWAudio.isOn("editor") ? "🔊" : "🔇"}</button></div></div>
         <form class="panel fwe-save" id="fwe-save" autocomplete="off">
           <label>Name<input class="input" name="name" maxlength="40" placeholder="My firework" value="${esc(ed.d.name || "")}"></label>
-          <label>Collection <input class="input" name="group" maxlength="24" list="fwe-groups" placeholder="None (optional)" value="${esc(ed.d.group || "")}"></label>
-          <datalist id="fwe-groups">${fweGroups().map((g) => `<option value="${esc(g)}">`).join("")}</datalist>
           <label class="check"><input type="checkbox" name="in_show" ${ed.d.in_show !== false ? "checked" : ""}> In the show</label>
           <p class="muted small">Save, save as new or leave from the bar at the top.</p>
         </form>
@@ -572,67 +570,53 @@ async function fweRefresh() {
   // Let the sky on this page (and its show) pick up the change straight away.
   fetch("/api/public/fireworks").then((r) => r.json()).then(applyFireworkSettings).catch(() => {});
 }
-const fweGroups = () => [...new Set(ed.list.map((f) => (f.group || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-// The saved list: filter (everyone's, mine, in the show), search, and folded into collections
-// (or by who made them), so a long list stays easy to get around.
+// The saved list: yours first (Mine), or everyone's folded by who made them, or what's in the show; and a search.
+// Kept simple on purpose: young players use it too.
 function renderGallery() {
   const el = $("#fwe-list");
   if (!el) return;
   const label = Object.fromEntries(FWE_PATTERNS.map(([k, l, ic]) => [k, `${ic} ${l}`]));
-  const groups = fweGroups(), by = ed.by || (groups.length ? "group" : "maker");
+  const by = ed.show === "all" ? "maker" : "";
   const lim = ed.limit, mine = ed.list.filter((f) => f.mine).length;
   const count = $("#fwe-count");
   if (count) count.textContent = lim?.limited && lim.per_person ? `${ed.list.length} · ${mine} of ${lim.per_person} yours` : String(ed.list.length);
   const filt = $("#fwe-filter");
   if (filt && !filt._wired) {
     filt._wired = true;
-    filt.innerHTML = `<div class="seg" role="group" aria-label="Show">${[["all", "Everyone's"], ["mine", "Mine"], ["show", "In the show"]].map(([k, l]) => `<button type="button" data-show="${k}" aria-pressed="${ed.show === k}">${l}</button>`).join("")}</div>
+    filt.innerHTML = `<div class="seg" role="group" aria-label="Show">${[["mine", "Mine"], ["all", "Everyone's"], ["show", "In the show"]].map(([k, l]) => `<button type="button" data-show="${k}" aria-pressed="${ed.show === k}">${l}</button>`).join("")}</div>
       <input class="input sm" type="search" id="fwe-q" placeholder="Search names" value="${esc(ed.q)}" aria-label="Search saved fireworks">
-      <select class="input sm" id="fwe-by" aria-label="Group by"><option value="group">By collection</option><option value="maker">By who made them</option></select>
       ${isAdmin() ? `<label class="fwe-limit small">Each person can keep <select class="input sm" id="fwe-limit">${[5, 10, 20, 30, 50, 100, 0].map((n) => `<option value="${n}" ${lim?.per_person === n ? "selected" : ""}>${n || "any number"}</option>`).join("")}</select> <span class="muted">(admins: no limit)</span></label>` : ""}`;
     filt.querySelectorAll("[data-show]").forEach((b) => b.addEventListener("click", () => { ed.show = b.dataset.show; filt.querySelectorAll("[data-show]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); renderGallery(); }));
     $("#fwe-q", filt).addEventListener("input", (e) => { ed.q = e.target.value; renderGallery(); });
-    $("#fwe-by", filt).addEventListener("change", (e) => { ed.by = e.target.value; renderGallery(); });
     $("#fwe-limit", filt)?.addEventListener("change", async (e) => {
       try { ed.limit = { ...ed.limit, ...(await post("/api/fireworks/limit", { per_person: +e.target.value }, "PUT")) }; showToast("Saved", 1500); renderGallery(); }
       catch (err) { showToast(esc(err.message), 4000); }
     });
   }
-  if ($("#fwe-by")) $("#fwe-by").value = by;
   const q = ed.q.trim().toLowerCase();
   const shown = ed.list.slice().reverse().filter((f) => (ed.show !== "mine" || f.mine) && (ed.show !== "show" || f.in_show)
-    && (!q || f.name.toLowerCase().includes(q) || (f.group || "").toLowerCase().includes(q) || (f.author || "").toLowerCase().includes(q)));
-  const keyOf = (f) => (by === "group" ? (f.group || "").trim() || "\uffff" : f.author || "?");
+    && (!q || f.name.toLowerCase().includes(q) || (f.author || "").toLowerCase().includes(q)));
+  const keyOf = (f) => (by ? f.author || "?" : "");
   const sections = new Map();
   for (const f of shown) { const k = keyOf(f); if (!sections.has(k)) sections.set(k, []); sections.get(k).push(f); }
-  const order = [...sections.keys()].sort((a, b) => (by === "maker" ? (b === me.user?.username) - (a === me.user?.username) || a.localeCompare(b) : a.localeCompare(b)));
-  const titleOf = (k) => (by === "group" ? (k === "\uffff" ? "Not in a collection" : `📁 ${k}`) : k === me.user?.username ? `${k} (you)` : k);
+  const order = [...sections.keys()].sort((a, b) => (b === me.user?.username) - (a === me.user?.username) || a.localeCompare(b));
+  const titleOf = (k) => (k === me.user?.username ? `${k} (you)` : k);
   const card = (f) => `<div class="fwe-card ${f.id === ed.id ? "current" : ""}" data-id="${f.id}">
       <div class="fwe-card-main"><b>${esc(f.name)}</b><span class="muted small">${esc(f.launch && f.launch !== "rocket" ? (FWE_LAUNCHES.find(([k]) => k === f.launch) || [])[1] || "" : label[f.pattern] || f.pattern)} · by ${esc(f.author)}</span>
         <span class="fwe-dots">${f.colors.map((c) => `<i style="background:${c}"></i>`).join("")}</span></div>
       <div class="fwe-card-acts">
         <button type="button" class="icon-btn" data-act="play" title="Launch it" aria-label="Launch ${esc(f.name)}">▶</button>
         ${f.can_edit ? `<label class="check small" title="Include in the fireworks show"><input type="checkbox" data-act="show" ${f.in_show ? "checked" : ""}> Show</label>
-          <select class="input sm fwe-move" data-act="group" title="Collection" aria-label="Collection for ${esc(f.name)}"><option value="">📁 No collection</option>${groups.map((g) => `<option value="${esc(g)}" ${f.group === g ? "selected" : ""}>📁 ${esc(g)}</option>`).join("")}<option value="\u0000new">＋ New collection…</option></select>
           <a class="btn sm" href="#/fireworks/${f.id}">Edit</a>` : `<button type="button" class="btn sm" data-act="copy">Copy</button>`}
         ${f.can_edit ? `<button type="button" class="btn sm danger" data-act="del" aria-label="Delete ${esc(f.name)}">Delete</button>` : ""}
       </div></div>`;
-  const openOf = (k) => ed.open[`${by}:${k}`] ?? (order.length <= 3 || shown.some((f) => keyOf(f) === k && (f.id === ed.id)) || (by === "maker" ? k === me.user?.username : false) || !!q);
+  const openOf = (k) => ed.open[`${by}:${k}`] ?? (order.length <= 3 || shown.some((f) => keyOf(f) === k && (f.id === ed.id)) || k === me.user?.username || !!q);
   el.innerHTML = !ed.list.length ? `<p class="muted">Nothing saved yet. Make something and press Save.</p>`
-    : !shown.length ? `<p class="muted">Nothing matches.</p>`
+    : !shown.length ? `<p class="muted">${ed.show === "mine" && !q ? "You haven't saved any yet. Make one and press Save, or look at Everyone's." : "Nothing matches."}</p>`
+    : !by ? `<div class="fwe-group-list">${shown.map(card).join("")}</div>`
     : order.map((k) => `<details class="fwe-group" data-key="${esc(k)}" ${openOf(k) ? "open" : ""}><summary><b>${esc(titleOf(k))}</b> <span class="muted small">${sections.get(k).length}</span></summary>
         <div class="fwe-group-list">${sections.get(k).map(card).join("")}</div></details>`).join("");
   el.querySelectorAll(".fwe-group").forEach((g) => g.addEventListener("toggle", () => { ed.open[`${by}:${g.dataset.key}`] = g.open; }));
-  el.querySelectorAll('[data-act="group"]').forEach((sel) => sel.addEventListener("change", async () => {
-    const f = ed.list.find((x) => x.id === sel.closest(".fwe-card").dataset.id);
-    let g = sel.value;
-    if (g === "\u0000new") {
-      g = await textBox("New collection", "A name to file this firework under (Christmas, Gimli's, Big ones…)", "", 24);
-      if (!g) { sel.value = f.group || ""; return; }
-    }
-    try { await post(`/api/fireworks/${f.id}`, { group: g }, "PUT"); if (f.id === ed.id) { ed.d.group = g; fweMarkSaved(); } await fweRefresh(); }
-    catch (err) { showToast(esc(err.message), 4000); }
-  }));
   el.querySelectorAll(".fwe-card").forEach((card) => {
     const f = ed.list.find((x) => x.id === card.dataset.id);
     card.querySelector('[data-act="play"]').addEventListener("click", () => fweLaunch({ ...FWE_DEFAULT, ...f }));
