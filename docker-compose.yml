@@ -1,6 +1,6 @@
 services:
   solstone:
-    image: ghcr.io/tjusczak/solstone:latest
+    image: ghcr.io/magicsolstone/solstone:latest
     # :latest = :stable, only updates when a version is tagged (v1.2.3).
     # Swap in :beta for builds of every push to main.
     # To build from local source instead, comment image: and uncomment:

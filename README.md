@@ -2,6 +2,9 @@
 
 A family-friendly web dashboard for Minecraft Java servers run by **Crafty Controller 4**.
 
+- **Website** at `/`, no sign-in needed: how to join (Java and Bedrock addresses, with copy buttons), the public servers' live status, announcements, and posts in three kinds (**News**, **Guides** and **FAQ**). Admins write the posts and set the site's details in the app (🌐 Website). The signed-in app lives at `/app`; old `/#/...` links forward there.
+- **Private servers:** mark a server private (Server settings) and only admins see it. It never appears on the website or the status page, and signed-in players don't see it. Admins keep managing it from the same sign-in, so a home server and a public one can share one Solstone.
+- **Bedrock players** joining through Geyser and Floodgate get their real skins (heads, bodies, the firework face stamp), from GeyserMC's skin service by Xbox ID.
 - **Servers:** every Crafty server with running state, players online, version, loader, CPU, RAM and world size.
 - **Players:** everyone who has ever joined, with online status, level, health and time played.
 - **Player pages:**
@@ -27,7 +30,7 @@ A family-friendly web dashboard for Minecraft Java servers run by **Crafty Contr
 - **Mods:** the Fabric or Quilt mods installed, with modded item icons and names read from the mod jars.
 - **Public status page** (`/status`, off until an admin turns it on): a live, read-only big-screen view with no sign-in. Server state, in-game day and weather, TPS, and a card per online player with health, hunger, level, dimension, coordinates, held item and armour, plus a map of where everyone is, drawn from the world's own region files (terrain from the game's block textures, shaded by height, water by depth, the Nether's cave floor), and recent joins, deaths and advancements. Fireworks go off when someone joins. Chat is never shown, and admins can hide coordinates, items or activity.
 - **Mods:** item icons, names and advancements come from the jars in each server's `mods` folder. RPG gear shows its attribute bonuses, and items mods keep in extra slots (Trinkets, Accessories, backpacks) appear under the inventory.
-- **Accounts:** everyone signs in. Viewers see everything read-only; admins also get the Control tab, settings and user management. Every admin action is logged.
+- **Accounts:** everyone signs in to the app (the website and the status page are public). Viewers see everything read-only; admins also get the Control tab, settings and user management. Every admin action is logged.
 - **Control (admins):** a live console with command history, one-click time, weather and difficulty, game-rule switches, and a message to everyone (optionally shown big on screen). Player actions: heal, send to spawn or bed, teleport, game mode, give items, private message and kick. Also whitelist and operator management, and start, stop, restart and back up through Crafty.
 - **Bedtime mode:** in-game warnings, then save and disconnect at a set time, with joins blocked until wake-up. Daily screen-time limits can also warn then disconnect a player.
 
@@ -70,7 +73,7 @@ Restart the server. Solstone reads the port and password from `server.properties
 ```yaml
 services:
   solstone:
-    image: ghcr.io/tjusczak/solstone:latest   # or :beta, or build: .
+    image: ghcr.io/magicsolstone/solstone:latest   # or :beta, or build: .
     restart: unless-stopped
     ports: ["8085:8080"]
     environment:
@@ -86,7 +89,7 @@ services:
 
 Open `http://<host>:8085`. If you only have one server, Solstone opens straight to it.
 
-**Unraid:** add a container from `ghcr.io/tjusczak/solstone:latest` with those two paths and env vars. `PUID`/`PGID` decide who owns `/data`; `99`/`100` is nobody:users.
+**Unraid:** add a container from `ghcr.io/magicsolstone/solstone:latest` with those two paths and env vars. `PUID`/`PGID` decide who owns `/data`; `99`/`100` is nobody:users.
 
 ### 4. Sign in
 

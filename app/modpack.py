@@ -28,7 +28,7 @@ from .config import config
 
 SECTION = "modpacks"
 MODRINTH = "https://api.modrinth.com/v2"
-UA = "TJusczak/Solstone (family Minecraft dashboard)"
+UA = "MagicSolstone/Solstone (family Minecraft dashboard)"
 BOOTSTRAP_URL = "https://github.com/packwiz/packwiz-installer-bootstrap/releases/latest/download/packwiz-installer-bootstrap.jar"
 DEFAULT_SERVER_MODS = ("tide", "fabric-api")             # needed on every client for Tide
 KINDS = {"mod": "mods", "resourcepack": "resourcepacks", "shader": "shaderpacks"}
