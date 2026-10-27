@@ -17,7 +17,8 @@ async function viewWebsite() {
       <p class="muted">The public home page at <a href="/" target="_blank" rel="noopener">/</a>: how to join, News, and Help (guides and questions). Anyone can read it without signing in; private servers never show there.</p></div>
     <nav class="fwe-tabs fws-tabs" role="tablist" aria-label="Website">
       <button type="button" role="tab" data-tab="posts" aria-selected="${ws.tab === "posts"}">Posts</button>
-      <button type="button" role="tab" data-tab="site" aria-selected="${ws.tab === "site"}">Site details</button></nav>
+      <button type="button" role="tab" data-tab="site" aria-selected="${ws.tab === "site"}">Site details</button>
+      <button type="button" role="tab" data-tab="guides" aria-selected="${ws.tab === "guides"}">Join and account guides</button></nav>
     <div id="ws-body"></div>`);
   $$(".fws-tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
     ws.tab = b.dataset.tab; ws.editing = null;
@@ -29,7 +30,7 @@ async function viewWebsite() {
 function renderWebsite() {
   const el = $("#ws-body");
   if (!el) return;
-  if (ws.tab === "site") wsSite(el); else wsPosts(el);
+  if (ws.tab === "site") wsSite(el); else if (ws.tab === "guides") wsGuides(el); else wsPosts(el);
 }
 
 // ---------------------------------------------------------------- posts
@@ -119,6 +120,35 @@ function wsSite(el) {
     const body = Object.fromEntries(["name", "tagline", "java_address", "bedrock_address", "bedrock_port", "discord", "about"].map((k) => [k, f.get(k)]));
     body.home_live = !!f.get("home_live");
     try { ws.data.site = await post("/api/settings/site", body, "PUT"); showToast("Saved", 2000); renderWebsite(); }
+    catch (err) { showError(esc(err.message), 5000); }
+  });
+}
+
+// ---------------------------------------------------------------- the two built-in guides, in your own words
+function wsGuides(el) {
+  const s = ws.data.site;
+  const box = (key) => `<section class="panel ws-guide" data-guide="${key}"><div class="section-head"><h2>${esc(GUIDES[key].title)}</h2>
+      <a class="muted small" href="/guides/${key}" target="_blank" rel="noopener">Open it</a></div>
+    <p class="muted small">${s[`guide_${key}`] ? "Your own wording." : "Solstone's wording, which follows Site details by itself. Start from it to make it your own."}</p>
+    <textarea class="input ws-text" rows="16" maxlength="8000" data-guide-text placeholder="Empty: Solstone's wording">${esc(s[`guide_${key}`] || "")}</textarea>
+    <div class="btn-row"><button type="button" class="btn sm" data-start>Start from Solstone's wording</button>
+      <button type="button" class="btn sm" data-clear>Back to Solstone's wording</button></div></section>`;
+  el.innerHTML = `<form id="ws-guides" class="ws-guides">
+    <section class="panel"><label class="switch-row"><span><b>An “Ask to join” form on the join guide</b><br><small class="muted">Anyone can send their name in the game (and, if they like, their first name and a note). You get a notification, and they show in a server's Control → Whitelist, ready to let in. ${ws.data.notify_ready === false ? "<b>Set up notifications first (Manage → Notifications)</b>, or the messages only show in Control." : ""}</small></span>
+      <input type="checkbox" role="switch" name="join_requests" ${s.join_requests ? "checked" : ""}></label></section>
+    <p class="muted small">Same formatting as posts. These fill themselves in from Site details: ${GUIDE_PLACEHOLDERS.map(([k, l]) => `<code>{${k}}</code> ${esc(l.toLowerCase())}`).join(", ")}.</p>
+    ${box("join")}${box("account")}
+    <div class="actions"><button class="btn primary" type="submit">Save guides</button></div></form>`;
+  $$(".ws-guide").forEach((sec) => {
+    const key = sec.dataset.guide, ta = $("[data-guide-text]", sec);
+    $("[data-start]", sec).addEventListener("click", () => { if (!ta.value.trim() || confirm("Replace what's there with Solstone's wording?")) ta.value = guideTemplate(key, { ...s, join_requests: $('[name="join_requests"]').checked }); });
+    $("[data-clear]", sec).addEventListener("click", () => { ta.value = ""; });
+  });
+  $("#ws-guides").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = { join_requests: e.target.join_requests.checked };
+    $$(".ws-guide").forEach((sec) => { body[`guide_${sec.dataset.guide}`] = $("[data-guide-text]", sec).value; });
+    try { ws.data.site = await post("/api/settings/site", body, "PUT"); showToast("Guides saved", 2000); renderWebsite(); }
     catch (err) { showError(esc(err.message), 5000); }
   });
 }

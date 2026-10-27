@@ -30,7 +30,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.7.1"
+VERSION = "1.8.0"
 
 
 @asynccontextmanager
@@ -599,6 +599,33 @@ async def put_site(request: Request):
     return cfg
 
 
+# ---- asking to join, from the join guide: a notification for the admins with the exact name to let in
+_ASK_NAME = re.compile(r"^\.?[A-Za-z0-9_ ]{1,20}$")
+
+
+@app.post("/api/public/join-request")
+async def join_request(request: Request):
+    if not site.config()["join_requests"]:
+        raise HTTPException(404, "Asking to join isn't turned on")
+    body = await _body(request)
+    player = " ".join(str(body.get("player") or "").split())
+    name = " ".join(str(body.get("name") or "").split())[:40]
+    note = str(body.get("note") or "").strip()[:300]
+    if not _ASK_NAME.match(player):
+        raise HTTPException(400, "Type your Minecraft name (or Xbox gamertag) as it shows in the game")
+    if body.get("edition") == "bedrock":         # their name on the server: Floodgate's dot, spaces as underscores
+        player = "." + player.lstrip(".").replace(" ", "_")
+    elif " " in player:
+        raise HTTPException(400, "Java names don't have spaces. On Bedrock? Pick Bedrock above")
+    player = player[:17]
+    if signup._hit(f"ask:{auth.client_ip(request)}", 3):
+        raise HTTPException(429, "You've asked a few times already. An admin will see it soon")
+    site.add_join_request(player, name, note)
+    msg = f"{player} would like to join" + (f" ({name})" if name else "") + (f": {note}" if note else "")
+    await notify.send("Asking to join", msg + "\nLet them in from Control → Whitelist.", "wave")
+    return {"ok": True, "message": "Thanks! The admins have your request. Try joining again in a little while."}
+
+
 # ---- players making their own account (a code sent to them in the game)
 def _signup_on() -> None:
     if not site.config()["signup"]:
@@ -647,7 +674,9 @@ async def public_post(slug: str):
 async def all_posts(request: Request):
     """Admin: every post, drafts included, with their text, for the Website page."""
     auth.require_admin(request)
-    return {"posts": site.posts(drafts=True, limit=200), "site": site.config(), "logo": site.logo_url(), "categories": site.CATEGORIES}
+    nc = notify.get_config()
+    return {"posts": site.posts(drafts=True, limit=200), "site": site.config(), "logo": site.logo_url(), "categories": site.CATEGORIES,
+            "notify_ready": bool(nc["ntfy_url"] or nc["discord_webhook"])}
 
 
 @app.post("/api/posts")
@@ -1921,6 +1950,8 @@ async def control_info(sid: str, request: Request):
         "known_players": sorted((p["name"] for p in S.known_players(srv).values()), key=str.lower) if srv.is_java else [],
         "lists": await control.whitelist(srv) if srv.is_java else None,
         "blocked": _turned_away(srv),
+        "asked": [r for r in site.join_requests()[::-1]
+                  if r["player"].lower() not in {n.lower() for n in control.whitelist_names(srv)}] if srv.is_java else [],
         "bedtime": guard.bedtime_config(srv),
         "audit": auth.audit_log(srv.id, 40),
     }
@@ -2427,7 +2458,7 @@ async def not_found_page(full_path: str):
     return HTMLResponse(_page("home.html"), status_code=404, headers={"Cache-Control": "no-cache"})
 
 
-ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "live.js", "home.js", "website.js")
+ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "live.js", "home.js", "guides.js", "website.js")
 
 
 def _asset_stamp() -> str:

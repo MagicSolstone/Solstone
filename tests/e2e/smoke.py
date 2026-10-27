@@ -6,6 +6,7 @@ and try the main interactive bits. Fails on any JavaScript error, any page that 
 
 Screenshots of each page land in $SMOKE_SHOTS (default: a temp folder) for a quick look.
 """
+import json
 import os
 import socket
 import subprocess
@@ -258,6 +259,34 @@ def main() -> int:
             check(anon, "site-guide-join")
             if "play.example.net" not in (anon.locator(".hp-body").text_content() or "") or anon.title().find("Smoke SMP") < 0:
                 problems.append("join guide: the addresses or the site name are missing")
+            # asking to join from the guide
+            pg.request.put(f"{base}/api/settings/site", data={"join_requests": True}, headers=H)
+            anon.goto(f"{base}/guides/join#ask"); anon.reload(); anon.wait_for_timeout(1200)
+            if not anon.locator("#ask-form").count() or not anon.locator('.hp-body a[href="#ask"]').count():
+                problems.append("join guide: no Ask to join form (or link to it) with it turned on")
+            else:
+                anon.fill("#ask-form [name=player]", "Smoke_Kid"); anon.fill("#ask-form [name=note]", "Tyler's friend")
+                anon.click("#ask-form button[type=submit]"); anon.wait_for_timeout(800)
+                if not anon.locator(".hp-ask-done").count():
+                    problems.append("join guide: asking to join didn't go through")
+                check(anon, "site-guide-ask")
+                pg.goto(f"{base}/app#/s/{sid}/control"); pg.wait_for_timeout(1800)
+                if "Smoke_Kid" not in (pg.locator(".turned-away.asked").text_content() if pg.locator(".turned-away.asked").count() else ""):
+                    problems.append("control: someone who asked to join isn't listed")
+                pg.locator(".turned-away.asked").scroll_into_view_if_needed() if pg.locator(".turned-away.asked").count() else None
+                check(pg, "control-asked")
+                pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(1000)
+                pg.click('.fws-tabs [data-tab="guides"]'); pg.wait_for_timeout(400)
+                pg.click('.ws-guide[data-guide="join"] [data-start]'); pg.wait_for_timeout(200)
+                if "{java_address}" not in pg.locator('.ws-guide[data-guide="join"] textarea').input_value():
+                    problems.append("website: Start from Solstone's wording didn't put the placeholders in")
+                check(pg, "website-guides")
+            # the guides in your own words
+            pg.request.put(f"{base}/api/settings/site", data={"guide_account": "Hello from **{name}**, port {bedrock_port}."}, headers=H)
+            anon.goto(f"{base}/guides/account"); anon.wait_for_timeout(900)
+            if "Hello from Smoke SMP, port 19132." not in (anon.locator(".hp-body").text_content() or ""):
+                problems.append("account guide: the admin's own wording wasn't used or filled in")
+            pg.request.put(f"{base}/api/settings/site", data={"guide_account": ""}, headers=H)
             # sign-up from the sign-in page, and what a player account sees
             pg.request.put(f"{base}/api/settings/site", data={"signup": True}, headers=H)
             anon.goto(f"{base}/app"); anon.wait_for_timeout(1500)
@@ -334,6 +363,21 @@ def main() -> int:
                 problems.append(f"live: the screens' names take {rows} lines")
             if anon.locator("#live .tv-dots [data-tv='map']").count():
                 problems.append("live: someone not signed in can see where everyone is")
+            # a busy server: everyone's card, compact (the game's answer is made up here)
+            def busy(route):
+                b = json.loads(route.fetch().text())
+                b["online_count"] = 4
+                b["players"] = [{"name": n, "uuid": puuid, "health": h, "max_health": 20, "food": f, "xp_level": lv, "xp_progress": .4,
+                                 "dimension": "minecraft:overworld", "held": {"id": "minecraft:diamond_sword", "name": "Diamond Sword", "count": 1}}
+                                for n, h, f, lv in (("Tyler", 20, 18, 31), ("Gimli_Jr", 13, 20, 12), (".Steve_K", 7.5, 9, 4), ("MomCrafts", 20, 20, 50))]
+                route.fulfill(json=b)
+            anon.route(f"**/api/public/status/{sid}", busy)
+            anon.set_viewport_size({"width": 1280, "height": 800}); anon.goto(f"{base}/#live"); anon.reload(); anon.wait_for_timeout(2500)
+            anon.locator("#live .sp-players").scroll_into_view_if_needed() if anon.locator("#live .sp-players").count() else None
+            check(anon, "live-busy")
+            if anon.locator("#live .sp-player").count() != 4 or "❤️" not in (anon.locator("#live .sp-player").first.text_content() or ""):
+                problems.append("live: the players' compact cards aren't shown")
+            anon.unroute(f"**/api/public/status/{sid}")
             # signed in, the map is there: drag to move around, then Reset view
             pg.goto(f"{base}/#live"); pg.wait_for_timeout(2500)
             mp = pg.locator("#live .tv-dots [data-tv='map']")

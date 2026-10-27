@@ -30,8 +30,8 @@ function inline(s) {
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
     .replace(/(^|[\s(])[*_]([^*_]+)[*_](?=[\s).,!?:;]|$)/g, "$1<i>$2</i>")
-    .replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/(?!\/))[^\s)]*)\)/g, (_, t, href) =>
-      `<a href="${href}"${href.startsWith("/") ? "" : ' target="_blank" rel="noopener"'}>${t}</a>`);
+    .replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/(?!\/)|#[\w-]+(?=\)))[^\s)]*)\)/g, (_, t, href) =>
+      `<a href="${href}"${href.startsWith("/") || href.startsWith("#") ? "" : ' target="_blank" rel="noopener"'}>${t}</a>`);
 }
 
 function markdown(src) {
@@ -111,60 +111,8 @@ function liveSection() {
 }
 
 // ------------------------------------------------------------------ built-in guides
-// Always there, written from Site details, so the two questions every new player asks are answered.
-const BUILTIN = {
-  join: {
-    title: "How to join the server",
-    excerpt: "Step by step on Java (PC) and Bedrock (phone, tablet, Windows, console).",
-    body: (s) => {
-      const java = s.java_address || "the address an admin gives you";
-      const bed = s.bedrock_address || s.java_address || "the address an admin gives you";
-      const ask = s.discord ? ` (ask on [Discord](${s.discord}))` : "";
-      return `${s.name} is a Minecraft server you can join from Java Edition or Bedrock Edition. They play together in the same world.
-
-## First: get on the list
-The server only lets in people on its whitelist. Send your exact in-game name to an admin${ask}. On Bedrock that's your Xbox gamertag.
-
-## Java Edition (Windows, Mac, Linux)
-1. Open Minecraft: Java Edition and choose **Multiplayer**.
-2. Choose **Add Server**. Give it any name, and type **${java}** as the Server Address.
-3. Choose **Done**, then pick the server and **Join Server**.
-
-## Bedrock Edition (phone, tablet, Windows, Xbox, PlayStation, Switch)
-1. Open Minecraft and choose **Play**, then the **Servers** tab.
-2. Scroll down and choose **Add Server**.
-3. Give it any name. Server Address: **${bed}**. Port: **${s.bedrock_port}**.
-4. Choose **Save**, then join it. You sign in with your Microsoft (Xbox) account as usual.
-
-Good to know on Bedrock:
-- Your name on the server starts with a dot, like *.Steve*. That's how the server tells Bedrock players apart, and it's the name to use on this website.
-- Xbox, PlayStation and Switch don't have **Add Server** for outside servers. A common way round it is *BedrockConnect*: search for it to find the steps for your console. Or join from a phone, tablet or Windows PC instead.
-- A few things added by mods on the server can look different, or be missing, on Bedrock.
-
-## It won't let me in
-- **"You are not white-listed"**: you're not on the list yet. Send an admin your exact name.
-- **Can't connect / timed out**: check the address${s.bedrock_address ? " and port" : ""} for typos, and that the server is running${s.live ? " ([see it live](/#live))" : ""}.
-- **Outdated client or server**: update Minecraft to the newest version.`;
-    },
-  },
-  account: {
-    title: "Making an account on this website",
-    excerpt: "See the servers, leaderboards and your own stats. Takes a minute, from inside the game.",
-    body: (s) => s.signup ? `Your account here shows the servers, who's on, the leaderboards and your own page: your inventory and stats.
-
-## Make one
-1. Join the server and stay in the game (see [How to join](/guides/join)).
-2. Go to [Sign in](/app) and choose **Make an account**.
-3. Type your Minecraft name as it shows in the game. On Bedrock it starts with a dot, like *.Steve*.
-4. A six-digit code appears in your game chat. Only you can see it, and it works for 10 minutes.
-5. Type the code, then pick a username and password for this website. **Don't use your Microsoft password.**
-
-## Good to know
-- Each Minecraft player can have one account.
-- Forgot your password? Ask an admin to set a new one.
-- Never share your code or password. Admins will never ask for them.` : `Accounts on this website are made by an admin. Ask one for a login${s.discord ? ` on [Discord](${s.discord})` : ""}.`,
-  },
-};
+// Their wording is in guides.js (admins can rewrite them in Website → Guides).
+const BUILTIN = GUIDES;
 
 function builtinCards() {
   return Object.entries(BUILTIN).map(([k, g]) => ({ slug: k, title: g.title, excerpt: g.excerpt, builtin: true }));
@@ -208,8 +156,36 @@ function builtinArticle(key) {
   const g = BUILTIN[key];
   document.title = `${g.title} · ${hp.site.name}`;
   return `<article class="hp-article glass"><a class="back" href="/help">← Help</a>
-    <h1>${esc(g.title)}</h1><div class="hp-body">${markdown(g.body(hp.site))}</div></article>`;
+    <h1>${esc(g.title)}</h1><div class="hp-body">${markdown(guideText(key, hp.site))}</div></article>
+    ${key === "join" && hp.site.join_requests ? askFormHtml() : ""}`;
 }
+
+// Ask to join: their name goes to the admins' notifications, ready to let in from Control.
+function askFormHtml() {
+  return `<section class="hp-ask glass" id="ask"><h2>Ask to join</h2>
+    <p class="muted">The admins get a message with your name and can let you in. Then try joining again.</p>
+    <form id="ask-form" autocomplete="off">
+      <fieldset class="hp-ask-ed"><legend>I play on</legend>
+        <label class="check"><input type="radio" name="edition" value="java" checked> Java (PC or Mac)</label>
+        <label class="check"><input type="radio" name="edition" value="bedrock"> Bedrock (phone, tablet, console, Windows)</label></fieldset>
+      <label>Your name in the game <small>Exactly as it shows. On Bedrock that's your Xbox gamertag.</small><input class="input" name="player" required maxlength="20" autocapitalize="off"></label>
+      <label>Your first name <small>Optional, so the admins know who you are</small><input class="input" name="name" maxlength="40"></label>
+      <label>A note <small>Optional: who you know here, for example</small><textarea class="input" name="note" rows="3" maxlength="300"></textarea></label>
+      <p class="login-error" role="alert"></p>
+      <button class="btn primary" type="submit">Send</button></form></section>`;
+}
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "ask-form") return;
+  e.preventDefault();
+  const f = new FormData(e.target), err = $(".login-error", e.target);
+  try {
+    const r = await fetch("/api/public/join-request", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-Solstone": "1" },
+      body: JSON.stringify({ edition: f.get("edition"), player: f.get("player"), name: f.get("name"), note: f.get("note") }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || "That didn't send. Try again in a moment.");
+    e.target.outerHTML = `<p class="hp-ask-done">✅ ${esc(d.message)}</p>`;
+  } catch (x) { err.textContent = x.message; }
+});
 
 async function route() {
   hp.path = location.pathname;
@@ -229,7 +205,7 @@ async function route() {
   if (!path.startsWith("/post/") && !path.startsWith("/guides/")) document.title = nav && nav !== "home" ? `${SECTIONS[nav][0]} · ${hp.site.name}` : hp.site.name;
   main.innerHTML = html;
   document.querySelectorAll("[data-nav]").forEach((a) => a.toggleAttribute("aria-current", a.dataset.nav === nav));
-  if (location.hash === "#faq") $("#faq")?.scrollIntoView(); else if (location.hash !== "#live") window.scrollTo(0, 0);
+  if (location.hash === "#faq" || location.hash === "#ask") $(location.hash)?.scrollIntoView(); else if (location.hash !== "#live") window.scrollTo(0, 0);
   if ($("#live") && typeof startLive === "function") {
     await startLive({ scene: hp.scene, toast: (h) => toast(h, true) });
     if (location.hash === "#live") $("#live")?.scrollIntoView();

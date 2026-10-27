@@ -15,7 +15,12 @@ from .config import config as app_config
 
 CATEGORIES = ("news", "guide", "faq")
 DEFAULTS = {"name": "Solstone", "tagline": "", "java_address": "", "bedrock_address": "", "bedrock_port": 19132,
-            "discord": "", "about": "", "home_live": True, "signup": False}
+            "discord": "", "about": "", "home_live": True, "signup": False,
+            # the two built-in guides, in the admin's own words (empty: Solstone's wording); {java_address} and the
+            # like are filled in from the details above, so the guides stay right when an address or port changes
+            "guide_join": "", "guide_account": "",
+            "join_requests": False}       # an "Ask to join" form on the join guide, sent to the admins' notifications
+GUIDE_MAX = 8000
 _SLUG = re.compile(r"[^a-z0-9]+")
 
 
@@ -88,6 +93,9 @@ def clean_config(body: dict) -> dict:
             out[k] = _line(body[k], 80 if k != "tagline" else 160)
     if "about" in body:
         out["about"] = str(body["about"] or "")[:4000]
+    for k in ("guide_join", "guide_account"):
+        if k in body:
+            out[k] = str(body[k] or "").replace("\r", "")[:GUIDE_MAX].strip()
     if "discord" in body:
         d = _line(body["discord"], 200)
         out["discord"] = d if not d or d.startswith(("https://discord.gg/", "https://discord.com/")) else cur["discord"]
@@ -96,11 +104,30 @@ def clean_config(body: dict) -> dict:
             out["bedrock_port"] = max(1, min(65535, int(body["bedrock_port"])))
         except (TypeError, ValueError):
             pass
-    for k in ("home_live", "signup"):
+    for k in ("home_live", "signup", "join_requests"):
         if k in body:
             out[k] = bool(body[k])
     out["name"] = out["name"] or DEFAULTS["name"]
     return out
+
+
+# ---------------------------------------------------------------- asking to join
+REQUESTS_KEPT = 40
+
+
+def join_requests() -> list[dict]:
+    return list(settings_store.load().get("join_requests") or [])
+
+
+def add_join_request(player: str, name: str, note: str) -> dict:
+    req = {"ts": time.time(), "player": player, "name": name, "note": note}
+    keep = [r for r in join_requests() if r.get("player", "").lower() != player.lower()][-(REQUESTS_KEPT - 1):]
+    settings_store.save_section("join_requests", keep + [req])
+    return req
+
+
+def drop_join_request(player: str) -> None:
+    settings_store.save_section("join_requests", [r for r in join_requests() if r.get("player", "").lower() != player.lower()])
 
 
 def save_config(body: dict) -> dict:

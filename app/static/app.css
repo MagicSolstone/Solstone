@@ -1781,3 +1781,25 @@ a.glance-me:hover { border-color: var(--gold); }
 .ns-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
 .ns-own { margin-top: 8px; display: grid; gap: 4px; }
 .ns-own[hidden] { display: none; }
+/* Players on the home page: a compact card each, still with the full player in their skin */
+.hp-live .sp-players, .hp-live .sp-players.many, .hp-live .sp-players.solo { grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; align-items: start; }
+.hp-live .sp-player, .hp-live .sp-players.solo .sp-player, .hp-live .sp-players.many .sp-player { grid-template-columns: 72px minmax(0, 1fr); padding: 12px 14px; gap: 12px; border-radius: 12px; }
+.hp-live .sp-body { min-height: 0; }
+.hp-live .sp-body img { max-height: 132px; }
+.hp-live .sp-info h2 { font-size: 1.2rem; overflow-wrap: anywhere; }
+.hp-live .sp-info h2 .lvl { font-size: .85rem; height: 22px; }
+.hp-live .sp-info .chips, .hp-live .sp-gear { margin-top: 8px; }
+.hp-live .sp-gear .sp-held small { display: none; }
+.sp-stats { display: flex; gap: 14px; margin-top: 6px; font-size: .95rem; color: var(--muted); }
+.sp-stats b { color: var(--bone); }
+.turned-away.asked li { background: rgba(90, 200, 255, .08); border-color: rgba(90, 200, 255, .35); }
+.ta-note { flex-basis: 100%; margin: 0; color: var(--muted); font-style: italic; }
+.hp-ask { margin-top: 18px; padding: 20px 22px; border-radius: 16px; display: grid; gap: 10px; }
+.hp-ask form { display: grid; gap: 12px; max-width: 520px; }
+.hp-ask label { display: grid; gap: 4px; }
+.hp-ask small { color: var(--muted); }
+.hp-ask-ed { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.hp-ask-ed legend { font-weight: 700; margin-bottom: 4px; }
+.hp-ask-done { font-size: 1.05rem; }
+.hp-live .sp-body .face { --s: 64px !important; }
+.hp-live .sp-body img.fallback { width: 64px; height: 64px; }

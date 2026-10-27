@@ -100,7 +100,7 @@ const backupSkin = (p) => `https://mc-heads.net/skin/${p.name ? encodeURICompone
 // from just a name still uses the real skin rather than a name lookup (Steve for unknown names).
 const knownUuids = {};
 function faceHtml(p, size, cls = "") {
-  const initial = esc((p.name || "?")[0].toUpperCase());
+  const initial = esc((String(p.name || "?").replace(/^\./, "") || "?")[0].toUpperCase());
   if (!p.uuid && p.name && knownUuids[String(p.name).toLowerCase()]) p = { ...p, uuid: knownUuids[String(p.name).toLowerCase()] };
   const main = skinSource(p);
   // Solstone's own copy when it has a UUID (no backup underneath: a by-name lookup often shows Steve first and

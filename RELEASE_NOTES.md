@@ -1,4 +1,31 @@
-# Solstone 1.7.1
+# Solstone 1.8.0
+
+## Letting people in
+- **Tried to join:** when the whitelist turns someone away, their exact name shows in the server's Control → Whitelist, with **Copy** and **Let them in**. There's a notification for it too (Notifications → *Someone the whitelist turned away*).
+- **Ask to join** (Website → Join and account guides, off to start): a form at the bottom of the join guide. People pick Java or Bedrock, type their name in the game and, if they like, their first name and a note. You get a notification, and they show in Control → Whitelist under *Asked to join*, ready to let in. A few requests an hour from one address at most.
+
+## The guides, in your own words
+- Website → **Join and account guides**: rewrite *How to join the server* and *Making an account on this website*. **Start from Solstone's wording** puts the current text in with `{java_address}`, `{bedrock_address}`, `{bedrock_port}`, `{name}`, `{discord}` and `{ask}` in place, so the guides still follow Site details when an address or port changes. **Back to Solstone's wording** undoes it.
+- Solstone's own join guide no longer says some things from mods can be missing on Bedrock.
+
+## Notifications for each server
+- In Notifications, each server can stay **Same as above**, be switched **off**, or have **its own choices**: which events, and its own quiet hours.
+
+## Accounts
+- Making an account asks, both optional, for a **first name** (only admins see it: in Users, and as a tooltip on the account button) and a **birthday**, which adds their birthday banner and fireworks. Admins can set the name too (Users → the player button).
+
+## Maps
+- The World tab's map shows **everyone's head** instead of a dot, and moves them **every few seconds** without reloading.
+
+## Home page
+- Players' cards on the live section are **compact**: the player in their skin, health and food as numbers (❤️ 9/10 · 🍗 10/10), what they're holding. More fit on the screen.
+
+## Smaller things
+- **Heads show the right skin straight away:** skins are fetched when a player joins and kept, so pages don't show Steve for a moment first.
+- **Messages at the top stand out more**, and problems show in **orange** with ⚠️ and stay up longer.
+- **Firework editor:** editing a saved picture firework with another tab of the controls open no longer breaks the page ("Cannot read properties of null").
+- Bedrock players' placeholder heads show their first letter, not the dot.
+
 
 ## Bedrock players
 - Names with Floodgate's dot in front (like **.Steve**) work everywhere a name is typed or checked: giving items, healing, teleporting, kicking, game mode, birthdays, bedtime exemptions, join fireworks and the level check.

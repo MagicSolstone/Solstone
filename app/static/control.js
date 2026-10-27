@@ -275,6 +275,10 @@ async function viewControl(sid) {
     el.innerHTML = `<p class="muted small" style="margin-bottom:10px">The whitelist is <b>${L.enabled ? "on" : "off"}</b>${L.enabled ? ": only these players can join." : ". Anyone with the address can join. Turn it on in server.properties (white-list=true) or with /whitelist on."}</p>
       <div class="lists"><div><h3>Whitelist</h3><div class="chips">${chips(L.whitelist, "whitelist_remove", "Remove")}</div></div>
       <div><h3>Operators</h3><div class="chips">${chips(L.ops, "deop", "Remove operator")}</div></div></div>
+      ${(info.asked || []).length ? `<div class="turned-away asked"><h3>Asked to join <small class="muted">from the website's join guide</small></h3>
+        <ul>${info.asked.map((b) => `<li><code class="ta-name">${esc(b.player)}</code>${b.player.startsWith(".") ? ' <span class="chip">Bedrock</span>' : ""}${b.name ? ` <span>${esc(b.name)}</span>` : ""}<span class="muted small">${esc(fmtAgo(b.ts))}</span>
+          <button class="btn sm" type="button" data-copy-name="${esc(b.player)}">Copy</button><button class="btn sm primary" type="button" data-allow="${esc(b.player)}">Let them in</button>
+          ${b.note ? `<p class="ta-note">“${esc(b.note)}”</p>` : ""}</li>`).join("")}</ul></div>` : ""}
       ${(info.blocked || []).length ? `<div class="turned-away"><h3>Tried to join <small class="muted">turned away by the whitelist in the last two weeks</small></h3>
         <ul>${info.blocked.map((b) => `<li><code class="ta-name">${esc(b.name)}</code>${b.bedrock ? ' <span class="chip">Bedrock</span>' : ""}<span class="muted small">${esc(fmtAgo(b.ts))}</span>
           <button class="btn sm" type="button" data-copy-name="${esc(b.name)}">Copy</button><button class="btn sm primary" type="button" data-allow="${esc(b.name)}">Let them in</button></li>`).join("")}</ul></div>` : ""}
@@ -287,7 +291,7 @@ async function viewControl(sid) {
     if (allow) {
       const n = allow.dataset.allow;
       if (await confirmBox(`Let ${n} in?`, "They're added to the whitelist and can join straight away.", "Let them in")) {
-        if (await act(`player/${encodeURIComponent(n)}/whitelist_add`, {}, `${esc(n)} can join now`)) { info.blocked = info.blocked.filter((b) => b.name !== n); renderLists(); }
+        if (await act(`player/${encodeURIComponent(n)}/whitelist_add`, {}, `${esc(n)} can join now`)) { info.blocked = (info.blocked || []).filter((b) => b.name !== n); info.asked = (info.asked || []).filter((b) => b.player !== n); renderLists(); }
       }
       return;
     }

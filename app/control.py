@@ -221,6 +221,9 @@ async def player_action(srv: S.Server, player: str, action: str, body: dict, sen
         reason = clean_text(body.get("reason") or "Kicked by an admin", 120)
         return await run_all(srv, [f"kick {p} {reason}"])
     if action in ("whitelist_add", "whitelist_remove"):
+        if action == "whitelist_add":
+            from . import site                # let in: their request to join (if they asked) is done with
+            site.drop_join_request(p)
         if mcname.is_bedrock(p):          # Bedrock players are let in by Floodgate's own list, by gamertag (no dot)
             return await run_all(srv, [f"fwhitelist {'add' if action == 'whitelist_add' else 'remove'} {p[1:]}"])
         return await run_all(srv, [f"whitelist {'add' if action == 'whitelist_add' else 'remove'} {p}"])

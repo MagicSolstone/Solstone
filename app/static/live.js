@@ -235,8 +235,10 @@ function recentlyHtml(b) {
   return `<div class="sp-recently"><h3>Played recently</h3><ul>${b.recently.map((p) => `<li>${faceHtml(p, 32)}<span><b>${esc(p.name)}</b><small>${esc(fmtAgo(p.last_seen))}</small></span></li>`).join("")}</ul></div>`;
 }
 function playerCardHtml(p) {
+  // Short and sweet: numbers instead of rows of hearts and drumsticks, so more players fit.
+  const num = (v) => Math.round(v * 2) / 2;
   const vitals = p.health != null
-    ? `<div class="sp-vitals">${heartsHtml(p.health, p.max_health)}${foodHtml(p.food)}${xpHtml(p.xp_level, p.xp_progress)}</div>` : "";
+    ? `<div class="sp-stats"><span title="Health">❤️ <b>${num(p.health / 2)}</b>/${num((p.max_health || 20) / 2)}</span><span title="Food">🍗 <b>${num((p.food ?? 20) / 2)}</b>/10</span></div>` : "";
   const since = "Playing now";       // never for how long
   const chips = [
     p.dimension ? `<span class="chip dim-tag dim-${dimKey(p.dimension)}">${esc(dimName(p.dimension))}</span>` : "",

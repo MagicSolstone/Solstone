@@ -1172,7 +1172,7 @@ async function viewWorld(sid) {
   const [w, pl] = await Promise.all([api(`/api/servers/${sid}/world`), api(`/api/servers/${sid}/players`)]);
   const ruleVal = (v) => v === "true" || v === true ? '<span class="on">On</span>' : v === "false" || v === false ? '<span class="off">Off</span>' : esc(v);
   const maxChunks = Math.max(1, ...w.dimensions.map((d) => d.chunks));
-  const located = pl.players.filter((p) => p.position);
+  let located = pl.players.filter((p) => p.position);
   // Two maps: Solstone's own (drawn from the world files, with everyone's last spot) and a web map (BlueMap...) if set
   const webMap = s.map_url
     ? `<iframe class="map-frame" src="${esc(s.map_url)}" title="World map" loading="lazy"></iframe><p class="muted" style="margin-top:8px;font-size:.9rem"><a href="${esc(s.map_url)}" target="_blank" rel="noopener">Open the map full screen</a></p>`
@@ -1214,8 +1214,19 @@ async function viewWorld(sid) {
   $("#btn-mapcheck")?.addEventListener("click", () => openMapCheck(sid, w.dimensions.map((d) => d.id)));
   // Solstone's own map, centred on whoever's around, with everyone's (last) spot
   let ownMap = null;
+  // Each player's face (with the hat layer), cut from their skin, drawn where they are.
+  const heads = {};
+  const headOf = (p) => {
+    if (heads[p.name]) return heads[p.name];
+    const img = new Image();
+    img.onload = () => ownMap?.draw();
+    img.onerror = () => { if (img.src !== backupSkin(p)) img.src = backupSkin(p); };
+    img.src = skinSource(p) || backupSkin(p);
+    return (heads[p.name] = img);
+  };
   const mountOwn = (dim) => {
-    const here = located.filter((p) => (p.position.dimension || "minecraft:overworld") === dim);
+    const hereNow = () => located.filter((p) => (p.position.dimension || "minecraft:overworld") === dim);
+    const here = hereNow();
     const c = here[0]?.position || (dim === "minecraft:overworld" && w.spawn) || { x: 0, z: 0 };
     ownMap = worldMapCanvas($("#wm-own"), sid, { dim, center: { x: c.x, z: c.z }, scale: 1,
       overlay: (ctx, toScreen) => {
@@ -1223,13 +1234,19 @@ async function viewWorld(sid) {
           const [x, y] = toScreen(w.spawn.x, w.spawn.z);
           ctx.fillStyle = "#f2c14e"; ctx.save(); ctx.translate(x, y); ctx.rotate(Math.PI / 4); ctx.fillRect(-5, -5, 10, 10); ctx.restore();
         }
-        for (const p of here) {
-          const [x, y] = toScreen(p.position.x, p.position.z);
-          ctx.fillStyle = p.online ? "#5ac8ff" : "rgba(200,210,230,.75)"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2;
-          ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        for (const p of hereNow()) {
+          const [x, y] = toScreen(p.position.x, p.position.z), sz = 22, img = headOf(p);
+          ctx.globalAlpha = p.online ? 1 : 0.6;                  // not on now: a faded head where they left
+          ctx.fillStyle = p.online ? "#fff" : "rgba(200,210,230,.8)"; ctx.fillRect(x - sz / 2 - 2, y - sz / 2 - 2, sz + 4, sz + 4);
+          if (img.complete && img.naturalWidth >= 64) {
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(img, 8, 8, 8, 8, x - sz / 2, y - sz / 2, sz, sz);
+            ctx.drawImage(img, 40, 8, 8, 8, x - sz / 2, y - sz / 2, sz, sz);
+          } else { ctx.fillStyle = "#4d74d6"; ctx.fillRect(x - sz / 2, y - sz / 2, sz, sz); }
+          ctx.globalAlpha = 1;
           ctx.font = "bold 12px system-ui"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.8)"; ctx.fillStyle = "#fff";
           const label = p.online ? p.name : `${p.name} · ${fmtAgo(p.last_seen)}`;
-          ctx.strokeText(label, x + 10, y + 4); ctx.fillText(label, x + 10, y + 4);
+          ctx.strokeText(label, x + sz / 2 + 6, y + 4); ctx.fillText(label, x + sz / 2 + 6, y + 4);
         }
       } });
     if (here.length > 1) ownMap.fit(here.map((p) => ({ x: p.position.x, z: p.position.z })));
@@ -1255,6 +1272,14 @@ async function viewWorld(sid) {
     if (el._html !== html) { el._html = html; el.innerHTML = html; }
   };
   every(1000, paintSky);
+  // Where everyone is, live: every few seconds while the page is open (the map keeps where you've moved it to).
+  every(5000, async () => {
+    if (document.hidden) return;
+    const np = await api(`/api/servers/${sid}/players`).catch(() => null);
+    if (!np) return;
+    located = np.players.filter((p) => p.position);
+    ownMap?.draw();
+  });
   every(20000, async () => {
     const [nw, ns] = await Promise.all([api(`/api/servers/${sid}/world`).catch(() => null), api(`/api/servers/${encodeURIComponent(sid)}`).catch(() => null)]);
     if (nw) { wd = nw; readAt = Date.now() - (nw.age || 0) * 1000; }
