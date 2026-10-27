@@ -1892,3 +1892,52 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .world-map-pick select { margin-left: auto; }
 .world-own-map { position: relative; height: min(64vh, 600px); border-radius: var(--radius-m); overflow: hidden; background: #101826; }
 .world-own-map .rm-canvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+
+/* ---------------------------------------------------------------- public home page and posts */
+.home-page #home-sky { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; }
+.hp { position: relative; z-index: 1; max-width: 1080px; margin: 0 auto; padding: 18px clamp(16px, 3vw, 32px) 40px; display: flex; flex-direction: column; gap: 22px; min-height: 100%; }
+.hp-top { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.hp-top .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-family: var(--font-display); font-size: 1.35rem; }
+.hp-nav { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; }
+.hp-nav a { text-decoration: none; padding: 6px 12px; border-radius: var(--radius-m); color: var(--muted); }
+.hp-nav a:hover { color: var(--bone); background: rgba(255,255,255,.05); }
+.hp-nav a[aria-current] { color: var(--bone); background: var(--tuff-2); }
+.hp-top .btn { text-decoration: none; }
+.hp-main { display: flex; flex-direction: column; gap: 28px; flex: 1; }
+.hp-main section { display: flex; flex-direction: column; gap: 12px; }
+.hp-hero { padding: 28px 0 6px; }
+.hp-hero h1 { font-size: clamp(2.2rem, 6vw, 3.4rem); color: var(--gold); text-shadow: 0 3px 0 rgba(0,0,0,.35); }
+.hp-tagline { font-size: 1.15rem; color: var(--muted); max-width: 60ch; margin-top: 8px; }
+.hp-join, .hp-about, .hp-article { padding: 18px 20px; border-radius: var(--radius-m); }
+.hp-join-rows { display: flex; flex-direction: column; gap: 10px; }
+.hp-join-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.hp-ed { min-width: 9.5em; font-weight: 700; }
+.hp-addr { font-size: 1.05rem; background: var(--well); padding: 4px 10px; border-radius: var(--radius-s); }
+.hp-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.hp-head a { color: var(--muted); text-decoration: none; }
+.hp-head a:hover { color: var(--gold); }
+.hp-server-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.hp-server { display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto auto; column-gap: 12px; align-items: center; padding: 12px 14px; border-radius: var(--radius-m); text-decoration: none; }
+.hp-server img { grid-row: span 2; border-radius: var(--radius-s); }
+.hp-server-name { font-weight: 700; }
+.hp-server .muted { grid-column: 2 / span 2; font-size: .9rem; }
+.hp-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); }
+.hp-dot.on { background: var(--copper); box-shadow: 0 0 8px var(--copper); }
+.hp-posts { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.hp-post { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: var(--radius-m); text-decoration: none; }
+.hp-post:hover { border-color: var(--gold); }
+.hp-post-meta { font-size: .82rem; color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
+.hp-faq { display: flex; flex-direction: column; gap: 8px; }
+.hp-faq details { border-radius: var(--radius-m); padding: 12px 16px; }
+.hp-faq summary { cursor: pointer; font-weight: 700; }
+.hp-faq .hp-body { margin-top: 10px; }
+.hp-article { display: flex; flex-direction: column; gap: 10px; max-width: 780px; }
+.hp-body { display: flex; flex-direction: column; gap: 10px; line-height: 1.6; max-width: 70ch; }
+.hp-body h2, .hp-body h3, .hp-body h4 { margin-top: 8px; }
+.hp-body ul, .hp-body ol { margin: 0; padding-left: 1.4em; }
+.hp-body code { background: var(--well); padding: 1px 6px; border-radius: var(--radius-s); }
+.hp-body blockquote { margin: 0; padding-left: 12px; border-left: 3px solid var(--gold-deep); color: var(--muted); }
+.hp-body a, .hp-join a { color: var(--gold); }
+.hp-foot { font-size: .88rem; padding-top: 8px; }
+.hp-foot a { color: var(--muted); }
+@media (max-width: 640px) { .hp-ed { min-width: 0; width: 100%; } .hp-nav { order: 3; width: 100%; } }

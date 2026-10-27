@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f1424">
+  <meta name="description" content="A family Minecraft server: how to join on Java or Bedrock, who's on, news and guides.">
+  <title>Solstone</title>
+  <link rel="icon" href="/static/solstone.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="home-page">
+  <canvas id="home-sky" aria-hidden="true"></canvas>
+  <div class="hp">
+    <header class="hp-top">
+      <a class="brand" href="/">
+        <img src="/static/solstone.svg" alt="" width="34" height="34">
+        <span id="hp-name">Solstone</span>
+      </a>
+      <nav class="hp-nav" aria-label="Site">
+        <a href="/" data-nav="home">Home</a>
+        <a href="/news" data-nav="news">News</a>
+        <a href="/guides" data-nav="guides">Guides</a>
+        <a href="/faq" data-nav="faq">FAQ</a>
+        <a href="/status" id="hp-status-link" hidden>Live status</a>
+      </nav>
+      <a class="btn sm" href="/app" id="hp-signin">Sign in</a>
+    </header>
+    <div id="hp-board" class="board-stack" hidden></div>
+    <main id="hp-main" class="hp-main"><p class="muted">Loading…</p></main>
+    <footer class="hp-foot muted"><span id="hp-foot-name">Solstone</span> · <a href="/app">Sign in</a></footer>
+  </div>
+  <div id="hp-toast" class="toast" hidden></div>
+  <script src="/static/sky.js" defer></script>
+  <script src="/static/hud.js" defer></script>
+  <script src="/static/board.js" defer></script>
+  <script src="/static/home.js" defer></script>
+</body>
+</html>

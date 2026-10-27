@@ -124,9 +124,15 @@ def test_settings_require_admin(client, viewer, sid):
     client.put(url, json={"map_url": "", "rcon_password": ""})
 
 
-def test_spa_fallback(client):
-    r = client.get("/s/whatever")
-    assert r.status_code == 200 and "<title>Solstone</title>" in r.text
+def test_pages_home_app_and_not_found(client, anon):
+    for path in ("/", "/news", "/guides", "/faq", "/post/anything"):          # the public website
+        r = anon.get(path)
+        assert r.status_code == 200 and "/static/home.js" in r.text, path
+    r = anon.get("/app")                                                       # the app, signed in or not (it shows sign-in)
+    assert r.status_code == 200 and "/static/app.js" in r.text
+    assert client.get("/app/s/whatever").status_code == 200
+    r = anon.get("/no-such-page")
+    assert r.status_code == 404 and "/static/home.js" in r.text
     assert client.get("/api/does-not-exist").status_code == 404
 
 

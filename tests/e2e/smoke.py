@@ -92,7 +92,7 @@ def main() -> int:
     sid, (pname, puuid) = helpers.SID, helpers.PLAYERS[0]
     try:
         with sync_playwright() as pw:
-            browser = pw.chromium.launch()
+            browser = pw.chromium.launch(executable_path=os.environ.get("SMOKE_CHROMIUM") or None)
 
             def page(width=1280, height=860):
                 pg = browser.new_page(viewport={"width": width, "height": height})
@@ -118,6 +118,12 @@ def main() -> int:
                 problems.append("index: no Content-Security-Policy header")
             # turn on the public status page so it can be checked too
             pg.request.put(f"{base}/api/settings/status", data={"enabled": True}, headers=H)
+            # the website: how to join, and a post of each kind
+            pg.request.put(f"{base}/api/settings/site", data={"name": "Smoke SMP", "tagline": "A test server", "java_address": "play.example.net",
+                                                              "bedrock_address": "play.example.net", "about": "We **fish** a lot."}, headers=H)
+            for cat, title in (("news", "Welcome to the server"), ("guide", "How to join on Bedrock"), ("faq", "Can I play on my phone?")):
+                pg.request.post(f"{base}/api/posts", data={"title": title, "category": cat,
+                                                           "body": "# Heading\n\nSome **bold** text and a [link](/faq).\n\n- one\n- two"}, headers=H)
 
             routes = {
                 "home": "#/", "overview": f"#/s/{sid}", "player": f"#/s/{sid}/p/{puuid}",
@@ -128,13 +134,13 @@ def main() -> int:
                 "fireworks-editor": "#/fireworks", "fireworks-settings": "#/fireworks/settings",
                 "music": "#/music", "announcements": "#/announcements", "admin": "#/admin",
             }
-            pg.goto(f"{base}/"); pg.wait_for_timeout(1200)
+            pg.goto(f"{base}/app"); pg.wait_for_timeout(1200)
             for name, hash_ in routes.items():
-                pg.goto(f"{base}/{hash_}"); pg.wait_for_timeout(1300)
+                pg.goto(f"{base}/app{hash_}"); pg.wait_for_timeout(1300)
                 check(pg, name)
 
             # fireworks settings: every tab, then edit a show (copy a step)
-            pg.goto(f"{base}/#/fireworks/settings"); pg.wait_for_timeout(1200)
+            pg.goto(f"{base}/app#/fireworks/settings"); pg.wait_for_timeout(1200)
             for tab in pg.locator(".fws-tabs [data-tab]").all():
                 tab.click(); pg.wait_for_timeout(300)
             pg.click('.fws-tabs [data-tab="shows"]'); pg.wait_for_timeout(300)
@@ -149,11 +155,11 @@ def main() -> int:
             check(pg, "fireworks-shows")
 
             # the music bar's popovers and the give-items dialog
-            pg.goto(f"{base}/#/"); pg.wait_for_timeout(1000)
+            pg.goto(f"{base}/app#/"); pg.wait_for_timeout(1000)
             for sel in (".mbar [data-mb='list']", ".mbar [data-sky='volume']"):
                 if pg.locator(sel).count() and pg.locator(sel).first.is_visible():
                     pg.click(sel); pg.wait_for_timeout(250); pg.mouse.click(5, 5)
-            pg.goto(f"{base}/#/s/{sid}/control"); pg.wait_for_timeout(1000)
+            pg.goto(f"{base}/app#/s/{sid}/control"); pg.wait_for_timeout(1000)
             pg.evaluate(f"openGiveItem({sid!r}, {pname!r})"); pg.wait_for_timeout(500)
             if not pg.locator(".gv-modal").count():
                 problems.append("give items: dialog didn't open")
@@ -169,7 +175,7 @@ def main() -> int:
             pg.click(".gv-modal [data-close]")
 
             # an adventure replay: open the first session, jump to an event, screenshot
-            pg.goto(f"{base}/#/s/{sid}/adventures"); pg.wait_for_timeout(800)
+            pg.goto(f"{base}/app#/s/{sid}/adventures"); pg.wait_for_timeout(800)
             if not pg.locator(".rp-row").count():
                 problems.append("adventures: no sessions listed")
             else:
@@ -212,6 +218,22 @@ def main() -> int:
             anon = browser.new_page(viewport={"width": 1280, "height": 800})
             anon.add_init_script("window.__csp = []; document.addEventListener('securitypolicyviolation', (e) => window.__csp.push(e.violatedDirective + ' ' + (e.blockedURI || 'inline')));")
             anon.on("pageerror", lambda e: problems.append(f"status: JS error: {e}"))
+            # the public website, signed out
+            for name, url in (("site-home", "/"), ("site-news", "/news"), ("site-guides", "/guides"), ("site-faq", "/faq"),
+                              ("site-post", "/post/welcome-to-the-server")):
+                anon.goto(f"{base}{url}"); anon.wait_for_timeout(1200)
+                check(anon, name)
+            anon.goto(f"{base}/"); anon.wait_for_timeout(1200)
+            if "play.example.net" not in (anon.locator(".hp-join").text_content() or ""):
+                problems.append("home: the join addresses aren't shown")
+            if anon.locator(".hp-post").count() < 1:
+                problems.append("home: the latest news isn't shown")
+            anon.goto(f"{base}/post/welcome-to-the-server"); anon.wait_for_timeout(1000)
+            if not anon.locator(".hp-body b").count() or not anon.locator(".hp-body li").count():
+                problems.append("post: its Markdown wasn't formatted")
+            anon.goto(f"{base}/#/coming-up"); anon.wait_for_timeout(1200)
+            if "/app" not in anon.url:
+                problems.append("home: an old /#/ link didn't forward to the app")
             for name, url in (("status", "/status"), ("status-tv", f"/status/{sid}?tv=1")):
                 anon.goto(f"{base}{url}"); anon.wait_for_timeout(2000)
                 check(anon, name)
@@ -231,9 +253,9 @@ def main() -> int:
             # phone width
             m = page(390, 800)
             for name, hash_ in (("m-overview", f"#/s/{sid}"), ("m-player", f"#/s/{sid}/p/{puuid}"), ("m-fireworks", "#/fireworks")):
-                m.goto(f"{base}/{hash_}"); m.wait_for_timeout(1200)
+                m.goto(f"{base}/app{hash_}"); m.wait_for_timeout(1200)
                 check(m, name)
-            m.goto(f"{base}/#/s/{sid}/fishing"); m.wait_for_timeout(1000)
+            m.goto(f"{base}/app#/s/{sid}/fishing"); m.wait_for_timeout(1000)
             check(m, "m-fishing")
             m.click("#btn-menu"); m.wait_for_timeout(300)
             if not m.locator(".rail-foot").is_visible():

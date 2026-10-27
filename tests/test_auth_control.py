@@ -326,7 +326,7 @@ def test_public_status_page(anon, client, viewer, monkeypatch):
 
 
 def test_security_and_cache_headers(client, anon):
-    page = anon.get("/")
+    page = anon.get("/app")
     csp = page.headers["content-security-policy"]
     assert "script-src 'self'" in csp and "object-src 'none'" in csp and "frame-ancestors 'self'" in csp
     assert page.headers["cache-control"] == "no-cache"

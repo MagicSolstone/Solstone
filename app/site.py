@@ -63,7 +63,8 @@ def _row(r, full: bool = True) -> dict:
     if full:
         out["body"] = r["body"]
     else:
-        text = re.sub(r"[#*_`>\[\]()!-]", "", r["body"])
+        text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", r["body"])      # a link's text, not its address
+        text = re.sub(r"[#*_`>\[\]()!-]", "", text)
         out["excerpt"] = _line(text, 220)
     return out
 

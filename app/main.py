@@ -2412,14 +2412,31 @@ async def status_page(sid: str = ""):
     return HTMLResponse(_page("status.html"), headers={"Cache-Control": "no-cache"})
 
 
-@app.get("/{full_path:path}", include_in_schema=False)
-async def spa(full_path: str):
-    if full_path.startswith("api/"):
-        raise HTTPException(404)
+@app.get("/", include_in_schema=False)
+@app.get("/news", include_in_schema=False)
+@app.get("/guides", include_in_schema=False)
+@app.get("/faq", include_in_schema=False)
+@app.get("/post/{slug}", include_in_schema=False)
+async def home_page(slug: str = ""):
+    """The public website: home, news, guides, FAQ and posts. No sign-in."""
+    return HTMLResponse(_page("home.html"), headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/app", include_in_schema=False)
+@app.get("/app/{full_path:path}", include_in_schema=False)
+async def app_page(full_path: str = ""):
+    """The signed-in app (it routes by #/... after this)."""
     return HTMLResponse(_page("index.html"), headers={"Cache-Control": "no-cache"})
 
 
-ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "music.js", "status.js")
+@app.get("/{full_path:path}", include_in_schema=False)
+async def not_found_page(full_path: str):
+    if full_path.startswith("api/"):
+        raise HTTPException(404)
+    return HTMLResponse(_page("home.html"), status_code=404, headers={"Cache-Control": "no-cache"})
+
+
+ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "music.js", "status.js", "home.js")
 
 
 def _asset_stamp() -> str:

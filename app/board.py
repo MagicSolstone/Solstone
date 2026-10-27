@@ -124,7 +124,8 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
     cfg = config()
     out: list[dict] = []
     for it in cfg["items"]:
-        if not it["enabled"] or where not in it["where"] or (it["server"] and sid and it["server"] != sid):
+        shown_here = where in it["where"] or (where == "home" and "status" in it["where"])      # status-page notes show at home too
+        if not it["enabled"] or not shown_here or (it["server"] and sid and it["server"] != sid):
             continue
         start, end, cd = item_window(it)
         if (start and t < start) or (end and t >= end):
