@@ -132,7 +132,7 @@ def main() -> int:
                 "control": f"#/s/{sid}/control", "check": f"#/s/{sid}/check", "chat": f"#/s/{sid}/chat", "challenges": f"#/s/{sid}/challenges", "races": f"#/s/{sid}/challenges/races", "games": f"#/s/{sid}/challenges/games", "performance": f"#/s/{sid}/performance",
                 "leaderboards": f"#/s/{sid}/leaderboards", "fishing": f"#/s/{sid}/fishing", "fishing-player": f"#/s/{sid}/fishing/Tyler", "mods": f"#/s/{sid}/mods", "adventures": f"#/s/{sid}/adventures", "coming-up": "#/coming-up",
                 "fireworks-editor": "#/fireworks", "fireworks-settings": "#/fireworks/settings",
-                "music": "#/music", "announcements": "#/announcements", "admin": "#/admin",
+                "music": "#/music", "announcements": "#/announcements", "admin": "#/admin", "website": "#/website",
             }
             pg.goto(f"{base}/app"); pg.wait_for_timeout(1200)
             for name, hash_ in routes.items():

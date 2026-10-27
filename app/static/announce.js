@@ -4,7 +4,7 @@
 
 const ANN_TABS = [["banners", "Banners"], ["birthdays", "Birthdays"], ["bedtime", "Bedtime"], ["tv", "TV mode"]];
 const ANN_STYLES = [["info", "Info"], ["party", "Celebration"], ["heads", "Heads-up"]];
-const ANN_WHERE = [["status", "Status page & TV"], ["app", "Solstone (signed in)"], ["login", "Sign-in page"]];
+const ANN_WHERE = [["home", "Home page"], ["status", "Status page & TV"], ["app", "Solstone (signed in)"], ["login", "Sign-in page"]];
 const ANN_EMOJI = ["📣", "🎉", "🏗️", "🏆", "⚠️", "🎂", "🌙", "🎃", "🎄", "⛏️", "🐉", "🎬"];
 const ANN_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const ann = { tab: "banners", data: null, editing: null, tv: null };
@@ -63,7 +63,7 @@ function annBanners(el) {
       it.end && !it.countdown && `Until ${annLocal(it.end)}`,
       it.show && `🎆 ${showName(it.show)} at zero`, it.say && "💬 Posts in the game",
       it.server && `Only ${d.servers.find((s) => s.id === it.server)?.name || it.server}`,
-      it.where.length < 3 && it.where.map((w) => ANN_WHERE.find(([k]) => k === w)?.[1]).join(", "),
+      it.where.length < ANN_WHERE.length && it.where.map((w) => ANN_WHERE.find(([k]) => k === w)?.[1]).join(", "),
     ].filter(Boolean);
     return ann.editing === i ? annEditHtml(it) : `<div class="ann-row ${cls}" data-i="${i}">
       ${annBannerHtml(it, true)}
@@ -72,7 +72,7 @@ function annBanners(el) {
         <button class="btn sm" data-edit>Edit</button><button class="btn sm danger" data-del>Delete</button></span></div></div>`;
   }).join("");
   el.innerHTML = `<section class="panel"><div class="ann-list">${rows || `<p class="muted">No announcements yet. They're good for build contests, server restarts, movie night, or "dinner in 10 minutes".</p>`}</div>
-    ${ann.editing === "new" ? annEditHtml({ text: "", detail: "", emoji: "📣", style: "info", where: ["status", "app", "login"], server: "", start: "", end: "", countdown: "", done_text: "", show: "", say: false, enabled: true }) : `<button class="btn primary" id="ann-new" style="margin-top:12px">+ New announcement</button>`}</section>`;
+    ${ann.editing === "new" ? annEditHtml({ text: "", detail: "", emoji: "📣", style: "info", where: ["home", "status", "app", "login"], server: "", start: "", end: "", countdown: "", done_text: "", show: "", say: false, enabled: true }) : `<button class="btn primary" id="ann-new" style="margin-top:12px">+ New announcement</button>`}</section>`;
   $("#ann-new")?.addEventListener("click", () => { ann.editing = "new"; renderAnn(); $(".ann-edit input[name=text]")?.focus(); });
   el.querySelectorAll(".ann-row[data-i]").forEach((row) => {
     const i = +row.dataset.i;

@@ -1292,6 +1292,7 @@ async function route() {
     if (!me.user) return;
     if (parts[0] === "admin") { await viewAdmin(); return; }
     if (parts[0] === "announcements") { await viewAnnouncements(); return; }
+    if (parts[0] === "website") { await viewWebsite(); return; }
     if (parts[0] === "coming-up") { await viewUpcoming(); return; }
     if (parts[0] === "music") { await viewMusic(parts[1], parts[2]); return; }
     if (parts[0] === "fireworks" && parts[1] === "settings") { await viewFireworkSettings(); return; }
