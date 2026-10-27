@@ -1729,3 +1729,21 @@ body.status-page:not(.tv) .sp { max-width: var(--page); padding: 18px var(--gutt
 body.tv .sp-site { display: none; }
 .sp-tv { display: inline-flex; align-items: center; gap: 6px; }
 @media (max-width: 640px) { .sp-tv span { display: none; } }
+
+/* Who played which days (instead of hours, for anyone but an admin) */
+.dp-grid { display: grid; grid-template-columns: minmax(80px, max-content) repeat(var(--days), minmax(14px, 1fr)); gap: 4px; align-items: center; overflow-x: auto; }
+.dp-day { font-size: .72rem; color: var(--muted); text-align: center; }
+.dp-name { font-size: .88rem; white-space: nowrap; padding-right: 8px; }
+.dp-cell { height: 18px; border-radius: 4px; background: rgba(255,255,255,.06); }
+.dp-cell.on { background: var(--pc); }
+
+/* A Player's overview: the server at a glance */
+.glance { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 22px; }
+.glance-card { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: var(--radius-m); background: rgba(16, 20, 32, .55);
+  border: 1px solid var(--glass-edge); text-decoration: none; color: var(--bone); }
+.glance-card small { color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-size: .72rem; font-weight: 700; }
+.glance-card b { font-size: 1.1rem; display: flex; align-items: center; gap: 8px; }
+.glance-card span { color: var(--muted); font-size: .88rem; }
+.glance-card span b { display: inline; font-size: inherit; color: var(--bone); }
+a.glance-me:hover { border-color: var(--gold); }
+.glance-more { font-size: .85rem; font-weight: 700; margin-top: 2px; }

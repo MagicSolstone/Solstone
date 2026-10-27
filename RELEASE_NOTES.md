@@ -1,18 +1,20 @@
-# Solstone 1.5.0
+# Solstone 1.6.0
 
-## One site, one top bar
-- **The sidebar is gone.** Signed in, you get the same top bar as the home page: Home, News, Guides, FAQ, Live status, **Servers**, Coming up and Fireworks. Your name is on the right.
-- **Servers** opens the server overview. The **▾** beside it drops down a list of every server, so you can jump straight to one.
-- **⚙ Manage** (admins only) is everything about the whole site in one place, one tab each: Announcements, Website, Users, Servers & status page, Firework show and the Activity log, with 🔔 Notifications beside them. A server's own settings stay on that server (⚙ on its page). The menu under your name is just Display name, Change password and Sign out.
-- **Every page is the same width**: the home page, the status page and the signed-in pages. Moving between them no longer jumps.
-- **The home and status pages know you're signed in.** They show your name instead of *Sign in*, plus the Servers, Coming up and Fireworks links.
+## Who played, not how long
+- **No more "Time played" leaderboard.** Nobody should be racing to play the longest. Get outside!
+- **Only admins see how long anyone played.** You keep it for screen-time limits and the weekly digest. Everyone else, and the public pages, see *who* played and *which days*, never for how long:
+  - The recap lists who played, in the order they joined, without hours. "Played the longest" is gone.
+  - *Time played* becomes **Who played**: a square for each day each person played.
+  - Players' pages show **Days played** ("12 of the last 30 days"). The "Time played" stat is gone from the stats strip and the statistics.
+  - The activity timeline shows when a session started, not how long it lasted.
+  - The live status page says *Playing now*, never "playing for 2 h" or "3 h today".
+  - The server leaves the numbers out of what it sends, so they can't be dug out of the page either.
+- *Last seen* still sorts the players list.
 
-## Help
-- **Guides and the FAQ are one Help page**: the built-in join and account guides first, then your guides, then your questions. The top bar is Home, News, Help. In Website → Posts you still pick a guide or a question; both land on Help. Old `/guides` and `/faq` links go there.
-
-## Logins limited to their servers
-- **Choose which servers each login sees** (Manage → Users → Servers). Everywhere else in Solstone, the other servers don't exist for them: the server list, their pages, announcements, Coming up and the firework feed. Admins always see every server.
-- **Players who sign up from the game see the server they signed up on.** You can give them more.
-
-## Live status
-- **The screen names wrap onto a second line on narrow screens**, so *Recent activity* is no longer cut off past the edge.
+## A fuller overview for Player accounts
+- **At a glance**, above the recap:
+  - **Server**: how many are playing, the version, and whether it's running smoothly.
+  - **In the world**: the in-game day, time and weather.
+  - **You**: your level and last seen, linking to your inventory, stats and fishing.
+  - **Coming up**: the next three events.
+- **Who played** over the last two weeks.

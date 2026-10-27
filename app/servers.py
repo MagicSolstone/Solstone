@@ -981,7 +981,7 @@ async def player_detail(srv: Server, uuid: str) -> dict | None:
 # (key, title, kind) -- kind tells the pages how to show the number:
 #   ticks -> a duration, cm -> a distance, hearts -> damage in hearts, count -> a plain number
 LEADERBOARDS = [
-    ("play_time", "Time played", "ticks"),
+    # no "time played" board: nobody should be racing to play longest
     ("xp_level", "Experience level", "count"),           # the level now (it drops on death)
     ("advancements", "Advancements", "count"),
     ("mob_kills", "Mobs defeated", "count"),

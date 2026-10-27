@@ -103,7 +103,9 @@ def test_player_sees_only_their_corner(player, viewer, sid, tyler):
     assert player.get(f"/api/servers/{sid}/players/{tyler}").status_code == 200       # their own page
     assert player.get(f"/api/servers/{sid}/players/{other}").status_code == 404
     assert player.get(f"/api/servers/{sid}/players/{other}/history").status_code == 404
-    for path in ("chat", "activity", "events", "timeline", "adventures", "world", "backups"):
+    act = player.get(f"/api/servers/{sid}/activity").json()          # which days, never sessions or lengths
+    assert act["sessions"] == [] and act["durations"] is False
+    for path in ("chat", "events", "timeline", "adventures", "world", "backups"):
         assert player.get(f"/api/servers/{sid}/{path}").status_code == 403, path
     assert player.post(f"/api/servers/{sid}/chat", json={"text": "hi"}).status_code == 403
     assert player.get("/api/players/all").status_code == 403
@@ -132,3 +134,20 @@ def test_a_login_can_be_limited_to_some_servers(client, viewer, sid):
     finally:
         assert client.patch(f"/api/users/{me['id']}", json={"servers": None}).json()["servers"] is None
     assert viewer.get(f"/api/servers/{sid}").status_code == 200
+
+
+def test_only_admins_see_how_long_anyone_played(client, viewer, player, anon, sid, tyler):
+    """Who played and which days, yes; for how long, only admins (screen-time limits)."""
+    assert "today_seconds" in client.get(f"/api/servers/{sid}/players").json()["players"][0]
+    for c in (viewer, player):
+        rows = c.get(f"/api/servers/{sid}/players").json()["players"]
+        assert rows and not any("today_seconds" in r or "play_time" in r.get("headline", {}) for r in rows)
+        recap = c.get(f"/api/servers/{sid}/recap").json()["recap"]
+        assert "total_seconds" not in recap and not any("seconds" in p for p in recap["players"])
+    me = player.get(f"/api/servers/{sid}/players/{tyler}").json()
+    assert "play_time" not in me["headline"] and "minecraft:play_time" not in (me.get("stats") or {}).get("minecraft:custom", {})
+    hist = player.get(f"/api/servers/{sid}/players/{tyler}/history").json()
+    assert hist["durations"] is False and all(set(d) == {"date", "played"} for d in hist["daily"])
+    act = viewer.get(f"/api/servers/{sid}/activity").json()
+    assert act["durations"] is False and all(set(v.values()) <= {1} for d in act["daily"] for v in [d["players"]])
+    assert all(b["key"] != "play_time" for b in client.get(f"/api/servers/{sid}/leaderboard").json()["boards"])

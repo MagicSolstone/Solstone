@@ -132,7 +132,7 @@ def test_tv_settings(client, viewer, anon, sid):
     try:
         assert anon.get("/api/public/status").json()["tv"]["rotate"] is True
         lb = anon.get(f"/api/public/leaderboard/{sid}").json()
-        assert lb["players"] and "play_time" in lb["players"][0]
+        assert lb["players"] and "play_time" not in lb["players"][0] and "xp_level" in lb["players"][0]
         r = anon.get(f"/api/public/recap/{sid}").json()
         assert "recap" in r and "on_this_day" in r
         assert anon.get("/api/public/board?where=status").status_code == 200

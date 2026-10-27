@@ -29,7 +29,7 @@ function recapHighlights(r, max = 6) {
     out.push({ icon: "★", html: `${adv.length} advancements${Object.keys(per).length > 1 ? `, most by <b>${esc(top[0])}</b> (${top[1]})` : ` by <b>${esc(top[0])}</b>`}` });
   }
   if (r.players.length > 1 && r.peak > 1) out.push({ icon: "👥", html: `${r.peak === r.players.length ? "Everyone" : `${r.peak} people`} played together at once` });
-  if (r.players[0] && r.players[0].seconds >= 600) out.push({ icon: "⏱", html: `<b>${esc(r.players[0].name)}</b> played the longest: ${esc(recapSpan(r.players[0].seconds))}` });
+  if (r.players[0] && hasTime(r.players[0].seconds) && r.players[0].seconds >= 600) out.push({ icon: "⏱", html: `<b>${esc(r.players[0].name)}</b> played the longest: ${esc(recapSpan(r.players[0].seconds))}` });
   for (const l of (r.levels || []).slice(0, 2)) out.push({ icon: "⬆", html: esc(l.message) });
   if (r.deaths.length) {
     const per = {};
@@ -39,15 +39,17 @@ function recapHighlights(r, max = 6) {
   return out.slice(0, max);
 }
 
+// Admins see how long people played; everyone else gets no seconds from the server at all.
+const hasTime = (v) => typeof v === "number";
 // title: "Today so far" etc. o.big for the TV; o.max lines.
 function recapCardHtml(r, title, o = {}) {
   if (!r || (!r.players.length && !r.advancements.length && !r.deaths.length)) {
     return `<div class="rc-card ${o.big ? "big" : ""}"><div class="rc-head"><h3>${esc(title)}</h3></div><p class="muted">Nobody played${title.startsWith("Today") ? " yet today" : ""}.</p></div>`;
   }
   const lines = recapHighlights(r, o.max || 6);
-  const who = r.players.map((p) => `<span class="rc-who" title="${esc(p.name)} · ${esc(recapSpan(p.seconds))}">${faceHtml(p, o.big ? 44 : 30)}<span><b>${esc(p.name)}</b><small>${esc(recapSpan(p.seconds))}</small></span></span>`).join("");
+  const who = r.players.map((p) => `<span class="rc-who" title="${esc(p.name)}${hasTime(p.seconds) ? ` · ${esc(recapSpan(p.seconds))}` : ""}">${faceHtml(p, o.big ? 44 : 30)}<span><b>${esc(p.name)}</b>${hasTime(p.seconds) ? `<small>${esc(recapSpan(p.seconds))}</small>` : ""}</span></span>`).join("");
   return `<div class="rc-card ${o.big ? "big" : ""}">
-    <div class="rc-head"><h3>${esc(title)}</h3><span class="muted">${r.players.length} ${r.players.length === 1 ? "player" : "players"} · ${esc(recapSpan(r.total_seconds))} played${r.source === "logs" ? ' · <span title="Read from the server\'s old logs">from the logs</span>' : ""}</span></div>
+    <div class="rc-head"><h3>${esc(title)}</h3><span class="muted">${r.players.length} ${r.players.length === 1 ? "player" : "players"}${hasTime(r.total_seconds) ? ` · ${esc(recapSpan(r.total_seconds))} played` : ""}${r.source === "logs" ? ' · <span title="Read from the server\'s old logs">from the logs</span>' : ""}</span></div>
     ${who ? `<div class="rc-players">${who}</div>` : ""}
     ${lines.length ? `<ul class="rc-lines">${lines.map((l) => `<li><span class="rc-ic" aria-hidden="true">${l.icon}</span><span>${l.html}</span></li>`).join("")}</ul>` : ""}
   </div>`;
@@ -59,6 +61,6 @@ function onThisDayHtml(list, o = {}) {
     const top = recapHighlights(r, 1)[0];
     return `<div class="rc-otd-row"><div class="rc-otd-when"><b>${esc(r.label)}</b><small>${esc(recapDate(r.day))}</small></div>
       <div class="rc-otd-what"><span class="rc-faces">${r.players.slice(0, 6).map((p) => faceHtml(p, o.big ? 34 : 24)).join("")}</span>
-      <span>${esc(recapNames(r.players.map((p) => p.name).slice(0, 4)))}${r.players.length > 4 ? ` and ${r.players.length - 4} more` : ""} played ${esc(recapSpan(r.total_seconds))}${top ? `. ${top.icon} ${top.html}` : ""}</span></div></div>`;
+      <span>${esc(recapNames(r.players.map((p) => p.name).slice(0, 4)))}${r.players.length > 4 ? ` and ${r.players.length - 4} more` : ""} played${hasTime(r.total_seconds) ? ` ${esc(recapSpan(r.total_seconds))}` : ""}${top ? `. ${top.icon} ${top.html}` : ""}</span></div></div>`;
   }).join("")}</div>`;
 }

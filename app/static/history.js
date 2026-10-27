@@ -250,12 +250,12 @@ function condensedLines(evs, withName, colorNames) {
 function groupBlockHtml(b) {
   const range = b.open
     ? `${hm(b.start)} – now <span class="live-tag"><span class="status-dot on"></span>playing</span>`
-    : `${hm(b.start)} – ${hm(b.end)}`;
+    : hasTime(b.seconds) ? `${hm(b.start)} – ${hm(b.end)}` : hm(b.start);     // without lengths (not an admin): when it started
   const people = b.players.map((n) => {
     const sess = b.sessions.filter((x) => x.player === n);
-    const secs = sess.reduce((a, x) => a + x.seconds, 0);
+    const secs = sess.reduce((a, x) => a + (x.seconds || 0), 0), timed = sess.some((x) => hasTime(x.seconds));
     const uuid = sess[0]?.uuid;
-    return `<a class="tl-who" href="#/s/${encodeURIComponent(curSid)}/p/${uuid || ""}" title="${esc(n)} played ${esc(fmtSeconds(secs))}">${miniHead({ uuid, name: n }, 26)}<b style="color:${nameInk(n)}">${esc(n)}</b><span class="muted tl-each">${secs >= 60 ? fmtSeconds(secs) : "<1m"}</span></a>`;
+    return `<a class="tl-who" href="#/s/${encodeURIComponent(curSid)}/p/${uuid || ""}" ${timed ? `title="${esc(n)} played ${esc(fmtSeconds(secs))}"` : ""}>${miniHead({ uuid, name: n }, 26)}<b style="color:${nameInk(n)}">${esc(n)}</b>${timed ? `<span class="muted tl-each">${secs >= 60 ? fmtSeconds(secs) : "<1m"}</span>` : ""}</a>`;
   }).join("");
   const summary = Object.entries(COUNT_LABELS).filter(([k]) => b.counts[k])
     .map(([k, [one, many]]) => `<span class="cnt ev-${k}"><span aria-hidden="true">${EVENT_ICON[k]}</span> ${b.counts[k]} ${b.counts[k] === 1 ? one : many}</span>`).join("");
@@ -263,7 +263,7 @@ function groupBlockHtml(b) {
   const hidden = Math.max(0, evs.length - NEST_SHOWN * 2);
   const stripes = b.players.map((n, i, a) => `${playerColor(n)} ${(i / a.length) * 100}% ${((i + 1) / a.length) * 100}%`).join(", ");
   return `<li class="tl-session tl-group" style="--stripe:linear-gradient(${stripes})">
-    <div class="tl-head"><span class="tl-together">Played together</span><span class="tl-range">${range}</span><span class="tl-dur">${b.seconds >= 60 ? fmtSeconds(b.seconds) : "under a minute"}</span></div>
+    <div class="tl-head"><span class="tl-together">Played together</span><span class="tl-range">${range}</span>${hasTime(b.seconds) ? `<span class="tl-dur">${b.seconds >= 60 ? fmtSeconds(b.seconds) : "under a minute"}</span>` : ""}</div>
     <div class="tl-people">${people}</div>
     ${summary ? `<div class="tl-sum">${summary}</div>` : ""}
     ${evs.length ? `<ul class="nested">${evs.map((line, i) => line.replace('<li class="', `<li ${i >= NEST_SHOWN * 2 ? "hidden " : ""}class="`)).join("")}</ul>
@@ -275,7 +275,7 @@ function sessionBlockHtml(b, showPlayer) {
   const color = playerColor(b.player);
   const range = b.open
     ? `${hm(b.start)} – now <span class="live-tag"><span class="status-dot on"></span>playing</span>`
-    : `${hm(b.start)} – ${hm(b.end || b.last_seen)}`;
+    : hasTime(b.seconds) ? `${hm(b.start)} – ${hm(b.end || b.last_seen)}` : hm(b.start);
   const summary = Object.entries(COUNT_LABELS).filter(([k]) => b.counts[k])
     .map(([k, [one, many]]) => `<span class="cnt ev-${k}"><span aria-hidden="true">${EVENT_ICON[k]}</span> ${b.counts[k]} ${b.counts[k] === 1 ? one : many}</span>`).join("");
   const evs = condensedLines(b.events, false, false);
@@ -288,7 +288,7 @@ function sessionBlockHtml(b, showPlayer) {
     ? `<a class="tl-who" href="#/s/${encodeURIComponent(curSid)}/p/${b.uuid || ""}">${miniHead({ uuid: b.uuid, name: b.player }, 26)}<b>${esc(b.player)}</b></a>`
     : "";
   return `<li class="tl-session" style="--pc:${color}">
-    <div class="tl-head">${head}<span class="tl-range">${range}</span><span class="tl-dur">${b.seconds >= 60 ? fmtSeconds(b.seconds) : "under a minute"}</span></div>
+    <div class="tl-head">${head}<span class="tl-range">${range}</span>${hasTime(b.seconds) ? `<span class="tl-dur">${b.seconds >= 60 ? fmtSeconds(b.seconds) : "under a minute"}</span>` : ""}</div>
     ${summary ? `<div class="tl-sum">${summary}</div>` : ""}${body}</li>`;
 }
 
@@ -343,7 +343,7 @@ function mountActivity(el, sid, playerNames) {
   setPlayerSlots(playerNames);
   let days = 14;
   el.innerHTML = `
-    <section class="section"><div class="section-head"><h2>Time played</h2>
+    <section class="section"><div class="section-head"><h2 id="act-title">Time played</h2>
       <div class="seg" role="group" aria-label="Days shown" id="days-seg">${[7, 14, 30].map((d) => `<button data-d="${d}" aria-pressed="${d === days}">${d} days</button>`).join("")}</div></div>
       <div class="panel"><div id="today-row" class="today-row"></div><div id="legend"></div><div class="chart" id="daily-chart"></div></div>
     </section>
@@ -355,11 +355,13 @@ function mountActivity(el, sid, playerNames) {
     if (!$("#daily-chart")) return;
     const names = [...new Set(a.daily.flatMap((d) => Object.keys(d.players)))].sort((x, y) => playerColor(x).localeCompare(playerColor(y)));
     const order = Object.keys(playerSlots).map((k) => names.find((n) => n.toLowerCase() === k)).filter(Boolean);
-    const today = a.daily[a.daily.length - 1].players;
-    const todayNames = Object.keys(today).sort((x, y) => today[y] - today[x]);
+    const today = a.daily[a.daily.length - 1].players, timed = a.durations !== false;
+    const todayNames = Object.keys(today).sort((x, y) => (timed ? today[y] - today[x] : x.localeCompare(y)));
+    $("#act-title").textContent = timed ? "Time played" : "Who played";
     $("#today-row").innerHTML = todayNames.length
-      ? `<span class="muted">Today</span>${todayNames.map((n) => `<span class="chip"><span class="sw" style="background:${playerColor(n)}"></span><b>${esc(n)}</b> ${fmtSeconds(today[n])}</span>`).join("")}`
+      ? `<span class="muted">Today</span>${todayNames.map((n) => `<span class="chip"><span class="sw" style="background:${playerColor(n)}"></span><b>${esc(n)}</b>${timed ? ` ${fmtSeconds(today[n])}` : ""}</span>`).join("")}`
       : `<span class="muted">Nobody has played today yet.</span>`;
+    if (!timed) { $("#legend").innerHTML = ""; renderDaysPlayed($("#daily-chart"), a.daily, order); return; }
     if (!order.length) {
       $("#legend").innerHTML = "";
       $("#daily-chart").innerHTML = `<div class="empty"><h3>No play time recorded yet</h3><p>Solstone checks who's online every 30 seconds. Daily totals build up from today onward.</p></div>`;
@@ -455,6 +457,17 @@ async function viewPerformance(sid) {
   every(30000, load);
 }
 
+// Which days each person played (a square for each day), for anyone who doesn't see how long.
+function renderDaysPlayed(el, daily, names) {
+  if (!names.length) { el.innerHTML = `<div class="empty"><p>Nobody has played in these days yet.</p></div>`; return; }
+  const day = (iso) => new Date(`${iso}T12:00:00`);
+  const label = (iso) => day(iso).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+  el.innerHTML = `<div class="dp-grid" style="--days:${daily.length}">
+    <span></span>${daily.map((d, i) => `<span class="dp-day">${i === daily.length - 1 ? "Today" : day(d.date).getDate()}</span>`).join("")}
+    ${names.map((n) => `<b class="dp-name" style="color:${nameInk(n)}">${esc(n)}</b>${daily.map((d) => `<span class="dp-cell ${d.players[n] ? "on" : ""}" style="--pc:${playerColor(n)}" title="${esc(n)} · ${esc(label(d.date))}${d.players[n] ? "" : " (didn't play)"}"></span>`).join("")}`).join("")}
+  </div>`;
+}
+
 // ================================================================ player history tab
 async function renderPlayerHistory(el, sid, p) {
   el.innerHTML = `<section class="section"><div class="section-head"><h2>Time played per day</h2><span class="muted" id="h-total"></span></div>
@@ -463,6 +476,14 @@ async function renderPlayerHistory(el, sid, p) {
   const all = await api(`/api/servers/${sid}/players`).catch(() => ({ players: [] }));
   setPlayerSlots(all.players.map((x) => x.name));
   const h = await api(`/api/servers/${sid}/players/${p.uuid}/history?days=30`);
+  if (h.durations === false) {           // which days they played, not for how long
+    el.querySelector(".section-head h2").textContent = "Days played";
+    const n = h.daily.filter((d) => d.played).length;
+    $("#h-total").textContent = `${n} of the last ${h.daily.length} days`;
+    renderDaysPlayed($("#p-daily"), h.daily.map((d) => ({ date: d.date, players: d.played ? { [p.name]: 1 } : {} })), [p.name]);
+    mountTimeline($("#p-feed"), sid, p.name);
+    return;
+  }
   const total = h.daily.reduce((a, d) => a + d.seconds, 0);
   const week = h.daily.slice(-7).reduce((a, d) => a + d.seconds, 0);
   $("#h-total").textContent = `${fmtSeconds(week)} this week · ${fmtSeconds(total)} in 30 days`;

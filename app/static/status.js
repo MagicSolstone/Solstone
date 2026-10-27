@@ -240,7 +240,7 @@ function recentlyHtml(b) {
 function playerCardHtml(p) {
   const vitals = p.health != null
     ? `<div class="sp-vitals">${heartsHtml(p.health, p.max_health)}${foodHtml(p.food)}${xpHtml(p.xp_level, p.xp_progress)}</div>` : "";
-  const since = p.since ? `Playing for <span data-since-ts="${p.since}">${esc(fmtSpan(Date.now() / 1000 - p.since))}</span>` : "Playing now";
+  const since = "Playing now";       // never for how long
   const chips = [
     p.dimension ? `<span class="chip dim-tag dim-${dimKey(p.dimension)}">${esc(dimName(p.dimension))}</span>` : "",
     p.position ? `<span class="chip">X <b>${Math.round(p.position.x)}</b> Y <b>${Math.round(p.position.y)}</b> Z <b>${Math.round(p.position.z)}</b></span>` : "",
@@ -254,7 +254,7 @@ function playerCardHtml(p) {
     <div class="sp-body"><img src="${bodyUrl(p)}" alt="" data-fail="face" data-face="${esc(faceHtml(p, 88))}"></div>
     <div class="sp-info">
       <h2>${esc(p.name)}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}</h2>
-      <div class="sp-meta"><span class="live-tag"><span class="status-dot on"></span>${since}</span>${p.today_seconds > 60 ? `<span>${esc(fmtSpan(p.today_seconds))} today</span>` : ""}</div>
+      <div class="sp-meta"><span class="live-tag"><span class="status-dot on"></span>${since}</span></div>
       ${vitals}
       <div class="chips">${chips}</div>
       ${gear}${effects}
@@ -501,7 +501,7 @@ function tvAvailable(k, b) {
   if (k === "live") return (b.live || []).length > 0;
   if (k === "map") return hasMap(b);
   if (k === "web") return !!b.web_map && !st.tv;          // an embedded web map is for browsing, not the wall
-  if (k === "leaders") return !!st.leaders?.players?.some((r) => r.play_time > 0);
+  if (k === "leaders") return !!st.leaders?.players?.some((r) => st.leaders.boards.some((bd) => r[bd.key] > 0));
   if (k === "recap") return !!st.recap && (st.recap.recap.players.length || st.recap.yesterday?.players.length || st.recap.on_this_day.length);
   if (k === "feed") return b.recent.length > 0;
   if (k === "news") return (st.banners?.items || []).length > 0;

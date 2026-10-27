@@ -805,16 +805,55 @@ async function viewOverview(sid) {
   setView(serverHeader(s, "overview") + `<div class="overview">
       <aside class="ov-side" aria-label="Players"><div class="section-head"><h2>Players</h2><span class="muted">${data.players.length} joined</span></div>
         <div id="players-body">${playersListHtml(data)}</div></aside>
-      <div class="ov-main"><section class="rc-wrap" id="ov-recap" aria-label="Daily recap"></section><div id="ov-activity"></div></div></div>`);
+      <div class="ov-main">${isPlayer() ? '<div id="ov-glance"></div>' : ""}<section class="rc-wrap" id="ov-recap" aria-label="Daily recap"></section><div id="ov-activity"></div></div></div>`);
   wireHeader(s);
   const refreshRecap = mountRecap($("#ov-recap"), sid);
-  const refreshActivity = isPlayer() ? () => {} : mountActivity($("#ov-activity"), sid, data.players.map((p) => p.name));
+  // Players get the server at a glance (now, the world, coming up, themselves) and who played which days;
+  // everyone else the full activity.
+  const refreshActivity = isPlayer() ? mountPlayerGlance($("#ov-glance"), $("#ov-activity"), s, data) : mountActivity($("#ov-activity"), sid, data.players.map((p) => p.name));
   every(10000, async () => {
     const d = await api(`/api/servers/${sid}/players`).catch(() => null);
     if (d && $("#players-body")) $("#players-body").innerHTML = playersListHtml(d);
   });
   every(30000, refreshActivity);
   every(120000, refreshRecap);
+}
+
+// The overview for a Player account: a few cards about the server right now, then who played which days.
+function mountPlayerGlance(el, daysEl, s, data) {
+  const sid = s.id;
+  const mine = data.players.find((p) => isMine(p.uuid));
+  const phase = (t) => (t < 6000 ? "Morning" : t < 12000 ? "Afternoon" : t < 13000 ? "Sunset" : t < 23000 ? "Night" : "Sunrise");
+  const tps = s.perf?.tps;
+  const load = async () => {
+    const [sky, up] = await Promise.all([fetch(`/api/public/sky?sid=${encodeURIComponent(sid)}`).then((r) => r.json()).catch(() => null),
+      api("/api/upcoming").catch(() => ({ items: [] }))]);
+    if (!el.isConnected) return;
+    const world = sky?.mode === "game" && sky.server === sid
+      ? `<b>Day ${esc(sky.day)}</b><span>${esc(phase(sky.time_of_day))} · ${sky.thundering ? "Thunderstorm" : sky.raining ? "Raining" : "Clear"}</span>` : `<b>—</b><span>The world's time shows while it's running</span>`;
+    const next = (up.items || []).filter((x) => !x.server || x.server === s.name).slice(0, 3);
+    el.innerHTML = `<div class="glance">
+      <div class="glance-card"><small>Server</small><b>${s.running === false ? "Offline" : `${s.online?.length || 0} of ${s.max_players ?? "?"} playing`}</b>
+        <span>${esc([s.version && `Minecraft ${s.version}`, s.loader].filter(Boolean).join(" · "))}</span>
+        ${tps != null && s.running ? `<span>${tps >= 19 ? "🟢 Running smoothly" : tps >= 15 ? "🟡 A little slow" : "🔴 Lagging"} (${esc(tps.toFixed(1))} TPS)</span>` : ""}</div>
+      <div class="glance-card"><small>In the world</small>${world}</div>
+      ${mine ? `<a class="glance-card glance-me" href="#/s/${encodeURIComponent(sid)}/p/${mine.uuid}"><small>You</small>
+        <b>${headHtml(mine, 28)} ${esc(mine.name)}${mine.xp_level != null ? ` <span class="lvl">${mine.xp_level}</span>` : ""}</b>
+        <span>${mine.online ? "Playing now" : `Last seen ${esc(fmtAgo(mine.last_seen))}`} · your inventory, stats and fishing →</span></a>` : ""}
+      <div class="glance-card"><small>Coming up</small>${next.length ? next.map((x) => `<span>${esc(x.emoji || "")} <b>${esc(x.title)}</b> ${x.live ? "· on now" : `· ${esc(new Date(x.at * 1000).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }))}${x.time ? ` ${esc(x.time)}` : ""}`}</span>`).join("")
+        : "<span>Nothing planned yet</span>"}<a class="glance-more" href="#/coming-up">All of it →</a></div>
+    </div>`;
+  };
+  const loadDays = async () => {
+    const a = await api(`/api/servers/${encodeURIComponent(sid)}/activity?days=14`).catch(() => null);
+    if (!a || !daysEl.isConnected) return;
+    const names = [...new Set(a.daily.flatMap((d) => Object.keys(d.players)))].sort((x, y) => x.localeCompare(y));
+    daysEl.innerHTML = `<section class="section"><div class="section-head"><h2>Who played</h2><span class="muted">The last two weeks</span></div>
+      <div class="panel"><div class="chart" id="days-chart"></div></div></section>`;
+    renderDaysPlayed($("#days-chart", daysEl), a.daily, names);
+  };
+  load(); loadDays();
+  return () => { load(); loadDays(); };
 }
 
 // Today so far, yesterday, any day back to the first one on record, and "on this day".
@@ -949,7 +988,8 @@ function fishingChip(p) {
 function statStrip(p) {
   const h = p.headline || {};
   const cells = [
-    [fmtDuration(h.play_time), "Time played"], [fmtNum(h.mob_kills), "Mobs defeated"], [fmtNum(h.deaths), "Deaths"],
+    ...(typeof h.play_time === "number" ? [[fmtDuration(h.play_time), "Time played"]] : []),     // admins only
+    [fmtNum(h.mob_kills), "Mobs defeated"], [fmtNum(h.deaths), "Deaths"],
     [fmtNum(h.blocks_mined), "Blocks mined"], [fmtDistance(h.distance_cm), "Distance travelled"], [fmtNum(h.items_crafted), "Items crafted"],
   ];
   return `<div class="stat-strip">${cells.map(([v, k]) => `<div><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div></div>`).join("")}</div>`;

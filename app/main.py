@@ -30,7 +30,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 
 
 @asynccontextmanager
@@ -114,6 +114,7 @@ PLAYER_ROUTES: dict[str, set[str]] = {
     "/api/servers/{sid}/metrics": {"GET"},
     "/api/servers/{sid}/mods": {"GET"},
     "/api/servers/{sid}/recap": {"GET"},
+    "/api/servers/{sid}/activity": {"GET"},            # which days people played (never how long, for non-admins)
     "/api/servers/{sid}/fishing/journal": {"GET"},
     "/api/servers/{sid}/fishing/tackle": {"GET"},
     "/api/servers/{sid}/assets/status": {"GET"},
@@ -148,6 +149,35 @@ async def _note_viewer(request: Request) -> None:
         route = request.scope.get("route")
         if not _player_may(request.method, getattr(route, "path", request.url.path)):
             raise HTTPException(403, "Your account can't see that")
+
+
+def _shows_play_time() -> bool:
+    """How long people play is for admins only (screen-time limits). Everyone else, and the public pages, see who
+    played and which days, never for how long: nobody gets shamed for a long session, and nobody races to play longest."""
+    u = _viewer.get()
+    return u is not None and u.is_admin
+
+
+_DURATION_KEYS = {"seconds", "total_seconds", "today_seconds", "play_time",
+                  "minecraft:play_time", "minecraft:play_one_minute", "minecraft:total_world_time"}   # the last three: game statistics
+
+
+def _no_durations(data):
+    """The same data without any play-time length in it (for anyone but an admin)."""
+    if isinstance(data, dict):
+        return {k: _no_durations(v) for k, v in data.items() if k not in _DURATION_KEYS}
+    if isinstance(data, list):
+        return [_no_durations(x) for x in data]
+    return data
+
+
+def _recap_without_durations(data: dict) -> dict:
+    """A recap for anyone but an admin: no lengths, and players in the order they joined (longest-first would tell)."""
+    out = _no_durations(data)
+    for rc in [out.get("recap"), out.get("yesterday"), *(out.get("on_this_day") or [])]:
+        if isinstance(rc, dict) and isinstance(rc.get("players"), list):
+            rc["players"].sort(key=lambda p: p.get("first") or 0)
+    return out
 
 
 def _own(uuid: str) -> bool:
@@ -356,7 +386,6 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
     board["live"] = challenges.live(srv.id) + races.live(srv.id) + games.live(srv.id)
     if summ["running"] is not False and summ["online"]:
         overview = await S.players_overview(srv)
-        sessions = {s["player"].lower(): s["start"] for s in db.sessions(srv.id, limit=50) if s["open"]}
         online = [p for p in overview["players"] if p["online"]]
         details = await asyncio.gather(*(_maybe_live(srv, p) for p in online))
         hidden = games.hidden_from_map(srv.id)
@@ -364,8 +393,7 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
             d = live
             if d is None and p.get("uuid"):
                 d, _m = S.player_file_data(srv, p["uuid"])
-            row: dict = {"name": p["name"], "uuid": p.get("uuid"), "live": live is not None,
-                         "today_seconds": p.get("today_seconds", 0), "since": sessions.get(p["name"].lower())}
+            row: dict = {"name": p["name"], "uuid": p.get("uuid"), "live": live is not None}   # never how long they've played
             if d:
                 row.update(health=d["health"], max_health=d["max_health"], absorption=d.get("absorption", 0),
                            food=d["food"], xp_level=d["xp_level"], xp_progress=d["xp_progress"],
@@ -667,7 +695,8 @@ def _recap_payload(sid: str, day_s: str | None) -> dict:
 @app.get("/api/servers/{sid}/recap")
 async def get_recap(sid: str, day: str | None = None):
     srv = await _server(sid)
-    return await asyncio.to_thread(_recap_payload, srv.id, day)
+    data = await asyncio.to_thread(_recap_payload, srv.id, day)
+    return data if _shows_play_time() else _recap_without_durations(data)
 
 
 _recap_cache: dict[str, tuple[float, dict]] = {}
@@ -682,7 +711,7 @@ async def public_recap(sid: str):
     hit = _recap_cache.get(srv.id)
     if hit and time.monotonic() - hit[0] < 60:
         return hit[1]
-    data = await asyncio.to_thread(_recap_payload, srv.id, None)
+    data = _recap_without_durations(await asyncio.to_thread(_recap_payload, srv.id, None))     # the public never sees how long
     _recap_cache[srv.id] = (time.monotonic(), data)
     return data
 
@@ -1561,6 +1590,8 @@ async def pack_file(token: str, path: str, request: Request):
 @app.get("/api/servers/{sid}/players")
 async def get_players(sid: str):
     data = await S.players_overview(await _server(sid))
+    if not _shows_play_time():
+        data = _no_durations(data)
     for p in data["players"]:
         if not _own(p.get("uuid") or ""):          # a player account doesn't see where anyone else is
             p.pop("position", None)
@@ -1573,6 +1604,8 @@ async def get_player(sid: str, uuid: str):
     if not _own(uuid):
         raise HTTPException(404, "Player not found")
     data = await S.player_detail(await _server(sid), uuid)
+    if data and not _shows_play_time():
+        data = _no_durations(data)
     if not data:
         raise HTTPException(404, "Player not found")
     return data
@@ -1624,7 +1657,12 @@ async def get_settings(sid: str, request: Request):
 async def activity(sid: str, days: int = 14):
     srv = await _server(sid)
     days = max(1, min(days, 90))
+    if not _shows_play_time():
+        daily = [{"date": d["date"], "players": {n: 1 for n, v in d["players"].items() if v > 0}} for d in db.daily_playtime(srv.id, days)]
+        return {"daily": daily, "sessions": [], "durations": False,
+                "recorder_since": (db.q("SELECT MIN(ts) AS t FROM metrics WHERE server_id=?", (srv.id,))[0]["t"])}
     return {
+        "durations": True,
         "daily": db.daily_playtime(srv.id, days),
         "sessions": db.sessions(srv.id, limit=40),
         "recorder_since": (db.q("SELECT MIN(ts) AS t FROM metrics WHERE server_id=?", (srv.id,))[0]["t"]),
@@ -1641,7 +1679,8 @@ async def events(sid: str, types: str = "", player: str = "", limit: int = 100, 
 @app.get("/api/servers/{sid}/timeline")
 async def timeline(sid: str, player: str = "", before: float | None = None, sessions: int = 20, chat: bool = True):
     srv = await _server(sid)
-    return db.timeline(srv.id, player or None, before, max(1, min(sessions, 100)), chat)
+    data = db.timeline(srv.id, player or None, before, max(1, min(sessions, 100)), chat)
+    return data if _shows_play_time() else _no_durations(data)
 
 
 @app.get("/api/servers/{sid}/metrics")
@@ -1666,10 +1705,14 @@ async def player_history(sid: str, uuid: str, days: int = 30):
         raise HTTPException(404, "Player not found")
     days = max(1, min(days, 90))
     daily = db.daily_playtime(srv.id, days, p["name"])
+    if not _shows_play_time():             # which days they played, not for how long
+        return {"daily": [{"date": d["date"], "played": sum(d["players"].values()) > 0} for d in daily], "sessions": [],
+                "events": db.events(srv.id, None, p["name"], 60), "durations": False}
     return {
         "daily": [{"date": d["date"], "seconds": sum(d["players"].values())} for d in daily],
         "sessions": db.sessions(srv.id, p["name"], limit=30),
         "events": db.events(srv.id, None, p["name"], 60),
+        "durations": True,
     }
 
 
