@@ -70,19 +70,23 @@ p { margin: 0; }
 .shell { min-height: 100vh; position: relative; z-index: 1; display: flex; flex-direction: column; }
 .app-top { width: 100%; max-width: var(--page); margin: 0 auto; padding: 18px var(--gutter) 0; position: relative; z-index: 30; }
 .nav-drop { position: relative; display: inline-flex; align-items: center; }
-.nav-drop-btn { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 6px 6px; border-radius: var(--radius-m); font-size: .8rem; }
-.nav-drop-btn:hover, .nav-drop-btn[aria-expanded="true"] { color: var(--bone); background: rgba(255,255,255,.06); }
+.nav-drop[hidden] { display: none; }
+.nav-drop-btn { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 6px 12px; border-radius: var(--radius-m); font: inherit; }
+.nav-drop-btn .caret { font-size: .75em; }
+.nav-drop-btn:hover, .nav-drop-btn[aria-expanded="true"] { color: var(--bone); background: rgba(255,255,255,.05); }
+.nav-drop-btn[aria-current] { color: var(--bone); background: var(--tuff-2); }
+.rail-all .server-icon { font-size: 1.1rem; color: var(--muted); }
 .drop-panel { position: absolute; top: calc(100% + 6px); left: 0; z-index: 50; min-width: 260px; max-height: 70vh; overflow-y: auto; padding: 6px; border-radius: 14px;
   background-color: rgba(16, 20, 32, .94); display: flex; flex-direction: column; gap: 2px; }
 .drop-panel[hidden] { display: none; }
-.app-top .account { margin-left: auto; width: auto; }
+.app-top .account, .hp-top .account { margin-left: auto; width: auto; }
 .account-menu a { display: block; padding: 8px 10px; border-radius: 6px; text-decoration: none; color: var(--bone); }
 .account-menu a:hover { background: var(--tuff-2); }
 .account-menu hr { border: 0; border-top: 1px solid var(--basalt); margin: 4px 0; }
 body.ui-hidden .app-top { display: none; }
 .manage-nav { width: calc(100% - 2 * var(--gutter)); max-width: calc(var(--page) - 2 * var(--gutter)); margin: 22px auto -10px; flex-wrap: wrap; }
 .manage-nav[hidden] { display: none; }
-.manage-nav .manage-notify { margin-left: auto; border: 0; background: none; color: var(--muted); cursor: pointer; font-weight: 700; font-size: .95rem; padding: 10px 14px 9px; }
+.manage-nav .manage-notify { border: 0; background: none; color: var(--muted); cursor: pointer; font-weight: 700; font-size: .95rem; padding: 10px 14px 9px; }
 .manage-nav .manage-notify:hover { color: var(--bone); }
 body.ui-hidden .manage-nav { display: none; }
 #app-sky { position: fixed; inset: 0; width: 100vw; height: 100vh; image-rendering: pixelated; pointer-events: none; z-index: 0; opacity: .9; }
@@ -123,7 +127,10 @@ main:focus, main:focus-visible { outline: none; }
 .icon-btn { background: var(--tuff); border: 1px solid var(--basalt); border-radius: var(--radius-m); padding: 8px 12px; cursor: pointer; }
 .icon-btn:hover { background: var(--tuff-2); }
 
-.tabs { display: flex; gap: 4px; border-bottom: 2px solid rgba(255,255,255,.1); margin-bottom: 24px; overflow-x: auto; }
+.tabs { display: flex; gap: 4px; border-bottom: 2px solid rgba(255,255,255,.1); margin-bottom: 24px; overflow-x: auto; overflow-y: hidden; }
+/* Tab rows scroll sideways on a narrow screen, without a scrollbar of their own */
+.tabs, .subtabs, .fwe-tabs, .tv-dots { scrollbar-width: none; }
+.tabs::-webkit-scrollbar, .subtabs::-webkit-scrollbar, .fwe-tabs::-webkit-scrollbar, .tv-dots::-webkit-scrollbar { display: none; }
 .tabs a {
   font-family: var(--font-body); font-weight: 700; font-size: .98rem; text-decoration: none; color: var(--muted);
   padding: 10px 14px 9px; border-bottom: 3px solid transparent; margin-bottom: -2px; white-space: nowrap;
@@ -1082,9 +1089,6 @@ body.ui-hidden .board-stack:not(#sp-board) { display: none !important; }
 @media (max-width: 640px) { .rc-otd-row { grid-template-columns: 1fr; gap: 4px; } }
 
 /* ------------------------------------------------------------ TV mode */
-.tv-clock { display: none; font-family: var(--font-display); font-size: 1.6rem; }
-body.tv .tv-clock { display: inline; }
-body.tv #sp-tv { background: rgba(242, 193, 78, .25); }
 body.tv .sp { max-width: none; height: 100vh; display: flex; flex-direction: column; padding-bottom: 12px; overflow: hidden; }
 body.tv .sp-main { flex: 1; min-height: 0; display: flex; flex-direction: column; max-width: none; padding: 0; }
 body.tv .sp-updated { display: none; }
@@ -1092,7 +1096,6 @@ body.tv .sp-top { margin-bottom: 12px; }
 body.tv #sp-board { margin-bottom: 12px; }
 body.tv .bn-text b { font-size: clamp(1.1rem, 1.6vw, 1.6rem); }
 body.tv .bn-cd { font-size: clamp(1.1rem, 1.6vw, 1.7rem); }
-body.tv-idle.tv, body.tv-idle.tv * { cursor: none; }
 .tv-stage { position: relative; flex: 1; min-height: 0; }
 .tv-slide { position: absolute; inset: 0; display: flex; flex-direction: column; opacity: 0; transform: translateY(14px);
   transition: opacity .7s ease, transform .7s ease; pointer-events: none; }
@@ -1722,13 +1725,6 @@ body.on-editor:not(.ui-hidden) .fwbar .fwb-launch, body.on-editor:not(.ui-hidden
 .ws-file { cursor: pointer; }
 .ws-text { font-family: ui-monospace, Menlo, monospace; font-size: .92rem; line-height: 1.5; resize: vertical; }
 
-/* The status page wears the website's top bar, in the same place as on the home page,
-   so it reads as one more page of the site. TV mode hides it for the wall screen. */
-body.status-page:not(.tv) .sp { max-width: var(--page); padding: 18px var(--gutter) 40px; }
-.sp-site { margin-bottom: 16px; }
-body.tv .sp-site { display: none; }
-.sp-tv { display: inline-flex; align-items: center; gap: 6px; }
-@media (max-width: 640px) { .sp-tv span { display: none; } }
 
 /* Who played which days (instead of hours, for anyone but an admin) */
 .dp-grid { display: grid; grid-template-columns: minmax(80px, max-content) repeat(var(--days), minmax(14px, 1fr)); gap: 4px; align-items: center; overflow-x: auto; }
@@ -1747,3 +1743,9 @@ body.tv .sp-site { display: none; }
 .glance-card span b { display: inline; font-size: inherit; color: var(--bone); }
 a.glance-me:hover { border-color: var(--gold); }
 .glance-more { font-size: .85rem; font-weight: 700; margin-top: 2px; }
+
+/* Live on the servers: the old status page, now on the home page under Help */
+.hp-live .sp-top { margin-bottom: 12px; }
+.hp-live .sp-main { padding: 0; max-width: none; }
+.hp-live .tv-title { font-size: 1.3rem; }
+.hp-live[hidden] { display: none; }

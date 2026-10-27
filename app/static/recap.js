@@ -1,5 +1,5 @@
 /* Solstone — daily recap cards ("Today on the server", "On this day"), shared by the
-   app's Overview tab and the status page / TV mode. */
+   app's Overview tab and the live section of the home page. */
 "use strict";
 
 function recapSpan(sec) {

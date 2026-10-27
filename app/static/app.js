@@ -56,7 +56,7 @@ function showLogin(message = "") {
       <button class="btn primary" type="submit">Sign in</button>
       <p class="login-alt"><span id="login-signup" hidden>New here? <button type="button" class="link-btn" id="btn-signup">Make an account</button> · </span><a href="/guides/join">How to join the server</a> · <a href="/">Home</a></p>
       <p class="login-made">Made with Solstone</p>
-    </form><a class="login-status glass" id="login-status-link" href="/status" hidden></a></div>`;
+    </form><a class="login-status glass" id="login-status-link" href="/#live" hidden></a></div>`;
   const form = $("#login-form");
   form.querySelector("input").focus();
   fetch("/api/public/site").then((r) => r.json()).then((site) => {
@@ -127,7 +127,7 @@ async function signedIn(user) {
   me.user = user;
   document.body.classList.remove("logged-out");
   document.body.classList.toggle("is-admin", user.role === "admin");
-  $("#nav-manage").hidden = user.role !== "admin";
+  showNavFor(user);
   stopLoginScene();
   clearInterval(state.loginRefresh);
   if (!appSky.scene && $("#app-sky")) {
@@ -141,7 +141,7 @@ async function signedIn(user) {
   if (!appSky.board) appSky.board = startBoard($("#app-board"), { where: "app", sid: () => curSid || "", scene: () => appSky.scene, dismiss: true, max: innerWidth < 700 ? 1 : 2 });
   $("#account-name").textContent = user.shown || user.username;
   $("#account-role").textContent = (ROLE_NAMES.find(([v]) => v === user.role) || [, "Signed in"])[1] + (user.player ? ` · ${user.player.name}` : "");
-  fetch("/api/public/status").then((r) => r.json()).then((d) => { $("#app-live").hidden = !d.enabled; appBuild = d.build; }).catch(() => {});
+  fetch("/api/public/status").then((r) => r.json()).then((d) => { appBuild = d.build; }).catch(() => {});
   // Left open for a while? Say when Solstone has been updated (a reload loads it).
   clearInterval(state.buildCheck);
   state.buildCheck = setInterval(async () => {
@@ -151,16 +151,10 @@ async function signedIn(user) {
   route();
 }
 
-// The top bar: the Servers ▾ list, and which page you're on.
+// The top bar (built in hud.js): which page you're on.
 function wireMobileMenu() {
-  const btn = $("#btn-servers"), panel = $("#rail-servers");
-  if (!btn || btn._wired) return;
-  btn._wired = true;
-  const set = (open) => { panel.hidden = !open; btn.setAttribute("aria-expanded", String(open)); };
-  btn.addEventListener("click", (e) => { e.stopPropagation(); set(panel.hidden); });
-  document.addEventListener("click", (e) => { if (!panel.hidden && !panel.contains(e.target)) set(false); });
-  addEventListener("keydown", (e) => { if (e.key === "Escape") set(false); });
-  addEventListener("hashchange", () => { set(false); markNav(); });
+  wireServersMenu();
+  addEventListener("hashchange", markNav);
   markNav();
 }
 function setManageNav(tab) {
@@ -171,28 +165,12 @@ function setManageNav(tab) {
 }
 function markNav() {
   const h = location.hash || "#/";
-  const on = h === "#/" || h.startsWith("#/s/") ? "nav-servers" : h.startsWith("#/coming-up") ? "btn-upcoming" : h.startsWith("#/fireworks") ? "btn-fwe"
-    : h.startsWith("#/manage") ? "nav-manage" : "";
-  ["nav-servers", "btn-upcoming", "btn-fwe", "nav-manage"].forEach((id) => $(`#${id}`)?.toggleAttribute("aria-current", id === on));
+  const on = h === "#/" || h.startsWith("#/s/") ? "servers" : h.startsWith("#/events") ? "events" : h.startsWith("#/manage") ? "manage" : "";
+  document.querySelectorAll(".app-nav [data-nav]").forEach((el) => el.toggleAttribute("aria-current", el.dataset.nav === on));
 }
 
 function wireAccountMenu() {
-  const btn = $("#btn-account"), menu = $("#account-menu");
-  // The menu lives on <body> and is placed under the button whenever it opens.
-  document.body.append(menu);
-  const place = () => {
-    const r = btn.getBoundingClientRect(), mh = menu.offsetHeight, mw = menu.offsetWidth;
-    const below = innerHeight - r.bottom, above = r.top;
-    menu.style.left = `${Math.max(8, Math.min(r.right - mw, innerWidth - mw - 8))}px`;
-    menu.style.top = below >= mh + 12 || below >= above ? `${r.bottom + 6}px` : `${Math.max(8, r.top - mh - 6)}px`;
-  };
-  const close = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
-  const open = () => { menu.hidden = false; place(); btn.setAttribute("aria-expanded", "true"); menu.querySelector("button")?.focus(); };
-  btn.addEventListener("click", (e) => { e.stopPropagation(); menu.hidden ? open() : close(); });
-  document.addEventListener("click", (e) => { if (!menu.contains(e.target) || e.target.closest("a[href]")) close(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) { close(); btn.focus(); } });
-  addEventListener("resize", close);
-  addEventListener("scroll", close, { passive: true });
+  const close = wireDropMenu($("#btn-account"), $("#account-menu"));
   $("#btn-logout").addEventListener("click", async () => { close(); await post("/api/auth/logout").catch(() => {}); location.href = "/"; });   // signed out: back to the home page
   $("#btn-password").addEventListener("click", () => { close(); openPasswordChange(); });
   $("#btn-display-name").addEventListener("click", () => { close(); openDisplayName(); });
@@ -649,14 +627,6 @@ function showToast(msg, ms = 0) {
 function hideToast() { $("#toast").hidden = true; }
 
 // ================================================================ rail
-function railHtml(activeSid) {
-  return state.servers.map((s) => {
-    const dot = s.crashed ? "crash" : s.running || (s.running == null && s.folder_found) ? "on" : "";
-    const sub = s.running === false ? "Offline" : s.online ? `${s.online.length} playing` : "";
-    return `<a class="rail-item" href="#/s/${encodeURIComponent(s.id)}" ${s.id === activeSid ? 'aria-current="page"' : ""}>
-      ${serverIconHtml(s)}<div><div class="name">${esc(s.name)}</div><div class="sub">${esc(sub)}</div></div></a>`;
-  }).join("");
-}
 function serverIconHtml(s, withDot = true) {
   const dot = withDot ? `<span class="status-dot ${s.crashed ? "crash" : s.running ? "on" : ""}"></span>` : "";
   const inner = s.has_icon ? `<img src="/api/servers/${encodeURIComponent(s.id)}/icon.png" alt="">` : esc((s.name || "?")[0]);
@@ -666,7 +636,7 @@ async function loadServers() {
   const uuids = api("/api/players/uuids").then((m) => Object.assign(knownUuids, m)).catch(() => null);
   try { state.servers = await api("/api/servers"); } catch (e) { state.servers = state.servers || []; }
   await uuids;
-  $("#rail-servers").innerHTML = railHtml(curSid);
+  fillServersMenu(state.servers, curSid);
   setRailTitle();
 }
 function setRailTitle() {
@@ -759,7 +729,7 @@ function serverHeader(s, tab) {
 async function serverFrame(sid, tab) {
   curSid = sid;
   if (!state.servers.find((s) => s.id === sid)) await loadServers();
-  else $("#rail-servers").innerHTML = railHtml(sid);
+  else fillServersMenu(state.servers, sid);
   setRailTitle();
   const s = await api(`/api/servers/${encodeURIComponent(sid)}`);
   const idx = state.servers.findIndex((x) => x.id === sid);
@@ -840,8 +810,8 @@ function mountPlayerGlance(el, daysEl, s, data) {
       ${mine ? `<a class="glance-card glance-me" href="#/s/${encodeURIComponent(sid)}/p/${mine.uuid}"><small>You</small>
         <b>${headHtml(mine, 28)} ${esc(mine.name)}${mine.xp_level != null ? ` <span class="lvl">${mine.xp_level}</span>` : ""}</b>
         <span>${mine.online ? "Playing now" : `Last seen ${esc(fmtAgo(mine.last_seen))}`} · your inventory, stats and fishing →</span></a>` : ""}
-      <div class="glance-card"><small>Coming up</small>${next.length ? next.map((x) => `<span>${esc(x.emoji || "")} <b>${esc(x.title)}</b> ${x.live ? "· on now" : `· ${esc(new Date(x.at * 1000).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }))}${x.time ? ` ${esc(x.time)}` : ""}`}</span>`).join("")
-        : "<span>Nothing planned yet</span>"}<a class="glance-more" href="#/coming-up">All of it →</a></div>
+      <div class="glance-card"><small>Events</small>${next.length ? next.map((x) => `<span>${esc(x.emoji || "")} <b>${esc(x.title)}</b> ${x.live ? "· on now" : `· ${esc(new Date(x.at * 1000).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }))}${x.time ? ` ${esc(x.time)}` : ""}`}</span>`).join("")
+        : "<span>Nothing planned yet</span>"}<a class="glance-more" href="#/events">All of it →</a></div>
     </div>`;
   };
   const loadDays = async () => {
@@ -1412,7 +1382,8 @@ async function route() {
       else await viewAdmin(tab);
       return;
     }
-    if (parts[0] === "coming-up") { await viewUpcoming(); return; }
+    if (parts[0] === "coming-up") { location.replace("#/events"); return; }      // its old name
+    if (parts[0] === "events") { await viewUpcoming(); return; }
     if (parts[0] === "fireworks") { await viewFireworkEditor(parts[1]); return; }
     if (parts[0] === "s" && parts[1]) {
       const sid = parts[1];

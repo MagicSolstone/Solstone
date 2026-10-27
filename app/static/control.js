@@ -342,12 +342,12 @@ function rulesHtml(rules, canRcon) {
 }
 
 // ================================================================ Users & activity
-// Manage → Users, Servers & status page, Activity log (one section each).
+// Manage → Users, Servers & live info, Activity log (one section each).
 async function viewAdmin(section = "users") {
   if (!isAdmin()) { location.replace("#/"); return; }
   curSid = null;
-  document.title = `${{ users: "Users", servers: "Servers & status page", activity: "Activity log" }[section] || "Manage"} · ${SITE_NAME}`;
-  $("#rail-servers").innerHTML = railHtml(null);
+  document.title = `${{ users: "Users", servers: "Servers & live info", activity: "Activity log" }[section] || "Manage"} · ${SITE_NAME}`;
+  fillServersMenu(state.servers, null);
   const [users, audit, lp, hiddenSrv, siteCfg] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/status"), api("/api/servers-hidden").catch(() => []), api("/api/posts").then((d) => d.site).catch(() => ({}))]);
   const roleOpts = (cur) => ROLE_NAMES.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("");
   const fmtWhen = (ts) => ts ? fmtAgo(ts) : "never";
@@ -369,17 +369,20 @@ async function viewAdmin(section = "users") {
         <label>Level<select class="input" name="role">${roleOpts("trusted")}</select></label>
         <button class="btn primary" type="submit">Add user</button></div></form>
     </section>`;
-  const serversHtml = `${hiddenSrv.length ? `<section class="section" id="hidden-servers"><div class="section-head"><h2>Hidden servers</h2><span class="muted">Hidden from Solstone and the status page. Nothing about the server itself changes.</span></div>
+  const serversHtml = `${hiddenSrv.length ? `<section class="section" id="hidden-servers"><div class="section-head"><h2>Hidden servers</h2><span class="muted">Hidden from Solstone and the home page. Nothing about the server itself changes.</span></div>
       <div class="panel hidden-list">${hiddenSrv.map((x) => `<div class="hidden-row" data-hsid="${esc(x.id)}"><b>${esc(x.name)}</b><span class="muted small">${esc(x.game || "")}</span><button class="btn sm" type="button" data-unhide>Show it again</button></div>`).join("")}</div></section>` : ""}
-    <section class="section"><div class="section-head"><h2>Public status page</h2><span class="muted">A live, read-only big-screen view anyone can open without signing in</span></div>
+    <section class="section"><div class="section-head"><h2>Live on the home page</h2><span class="muted">Who's playing right now, for anyone visiting, without signing in</span></div>
       <div class="panel rules-ctl" id="status-page-settings" style="max-width:720px">
-        <label class="switch-row"><span><b>Turn on the status page</b><br><small class="muted">At <a href="/status" target="_blank" rel="noopener">${esc(location.origin)}/status</a>, linked from the sign-in page. Shows who's playing, their health, level and the in-game day. Never shows chat.</small></span><input type="checkbox" role="switch" data-sp="enabled" ${lp.enabled ? "checked" : ""}></label>
+        <label class="switch-row"><span><b>Show the servers live on the home page</b><br><small class="muted">Under Help on <a href="/#live" target="_blank" rel="noopener">the home page</a>: who's playing, their health and level, the in-game day, leaderboards and the recap. Never shows chat, and never how long anyone played.</small></span><input type="checkbox" role="switch" data-sp="enabled" ${lp.enabled ? "checked" : ""}></label>
         <label class="switch-row"><span>Show coordinates and the position map</span><input type="checkbox" role="switch" data-sp="show_positions" ${lp.show_positions ? "checked" : ""}></label>
         <label class="switch-row"><span>Show held items and armour</span><input type="checkbox" role="switch" data-sp="show_items" ${lp.show_items ? "checked" : ""}></label>
         <label class="switch-row"><span>Show recent joins, deaths and advancements</span><input type="checkbox" role="switch" data-sp="show_activity" ${lp.show_activity ? "checked" : ""}></label>
         <label class="switch-row"><span>Embed the web map (BlueMap, squaremap) <br><small class="muted">Only works if visitors can reach the map's address too. A plain http:// map won't load on an https:// page.</small></span><input type="checkbox" role="switch" data-sp="show_web_map" ${lp.show_web_map ? "checked" : ""}></label>
-        <p class="muted small" style="margin-top:8px">Anyone with the address can see this page. Hidden and private servers are never shown.</p>
+        <p class="muted small" style="margin-top:8px">Anyone visiting the home page sees this. Hidden and private servers are never shown.</p>
       </div></section>
+    <section class="section"><div class="section-head"><h2>Recap history</h2></div>
+      <div class="panel" style="max-width:720px"><p class="muted small">Every day is summarised and kept for good, so “on this day” can look back years. When Solstone first starts it also reads each server's old logs (the <code>logs/*.log.gz</code> files Minecraft keeps) to fill in the days before it was installed. If you've copied older logs in, read them again here.</p>
+        <button class="btn" id="ann-backfill" type="button" style="margin-top:8px">Read old logs again</button></div></section>
     <section class="section"><div class="section-head"><h2>Each server</h2></div>
       <div class="panel"><p>A server's own settings (its name, Private, the web map, bedtime) are on its page: open it from <b>Servers</b> and press ⚙.</p></div></section>`;
   const activityHtml = `<section class="section"><div class="section-head"><h2>Admin activity</h2><span class="muted">Commands, changes and sign-in failures across all servers</span></div>
@@ -389,8 +392,14 @@ async function viewAdmin(section = "users") {
   $("#status-page-settings")?.addEventListener("change", async () => {
     const body = {};
     $$("[data-sp]").forEach((i) => { body[i.dataset.sp] = i.checked; });
-    try { await post("/api/settings/status", body, "PUT"); showToast(body.enabled ? 'Status page updated. <a href="/status" target="_blank" rel="noopener">Open it</a>' : "Status page turned off", 3500); }
+    try { await post("/api/settings/status", body, "PUT"); showToast(body.enabled ? 'Saved. <a href="/#live" target="_blank" rel="noopener">See it on the home page</a>' : "Live info is off the home page", 3500); }
     catch (err) { showToast(esc(err.message), 5000); }
+  });
+  $("#ann-backfill")?.addEventListener("click", async (e) => {
+    e.target.disabled = true; e.target.textContent = "Reading…";
+    try { const r = await post("/api/recap/backfill"); showToast(r.days ? `Filled in ${r.days} days` : "Nothing new in the old logs", 3500); }
+    catch (err) { showToast(esc(err.message), 5000); }
+    e.target.disabled = false; e.target.textContent = "Read old logs again";
   });
   $("#hidden-servers")?.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-unhide]");
@@ -435,7 +444,7 @@ async function viewAdmin(section = "users") {
     openModal(`<h2>Servers ${esc(u.username)} sees</h2><form id="srv-form">
       <label class="check"><input type="checkbox" name="all" ${cur ? "" : "checked"}> Every server <small class="muted">(and any added later)</small></label>
       <fieldset class="checks" id="srv-list" ${cur ? "" : "disabled"}>${state.servers.map((x) => `<label class="check"><input type="checkbox" name="sid" value="${esc(x.id)}" ${!cur || cur.includes(x.id) ? "checked" : ""}> ${esc(x.name)}</label>`).join("")}</fieldset>
-      <p class="muted small">They don't see the others anywhere: not in the server list, the announcements or Coming up.</p>
+      <p class="muted small">They don't see the others anywhere: not in the server list, the announcements or Events.</p>
       <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Save</button></div></form>`, (m) => {
       const f = $("#srv-form", m);
       f.all.addEventListener("change", () => { $("#srv-list", m).disabled = f.all.checked; });

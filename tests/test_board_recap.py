@@ -122,15 +122,12 @@ def test_announcements_birthdays_bedtime(client, viewer, anon, sid):
     client.put("/api/board", json={"items": [], "birthdays": []})
 
 
-def test_tv_settings(client, viewer, anon, sid):
-    assert viewer.get("/api/settings/tv").status_code == 403
-    cfg = client.put("/api/settings/tv", json={"seconds": 2, "slides": {"map": False}, "rotate": True}).json()
-    assert cfg["seconds"] == 6 and cfg["slides"]["map"] is False and cfg["slides"]["now"] is True and cfg["rotate"] is True
-    assert client.put("/api/settings/tv", json={"slides": {k: False for k in cfg["slides"]}}).status_code == 400
+def test_public_live_extras(client, anon, sid):
+    assert client.get("/api/settings/tv").status_code == 404          # TV mode went with the status page
     assert anon.get(f"/api/public/leaderboard/{sid}").status_code == 404
     client.put("/api/settings/status", json={"enabled": True})
     try:
-        assert anon.get("/api/public/status").json()["tv"]["rotate"] is True
+        assert "tv" not in anon.get("/api/public/status").json()
         lb = anon.get(f"/api/public/leaderboard/{sid}").json()
         assert lb["players"] and "play_time" not in lb["players"][0] and "xp_level" in lb["players"][0]
         r = anon.get(f"/api/public/recap/{sid}").json()
@@ -138,4 +135,3 @@ def test_tv_settings(client, viewer, anon, sid):
         assert anon.get("/api/public/board?where=status").status_code == 200
     finally:
         client.put("/api/settings/status", json={"enabled": False})
-        client.put("/api/settings/tv", json={"seconds": 15, "slides": {"map": True}, "rotate": False})

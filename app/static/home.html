@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0f1424">
-  <meta name="description" content="A family Minecraft server: how to join on Java or Bedrock, who's on, news and guides.">
+  <meta name="description" content="A family Minecraft server: how to join on Java or Bedrock, who's playing right now, news and guides.">
   <title>{{SITE_NAME}}</title>
   <meta name="site-name" content="{{SITE_NAME}}">
   <link rel="icon" href="{{SITE_LOGO}}">
@@ -22,10 +22,11 @@
         <a href="/" data-nav="home">Home</a>
         <a href="/news" data-nav="news">News</a>
         <a href="/help" data-nav="help">Help</a>
-        <a href="/status" id="hp-status-link" hidden>Live status</a>
-        <a href="/app#/" data-signed-in hidden>Servers</a>
-        <a href="/app#/coming-up" data-signed-in hidden>Coming up</a>
-        <a href="/app#/fireworks" data-signed-in hidden>Fireworks</a>
+        <a href="/app#/events" data-nav="events" data-signed-in hidden>Events</a>
+        <span class="nav-drop" data-signed-in hidden><button type="button" class="nav-drop-btn" id="btn-servers" data-nav="servers"
+            aria-haspopup="true" aria-expanded="false" aria-controls="rail-servers">Servers<span class="caret" aria-hidden="true"> ▾</span></button>
+          <span class="drop-panel rail-servers glass" id="rail-servers" hidden></span></span>
+        <a href="/app#/manage" data-nav="manage" data-admin hidden>⚙ Manage</a>
       </nav>
       <a class="btn sm" href="/app" id="hp-signin">Sign in</a>
     </header>
@@ -38,6 +39,8 @@
   <script src="/static/showbar.js" defer></script>
   <script src="/static/hud.js" defer></script>
   <script src="/static/board.js" defer></script>
+  <script src="/static/recap.js" defer></script>
+  <script src="/static/live.js" defer></script>
   <script src="/static/home.js" defer></script>
 </body>
 </html>

@@ -12,27 +12,28 @@
 <body>
   <canvas id="app-sky" aria-hidden="true"></canvas>
   <div class="shell">
-    <!-- The website's own top bar: the same on the home page, the status page and here. Signed in, it adds the
-         servers (a list drops down from ▾), Coming up and Fireworks; admins find their pages in the account menu. -->
+    <!-- The website's own top bar, the same on the home page and here: Home, News, Help, Events, Servers (a list
+         drops down; with one server it goes straight there) and Manage for admins. Fireworks is in the account menu. -->
     <header class="hp-top app-top">
       <a class="brand" href="/">
         <img src="{{SITE_LOGO}}" alt="" width="34" height="34">
         <span>{{SITE_NAME}}</span>
       </a>
       <nav class="hp-nav app-nav" aria-label="Site">
-        <a href="/">Home</a><a href="/news">News</a><a href="/help">Help</a>
-        <a href="/status" id="app-live" hidden>Live status</a>
-        <span class="nav-drop"><a href="#/" id="nav-servers" aria-current="page">Servers</a><button type="button" class="nav-drop-btn" id="btn-servers"
-            aria-haspopup="true" aria-expanded="false" aria-controls="rail-servers" aria-label="Pick a server">▾</button>
+        <a href="/" data-nav="home">Home</a>
+        <a href="/news" data-nav="news">News</a>
+        <a href="/help" data-nav="help">Help</a>
+        <a href="/app#/events" data-nav="events" data-signed-in hidden>Events</a>
+        <span class="nav-drop" data-signed-in hidden><button type="button" class="nav-drop-btn" id="btn-servers" data-nav="servers"
+            aria-haspopup="true" aria-expanded="false" aria-controls="rail-servers">Servers<span class="caret" aria-hidden="true"> ▾</span></button>
           <span class="drop-panel rail-servers glass" id="rail-servers" hidden></span></span>
-        <a href="#/coming-up" id="btn-upcoming" data-app-nav>Coming up</a>
-        <a href="#/fireworks" id="btn-fwe" data-app-nav>Fireworks</a>
-        <a href="#/manage" id="nav-manage" hidden>⚙ Manage</a>
+        <a href="/app#/manage" data-nav="manage" data-admin hidden>⚙ Manage</a>
       </nav>
       <div class="account">
         <button class="btn sm" id="btn-account" type="button" aria-haspopup="menu" aria-expanded="false">👤 <span id="account-name"></span></button>
         <div class="account-menu" id="account-menu" role="menu" hidden>
           <div class="account-role" id="account-role"></div>
+          <a role="menuitem" href="#/fireworks" id="btn-fwe">🎆 Fireworks</a>
           <button type="button" role="menuitem" id="btn-display-name">Display name</button>
           <button type="button" role="menuitem" id="btn-password">Change password</button>
           <button type="button" role="menuitem" id="btn-logout">Sign out</button>
@@ -45,7 +46,7 @@
       <a href="#/manage/announcements" data-m="announcements">📣 Announcements</a>
       <a href="#/manage/website" data-m="website">🌐 Website</a>
       <a href="#/manage/users" data-m="users">👥 Users</a>
-      <a href="#/manage/servers" data-m="servers">🖥 Servers &amp; status page</a>
+      <a href="#/manage/servers" data-m="servers">🖥 Servers &amp; live info</a>
       <a href="#/manage/fireworks" data-m="fireworks">🎆 Firework show</a>
       <a href="#/manage/activity" data-m="activity">📜 Activity log</a>
       <button type="button" class="manage-notify" id="btn-notify">🔔 Notifications</button>

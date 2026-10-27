@@ -1,23 +1,23 @@
-/* Solstone — Announcements (admins): banners with countdowns, birthdays, the bedtime
-   countdown, and TV mode for the status page. Loaded after app.js. */
+/* Solstone — Announcements (admins): banners with countdowns, birthdays and the bedtime
+   countdown. Loaded after app.js. */
 "use strict";
 
-const ANN_TABS = [["banners", "Banners"], ["birthdays", "Birthdays"], ["bedtime", "Bedtime"], ["tv", "TV mode"]];
+const ANN_TABS = [["banners", "Banners"], ["birthdays", "Birthdays"], ["bedtime", "Bedtime"]];
 const ANN_STYLES = [["info", "Info"], ["party", "Celebration"], ["heads", "Heads-up"]];
-const ANN_WHERE = [["home", "Home page"], ["status", "Status page & TV"], ["app", "Solstone (signed in)"], ["login", "Sign-in page"]];
+const ANN_WHERE = [["home", "Home page"], ["app", "Signed-in pages"], ["login", "Sign-in page"]];
 const ANN_EMOJI = ["📣", "🎉", "🏗️", "🏆", "⚠️", "🎂", "🌙", "🎃", "🎄", "⛏️", "🐉", "🎬"];
 const ANN_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const ann = { tab: "banners", data: null, editing: null, tv: null };
+const ann = { tab: "banners", data: null, editing: null };
 
 async function viewAnnouncements() {
   if (!isAdmin()) { location.replace("#/"); return; }
   curSid = null;
   document.title = `Announcements · ${SITE_NAME}`;
-  $("#rail-servers").innerHTML = railHtml(null);
-  [ann.data, ann.tv] = await Promise.all([api("/api/board"), api("/api/settings/tv")]);
+  fillServersMenu(state.servers, null);
+  ann.data = await api("/api/board");
   ann.editing = null;
   setView(`<div class="fwe-head"><h1>Announcements</h1>
-      <p class="muted">Banners across the top of the status page, Solstone and the sign-in page. Add a countdown and it ticks down live, then can set off a show and post in the game.</p></div>
+      <p class="muted">Banners across the top of the home page, the signed-in pages and the sign-in page. Add a countdown and it ticks down live, then can set off a show and post in the game.</p></div>
     <nav class="fwe-tabs fws-tabs" role="tablist" aria-label="Announcements">${ANN_TABS.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${ann.tab === k}">${l}</button>`).join("")}</nav>
     <div id="ann-body"></div>`);
   $$(".fws-tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
@@ -29,7 +29,7 @@ async function viewAnnouncements() {
 function renderAnn() {
   const el = $("#ann-body");
   if (!el) return;
-  ({ banners: annBanners, birthdays: annBirthdays, bedtime: annBedtime, tv: annTv })[ann.tab](el);
+  ({ banners: annBanners, birthdays: annBirthdays, bedtime: annBedtime })[ann.tab](el);
 }
 async function annSave(part, msg = "Saved") {
   try { ann.data = await post("/api/board", part, "PUT"); showToast(msg, 2000); appSky.board?.refresh(); return true; }
@@ -72,7 +72,7 @@ function annBanners(el) {
         <button class="btn sm" data-edit>Edit</button><button class="btn sm danger" data-del>Delete</button></span></div></div>`;
   }).join("");
   el.innerHTML = `<section class="panel"><div class="ann-list">${rows || `<p class="muted">No announcements yet. They're good for build contests, server restarts, movie night, or "dinner in 10 minutes".</p>`}</div>
-    ${ann.editing === "new" ? annEditHtml({ text: "", detail: "", emoji: "📣", style: "info", where: ["home", "status", "app", "login"], server: "", start: "", end: "", countdown: "", done_text: "", show: "", say: false, enabled: true }) : `<button class="btn primary" id="ann-new" style="margin-top:12px">+ New announcement</button>`}</section>`;
+    ${ann.editing === "new" ? annEditHtml({ text: "", detail: "", emoji: "📣", style: "info", where: ["home", "app", "login"], server: "", start: "", end: "", countdown: "", done_text: "", show: "", say: false, enabled: true }) : `<button class="btn primary" id="ann-new" style="margin-top:12px">+ New announcement</button>`}</section>`;
   $("#ann-new")?.addEventListener("click", () => { ann.editing = "new"; renderAnn(); $(".ann-edit input[name=text]")?.focus(); });
   el.querySelectorAll(".ann-row[data-i]").forEach((row) => {
     const i = +row.dataset.i;
@@ -192,7 +192,7 @@ function annBirthdays(el) {
 function annBedtime(el) {
   const d = ann.data, b = d.bedtime;
   el.innerHTML = `<section class="panel" style="max-width:720px">
-    <label class="switch-row"><span><b>Count down to bedtime</b><br><small class="muted">A banner on the status page and in Solstone before a server's bedtime, then “asleep until…” overnight.</small></span><input type="checkbox" role="switch" id="ann-bt-on" ${b.show ? "checked" : ""}></label>
+    <label class="switch-row"><span><b>Count down to bedtime</b><br><small class="muted">A banner on the home page and the signed-in pages before a server's bedtime, then “asleep until…” overnight.</small></span><input type="checkbox" role="switch" id="ann-bt-on" ${b.show ? "checked" : ""}></label>
     <div class="fw-row" style="margin-top:10px"><span>Starts</span><span><input class="input sm" type="number" min="5" max="180" id="ann-bt-min" value="${b.minutes}" style="width:76px"> minutes before bedtime</span></div>
     <h3 class="fws-sub" style="margin-top:16px">Servers</h3>
     <ul class="ann-bt-list">${d.servers.map((s) => `<li><b>${esc(s.name)}</b> <span class="muted">${s.bedtime ? "Bedtime is on" : "No bedtime set"}</span> <a href="#/s/${encodeURIComponent(s.id)}/control">Set it in Control</a></li>`).join("")}</ul>
@@ -200,45 +200,14 @@ function annBedtime(el) {
   $("#ann-bt-save").addEventListener("click", () => annSave({ bedtime: { show: $("#ann-bt-on").checked, minutes: +$("#ann-bt-min").value || 30 } }));
 }
 
-// ---------------------------------------------------------------- TV mode
-const ANN_SLIDES = [["now", "Who's playing", "Server, players, health and gear"], ["map", "Where everyone is", "The position map (when coordinates are shown)"],
-  ["leaders", "Leaderboards", "Time played, levels, mobs, blocks mined…"], ["recap", "Recap and on this day", "Today, yesterday, and this date in past years"],
-  ["feed", "Recent activity", "Joins, deaths and advancements"], ["news", "Announcements", "Big, when there are any"]];
-function annTv(el) {
-  const t = ann.tv;
-  el.innerHTML = `<section class="panel" style="max-width:760px">
-    <p class="muted" style="margin-bottom:10px">TV mode turns the status page into a slideshow for a screen on the wall: one thing at a time, big enough to read across the room, with banners and fireworks on top. Open it with the 📺 button on the status page, or go straight to <a href="/status?tv=1" target="_blank" rel="noopener">${esc(location.origin)}/status?tv=1</a>.</p>
-    ${ann.data.status_enabled ? "" : `<div class="notice">The public status page is off. Turn it on under <a href="#/manage/servers">Manage → Servers &amp; status page</a> first.</div>`}
-    <h3 class="fws-sub">Slides</h3>
-    ${ANN_SLIDES.map(([k, l, h]) => `<label class="switch-row"><span><b>${l}</b><br><small class="muted">${h}</small></span><input type="checkbox" role="switch" data-slide="${k}" ${t.slides[k] ? "checked" : ""}></label>`).join("")}
-    <div class="fw-row" style="margin-top:12px"><span>Each slide</span><span><input class="input sm" type="number" min="6" max="120" id="ann-tv-secs" value="${t.seconds}" style="width:76px"> seconds</span></div>
-    <label class="switch-row"><span>Go through every server in turn<br><small class="muted">Otherwise it stays on the one that's picked</small></span><input type="checkbox" role="switch" id="ann-tv-rotate" ${t.rotate ? "checked" : ""}></label>
-    <div class="actions" style="justify-content:flex-start;margin-top:12px"><button class="btn primary" id="ann-tv-save" type="button">Save</button></div></section>
-    <section class="panel" style="max-width:760px;margin-top:16px"><h3 class="fws-sub">Recap history</h3>
-      <p class="muted small">Every day is summarised and kept for good, so “on this day” can look back years. When Solstone first starts it also reads each server's old logs (the <code>logs/*.log.gz</code> files Minecraft keeps) to fill in the days before it was installed. If you've copied older logs in, read them again here.</p>
-      <button class="btn" id="ann-backfill" type="button" style="margin-top:8px">Read old logs again</button></section>`;
-  $("#ann-tv-save").addEventListener("click", async () => {
-    const slides = {};
-    $$("[data-slide]").forEach((i) => { slides[i.dataset.slide] = i.checked; });
-    try { ann.tv = await post("/api/settings/tv", { slides, seconds: +$("#ann-tv-secs").value || 15, rotate: $("#ann-tv-rotate").checked }, "PUT"); showToast("TV mode saved", 2000); }
-    catch (e) { showToast(esc(e.message), 5000); }
-  });
-  $("#ann-backfill").addEventListener("click", async (e) => {
-    e.target.disabled = true; e.target.textContent = "Reading…";
-    try { const r = await post("/api/recap/backfill"); showToast(r.days ? `Filled in ${r.days} days` : "Nothing new in the old logs", 3500); }
-    catch (err) { showToast(esc(err.message), 5000); }
-    e.target.disabled = false; e.target.textContent = "Read old logs again";
-  });
-}
-
-// ================================================================ coming up
+// ================================================================ events
 // Everything with a date ahead, in one list: contests, races, games, birthdays, holidays and
 // their shows, announcements counting down.
 const UP_KIND = { contest: "Contest", race: "Race", game: "Game", birthday: "Birthday", holiday: "Holiday", show: "Fireworks", note: "Announcement" };
 async function viewUpcoming() {
   curSid = null;
-  document.title = `Coming up · ${SITE_NAME}`;
-  $("#rail-servers").innerHTML = railHtml(null);
+  document.title = `Events · ${SITE_NAME}`;
+  fillServersMenu(state.servers, null);
   const d = await api("/api/upcoming");
   const zone = new Date();
   const dayKey = (iso) => {
@@ -256,7 +225,7 @@ async function viewUpcoming() {
   const live = d.items.filter((x) => x.live), ahead = d.items.filter((x) => !x.live);
   const groups = [];
   for (const it of ahead) { const g = groups[groups.length - 1]; if (g && g.date === it.date) g.items.push(it); else groups.push({ date: it.date, items: [it] }); }
-  setView(`<div class="fwe-head"><h1>Coming up</h1>
+  setView(`<div class="fwe-head"><h1>Events</h1>
       <p class="muted">Everything planned for the next ${d.days} days: contests, races and games, birthdays, holidays and their fireworks shows, and announcements counting down.${isAdmin() ? ` Add things from a server's <b>Contests</b> page, the <a href="#/manage/fireworks">fireworks calendar</a> or <a href="#/manage/announcements">Announcements</a>.` : ""}</p></div>
     ${live.length ? `<section class="section"><div class="section-head"><h2>Happening now</h2></div><ul class="up-list panel">${live.map(row).join("")}</ul></section>` : ""}
     ${groups.length ? groups.map((g) => `<section class="section up-day"><div class="section-head"><h2>${esc(dayKey(g.date))}</h2></div><ul class="up-list panel">${g.items.map(row).join("")}</ul></section>`).join("")

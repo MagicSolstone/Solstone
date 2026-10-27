@@ -37,7 +37,7 @@ async function viewFireworkSettings() {
   if (!isAdmin()) { location.replace("#/fireworks"); return; }
   curSid = null;
   document.title = `Firework settings · ${SITE_NAME}`;
-  $("#rail-servers").innerHTML = railHtml(null);
+  fillServersMenu(state.servers, null);
   const [data, fw, designs] = await Promise.all([api("/api/fireworks/show"), api("/api/public/fireworks"), api("/api/fireworks").catch(() => [])]);
   fws.data = data; fws.fw = fw; fws.designs = designs;
   setView(`<div class="fwe-head"><h1>Firework show</h1>
@@ -212,14 +212,14 @@ function renderCalendar(el) {
     row.querySelector("[data-edit]").addEventListener("click", () => { fws.editing = i; renderCalendar(el); });
   });
   if (fws.editing != null && cal[fws.editing]) wireCalEdit(el, fws.editing);
-  $("#fws-add").addEventListener("click", async () => {
+  $("#fws-add")?.addEventListener("click", async () => {
     const next = [...fweCopy(cal), { name: "Birthday", emoji: "🎂", date: { type: "fixed", month: new Date().getMonth() + 1, day: new Date().getDate() }, days: 1,
       colors: ["#ff8fc0", "#ffe45c", "#4fd7e6"], kinds: ["heart", "star", "crossette"], message: "Happy birthday!", enabled: true,
       finale: { on: true, day: 0, time: "19:00", minutes: 5, countdown: false } }];
     await fwsSave({ calendar: next }, "Added");
     fws.editing = fws.data.calendar.length - 1; renderCalendar(el);
   });
-  $("#fws-reset").addEventListener("click", async () => {
+  $("#fws-reset")?.addEventListener("click", async () => {
     if (!(await confirmBox("Restore the standard holidays?", "Your own dates are kept; the standard ones go back to how they started.", "Restore", false))) return;
     const custom = cal.filter((e) => !["newyear", "valentine", "stpatrick", "easter", "july4", "halloween", "thanksgiving", "christmas", "friday"].includes(e.id));
     await fwsSave({ calendar: [...fwsDefaults(), ...custom] }, "Restored");
@@ -370,7 +370,7 @@ function renderShows(el) {
       await fwsSave({ shows: [...fweCopy(shows), { ...fweCopy(sh), id: "", name: `${sh.name} (copy)` }] }, "Copied"); renderShows(el);
     });
   });
-  $("#fws-newshow").addEventListener("click", async () => {
+  $("#fws-newshow")?.addEventListener("click", async () => {
     await fwsSave({ shows: [...fweCopy(shows), { name: "New show", loop_gap: 2, steps: [{ at: 0, what: "random", count: 1, where: "random" }, { at: 2, what: "random", count: 2, where: "spread" }] }] }, "Added");
     fws.editingShow = fws.data.shows.length - 1; renderShows(el);
   });

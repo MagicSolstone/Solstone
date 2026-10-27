@@ -143,7 +143,7 @@ function fweSetPicture(grid, f = ed.frame) {
 async function viewFireworkEditor(editId) {
   curSid = null;
   document.title = `Firework editor · ${SITE_NAME}`;
-  $("#rail-servers").innerHTML = railHtml(null);
+  fillServersMenu(state.servers, null);
   [ed.list, ed.sounds, ed.limit] = await Promise.all([api("/api/fireworks").catch(() => []), api("/api/sounds").catch(() => []), api("/api/fireworks/limit").catch(() => null)]);
   // After a reload (nothing in memory yet), bring back the firework that was being worked on.
   const draft = !ed.d ? fweReadDraft() : null;
@@ -189,15 +189,15 @@ async function viewFireworkEditor(editId) {
   state.cleanups.push(() => { ed.scene?.stop(); ed.scene = null; FWAudio.solo = false; document.body.classList.remove("on-editor"); });
   renderControls();
   renderGallery();
-  $("#fwe-launch").addEventListener("click", () => fweLaunch());
-  $("#fwe-loop").addEventListener("change", (e) => { ed.loop = e.target.checked; });
-  $("#fwe-sound").addEventListener("click", (e) => {
+  $("#fwe-launch")?.addEventListener("click", () => fweLaunch());
+  $("#fwe-loop")?.addEventListener("change", (e) => { ed.loop = e.target.checked; });
+  $("#fwe-sound")?.addEventListener("click", (e) => {
     const on = !FWAudio.isOn("editor");
     FWAudio.setChannel("editor", on); e.currentTarget.textContent = on ? "🔊" : "🔇"; e.currentTarget.setAttribute("aria-pressed", String(on));
     fweLaunch();
   });
-  $("#fwe-surprise").addEventListener("click", () => { ed.d = { ...fweSurprise(), name: ed.d.name, in_show: ed.d.in_show }; ed.grids = {}; ed.frame = 1; renderControls(); fweLaunch(); });
-  $("#fwe-mode").addEventListener("click", async (e) => {
+  $("#fwe-surprise")?.addEventListener("click", () => { ed.d = { ...fweSurprise(), name: ed.d.name, in_show: ed.d.in_show }; ed.grids = {}; ed.frame = 1; renderControls(); fweLaunch(); });
+  $("#fwe-mode")?.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-m]");
     if (!b) return;
     const m = b.dataset.m;
@@ -210,8 +210,8 @@ async function viewFireworkEditor(editId) {
   });
   renderMode();
   every(700, renderMode);
-  $("#fwe-save").addEventListener("submit", (e) => { e.preventDefault(); fweSave(false); });
-  $("#fwe-save").addEventListener("input", (e) => {
+  $("#fwe-save")?.addEventListener("submit", (e) => { e.preventDefault(); fweSave(false); });
+  $("#fwe-save")?.addEventListener("input", (e) => {
     if (e.target.name === "name") ed.d.name = e.target.value;
     if (e.target.name === "group") ed.d.group = e.target.value;
     if (e.target.name === "in_show") ed.d.in_show = e.target.checked;
@@ -403,7 +403,7 @@ function renderControls() {
   });
   el.querySelectorAll("[data-si]").forEach((card) => {
     const st = d.stages[+card.dataset.si];
-    card.querySelector("[data-rm-stage]").addEventListener("click", () => { d.stages.splice(+card.dataset.si, 1); rerender(); });
+    card.querySelector("[data-rm-stage]")?.addEventListener("click", () => { d.stages.splice(+card.dataset.si, 1); rerender(); });
     card.querySelectorAll("[data-action]").forEach((b) => b.addEventListener("click", () => { st.action = b.dataset.action; rerender(); }));
     card.querySelectorAll("[data-stage-snd]").forEach((b) => b.addEventListener("click", () => {
       st.sound = b.dataset.stageSnd;
@@ -412,7 +412,7 @@ function renderControls() {
       rerender();
     }));
     card.querySelector("[data-stage-pattern]")?.addEventListener("change", (e) => { st.pattern = e.target.value; fweLaunch(); });
-    card.querySelector("[data-stage-owncolors]").addEventListener("change", (e) => {
+    card.querySelector("[data-stage-owncolors]")?.addEventListener("change", (e) => {
       st.colors = e.target.checked ? [pick2(FW_COLORS), pick2(FW_COLORS)] : []; rerender();
     });
   });
@@ -506,8 +506,8 @@ function wirePainter() {
     ed.d.colors.push(unused); ed.brush = String(ed.d.colors.length - 1);
     renderControls(); fweChanged();
   });
-  $("#fwe-mirror").addEventListener("change", (e) => { ed.mirror = e.target.checked; });
-  $("#fwe-clear").addEventListener("click", () => { fweSetPicture(Array.from({ length: FWE_GRID }, () => new Array(FWE_GRID).fill("."))); refreshCells(); fweChanged(); });
+  $("#fwe-mirror")?.addEventListener("change", (e) => { ed.mirror = e.target.checked; });
+  $("#fwe-clear")?.addEventListener("click", () => { fweSetPicture(Array.from({ length: FWE_GRID }, () => new Array(FWE_GRID).fill("."))); refreshCells(); fweChanged(); });
   $$("[data-stamp]").forEach((b) => b.addEventListener("click", () => { stampPicture(b.dataset.stamp); refreshCells(); fweLaunch(); }));
   $$("[data-frame]").forEach((b) => b.addEventListener("click", () => { ed.frame = +b.dataset.frame; renderControls(); }));
   if (!ed.players) api("/api/players/skins").then((list) => { ed.players = list; if ($("#fwe-face")) renderControls(); }).catch(() => { ed.players = []; });
@@ -587,7 +587,7 @@ function renderGallery() {
       <input class="input sm" type="search" id="fwe-q" placeholder="Search names" value="${esc(ed.q)}" aria-label="Search saved fireworks">
       ${isAdmin() ? `<label class="fwe-limit small">Each person can keep <select class="input sm" id="fwe-limit">${[5, 10, 20, 30, 50, 100, 0].map((n) => `<option value="${n}" ${lim?.per_person === n ? "selected" : ""}>${n || "any number"}</option>`).join("")}</select> <span class="muted">(admins: no limit)</span></label>` : ""}`;
     filt.querySelectorAll("[data-show]").forEach((b) => b.addEventListener("click", () => { ed.show = b.dataset.show; filt.querySelectorAll("[data-show]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); renderGallery(); }));
-    $("#fwe-q", filt).addEventListener("input", (e) => { ed.q = e.target.value; renderGallery(); });
+    $("#fwe-q", filt)?.addEventListener("input", (e) => { ed.q = e.target.value; renderGallery(); });
     $("#fwe-limit", filt)?.addEventListener("change", async (e) => {
       try { ed.limit = { ...ed.limit, ...(await post("/api/fireworks/limit", { per_person: +e.target.value }, "PUT")) }; showToast("Saved", 1500); renderGallery(); }
       catch (err) { showToast(esc(err.message), 4000); }

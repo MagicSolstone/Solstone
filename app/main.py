@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, modpack, races, fireworks, fwshow, guard, notify, recap, selfcheck, signup, site, skins, tide, upcoming, worldmap
@@ -293,7 +293,7 @@ async def status():
     }
 
 
-# ------------------------------------------------------------------ public status page (no login needed)
+# ------------------------------------------------------------------ live servers on the home page (no login needed)
 # Off until an admin turns it on. Everything here is read-only and cached so anonymous
 # visitors can't hammer RCON or Crafty, and chat is never included.
 STATUS_DEFAULTS = {"enabled": False, "show_positions": False, "show_items": True,
@@ -313,7 +313,7 @@ def _status_cfg() -> dict:
 def _require_status() -> dict:
     cfg = _status_cfg()
     if not cfg["enabled"]:
-        raise HTTPException(404, "The public status page is turned off")
+        raise HTTPException(404, "Live server info is turned off")
     return cfg
 
 
@@ -454,7 +454,7 @@ async def public_status():
     if not cfg["enabled"]:
         return {"enabled": False, "servers": [], "build": _asset_stamp()}
     if _list_cache and time.monotonic() - _list_cache[0] < 15:
-        return {"enabled": True, "servers": _list_cache[1], "tv": _tv_cfg(), "build": _asset_stamp()}
+        return {"enabled": True, "servers": _list_cache[1], "build": _asset_stamp()}
     await S.registry.refresh()
     out = []
     for srv in _public_servers_list():
@@ -466,7 +466,7 @@ async def public_status():
         out.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "crashed": summ["crashed"],
                     "online": len(summ["online"]), "max": summ["max_players"], "has_icon": summ["has_icon"]})
     _list_cache = (time.monotonic(), out)
-    return {"enabled": True, "servers": out, "tv": _tv_cfg(), "build": _asset_stamp()}
+    return {"enabled": True, "servers": out, "build": _asset_stamp()}
 
 
 @app.get("/api/public/status/{sid}")
@@ -500,7 +500,7 @@ async def public_site():
             servers.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "online": len(summ["online"]),
                             "max": summ["max_players"], "version": summ.get("version"), "has_icon": summ["has_icon"]})
         _site_cache = (time.monotonic(), servers)
-    return JSONResponse({**cfg, "logo": site.logo_url(), "servers": servers, "status_page": _status_cfg()["enabled"], "build": _asset_stamp()},
+    return JSONResponse({**cfg, "logo": site.logo_url(), "servers": servers, "live": _status_cfg()["enabled"], "build": _asset_stamp()},
                         headers={"Cache-Control": "no-cache"})
 
 
@@ -627,40 +627,6 @@ async def remove_post(pid: int, request: Request):
     return {"ok": True}
 
 
-# ---- TV mode: the status page cycling through slides on a wall screen
-TV_SLIDES = ("now", "map", "leaders", "recap", "feed", "news")
-TV_DEFAULTS = {"seconds": 15, "slides": {k: True for k in TV_SLIDES}, "rotate": False}
-
-
-def _tv_cfg(v: dict | None = None) -> dict:
-    saved = v if v is not None else settings_store.load().get("tv") or {}
-    slides = saved.get("slides") if isinstance(saved.get("slides"), dict) else {}
-    try:
-        secs = max(6, min(120, int(saved.get("seconds", 15))))
-    except (TypeError, ValueError):
-        secs = 15
-    return {"seconds": secs, "slides": {k: bool(slides.get(k, True)) for k in TV_SLIDES}, "rotate": bool(saved.get("rotate", False))}
-
-
-@app.get("/api/settings/tv")
-async def get_tv_settings(request: Request):
-    auth.require_admin(request)
-    return _tv_cfg()
-
-
-@app.put("/api/settings/tv")
-async def put_tv_settings(request: Request):
-    global _list_cache
-    user = auth.require_admin(request)
-    cfg = _tv_cfg({**_tv_cfg(), **await _body(request)})
-    if not any(cfg["slides"].values()):
-        raise HTTPException(400, "Leave at least one slide on")
-    settings_store.save_section("tv", cfg)
-    _list_cache = None
-    auth.audit(user, None, "tv_settings", f"{cfg['seconds']} s, {sum(cfg['slides'].values())} slides")
-    return cfg
-
-
 _lb_cache: dict[str, tuple[float, dict]] = {}
 
 
@@ -746,7 +712,7 @@ async def public_board_items(request: Request, where: str = "status", sid: str =
     if where == "app" and not signed_in:
         raise HTTPException(401, "Sign in to continue")
     if where == "status" and not status_on:
-        raise HTTPException(404, "The public status page is turned off")
+        raise HTTPException(404, "Live server info is turned off")
     await S.registry.refresh()
     servers = [x for x in _board_servers() if _visible(x)]     # a private server's announcements stay private
     if sid and not any(x.id == sid for x in servers):
@@ -780,7 +746,7 @@ async def put_board(request: Request):
     return await get_board(request)
 
 
-# ---- the world map, drawn from region files (status page, TV mode)
+# ---- the world map, drawn from region files (the live section on the home page)
 async def _map_server(request: Request, sid: str) -> S.Server:
     if request.state.user is not None:
         srv = await _server(sid)
@@ -2341,9 +2307,8 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 @app.get("/status", include_in_schema=False)
 @app.get("/status/{sid}", include_in_schema=False)
 async def status_page(sid: str = ""):
-    if not _status_cfg()["enabled"]:
-        return HTMLResponse(_page("status-off.html"), status_code=404, headers={"Cache-Control": "no-cache"})
-    return HTMLResponse(_page("status.html"), headers={"Cache-Control": "no-cache"})
+    """The live status is on the home page now; old links and wall screens land there."""
+    return RedirectResponse("/#live", status_code=301)
 
 
 @app.get("/", include_in_schema=False)
@@ -2372,7 +2337,7 @@ async def not_found_page(full_path: str):
     return HTMLResponse(_page("home.html"), status_code=404, headers={"Cache-Control": "no-cache"})
 
 
-ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "status.js", "home.js", "website.js")
+ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "live.js", "home.js", "website.js")
 
 
 def _asset_stamp() -> str:

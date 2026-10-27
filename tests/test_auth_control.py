@@ -295,7 +295,10 @@ def test_public_status_page(anon, client, viewer, monkeypatch):
     assert off["enabled"] is False and off["servers"] == [] and off["build"]          # the build lets open pages notice an update
     assert anon.get(f"/api/public/status/{helpers.SID}").status_code == 404
     assert anon.get(f"/api/public/icon/{helpers.SID}.png").status_code == 404
-    assert anon.get("/status").status_code == 404 and "Status page is off" in anon.get("/status").text
+    r = anon.get("/status", follow_redirects=False)          # the live status lives on the home page now
+    assert r.status_code == 301 and r.headers["location"] == "/#live"
+    assert anon.get(f"/status/{helpers.SID}?tv=1", follow_redirects=False).headers["location"] == "/#live"
+    assert anon.get("/api/public/site").json()["live"] is False
 
     assert viewer.put("/api/settings/status", json={"enabled": True}).status_code == 403
     cfg = client.put("/api/settings/status", json={"enabled": True}).json()
@@ -304,8 +307,8 @@ def test_public_status_page(anon, client, viewer, monkeypatch):
         lst = anon.get("/api/public/status").json()
         assert lst["enabled"] is True
         assert any(s["id"] == helpers.SID for s in lst["servers"])
-        r = anon.get("/status")
-        assert r.status_code == 200 and "/static/status.js?v=" in r.text
+        assert anon.get("/api/public/site").json()["live"] is True
+        assert "/static/live.js?v=" in anon.get("/").text
         board = anon.get(f"/api/public/status/{helpers.SID}").json()
         assert {"name", "running", "players", "recent", "recently", "world"} <= set(board)
         assert all(e["type"] != "chat" for e in board["recent"])   # chat is never public

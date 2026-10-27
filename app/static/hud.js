@@ -106,13 +106,86 @@ function faceHtml(p, size, cls = "") {
   return `<span class="face ${cls}" style="--s:${size}px;--skin:${main ? `url('${main}')` : "none"};--skin2:url('${backupSkin(p)}')" aria-hidden="true"><span class="face-init">${initial}</span></span>`;
 }
 
-// The website's pages (home, status) when someone is signed in: the same links as inside the app, and their name
-// where "Sign in" was, so the website and the servers feel like one site.
+// ================================================================ the top bar
+// The same bar on every page: Home, News, Help, then (signed in) Events and Servers, and Manage for admins.
+// Servers drops down a list of the servers you can see; with only one, it goes straight there.
+function serversMenuHtml(servers, activeSid) {
+  const icon = (s) => `<span class="server-icon">${s.has_icon ? `<img src="/api/servers/${encodeURIComponent(s.id)}/icon.png" alt="">` : esc((s.name || "?")[0])}<span class="status-dot ${s.crashed ? "crash" : s.running ? "on" : ""}"></span></span>`;
+  return `<a class="rail-item rail-all" href="/app#/" ${activeSid === "" ? 'aria-current="page"' : ""}><span class="server-icon">▦</span><div><div class="name">All servers</div></div></a>` + servers.map((s) => {
+    const sub = s.running === false ? "Offline" : s.online ? `${s.online.length} playing` : "";
+    return `<a class="rail-item" href="/app#/s/${encodeURIComponent(s.id)}" ${s.id === activeSid ? 'aria-current="page"' : ""}>
+      ${icon(s)}<div><div class="name">${esc(s.name)}</div><div class="sub">${esc(sub)}</div></div></a>`;
+  }).join("");
+}
+function fillServersMenu(servers, activeSid = null) {
+  const btn = document.getElementById("btn-servers"), panel = document.getElementById("rail-servers");
+  if (!btn || !panel) return;
+  btn._servers = servers;
+  panel.innerHTML = servers.length > 1 ? serversMenuHtml(servers, activeSid) : "";
+  btn.querySelector(".caret")?.toggleAttribute("hidden", servers.length < 2);
+  btn.setAttribute("aria-haspopup", servers.length > 1 ? "true" : "false");
+}
+function wireServersMenu() {
+  const btn = document.getElementById("btn-servers"), panel = document.getElementById("rail-servers");
+  if (!btn || btn._wired) return;
+  btn._wired = true;
+  const set = (open) => { panel.hidden = !open; btn.setAttribute("aria-expanded", String(open)); };
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const list = btn._servers || [];
+    if (list.length === 1) { set(false); location.href = `/app#/s/${encodeURIComponent(list[0].id)}`; return; }
+    set(panel.hidden);
+  });
+  document.addEventListener("click", (e) => { if (!panel.hidden && (!panel.contains(e.target) || e.target.closest("a[href]"))) set(false); });
+  addEventListener("keydown", (e) => { if (e.key === "Escape") set(false); });
+  addEventListener("hashchange", () => set(false));
+}
+// A menu that drops down under a button (the account menu).
+function wireDropMenu(btn, menu) {
+  document.body.append(menu);         // lives on <body>, placed under the button whenever it opens
+  const place = () => {
+    const r = btn.getBoundingClientRect(), mh = menu.offsetHeight, mw = menu.offsetWidth;
+    const below = innerHeight - r.bottom, above = r.top;
+    menu.style.left = `${Math.max(8, Math.min(r.right - mw, innerWidth - mw - 8))}px`;
+    menu.style.top = below >= mh + 12 || below >= above ? `${r.bottom + 6}px` : `${Math.max(8, r.top - mh - 6)}px`;
+  };
+  const close = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
+  const open = () => { menu.hidden = false; place(); btn.setAttribute("aria-expanded", "true"); menu.querySelector("a, button")?.focus(); };
+  btn.addEventListener("click", (e) => { e.stopPropagation(); menu.hidden ? open() : close(); });
+  document.addEventListener("click", (e) => { if (!menu.contains(e.target) || e.target.closest("a[href]")) close(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) { close(); btn.focus(); } });
+  addEventListener("resize", close);
+  addEventListener("scroll", close, { passive: true });
+  return close;
+}
+// Signed in, the links for signed-in people (and admins) appear.
+function showNavFor(user) {
+  document.querySelectorAll("[data-signed-in]").forEach((el) => { el.hidden = !user; });
+  document.querySelectorAll("[data-admin]").forEach((el) => { el.hidden = user?.role !== "admin"; });
+  wireServersMenu();
+}
+
+// The website's pages when someone is signed in: the same bar as inside the app, and their name (with a
+// menu: Fireworks, Sign out) where "Sign in" was, so the website and the servers feel like one site.
 function showSignedIn() {
   fetch("/api/auth/me", { credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null)).then((d) => {
     if (!d?.user) return;
-    document.querySelectorAll("[data-signed-in]").forEach((el) => { el.hidden = false; });
+    showNavFor(d.user);
+    fetch("/api/servers", { credentials: "same-origin" }).then((r) => (r.ok ? r.json() : [])).then((list) => fillServersMenu(list)).catch(() => {});
     const b = document.getElementById("hp-signin");
-    if (b) { b.textContent = `👤 ${d.user.shown || d.user.username}`; b.title = "Your servers"; b.href = "/app#/"; }
+    if (!b) return;
+    const wrap = document.createElement("div");
+    wrap.className = "account";
+    wrap.innerHTML = `<button class="btn sm" id="hp-account" type="button" aria-haspopup="menu" aria-expanded="false">👤 ${esc(d.user.shown || d.user.username)}</button>
+      <div class="account-menu" id="hp-account-menu" role="menu" hidden>
+        <a role="menuitem" href="/app#/fireworks">🎆 Fireworks</a>
+        <button type="button" role="menuitem" id="hp-logout">Sign out</button></div>`;
+    b.replaceWith(wrap);
+    const close = wireDropMenu(wrap.querySelector("#hp-account"), wrap.querySelector("#hp-account-menu"));
+    document.getElementById("hp-logout").addEventListener("click", async () => {
+      close();
+      await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin", headers: { "X-Solstone": "1", "Content-Type": "application/json" }, body: "{}" }).catch(() => {});
+      location.href = "/";
+    });
   }).catch(() => {});
 }

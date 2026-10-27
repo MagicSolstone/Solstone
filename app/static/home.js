@@ -17,10 +17,11 @@ async function getJSON(url) {
   return r.json();
 }
 
-function toast(text) {
+function toast(text, html = false) {
   const t = $("#hp-toast");
-  t.textContent = text; t.hidden = false;
-  clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 2500);
+  if (html) t.innerHTML = text; else t.textContent = text;
+  t.hidden = false;
+  clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, html ? 6000 : 2500);
 }
 
 // ------------------------------------------------------------------ Markdown (a safe subset)
@@ -77,10 +78,11 @@ function joinCard(site) {
     <p class="muted"><a href="/guides/join">Step-by-step guide</a>${site.signup ? ' · <a href="/guides/account">Make an account on this website</a>' : ""}${site.discord ? ` · Questions? <a href="${esc(site.discord)}" target="_blank" rel="noopener">Join us on Discord</a>` : ""}</p></section>`;
 }
 
+// With live info on, a server's card shows it live further down the page.
 function serversCard(site) {
   if (!site.servers.length) return "";
   return `<section class="hp-servers"><h2>Servers</h2><div class="hp-server-list">${site.servers.map((s) => `
-    <a class="hp-server glass" href="${site.status_page ? `/status/${encodeURIComponent(s.id)}` : "#"}" ${site.status_page ? "" : 'aria-disabled="true"'}>
+    <a class="hp-server glass" href="${site.live ? "#live" : "#"}" ${site.live ? `data-live-sid="${esc(s.id)}"` : 'aria-disabled="true"'}>
       ${s.has_icon ? `<img class="px" src="/api/public/icon/${encodeURIComponent(s.id)}.png" alt="" width="40" height="40">` : ""}
       <span class="hp-server-name">${esc(s.name)}</span>
       <span class="hp-dot ${s.running ? "on" : ""}" aria-hidden="true"></span>
@@ -99,6 +101,14 @@ function faqList(posts) {
   if (!posts.length) return `<p class="muted">No questions yet.</p>`;
   return `<div class="hp-faq">${posts.map((p) => `<details class="glass"><summary>${esc(p.title)}</summary>
     <div class="hp-body" data-faq="${esc(p.slug)}"><p class="muted">Loading…</p></div></details>`).join("")}</div>`;
+}
+
+// Live: who's playing right now, the world, leaderboards and the recap (live.js fills it in).
+function liveSection() {
+  return `<section class="hp-live" id="live" hidden><div class="hp-head"><h2>Live on the servers</h2></div>
+    <div class="sp-top"><nav class="sp-servers" id="sp-servers" aria-label="Servers"></nav>
+      <div class="sp-right"><span class="sp-updated" id="sp-updated" aria-live="polite"></span></div></div>
+    <div id="sp-main" class="sp-main"><p class="muted sp-loading">Loading…</p></div></section>`;
 }
 
 // ------------------------------------------------------------------ built-in guides
@@ -134,7 +144,7 @@ Good to know on Bedrock:
 
 ## It won't let me in
 - **"You are not white-listed"**: you're not on the list yet. Send an admin your exact name.
-- **Can't connect / timed out**: check the address${s.bedrock_address ? " and port" : ""} for typos, and that the server is running${s.status_page ? " ([live status](/status))" : ""}.
+- **Can't connect / timed out**: check the address${s.bedrock_address ? " and port" : ""} for typos, and that the server is running${s.live ? " ([see it live](/#live))" : ""}.
 - **Outdated client or server**: update Minecraft to the newest version.`;
     },
   },
@@ -169,6 +179,7 @@ async function home() {
     ${joinCard(s)}${serversCard(s)}
     <section><div class="hp-head"><h2>News</h2><a href="/news">All news →</a></div>${postCards(news, "No news yet.")}</section>
     <section><div class="hp-head"><h2>Help</h2><a href="/help">All guides and questions →</a></div>${postCards([...builtinCards(), ...guides].slice(0, 4), "")}</section>
+    ${s.live ? liveSection() : ""}
     ${s.about ? `<section class="hp-about glass"><h2>About</h2><div class="hp-body">${markdown(s.about)}</div></section>` : ""}`;
 }
 
@@ -202,6 +213,7 @@ function builtinArticle(key) {
 }
 
 async function route() {
+  hp.path = location.pathname;
   const path = location.pathname.replace(/\/+$/, "") || "/";
   const main = $("#hp-main");
   let nav = "home", html;
@@ -218,27 +230,34 @@ async function route() {
   if (!path.startsWith("/post/") && !path.startsWith("/guides/")) document.title = nav && nav !== "home" ? `${SECTIONS[nav][0]} · ${hp.site.name}` : hp.site.name;
   main.innerHTML = html;
   document.querySelectorAll("[data-nav]").forEach((a) => a.toggleAttribute("aria-current", a.dataset.nav === nav));
-  if (location.hash === "#faq") $("#faq")?.scrollIntoView(); else window.scrollTo(0, 0);
+  if (location.hash === "#faq") $("#faq")?.scrollIntoView(); else if (location.hash !== "#live") window.scrollTo(0, 0);
+  if ($("#live") && typeof startLive === "function") {
+    await startLive({ scene: hp.scene, toast: (h) => toast(h, true) });
+    if (location.hash === "#live") $("#live")?.scrollIntoView();
+  }
 }
 
 // Links inside the site change the page without a reload; everything else is a normal link.
 document.addEventListener("click", (e) => {
+  const card = e.target.closest("[data-live-sid]");
+  if (card) { e.preventDefault(); window.showLiveServer?.(card.dataset.liveSid); return; }
   const copy = e.target.closest("[data-copy]");
   if (copy) {
     navigator.clipboard?.writeText(copy.dataset.copy).then(() => toast("Copied"), () => toast(copy.dataset.copy));
     return;
   }
   const a = e.target.closest("a[href]");
-  if (!a || a.target || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
+  if (!a || e.defaultPrevented || a.target || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
   const url = new URL(a.href, location.href);
   if (url.origin !== location.origin) return;
+  if (url.pathname === location.pathname && url.hash) return;          // a spot on this page: the browser scrolls to it
   if (url.pathname === "/" || url.pathname.startsWith("/post/") || url.pathname.startsWith("/guides") || url.pathname === "/faq" || SECTIONS[url.pathname.slice(1)]) {
     e.preventDefault();
-    if (url.pathname !== location.pathname) history.pushState(null, "", url.pathname);
+    if (url.pathname !== location.pathname) history.pushState(null, "", url.pathname + url.hash);
     route();
   }
 });
-window.addEventListener("popstate", route);
+window.addEventListener("popstate", () => { if (location.pathname !== hp.path) route(); });     // not for a jump to a spot on the page
 
 // FAQ answers load when opened.
 document.addEventListener("toggle", async (e) => {
@@ -250,9 +269,8 @@ document.addEventListener("toggle", async (e) => {
 }, true);
 
 document.addEventListener("DOMContentLoaded", async () => {
-  try { hp.site = await getJSON("/api/public/site"); } catch { hp.site = { name: "Solstone", servers: [], status_page: false }; }
+  try { hp.site = await getJSON("/api/public/site"); } catch { hp.site = { name: "Solstone", servers: [], live: false }; }
   $("#hp-name").textContent = $("#hp-foot-name").textContent = hp.site.name;
-  $("#hp-status-link").hidden = !hp.site.status_page;
   showSignedIn();
   const sky = $("#home-sky");
   if (sky && typeof startSkyScene === "function") {

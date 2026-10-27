@@ -150,7 +150,7 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
                 out.append({"id": f"bs-{b['player'].lower()}", "kind": "birthday-soon", "emoji": "🎈", "style": "info",
                             "text": f"{b['player']}'s birthday is {'tomorrow' if days == 1 else f'in {days} days'}",
                             "detail": bd.strftime("%A %d %B").replace(" 0", " "), "player": b["player"], "countdown": None})
-    if cfg["bedtime"]["show"] and where in ("status", "app") and servers:
+    if cfg["bedtime"]["show"] and where in ("home", "status", "app") and servers:
         for srv in servers:
             if sid and srv.id != sid:
                 continue

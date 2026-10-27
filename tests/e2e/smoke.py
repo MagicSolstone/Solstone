@@ -116,7 +116,7 @@ def main() -> int:
             hdrs = pg.request.get(f"{base}/").headers
             if "script-src 'self'" not in hdrs.get("content-security-policy", ""):
                 problems.append("index: no Content-Security-Policy header")
-            # turn on the public status page so it can be checked too
+            # turn on live server info so the home page shows it too
             pg.request.put(f"{base}/api/settings/status", data={"enabled": True}, headers=H)
             # the website: how to join, and a post of each kind
             pg.request.put(f"{base}/api/settings/site", data={"name": "Smoke SMP", "tagline": "A test server", "java_address": "play.example.net",
@@ -130,7 +130,7 @@ def main() -> int:
                 "player-stats": f"#/s/{sid}/p/{puuid}/stats", "player-history": f"#/s/{sid}/p/{puuid}/history", "player-fishing": f"#/s/{sid}/p/{puuid}/fishing",
                 "player-advancements": f"#/s/{sid}/p/{puuid}/advancements", "world": f"#/s/{sid}/world",
                 "control": f"#/s/{sid}/control", "check": f"#/s/{sid}/check", "chat": f"#/s/{sid}/chat", "challenges": f"#/s/{sid}/challenges", "races": f"#/s/{sid}/challenges/races", "games": f"#/s/{sid}/challenges/games", "performance": f"#/s/{sid}/performance",
-                "leaderboards": f"#/s/{sid}/leaderboards", "fishing": f"#/s/{sid}/fishing", "fishing-player": f"#/s/{sid}/fishing/Tyler", "mods": f"#/s/{sid}/mods", "adventures": f"#/s/{sid}/adventures", "coming-up": "#/coming-up",
+                "leaderboards": f"#/s/{sid}/leaderboards", "fishing": f"#/s/{sid}/fishing", "fishing-player": f"#/s/{sid}/fishing/Tyler", "mods": f"#/s/{sid}/mods", "adventures": f"#/s/{sid}/adventures", "events": "#/events",
                 "fireworks-editor": "#/fireworks", "fireworks-settings": "#/manage/fireworks",
                 "announcements": "#/manage/announcements", "admin": "#/manage/users", "manage-servers": "#/manage/servers",
                 "manage-activity": "#/manage/activity", "website": "#/manage/website",
@@ -220,10 +220,10 @@ def main() -> int:
             check(pg, "tackle-guide-rigs")
             pg.click(".tg-modal [data-close]")
 
-            # public status page and TV mode, signed out
+            # the public website, signed out
             anon = browser.new_page(viewport={"width": 1280, "height": 800})
             anon.add_init_script("window.__csp = []; document.addEventListener('securitypolicyviolation', (e) => window.__csp.push(e.violatedDirective + ' ' + (e.blockedURI || 'inline')));")
-            anon.on("pageerror", lambda e: problems.append(f"status: JS error: {e}"))
+            anon.on("pageerror", lambda e: problems.append(f"website: JS error: {e}"))
             # the public website, signed out
             for name, url in (("site-home", "/"), ("site-news", "/news"), ("site-help", "/help"),
                               ("site-post", "/post/welcome-to-the-server")):
@@ -274,42 +274,53 @@ def main() -> int:
             check(pl, "player-account-own-page")
             # signed in, the website offers the way back to the servers, and the app links back to the website
             pl.goto(f"{base}/"); pl.wait_for_timeout(1200)
-            if not pl.locator(".hp-nav [data-signed-in][href='/app#/']").is_visible() or "Sign in" in (pl.locator("#hp-signin").text_content() or ""):
-                problems.append("home: no Servers link when signed in")
-            pl.goto(f"{base}/status"); pl.wait_for_timeout(1200)
-            if "Sign in" in (pl.locator("#hp-signin").text_content() or ""):
-                problems.append("status: shows Sign in to someone signed in")
+            if not pl.locator(".hp-nav #btn-servers").is_visible() or not pl.locator(".hp-nav a[href='/app#/events']").is_visible() or pl.locator("#hp-signin").count():
+                problems.append("home: no Servers and Events in the bar, or still Sign in, when signed in")
+            if pl.locator(".hp-nav [data-admin]:not([hidden])").count():
+                problems.append("home: a player sees Manage")
+            pl.click("#hp-account"); pl.wait_for_timeout(300)
+            if not pl.locator("#hp-account-menu a[href='/app#/fireworks']").is_visible():
+                problems.append("home: no Fireworks in the account menu")
+            check(pl, "site-home-signed-in")
+            pg.goto(f"{base}/"); pg.wait_for_timeout(1200)
+            if not pg.locator(".hp-nav [data-admin]").is_visible():
+                problems.append("home: an admin doesn't see Manage")
+            pg.goto(f"{base}/status"); pg.wait_for_timeout(800)
+            if not pg.url.endswith("/#live"):
+                problems.append("status: the old address doesn't lead to the home page's live section")
             pl.goto(f"{base}/app#/s/{sid}"); pl.wait_for_timeout(1200)
             if not pl.locator(".app-top .hp-nav a[href='/']").is_visible():
                 problems.append("app: no link back to the website")
-            for name, url in (("status", "/status"), ("status-tv", f"/status/{sid}?tv=1")):
-                anon.goto(f"{base}{url}"); anon.wait_for_timeout(2000)
-                check(anon, name)
-            # the status page's screens are tabs when it isn't in TV mode
-            anon.goto(f"{base}/status/{sid}"); anon.wait_for_timeout(1500)
-            tabs = anon.locator(".tv-dots [data-tv]")
+            # live on the home page, signed out: the old status page's screens, as tabs
+            anon.goto(f"{base}/#live"); anon.wait_for_timeout(2500)
+            check(anon, "site-home-live")
+            if not anon.locator("#live:not([hidden])").count():
+                problems.append("home: the live section isn't shown")
+            tabs = anon.locator("#live .tv-dots [data-tv]")
             if tabs.count() < 2:
-                problems.append("status: the screens aren't offered as tabs")
+                problems.append("live: the screens aren't offered as tabs")
             else:
                 tabs.nth(1).click(); anon.wait_for_timeout(500)
                 if anon.locator(".tv-slide.on").count() != 1:
-                    problems.append("status: picking a screen didn't show it")
-                check(anon, "status-tab")
+                    problems.append("live: picking a screen didn't show it")
+                if not anon.locator("#hp-main .hp-join").count():
+                    problems.append("live: picking a screen redrew the page")
+                check(anon, "live-tab")
                 feed = anon.locator(".tv-dots [data-tv='feed']")
                 if feed.count():
                     feed.click(); anon.wait_for_timeout(500)
-                    check(anon, "status-activity")
+                    check(anon, "live-activity")
                     clipped = anon.evaluate("""() => { const s = document.querySelector('.tv-slide.on'); if (!s) return 'no slide';
                         for (let el = s; el && el !== document.body; el = el.parentElement) {
                           const cs = getComputedStyle(el); if (cs.overflowY !== 'visible' && el.scrollHeight > el.clientHeight + 2) return el.className; }
                         return ''; }""")
                     if clipped:
-                        problems.append(f"status: Recent activity is cut off by {clipped}")
-            anon.set_viewport_size({"width": 390, "height": 800}); anon.goto(f"{base}/status/{sid}"); anon.wait_for_timeout(1500)
-            check(anon, "m-status")
+                        problems.append(f"live: Recent activity is cut off by {clipped}")
+            anon.set_viewport_size({"width": 390, "height": 800}); anon.goto(f"{base}/#live"); anon.wait_for_timeout(2000)
+            check(anon, "m-live")
             off = anon.evaluate("() => [...document.querySelectorAll('.tv-dots [data-tv]')].filter(b => b.getBoundingClientRect().right > innerWidth).length")
             if off:
-                problems.append(f"phone status: {off} screen tabs run off the side")
+                problems.append(f"phone live: {off} screen tabs run off the side")
 
             # phone width
             m = page(390, 800)
@@ -318,13 +329,26 @@ def main() -> int:
                 check(m, name)
             m.goto(f"{base}/app#/s/{sid}/fishing"); m.wait_for_timeout(1000)
             check(m, "m-fishing")
-            m.click("#btn-servers"); m.wait_for_timeout(300)
-            if not m.locator("#rail-servers .rail-item").first.is_visible():
-                problems.append("phone: the server list didn't open")
-            check(m, "m-menu")
-            m.locator("#rail-servers .rail-item").first.click(); m.wait_for_timeout(800)
-            if m.locator("#rail-servers:not([hidden])").count():
-                problems.append("phone: the server list stayed open after picking a server")
+            # Servers: a list with several servers, straight to the server with one
+            m.goto(f"{base}/app#/events"); m.wait_for_timeout(1000)
+            m.click("#btn-servers"); m.wait_for_timeout(600)
+            if m.locator("#btn-servers .caret[hidden]").count():
+                if f"#/s/{sid}" not in m.url:
+                    problems.append("phone: with one server, Servers didn't go to it")
+            else:
+                if not m.locator("#rail-servers .rail-item").first.is_visible():
+                    problems.append("phone: the server list didn't open")
+                check(m, "m-menu")
+                m.locator("#rail-servers .rail-item").last.click(); m.wait_for_timeout(800)
+                if m.locator("#rail-servers:not([hidden])").count():
+                    problems.append("phone: the server list stayed open after picking a server")
+            # Manage is in the bar for admins on every page, and its tabs have no scrollbars
+            if not m.locator(".app-nav [data-admin]").is_visible():
+                problems.append("app: an admin doesn't see Manage in the bar")
+            m.goto(f"{base}/app#/manage/users"); m.wait_for_timeout(1000)
+            bars = m.evaluate("() => [...document.querySelectorAll('.tabs, .subtabs')].filter(t => t.offsetHeight - t.clientHeight > 2 || t.offsetWidth - t.clientWidth > 2).length")
+            if bars:
+                problems.append(f"manage: {bars} tab rows show a scrollbar")
             browser.close()
     finally:
         app.terminate()

@@ -27,6 +27,6 @@ async function loadPublicStatus() {
   const playing = data.servers.reduce((a, s) => a + (s.running !== false ? s.online : 0), 0);
   const up = data.servers.filter((s) => s.running !== false).length;
   link.hidden = false;
-  link.innerHTML = `<span class="status-dot ${up ? "on" : ""}"></span><span><b>Live server status</b><small>${
+  link.innerHTML = `<span class="status-dot ${up ? "on" : ""}"></span><span><b>See who's playing</b><small>${
     !data.servers.length ? "No servers" : !up ? "Servers are offline" : playing ? `${playing} playing now` : "Online · nobody playing"}</small></span><span aria-hidden="true">→</span>`;
 }

@@ -10,7 +10,7 @@ async function viewWebsite() {
   if (!isAdmin()) { location.replace("#/"); return; }
   curSid = null;
   document.title = `Website · ${SITE_NAME}`;
-  $("#rail-servers").innerHTML = railHtml(null);
+  fillServersMenu(state.servers, null);
   ws.data = await api("/api/posts");
   ws.editing = null;
   setView(`<div class="fwe-head"><h1>Website</h1>

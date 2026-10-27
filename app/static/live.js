@@ -1,14 +1,16 @@
-/* Solstone — public live status page. No sign-in: shows one server at a time on a big
-   screen, refreshing every few seconds. Everything comes from /api/public/*, which only
-   works while an admin has the status page turned on. */
+/* Solstone — the live servers on the home page. No sign-in: one server at a time, refreshing
+   every few seconds. Everything comes from /api/public/*, which only works while an admin has
+   live server info turned on. home.js starts it with startLive() when the home page is shown;
+   it stops by itself once the page changes. */
 "use strict";
 
+(() => {
 const $ = (sel, root = document) => root.querySelector(sel);
 const POLL_MS = 5000;
 // Skins on this page come through the public route, which only serves players of visible servers.
 skinSource = (p) => p.uuid && st.sid ? `/api/public/skin/${encodeURIComponent(st.sid)}/${String(p.uuid).replace(/-/g, "")}.png` : null;
-const st = { servers: [], sid: null, board: null, prevOnline: null, prevEventTs: 0, fetchedAt: 0, tod: null, todAt: 0, scene: null, map: null,
-  tv: new URLSearchParams(location.search).has("tv"), tvCfg: { seconds: 15, slides: {}, rotate: false }, recap: null, recapAt: 0, leaders: null, leadersAt: 0, banners: null };
+const st = { servers: [], sid: null, want: null, board: null, prevOnline: null, prevEventTs: 0, fetchedAt: 0, tod: null, todAt: 0, scene: null, map: null,
+  recap: null, recapAt: 0, leaders: null, leadersAt: 0, toast: null, on: false };
 
 // ------------------------------------------------------------------ formatting
 function fmtSpan(sec) {
@@ -63,21 +65,17 @@ async function getJSON(url) {
   if (!r.ok) { const e = new Error(`${r.status}`); e.status = r.status; throw e; }
   return r.json();
 }
-function sidFromPath() {
-  const m = location.pathname.match(/^\/status\/([^/]+)/);
-  return m ? decodeURIComponent(m[1]) : null;
-}
 async function loadServers() {
   try {
     const d = await getJSON("/api/public/status");
     // A wall screen stays open for days: when Solstone has been updated, load the new version.
     if (d.build && st.build && d.build !== st.build) { location.reload(); return; }
     st.build = d.build || st.build;
-    st.servers = d.servers || []; if (d.tv) st.tvCfg = d.tv;
+    if (!d.enabled) { stop(); return; }
+    st.servers = d.servers || [];
   } catch { /* keep the last list */ }
   if (!st.sid || !st.servers.some((s) => s.id === st.sid)) {
-    const want = sidFromPath();
-    const pick = st.servers.find((s) => s.id === want)
+    const pick = st.servers.find((s) => s.id === st.want)
       || [...st.servers].sort((a, b) => (b.online || 0) - (a.online || 0) || (b.running !== false) - (a.running !== false))[0];
     st.sid = pick?.id || null;
   }
@@ -85,14 +83,15 @@ async function loadServers() {
 }
 function renderServerTabs() {
   const nav = $("#sp-servers");
+  if (!nav) return;
   nav.innerHTML = st.servers.length > 1 ? st.servers.map((s) => {
     const dot = s.crashed ? "crash" : s.running !== false ? "on" : "";
-    return `<a href="/status/${encodeURIComponent(s.id)}${st.tv ? "?tv=1" : ""}" data-sid="${esc(s.id)}" ${s.id === st.sid ? 'aria-current="page"' : ""}>
+    return `<a href="#live" data-sid="${esc(s.id)}" ${s.id === st.sid ? 'aria-current="page"' : ""}>
       <span class="status-dot ${dot}"></span>${esc(s.name)}${s.running !== false && s.online ? `<b>${s.online}</b>` : ""}</a>`;
   }).join("") : "";
 }
-$("#sp-servers")?.addEventListener("click", (e) => {
-  const a = e.target.closest("a[data-sid]");
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("#sp-servers a[data-sid]");
   if (!a) return;
   e.preventDefault();
   if (a.dataset.sid === st.sid) return;
@@ -100,18 +99,21 @@ $("#sp-servers")?.addEventListener("click", (e) => {
 });
 function switchServer(sid, push) {
   st.sid = sid; st.board = null; st.prevOnline = null; st.prevEventTs = 0; st.map = null; st.recap = st.leaders = null; st.recapAt = st.leadersAt = 0;
-  st.bar?.skyChanged(); st.banners?.refresh();
   delete $("#sp-main").dataset.sid;
-  const url = `/status/${encodeURIComponent(sid)}${st.tv ? "?tv=1" : ""}`;
-  if (push) history.pushState(null, "", url); else history.replaceState(null, "", url);
   renderServerTabs();
   poll();
 }
-addEventListener("popstate", () => { st.sid = null; loadServers().then(poll); });
+// Pick a server from outside (the server cards above): show it and scroll down to it.
+function showServer(sid) {
+  if (sid && sid !== st.sid && st.servers.some((s) => s.id === sid)) switchServer(sid);
+  else if (sid) st.want = sid;
+  $("#live")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 let pollTimer = 0;
 async function poll() {
   clearTimeout(pollTimer);
+  if (!st.on || !$("#sp-main")) { st.on = false; return; }     // the page changed: stop
   if (!st.sid) {
     $("#sp-main").innerHTML = `<div class="sp-empty glass"><h2>No servers to show</h2><p class="muted">Servers appear here once Solstone finds them.</p></div>`;
     pollTimer = setTimeout(async () => { await loadServers(); poll(); }, 15000);
@@ -120,21 +122,21 @@ async function poll() {
   const sid = st.sid;
   try {
     const b = await getJSON(`/api/public/status/${encodeURIComponent(sid)}`);
-    if (sid !== st.sid) return;
+    if (sid !== st.sid || !$("#sp-main")) return;
     st.fetchedAt = Date.now();
     noticeChanges(b);
     st.board = b;
     if (b.world) { st.tod = b.world.time_of_day; st.todAt = Date.now() - (b.world.age || 0) * 1000; } else st.tod = null;
     render(b);
   } catch (e) {
-    if (e.status === 404) { location.reload(); return; }   // turned off, or the server went away
-    $("#sp-updated").textContent = "Can't reach Solstone, retrying…";
+    if (e.status === 404) { st.sid = null; await loadServers(); if (!st.on) return; }   // turned off, or the server went away
+    else if ($("#sp-updated")) $("#sp-updated").textContent = "Can't reach Solstone, retrying…";
   }
   pollTimer = setTimeout(poll, document.hidden ? POLL_MS * 6 : POLL_MS);
 }
-document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && st.on) poll(); });     // back from the background: refresh now
 
-// Fireworks for a join or a new advancement, so a big screen in the room notices.
+// Fireworks for a join or a new advancement, so a screen in the room notices.
 function noticeChanges(b) {
   const names = new Set(b.players.map((p) => p.name));
   if (st.prevOnline) {
@@ -149,11 +151,7 @@ function noticeChanges(b) {
   st.prevOnline = names;
   st.prevEventTs = newest || st.prevEventTs;
 }
-let toastTimer = 0;
-function toast(html) {
-  const t = $("#sp-toast"); t.innerHTML = html; t.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 6000);
-}
+function toast(html) { st.toast?.(html); }
 
 // ------------------------------------------------------------------ rendering
 const EVENT_ICON = { join: "→", leave: "←", death: "☠", advancement: "★", level: "⬆", server: "⏻", challenge: "🏆", race: "🏁", bigfish: "🐟", game: "🎲" };
@@ -186,10 +184,9 @@ function feedHtml(b) {
   return `<ul class="sp-feed">${condenseRecent(b.recent).map((e) => `
     <li class="ev-${esc(e.type)}"><span class="ev-icon" aria-hidden="true">${EVENT_ICON[e.type] || "•"}</span><span class="ev-time">${esc(fmtAgo(e.ts))}</span><span>${esc(e.message).replace(/\[(.+)\]$/, '<span class="adv-name">$1</span>')}</span></li>`).join("")}</ul>`;
 }
-// One page for everyone: the screens (Playing now, the map, leaderboards...) with their names as tabs. In TV mode
-// (📺, or ?tv=1) they go full screen and play by themselves; otherwise you pick one and the page scrolls normally.
+// The screens (Playing now, the map, leaderboards...) with their names as tabs: pick one.
 function render(b) {
-  document.title = `${b.name} · Live status`;
+  if (!$("#sp-main")) return;
   loadExtras(b);
   renderTv(b);
 }
@@ -265,7 +262,8 @@ function playerCardHtml(p) {
 function tick() {
   if (st.fetchedAt) {
     const s = Math.round((Date.now() - st.fetchedAt) / 1000);
-    $("#sp-updated").innerHTML = `<span class="status-dot on"></span>Live${s > 2 ? ` · updated ${s} s ago` : ""}`;
+    const u = $("#sp-updated");
+    if (u) u.innerHTML = `<span class="status-dot on"></span>Live${s > 2 ? ` · updated ${s} s ago` : ""}`;
   }
   if (st.tod != null && st.board?.online_count) {
     const t = Math.floor(st.tod + ((Date.now() - st.todAt) / 1000) * 20) % 24000;
@@ -472,7 +470,7 @@ async function loadExtras(b) {
     st.recapAt = now;
     getJSON(`/api/public/recap/${encodeURIComponent(sid)}`).then((r) => { if (sid === st.sid) { st.recap = r; if (st.board) render(st.board); } }).catch(() => { st.recap = null; });
   }
-  if (st.tvCfg.slides.leaders !== false && now - st.leadersAt > 300000) {
+  if (now - st.leadersAt > 300000) {
     st.leadersAt = now;
     getJSON(`/api/public/leaderboard/${encodeURIComponent(sid)}`).then((r) => { if (sid === st.sid) { st.leaders = r; if (st.board) render(st.board); } }).catch(() => { st.leaders = null; });
   }
@@ -487,24 +485,19 @@ function recapPanelHtml() {
     ${busy(today) ? recapCardHtml(today, "Today so far", { max: 4 }) : ""}${busy(y) ? recapCardHtml(y, "Yesterday", { max: 4 }) : ""}${onThisDayHtml(r.on_this_day)}</section>`;
 }
 
-// ------------------------------------------------------------------ TV mode
-// One slide at a time, big, for a screen on the wall. Slides with nothing to show are skipped;
-// long ones scroll gently while they're up.
-const TV_SLIDES = [["live", "Happening now"], ["now", "Playing now"], ["map", "Where everyone is"], ["web", "World map"], ["leaders", "Leaderboards"], ["recap", "Today on the server"], ["feed", "Recent activity"], ["news", "Announcements"]];
-const tv = { idx: -1, rot: -1, timer: 0, shown: null, loops: 0, dur: 0 };
-const TV_SCROLL_PX_S = 34;                    // how fast a long screen glides down (pixels per second)
-function nf(n) { return new Intl.NumberFormat([], { maximumFractionDigits: n < 10 ? 1 : 0 }).format(n || 0); }
+// ------------------------------------------------------------------ screens
+// One screen at a time, picked by its name; screens with nothing to show are left out.
+const SCREENS = [["live", "Happening now"], ["now", "Playing now"], ["map", "Where everyone is"], ["web", "World map"], ["leaders", "Leaderboards"], ["recap", "Today on the server"], ["feed", "Recent activity"]];
+const tv = { idx: -1, shown: null, pick: null };
 
 function tvAvailable(k, b) {
-  if (st.tvCfg.slides[k] === false) return false;
   if (k === "now") return true;
   if (k === "live") return (b.live || []).length > 0;
   if (k === "map") return hasMap(b);
-  if (k === "web") return !!b.web_map && !st.tv;          // an embedded web map is for browsing, not the wall
+  if (k === "web") return !!b.web_map;
   if (k === "leaders") return !!st.leaders?.players?.some((r) => st.leaders.boards.some((bd) => r[bd.key] > 0));
   if (k === "recap") return !!st.recap && (st.recap.recap.players.length || st.recap.yesterday?.players.length || st.recap.on_this_day.length);
   if (k === "feed") return b.recent.length > 0;
-  if (k === "news") return (st.banners?.items || []).length > 0;
   return false;
 }
 function tvLeadersHtml() {
@@ -524,12 +517,6 @@ function tvRecapHtml() {
   return `<div class="tv-recap"><div class="tv-recap-days">${recapCardHtml(r.recap, "Today so far", { big: true, max: 5 })}${busy(r.yesterday) ? recapCardHtml(r.yesterday, "Yesterday", { big: true, max: 4 }) : ""}</div>
     ${r.on_this_day.length ? `<div class="glass tv-otd">${onThisDayHtml(r.on_this_day, { big: true })}</div>` : ""}</div>`;
 }
-function tvNewsHtml() {
-  const items = st.banners?.items || [];
-  return `<div class="tv-news">${items.map((it) => `<div class="tv-news-item glass bn-${esc(it.style)}">
-    <span class="tv-news-emoji">${esc(it.emoji || "📣")}</span><div><h2>${esc(it.text)}</h2>${it.detail ? `<p>${esc(it.detail)}</p>` : ""}</div>
-    ${it.countdown ? `<span class="bn-cd big" data-cd="${it.countdown}"></span>` : ""}</div>`).join("")}</div>`;
-}
 // Always beside the slides: what's playing, and the last few things that happened.
 function tvSideFeedHtml(b) {
   const list = condenseRecent(b.recent).slice(0, 7);
@@ -547,69 +534,38 @@ function renderTv(b) {
   const main = $("#sp-main");
   if (main.dataset.sid !== b.id || main.dataset.mode !== "tv") {
     main.dataset.sid = b.id; main.dataset.mode = "tv";
-    main.innerHTML = `<div class="tv-wrap"><div class="tv-main"><div class="tv-stage">${TV_SLIDES.map(([k, title]) => `<section class="tv-slide" data-slide="${k}" aria-hidden="true">
+    main.innerHTML = `<div class="tv-wrap"><div class="tv-main"><div class="tv-stage">${SCREENS.map(([k, title]) => `<section class="tv-slide" data-slide="${k}" aria-hidden="true">
         <h2 class="tv-title">${esc(title)}<span class="tv-sub" data-sub="${k}"></span></h2><div class="tv-scroll"><div class="tv-inner" id="tv-${k}"></div></div></section>`).join("")}</div>
       <nav class="tv-dots" id="tv-dots" aria-label="Screens"></nav></div>
       <aside class="tv-side" aria-label="Recent events"><div id="tv-side-feed"></div></aside></div>`;
-    st.map = null; tv.idx = -1; tv.rot = -1; tv.shown = null; tv.loops = 0;
+    st.map = null; tv.idx = -1; tv.shown = null;
   }
   setHtml($("#tv-now"), heroHtml(b) + playersHtml(b));
   const hasPos = hasMap(b);
   setHtml($("#tv-map"), hasPos ? `<div class="sp-map tv-map" id="sp-map"></div><span class="muted" id="sp-map-dim"></span>` : "");
   if (hasPos && tv.shown === "map") mountMap($("#sp-map"), b, st.map);
   setHtml($("#tv-live"), liveHtml(b, true));
-  setHtml($("#tv-web"), b.web_map && !st.tv ? `<p class="muted"><a href="${esc(b.web_map)}" target="_blank" rel="noopener">Open the map full screen</a></p><iframe class="sp-webmap" src="${esc(b.web_map)}" title="World map" loading="lazy"></iframe>` : "");
+  setHtml($("#tv-web"), b.web_map ? `<p class="muted"><a href="${esc(b.web_map)}" target="_blank" rel="noopener">Open the map full screen</a></p><iframe class="sp-webmap" src="${esc(b.web_map)}" title="World map" loading="lazy"></iframe>` : "");
   setHtml($("#tv-leaders"), tvLeadersHtml());
   setHtml($("#tv-recap"), tvRecapHtml());
   setHtml($("#tv-feed"), b.recent.length ? `<div class="glass tv-feed">${feedHtml(b)}</div>` : "");
-  setHtml($("#tv-news"), tvNewsHtml());
   setHtml($("#tv-side-feed"), tvSideFeedHtml(b));
   document.querySelectorAll(".tv-events [data-ago]").forEach((el) => { el.textContent = fmtAgo(Number(el.dataset.ago)); });
   const sub = $('[data-sub="now"]');
   if (sub) sub.textContent = ` on ${b.name}`;
-  if (tv.idx < 0) {
-    if (st.tv) tvNext();
-    else tvShow(tvAvailable("live", b) ? "live" : tv.pick && tvAvailable(tv.pick, b) ? tv.pick : "now");
-  }
-  else if (tv.shown) {                     // the showing screen got more (or less) to scroll through: start it again
-    const inner = $(`.tv-slide[data-slide="${tv.shown}"] .tv-inner`);
-    if (inner && Math.abs(inner.scrollHeight - (tv.measured || 0)) > 40) tvShow(tv.shown);
-  }
+  if (tv.idx < 0) tvShow(tvAvailable("live", b) ? "live" : tv.pick && tvAvailable(tv.pick, b) ? tv.pick : "now");
+  else if (!tvAvailable(tv.shown, b)) tvShow("now");       // what was showing has nothing left in it
   tvDots(b);
 }
 function tvDots(b) {
   const dots = $("#tv-dots");
   if (!dots) return;
-  const html = TV_SLIDES.filter(([k]) => tvAvailable(k, b)).map(([k, t]) => `<button type="button" data-tv="${k}" class="${k === tv.shown ? "on" : ""}" aria-current="${k === tv.shown}"><i style="--dur:${k === tv.shown && tv.dur ? tv.dur / 1000 : st.tvCfg.seconds}s"></i>${esc(t)}</button>`).join("");
+  const html = SCREENS.filter(([k]) => tvAvailable(k, b)).map(([k, t]) => `<button type="button" data-tv="${k}" class="${k === tv.shown ? "on" : ""}" aria-current="${k === tv.shown}">${esc(t)}</button>`).join("");
   setHtml(dots, html);
   if (!dots._wired) {
     dots._wired = true;
     dots.addEventListener("click", (e) => { const btn = e.target.closest("[data-tv]"); if (btn) tvShow(btn.dataset.tv); });
   }
-}
-function tvNext() {
-  clearTimeout(tv.timer);
-  const b = st.board;
-  if (!b || !st.tv) return;
-  const keys = TV_SLIDES.map(([k]) => k);
-  // While a contest, race or game is on, its scoreboard comes back after every other screen.
-  if (tv.shown !== "live" && tvAvailable("live", b)) { tvShow("live"); return; }
-  let next = tv.rot;
-  for (let i = 0; i < keys.length; i++) {
-    next = (next + 1) % keys.length;
-    if (next === 0 && tv.rot >= 0) tv.loops++;
-    if (keys[next] !== "live" && tvAvailable(keys[next], b)) break;
-  }
-  tv.rot = next;
-  // Every server in turn: after a full loop, move on (skipping ones that are off).
-  if (st.tvCfg.rotate && tv.loops > 0 && st.servers.length > 1) {
-    const order = st.servers.filter((x) => x.running !== false || x.id === st.sid);
-    const at = order.findIndex((x) => x.id === st.sid);
-    const to = order[(at + 1) % order.length];
-    tv.loops = 0;
-    if (to && to.id !== st.sid) { switchServer(to.id, false); return; }
-  }
-  tvShow(keys[next]);
 }
 // The "Lately" panel starts level with the screen's first card, not with the tabs and title above it.
 function alignSide() {
@@ -619,100 +575,39 @@ function alignSide() {
   side.style.marginTop = `${Math.max(0, Math.round(first.getBoundingClientRect().top - main.getBoundingClientRect().top))}px`;
 }
 addEventListener("resize", () => requestAnimationFrame(alignSide));
-// Show one screen now and start its timer (also used when a screen's name is clicked).
+// Show one screen (also when its name is clicked); it stays until another is picked.
 function tvShow(key) {
-  clearTimeout(tv.timer);
   const b = st.board;
   if (!b) return;
-  if (!st.tv) tv.pick = key;
-  const keys = TV_SLIDES.map(([k]) => k);
-  tv.idx = keys.indexOf(key); tv.shown = key;
+  tv.pick = key;
+  tv.idx = SCREENS.findIndex(([k]) => k === key); tv.shown = key;
   document.querySelectorAll(".tv-slide").forEach((el) => {
     const on = el.dataset.slide === tv.shown;
     el.classList.toggle("on", on); el.setAttribute("aria-hidden", String(!on));
   });
   if (tv.shown === "map" && hasMap(b)) { st.map = null; mountMap($("#sp-map"), b, null); }
   requestAnimationFrame(alignSide);
-  if (!st.tv) {                            // picked by hand: it stays, and the page scrolls as usual
-    document.querySelectorAll(".tv-inner").forEach((el) => el.getAnimations?.().forEach((a) => a.cancel()));
-    tv.dur = 0; tvDots(b); return;
-  }
-  // A screen taller than the display stays up long enough to glide through all of it.
-  tv.dur = tvScroll($(`.tv-slide[data-slide="${tv.shown}"] .tv-scroll`));
   tvDots(b);
-  tv.timer = setTimeout(tvNext, tv.dur);
 }
-// Too tall for the screen: hold, glide down to the end, hold.
-// Returns how long the screen should stay up: the usual time, or longer when there's more to
-// scroll through (hold at the top, glide down slowly, hold at the bottom).
-function tvScroll(box) {
-  const base = st.tvCfg.seconds * 1000;
-  if (!box) return base;
-  const inner = box.firstElementChild;
-  inner.getAnimations?.().forEach((a) => a.cancel());
-  tv.measured = inner.scrollHeight;
-  const over = inner.scrollHeight - box.clientHeight;
-  if (over <= 8 || !inner.animate) return base;
-  const hold = 3500, glide = (over / TV_SCROLL_PX_S) * 1000;
-  const ms = Math.max(base, hold + glide + hold);
-  const top = hold / ms, end = 1 - hold / ms;
-  inner.animate([{ transform: "translateY(0)", offset: 0 }, { transform: "translateY(0)", offset: top },
-    { transform: `translateY(${-over}px)`, offset: end }, { transform: `translateY(${-over}px)`, offset: 1 }], { duration: ms, easing: "linear", fill: "forwards" });
-  return ms;
-}
-function setTvMode(on) {
-  st.tv = on;
-  document.body.classList.toggle("tv", on);
-  clearTimeout(tv.timer); tv.idx = -1; tv.rot = -1; tv.shown = null;
-  const url = new URL(location.href);
-  if (on) url.searchParams.set("tv", "1"); else url.searchParams.delete("tv");
-  history.replaceState(null, "", url);
-  renderServerTabs();
-  delete $("#sp-main").dataset.sid;
-  st.leadersAt = 0;
-  st.banners?.render();
-  if (st.board) render(st.board);
-  $("#sp-tv")?.setAttribute("aria-pressed", String(on));
-  // Full screen goes with TV mode: on together, off together (a wall screen opened with ?tv=1 may not
-  // be allowed full screen until someone clicks, and that's fine).
-  if (on) document.documentElement.requestFullscreen?.().then(() => { tv.full = true; }).catch(() => {});
-  else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
-}
-$("#sp-tv")?.addEventListener("click", () => setTvMode(!st.tv));
-// Leaving full screen (Esc) leaves TV mode too, if TV mode is what made it full screen.
-document.addEventListener("fullscreenchange", () => {
-  if (!document.fullscreenElement && tv.full) { tv.full = false; if (st.tv) setTvMode(false); }
-});
-// The wall clock, and a hidden cursor when nobody's touching it.
-let tvIdle = 0;
-addEventListener("pointermove", () => { document.body.classList.remove("tv-idle"); clearTimeout(tvIdle); tvIdle = setTimeout(() => document.body.classList.add("tv-idle"), 3000); });
 setInterval(() => {
-  const c = $("#tv-clock");
-  if (c && st.tv) c.textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   document.querySelectorAll(".live-cd[data-cd]").forEach((el) => { const left = Number(el.dataset.cd) - Date.now() / 1000; el.textContent = left > 0 ? fmtCountdown(left) : "Time's up"; });
-  document.querySelectorAll(".tv-news [data-cd]").forEach((el) => { const left = Number(el.dataset.cd) - Date.now() / 1000; el.textContent = left > 0 ? fmtCountdown(left) : "Now!"; });
 }, 1000);
 
-// ------------------------------------------------------------------ big-screen niceties
-let wakeLock = null;
-async function keepAwake() {
-  try { if ("wakeLock" in navigator && !document.hidden) wakeLock = await navigator.wakeLock.request("screen"); } catch { /* optional */ }
+// ------------------------------------------------------------------ start and stop
+function stop() {
+  st.on = false; clearTimeout(pollTimer);
+  const box = $("#live");
+  if (box) box.hidden = true;
 }
-document.addEventListener("visibilitychange", () => { if (!document.hidden && (!wakeLock || wakeLock.released)) keepAwake(); });
-
-document.addEventListener("DOMContentLoaded", async () => {
-  if (typeof showSignedIn === "function") showSignedIn();
-  const sky = $("#status-sky");
-  if (sky) {
-    st.scene = startSkyScene(sky, { auto: false, sound: (t, i) => FWAudio.play(t, i), dim: () => (document.body.classList.contains("ui-hidden") ? 0 : 0.35) });
-    st.bar = startShowBar(st.scene, { key: "solstone-sky-status", defaultOn: true, hide: true, skyServer: () => st.sid || "",
-      onEvent: (item) => { if (item.text && item.server_id === st.sid) toast(esc(item.text)); } });
-  }
-  st.banners = startBoard($("#sp-board"), { where: "status", sid: () => st.sid || "", scene: () => st.scene, max: innerWidth < 700 ? 1 : 3, ticker: () => st.tv });
-  if (st.tv) document.body.classList.add("tv");
-  keepAwake();
+// opts: scene (the sky, for fireworks on joins), toast(html), sid (a server to show first)
+async function startLive(opts = {}) {
+  if (!$("#sp-main")) return;
+  Object.assign(st, { scene: opts.scene || null, toast: opts.toast || null, want: opts.sid || st.want, sid: null, board: null, prevOnline: null, prevEventTs: 0, map: null, recap: null, leaders: null, recapAt: 0, leadersAt: 0, on: true });
+  tv.idx = -1; tv.shown = null;
   await loadServers();
-  poll();
-  setInterval(() => { if (!document.hidden) loadServers(); }, 30000);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });     // back from the background: refresh now
-});
+  if (st.on) { $("#live").hidden = false; poll(); }
+}
+setInterval(() => { if (st.on && !document.hidden && $("#sp-main")) loadServers(); }, 30000);
+window.startLive = startLive;
+window.showLiveServer = showServer;
+})();
