@@ -1,8 +1,7 @@
 services:
   solstone:
     image: ghcr.io/magicsolstone/solstone:latest
-    # :latest = :stable, only updates when a version is tagged (v1.2.3).
-    # Swap in :beta for builds of every push to main.
+    # :latest = :stable, updates with each released version. Pin a version (:1.2.0) to stay put.
     # To build from local source instead, comment image: and uncomment:
     # build: .
     container_name: solstone

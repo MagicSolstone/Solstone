@@ -73,7 +73,7 @@ Restart the server. Solstone reads the port and password from `server.properties
 ```yaml
 services:
   solstone:
-    image: ghcr.io/magicsolstone/solstone:latest   # or :beta, or build: .
+    image: ghcr.io/magicsolstone/solstone:latest   # or a pinned version like :1.2.0, or build: .
     restart: unless-stopped
     ports: ["8085:8080"]
     environment:
@@ -146,17 +146,16 @@ Without Crafty configured, Solstone still works by scanning `SERVERS_DIR` for fo
 
 ## Choosing a release channel
 
-Releases work the same way as The Coop Ledger:
+Releases work the same way as Tide+: changes are made and tested on a branch, then merged to `main`.
 
 | Tag | Updates when | For |
 |---|---|---|
-| `latest` / `stable` | A version tag like `v1.2.0` is pushed (or a GitHub release is published with one) | Everyday use |
+| `latest` / `stable` | `main` gets a new `VERSION` (in `app/main.py`) | Everyday use |
 | `1.2.0` | Never, it's pinned | Rolling back |
-| `beta` | Every push to `main` | Trying new things early. Shows a "Beta build" badge in the sidebar |
 
-Every build runs lint and tests first; a failing build is never published. Images are multi-arch (amd64 and arm64).
+Every build runs lint, the tests and a browser check of every page first; a failing build is never published. A branch build stops after the checks. A new version also makes a GitHub release from `RELEASE_NOTES.md`. Images are multi-arch (amd64 and arm64).
 
-To release: `git tag v1.0.0 && git push origin v1.0.0`, or create a release on GitHub with a new `v1.0.0` tag.
+To release: raise `VERSION` in `app/main.py`, write `RELEASE_NOTES.md`, and merge to `main`.
 
 The first time the workflow publishes, set the package to **Public** under your GitHub profile → Packages → solstone → Package settings. Otherwise pulls get a 401.
 
