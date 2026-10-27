@@ -698,9 +698,17 @@ function setTvMode(on) {
   st.leadersAt = 0;
   st.banners?.render();
   if (st.board) render(st.board);
-  if (on) document.documentElement.requestFullscreen?.().catch(() => {});
+  $("#sp-tv")?.setAttribute("aria-pressed", String(on));
+  // Full screen goes with TV mode: on together, off together (a wall screen opened with ?tv=1 may not
+  // be allowed full screen until someone clicks, and that's fine).
+  if (on) document.documentElement.requestFullscreen?.().then(() => { tv.full = true; }).catch(() => {});
+  else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
 }
 $("#sp-tv")?.addEventListener("click", () => setTvMode(!st.tv));
+// Leaving full screen (Esc) leaves TV mode too, if TV mode is what made it full screen.
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement && tv.full) { tv.full = false; if (st.tv) setTvMode(false); }
+});
 // The wall clock, and a hidden cursor when nobody's touching it.
 let tvIdle = 0;
 addEventListener("pointermove", () => { document.body.classList.remove("tv-idle"); clearTimeout(tvIdle); tvIdle = setTimeout(() => document.body.classList.add("tv-idle"), 3000); });
@@ -712,10 +720,6 @@ setInterval(() => {
 }, 1000);
 
 // ------------------------------------------------------------------ big-screen niceties
-$("#sp-full")?.addEventListener("click", () => {
-  if (document.fullscreenElement) document.exitFullscreen?.();
-  else document.documentElement.requestFullscreen?.().catch(() => {});
-});
 let wakeLock = null;
 async function keepAwake() {
   try { if ("wakeLock" in navigator && !document.hidden) wakeLock = await navigator.wakeLock.request("screen"); } catch { /* optional */ }

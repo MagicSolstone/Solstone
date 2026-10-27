@@ -252,6 +252,8 @@ class Registry:
                         if old:
                             srv._rcon, srv._rcon_backoff, srv.rcon_error = old._rcon, old._rcon_backoff, old.rcon_error
                         found[sid] = srv
+            if config.only_servers:     # this Solstone looks after just these (another one may have the rest)
+                found = {k: v for k, v in found.items() if {k.lower(), v.name.lower(), v.dir.name.lower()} & set(config.only_servers)}
             self.servers = found
             self._refreshed = time.monotonic()
 

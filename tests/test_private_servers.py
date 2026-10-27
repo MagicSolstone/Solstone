@@ -32,3 +32,22 @@ def test_private_server_is_for_admins_only(client, viewer, anon, sid):
         client.put("/api/board", json={"items": [], "birthdays": []})
         _set(client, sid, private="")
     assert viewer.get(f"/api/servers/{sid}").status_code == 200
+
+
+def test_only_servers_keeps_one_solstone_to_its_own(monkeypatch, sid):
+    """ONLY_SERVERS: two Solstones against one Crafty, each with its own servers."""
+    import asyncio
+
+    from app import servers as S
+    from app.config import config
+
+    try:
+        monkeypatch.setattr(config, "only_servers", ("some-other-server",))
+        asyncio.run(S.registry.refresh(force=True))
+        assert sid not in S.registry.servers
+        monkeypatch.setattr(config, "only_servers", (sid.lower(),))
+        asyncio.run(S.registry.refresh(force=True))
+        assert sid in S.registry.servers
+    finally:
+        monkeypatch.setattr(config, "only_servers", ())
+        asyncio.run(S.registry.refresh(force=True))

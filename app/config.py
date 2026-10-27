@@ -35,6 +35,10 @@ class Config:
     # write to (mount just this one read-write). Defaults to <MUSIC_LIBRARY_DIR>/Solstone.
     music_upload_dir: str = os.getenv("MUSIC_UPLOAD_DIR", "")
 
+    # Optional: only these servers (Crafty names, Crafty ids or folder names, comma-separated). For running
+    # one Solstone per community, each with its own website, accounts and settings, against one Crafty.
+    only_servers: tuple[str, ...] = tuple(x.strip().lower() for x in os.getenv("ONLY_SERVERS", "").split(",") if x.strip())
+
     # App data (settings + downloaded game assets)
     data_dir: Path = Path(os.getenv("DATA_DIR", "/data"))
     # The address people reach Solstone at (https://playsolstone.com), for links Solstone hands out

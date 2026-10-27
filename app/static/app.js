@@ -138,6 +138,7 @@ async function signedIn(user) {
   const root = $("#login-root"); root.hidden = true; root.innerHTML = "";
   if (!appSky.board) appSky.board = startBoard($("#app-board"), { where: "app", sid: () => curSid || "", scene: () => appSky.scene, dismiss: true, max: innerWidth < 700 ? 1 : 2 });
   $("#account-name").textContent = user.shown || user.username;
+  $("#btn-music").hidden = user.music === false;
   $("#account-role").textContent = (ROLE_NAMES.find(([v]) => v === user.role) || [, "Signed in"])[1] + (user.player ? ` · ${user.player.name}` : "");
   fetch("/api/public/status").then((r) => r.json()).then((d) => { $("#btn-status").hidden = !d.enabled; appBuild = d.build; }).catch(() => {});
   // Left open for a while? Say when Solstone has been updated (a reload loads it).

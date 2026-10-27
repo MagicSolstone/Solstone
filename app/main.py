@@ -136,11 +136,18 @@ PLAYER_ROUTES: dict[str, set[str]] = {
 }
 
 
+def _players_hear_music() -> bool:
+    """Off unless an admin turns it on: every listener streams from your home connection, and it's your music."""
+    return bool(settings_store.load().get("music_access", {}).get("players"))
+
+
 def _player_may(method: str, path: str) -> bool:
     if not path.startswith("/api/") or path.startswith(("/api/public/", "/api/auth/")):
         return True
-    if path.startswith(("/api/music", "/api/fireworks")):     # music and fireworks are for everyone
+    if path.startswith("/api/fireworks"):                      # fireworks are for everyone
         return True
+    if path.startswith("/api/music"):                          # music only if an admin lets players listen
+        return method == "GET" and _players_hear_music()
     return method in PLAYER_ROUTES.get(path, ()) or (method == "HEAD" and "GET" in PLAYER_ROUTES.get(path, ()))
 
 
@@ -512,7 +519,7 @@ async def signup_finish(request: Request):
                                 str(body.get("username") or ""), password)
     auth.audit(u, None, "signup", f"{u.username} as {u.player_name}")
     user, token = await asyncio.to_thread(auth.login, request, u.username, password)
-    resp = JSONResponse({"user": user.public()})
+    resp = JSONResponse({"user": _me(user)})
     auth.set_cookie(resp, request, token)
     return resp
 
@@ -1078,7 +1085,10 @@ async def player_skin_list():
 
 # ---- music: the main library, an external library, playlists and the radio
 def _music_allowed(request: Request) -> None:
-    if request.state.user is None and not (music.public() and _status_cfg()["enabled"]):
+    u = request.state.user
+    if u is None and not (music.public() and _status_cfg()["enabled"]):
+        raise HTTPException(404)
+    if u is not None and u.is_player and not _players_hear_music():
         raise HTTPException(404)
 
 
@@ -1238,7 +1248,7 @@ async def music_queue(request: Request, type: str = "radio", id: str = ""):
 async def music_settings(request: Request):
     auth.require_admin(request)
     r = music.rules()
-    return {"public": music.public(), "mode": r["mode"], "blocked": r["blocked"], "approved": r["approved"],
+    return {"public": music.public(), "players": _players_hear_music(), "mode": r["mode"], "blocked": r["blocked"], "approved": r["approved"],
             "radio_default": music.radio_settings()["default"], "external": music.external_status(), "main": music.main_tracks()}
 
 
@@ -1248,6 +1258,8 @@ async def music_settings_put(request: Request):
     body = await _body(request)
     if isinstance(body.get("public"), bool):
         music.update(public_flag=body["public"])
+    if isinstance(body.get("players"), bool):
+        settings_store.save_section("music_access", {"players": body["players"]})
     if body.get("mode") in ("all", "approved"):
         music.set_mode(body["mode"])
     if "radio_default" in body:
@@ -1522,7 +1534,7 @@ async def _body(request: Request) -> dict:
 async def login(request: Request):
     body = await _body(request)
     user, token = await asyncio.to_thread(auth.login, request, str(body.get("username", "")), str(body.get("password", "")))
-    resp = JSONResponse({"user": user.public()})
+    resp = JSONResponse({"user": _me(user)})
     auth.set_cookie(resp, request, token)
     return resp
 
@@ -1537,7 +1549,12 @@ async def logout(request: Request):
 
 @app.get("/api/auth/me")
 async def me(request: Request):
-    return {"user": auth.require_user(request).public(), "version": VERSION}
+    return {"user": _me(auth.require_user(request)), "version": VERSION}
+
+
+def _me(u: auth.User) -> dict:
+    """The signed-in user as the app needs them: who, which level, and whether music is theirs to play."""
+    return {**u.public(), "music": not u.is_player or _players_hear_music()}
 
 
 @app.post("/api/auth/profile")

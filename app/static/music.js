@@ -369,6 +369,7 @@ async function muLibrary(el) {
   const blocked = s.blocked;
   el.innerHTML = `<div class="mu-lib">
     <section class="panel"><h3 class="fws-sub">Who can listen</h3>
+      <label class="switch-row"><span>Players can listen too<br><small class="muted">Admins and Trusted can always listen. Every listener streams from your home internet (about 1–2 MB a minute each for MP3, several times that for FLAC), and sharing music beyond your household can be a copyright problem.</small></span><input type="checkbox" role="switch" id="mu-players" ${s.players ? "checked" : ""}></label>
       <label class="switch-row"><span>Play the radio on the public status page<br><small class="muted">Visitors only ever get the radio, never the rest of the library.</small></span><input type="checkbox" role="switch" id="mu-public" ${s.public ? "checked" : ""}></label>
       <div class="fw-row" style="margin-top:12px"><span>Default radio</span><select class="input sm" id="mu-default-radio"><option value="">The main library (uploads)</option>${(mu.lists || []).filter((p) => p.shared || p.mine).map((p) => `<option value="${esc(p.id)}" ${s.radio_default === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></div>
       <p class="muted small">Dated playlists (Christmas, Halloween…) take over on their days; set dates on the playlist itself.</p></section>
@@ -410,6 +411,7 @@ async function muLibrary(el) {
       ${s.approved.albums.length ? `<p class="mu-blk-h">Albums</p><div class="mu-chips">${s.approved.albums.map((a) => `<span class="chip">${esc(a.split("|")[1] || a)} <button type="button" class="chip-x" data-unapprove="albums" data-v="${esc(a)}" aria-label="Take away approval">×</button></span>`).join("")}</div>` : ""}</section>` : ""}
   </div>`;
   const reload = async () => { await muLibrary(el); FWMusic.loaded = false; await FWMusic.load(); appSky.bar?.musicChanged(); };
+  $("#mu-players").addEventListener("change", (e) => post("/api/music/settings", { players: e.target.checked }, "PUT").then(() => showToast("Saved", 1500)));
   $("#mu-public").addEventListener("change", (e) => post("/api/music/settings", { public: e.target.checked }, "PUT").then(() => showToast("Saved", 1500)));
   $("#mu-default-radio").addEventListener("change", (e) => post("/api/music/settings", { radio_default: e.target.value }, "PUT").then(() => { showToast("Saved", 1500); mu.radioDefault = e.target.value; }));
   $("#mu-move")?.addEventListener("click", async (e) => {

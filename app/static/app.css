@@ -1952,3 +1952,11 @@ body.tv:has(.mbar:not(.no-music)) .tv-wrap { margin-bottom: 72px; }
 .ws-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
 .ws-row > label { flex: 1 1 200px; }
 .ws-text { font-family: ui-monospace, Menlo, monospace; font-size: .92rem; line-height: 1.5; resize: vertical; }
+
+/* The status page wears the website's top bar, in the same place as on the home page,
+   so it reads as one more page of the site. TV mode hides it for the wall screen. */
+body.status-page:not(.tv) .sp { max-width: 1080px; padding: 18px clamp(16px, 3vw, 32px) 40px; }
+.sp-site { margin-bottom: 16px; }
+body.tv .sp-site { display: none; }
+.sp-tv { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 640px) { .sp-tv span { display: none; } }

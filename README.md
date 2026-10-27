@@ -129,8 +129,27 @@ Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web ma
 | `MUSIC_UPLOAD_DIR` | `<library>/Solstone` | The one folder inside the library Solstone may write to: music uploaded in Solstone is filed there as Artist/Album/Track. Mount just this folder read-write |
 | `BACKUP_STALE_HOURS` | `48` | A backup older than this shows a warning and can send a notification |
 | `PUID` / `PGID` | `1000` | Host user/group that owns `/data` |
+| `ONLY_SERVERS` | – | Only these servers (Crafty names, Crafty ids or folder names, comma-separated). For running two Solstones against one Crafty, see below |
 
 Without Crafty configured, Solstone still works by scanning `SERVERS_DIR` for folders containing `server.properties`.
+
+### Two communities, two websites
+To give two Minecraft servers their own website, accounts and settings, run two Solstone containers against the same Crafty. Give each its own `/data` folder, its own port (each domain or tunnel points at one), and `ONLY_SERVERS` naming its server:
+
+```yaml
+  solstone-family:
+    image: ghcr.io/magicsolstone/solstone:latest
+    ports: ["8080:8080"]
+    volumes: ["/mnt/user/appdata/solstone-family:/data", "/mnt/user/appdata/crafty/servers:/servers:ro"]
+    environment: { ONLY_SERVERS: "Family Realm", CRAFTY_URL: "...", CRAFTY_TOKEN: "..." }
+  solstone-friends:
+    image: ghcr.io/magicsolstone/solstone:latest
+    ports: ["8081:8080"]
+    volumes: ["/mnt/user/appdata/solstone-friends:/data", "/mnt/user/appdata/crafty/servers:/servers:ro"]
+    environment: { ONLY_SERVERS: "Friends SMP", CRAFTY_URL: "...", CRAFTY_TOKEN: "..." }
+```
+
+Each Solstone only records, greets, announces and runs events on its own server, so nothing happens twice in the game.
 
 ## Notes and limits
 

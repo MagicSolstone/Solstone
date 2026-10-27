@@ -7,6 +7,16 @@
 - **Link any account to a player** from Users & activity, so a Player account has its own page.
 - The server side refuses anything a Player account isn't meant to use, including routes added later, until they're added to the list on purpose.
 
+## Music
+- **Players can't play music unless you let them** (Music → *Players can listen too*). Admins and Trusted always can. Every listener streams from your home connection, and sharing your music beyond the household can be a copyright problem, so it starts off.
+
+## The status page is part of the website
+- It has the website's own top bar (Home, News, Guides, FAQ, Live status, Sign in) in the same place as on the home page, and the same width, so nobody gets lost going back and forth.
+- **TV mode is one button**: on goes full screen and plays the screens by themselves; off leaves full screen too (so does Esc). The separate full-screen button is gone, and TV mode has a TV icon.
+
+## Two websites from one Crafty
+- **`ONLY_SERVERS`** keeps a Solstone to the servers you name, so two Solstone containers can each run one community's website, accounts and settings against the same Crafty, without both sending things into the game.
+
 ## Your server's name everywhere
 - The name from **Website → Site details** is the name on the sign-in page, the app's sidebar, page titles, the status page and the home page. Solstone is a small "Made with Solstone" line.
 
