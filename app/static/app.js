@@ -1265,6 +1265,7 @@ async function openSettings(s) {
       <label>RCON host <small>Used for live inventories. Leave blank to use ${esc(s.rcon?.host || "the Crafty host")}.</small><input class="input" name="rcon_host" value="${esc(cur.rcon_host || "")}"></label>
       <label>RCON port <small>Leave blank to use rcon.port from server.properties</small><input class="input" name="rcon_port" inputmode="numeric" value="${esc(cur.rcon_port || "")}"></label>
       <label>RCON password <small>${cur.rcon_password_set ? "Saved. Type a new one to replace it." : "Leave blank to use rcon.password from server.properties"}</small><input class="input" type="password" name="rcon_password" autocomplete="off"></label>
+      <label class="check"><input type="checkbox" name="private" ${cur.private ? "checked" : ""}> Private <small>Only admins see it. It never shows on the public pages, and signed-in players don't see it.</small></label>
       <label class="check"><input type="checkbox" name="hidden" ${cur.hidden ? "checked" : ""}> Hide this server from Solstone</label>
       <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Save settings</button></div>
     </form>`, (m) => {
@@ -1272,7 +1273,7 @@ async function openSettings(s) {
       e.preventDefault();
       const f = new FormData(e.target);
       const body = { display_name: f.get("display_name"), map_url: f.get("map_url"), rcon_host: f.get("rcon_host"),
-        rcon_port: f.get("rcon_port") ? Number(f.get("rcon_port")) : "", hidden: f.get("hidden") ? true : "" };
+        rcon_port: f.get("rcon_port") ? Number(f.get("rcon_port")) : "", hidden: f.get("hidden") ? true : "", private: f.get("private") ? true : "" };
       if (f.get("rcon_password")) body.rcon_password = f.get("rcon_password");
       try {
         await post(`/api/servers/${encodeURIComponent(s.id)}/settings`, body, "PUT");

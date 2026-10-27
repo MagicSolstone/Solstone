@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import hashlib
 import json
 import logging
@@ -13,7 +14,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -83,6 +84,34 @@ CSP = "; ".join([
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
+# The signed-in user of the request being handled (None when signed out), so server lookups can
+# keep private servers to admins without every route passing the request along.
+_viewer: contextvars.ContextVar = contextvars.ContextVar("solstone_viewer", default=None)
+
+
+def _admin_viewing() -> bool:
+    u = _viewer.get()
+    return u is not None and u.is_admin
+
+
+def _private(srv: S.Server) -> bool:
+    """A private server (an admin's home server, say): only admins see it, never the public pages."""
+    return bool(srv.settings.get("private"))
+
+
+def _visible(srv: S.Server) -> bool:
+    """Shown to whoever is asking: not hidden, and if private, only to an admin."""
+    return not srv.settings.get("hidden") and (not _private(srv) or _admin_viewing())
+
+
+async def _note_viewer(request: Request) -> None:
+    """Run before every route, in the route's own context (unlike the middleware), so _viewer is set there."""
+    _viewer.set(getattr(request.state, "user", None))
+
+
+app.router.dependencies.append(Depends(_note_viewer))
+
+
 @app.middleware("http")
 async def require_login(request: Request, call_next):
     """Every /api route needs a signed-in user except health and login. Changes also need
@@ -112,7 +141,7 @@ async def require_login(request: Request, call_next):
 
 async def _server(sid: str) -> S.Server:
     srv = await S.registry.get(sid)
-    if not srv:
+    if not srv or (_private(srv) and not _admin_viewing()):
         raise HTTPException(404, "Server not found")
     return srv
 
@@ -188,12 +217,12 @@ def _phase(t: int) -> str:
 
 
 def _public_servers_list() -> list[S.Server]:
-    return [s for s in S.registry.servers.values() if not s.settings.get("hidden")]
+    return [s for s in S.registry.servers.values() if not s.settings.get("hidden") and not _private(s)]
 
 
 async def _public_server(sid: str) -> S.Server:
     srv = await S.registry.get(sid)
-    if not srv or srv.settings.get("hidden"):
+    if not srv or srv.settings.get("hidden") or _private(srv):
         raise HTTPException(404, "Server not found")
     return srv
 
@@ -716,7 +745,11 @@ async def firework_feed(request: Request, since: int = -1):
     """Fireworks set off by things happening in the game. Player names only for people
     signed in, or when the public status page (which shows them anyway) is on."""
     names = request.state.user is not None or _status_cfg()["enabled"]
-    return JSONResponse(fwshow.feed_since(since, names), headers={"Cache-Control": "no-store"})
+    feed = fwshow.feed_since(since, names)
+    if not _admin_viewing():      # nothing from a private server, not even that something happened there
+        hidden = {x.id for x in S.registry.servers.values() if _private(x)}
+        feed = {**feed, "items": [i for i in feed.get("items", []) if i.get("server_id") not in hidden]}
+    return JSONResponse(feed, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/fireworks/show")
@@ -787,7 +820,7 @@ _sky_cache: dict[str, tuple[float, dict]] = {}
 
 async def _sky_server(sid: str | None) -> S.Server | None:
     await S.registry.refresh()
-    visible = [x for x in S.registry.servers.values() if x.is_java and not x.settings.get("hidden")]
+    visible = [x for x in S.registry.servers.values() if x.is_java and not x.settings.get("hidden") and not _private(x)]
     want = sid if sid and sid != "auto" else _fireworks_cfg()["sky"]["server"]
     srv = next((x for x in visible if x.id == want), None)
     if srv:
@@ -839,7 +872,7 @@ async def player_skin_list():
     """Everyone who has joined, with their UUID, for the painter's face stamp."""
     await S.registry.refresh()
     seen: dict[str, dict] = {}
-    for srv in S.registry.servers.values():
+    for srv in [x for x in S.registry.servers.values() if _visible(x)]:
         for u, p in S.known_players(srv).items():
             seen.setdefault(p["name"].lower(), {"name": p["name"], "uuid": u})
     return sorted(seen.values(), key=lambda x: x["name"].lower())
@@ -1379,7 +1412,7 @@ async def audit_all(request: Request, limit: int = 200):
 @app.get("/api/servers")
 async def list_servers():
     await S.registry.refresh()
-    visible = [s for s in S.registry.servers.values() if not s.settings.get("hidden")]
+    visible = [s for s in S.registry.servers.values() if _visible(s)]
     results = await asyncio.gather(*(S.server_summary(s) for s in visible), return_exceptions=True)
     out = []
     for srv, r in zip(visible, results, strict=True):
@@ -1396,7 +1429,7 @@ async def player_uuids():
     """Every known player name (lowercase) -> UUID, so heads can use the world's own skin copy
     wherever only a name is at hand."""
     out: dict[str, str] = {}
-    for srv in S.registry.servers.values():
+    for srv in [x for x in S.registry.servers.values() if _visible(x)]:
         for u, p in S.known_players(srv).items():
             out.setdefault(p["name"].lower(), u)
     return JSONResponse(out, headers={"Cache-Control": "private, max-age=300"})
@@ -1699,7 +1732,7 @@ async def all_players():
     """Everyone who has joined any server (for per-player settings like screen-time limits)."""
     await S.registry.refresh()
     names: dict[str, str] = {}
-    for srv in S.registry.servers.values():
+    for srv in [x for x in S.registry.servers.values() if _visible(x)]:
         for p in S.known_players(srv).values():
             names.setdefault(p["name"].lower(), p["name"])
     return sorted(names.values(), key=str.lower)

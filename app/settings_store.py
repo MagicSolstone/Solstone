@@ -8,7 +8,7 @@ from .config import config
 
 _PATH = config.data_dir / "settings.json"
 _lock = threading.Lock()
-ALLOWED = {"display_name", "map_url", "rcon_host", "rcon_port", "rcon_password", "hidden", "bedtime"}
+ALLOWED = {"display_name", "map_url", "rcon_host", "rcon_port", "rcon_password", "hidden", "private", "bedtime"}
 
 
 def load() -> dict:
