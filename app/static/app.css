@@ -80,6 +80,11 @@ p { margin: 0; }
 .account-menu a:hover { background: var(--tuff-2); }
 .account-menu hr { border: 0; border-top: 1px solid var(--basalt); margin: 4px 0; }
 body.ui-hidden .app-top { display: none; }
+.manage-nav { width: calc(100% - 2 * var(--gutter)); max-width: calc(var(--page) - 2 * var(--gutter)); margin: 22px auto -10px; flex-wrap: wrap; }
+.manage-nav[hidden] { display: none; }
+.manage-nav .manage-notify { margin-left: auto; border: 0; background: none; color: var(--muted); cursor: pointer; font-weight: 700; font-size: .95rem; padding: 10px 14px 9px; }
+.manage-nav .manage-notify:hover { color: var(--bone); }
+body.ui-hidden .manage-nav { display: none; }
 #app-sky { position: fixed; inset: 0; width: 100vw; height: 100vh; image-rendering: pixelated; pointer-events: none; z-index: 0; opacity: .9; }
 body.logged-out #app-sky { display: none; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; padding: 0 6px; }
@@ -1663,7 +1668,7 @@ body.on-editor:not(.ui-hidden) .fwbar .fwb-launch, body.on-editor:not(.ui-hidden
 .hp-nav a:hover { color: var(--bone); background: rgba(255,255,255,.05); }
 .hp-nav a[aria-current] { color: var(--bone); background: var(--tuff-2); }
 .hp-top .btn { text-decoration: none; }
-.hp-main { display: flex; flex-direction: column; gap: 28px; flex: 1; }
+.hp-main { display: flex; flex-direction: column; gap: 28px; flex: 1; padding: 0; margin: 0; max-width: none; }   /* .hp gives the page its width */
 .hp-main section { display: flex; flex-direction: column; gap: 12px; }
 .hp-hero { padding: 28px 0 6px; }
 .hp-hero h1 { font-size: clamp(2.2rem, 6vw, 3.4rem); color: var(--gold); text-shadow: 0 3px 0 rgba(0,0,0,.35); }

@@ -5,7 +5,7 @@
    code to them in the game chat (tellraw to that player only), so only whoever is at that
    player's keyboard sees it. Being on the whitelist is what lets someone in at all.
 3. They type the code with a login and password of their choice, and get a "player" account
-   linked to that Minecraft player.
+   linked to that Minecraft player, which sees the server they signed up on (an admin can add more).
 
 The answer to step 1 is the same whether or not the player is online, so the page can't be used
 to see who's playing. Codes last ten minutes, take five tries, and are stored only as a hash.
@@ -100,7 +100,7 @@ async def start(request: Request, typed: str, servers: list[S.Server]) -> str:
                          (". Forgot the password? Ask an admin to set a new one.", "yellow")])
     else:
         code = f"{secrets.randbelow(10**6):06d}"
-        _codes[uuid] = {"hash": _hash(code), "name": name, "expires": time.time() + CODE_TTL, "tries": 0}
+        _codes[uuid] = {"hash": _hash(code), "name": name, "server": srv.id, "expires": time.time() + CODE_TTL, "tries": 0}
         msg = component([("[Website] ", "gold"), ("Your sign-up code is ", "yellow"), (code, "green"),
                          (". It's only for you: don't share it. It works for 10 minutes.", "yellow")])
     try:
@@ -125,7 +125,8 @@ def finish(typed: str, code: str, username: str, password: str) -> auth.User:
             _codes.pop(uuid, None)
             raise HTTPException(400, "Wrong code too many times. Ask for a new one")
         raise HTTPException(400, "That code isn't right")
-    user = auth.create_user(username.strip(), password, "player", player=(uuid, entry["name"]))
+    # they see the server they signed up on; an admin can give them more in Users
+    user = auth.create_user(username.strip(), password, "player", player=(uuid, entry["name"]), servers=[entry["server"]])
     _codes.pop(uuid, None)
     try:
         auth.set_display_name(user.id, entry["name"].lstrip("."))

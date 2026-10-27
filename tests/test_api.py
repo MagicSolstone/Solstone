@@ -125,7 +125,7 @@ def test_settings_require_admin(client, viewer, sid):
 
 
 def test_pages_home_app_and_not_found(client, anon):
-    for path in ("/", "/news", "/guides", "/guides/join", "/faq", "/post/anything"):          # the public website
+    for path in ("/", "/news", "/help", "/guides", "/guides/join", "/faq", "/post/anything"):          # the public website
         r = anon.get(path)
         assert r.status_code == 200 and "/static/home.js" in r.text, path
     r = anon.get("/app")                                                       # the app, signed in or not (it shows sign-in)

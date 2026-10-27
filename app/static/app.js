@@ -127,6 +127,7 @@ async function signedIn(user) {
   me.user = user;
   document.body.classList.remove("logged-out");
   document.body.classList.toggle("is-admin", user.role === "admin");
+  $("#nav-manage").hidden = user.role !== "admin";
   stopLoginScene();
   clearInterval(state.loginRefresh);
   if (!appSky.scene && $("#app-sky")) {
@@ -162,10 +163,17 @@ function wireMobileMenu() {
   addEventListener("hashchange", () => { set(false); markNav(); });
   markNav();
 }
+function setManageNav(tab) {
+  const nav = $("#manage-nav");
+  if (!nav) return;
+  nav.hidden = !tab || !isAdmin();
+  nav.querySelectorAll("[data-m]").forEach((a) => a.toggleAttribute("aria-current", a.dataset.m === tab));
+}
 function markNav() {
   const h = location.hash || "#/";
-  const on = h === "#/" || h.startsWith("#/s/") ? "nav-servers" : h.startsWith("#/coming-up") ? "btn-upcoming" : h.startsWith("#/fireworks") ? "btn-fwe" : "";
-  ["nav-servers", "btn-upcoming", "btn-fwe"].forEach((id) => $(`#${id}`)?.toggleAttribute("aria-current", id === on));
+  const on = h === "#/" || h.startsWith("#/s/") ? "nav-servers" : h.startsWith("#/coming-up") ? "btn-upcoming" : h.startsWith("#/fireworks") ? "btn-fwe"
+    : h.startsWith("#/manage") ? "nav-manage" : "";
+  ["nav-servers", "btn-upcoming", "btn-fwe", "nav-manage"].forEach((id) => $(`#${id}`)?.toggleAttribute("aria-current", id === on));
 }
 
 function wireAccountMenu() {
@@ -1351,11 +1359,20 @@ async function route() {
   const parts = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent).filter(Boolean);
   try {
     if (!me.user) return;
-    if (parts[0] === "admin") { await viewAdmin(); return; }
-    if (parts[0] === "announcements") { await viewAnnouncements(); return; }
-    if (parts[0] === "website") { await viewWebsite(); return; }
+    // Manage: the old addresses lead to their tab
+    const OLD = { admin: "users", announcements: "announcements", website: "website" };
+    if (OLD[parts[0]]) { location.replace(`#/manage/${OLD[parts[0]]}`); return; }
+    if (parts[0] === "fireworks" && parts[1] === "settings") { location.replace("#/manage/fireworks"); return; }
+    setManageNav(parts[0] === "manage" ? parts[1] || "announcements" : null);
+    if (parts[0] === "manage") {
+      const tab = parts[1] || "announcements";
+      if (tab === "announcements") await viewAnnouncements();
+      else if (tab === "website") await viewWebsite();
+      else if (tab === "fireworks") await viewFireworkSettings();
+      else await viewAdmin(tab);
+      return;
+    }
     if (parts[0] === "coming-up") { await viewUpcoming(); return; }
-    if (parts[0] === "fireworks" && parts[1] === "settings") { await viewFireworkSettings(); return; }
     if (parts[0] === "fireworks") { await viewFireworkEditor(parts[1]); return; }
     if (parts[0] === "s" && parts[1]) {
       const sid = parts[1];

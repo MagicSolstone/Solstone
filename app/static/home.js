@@ -5,7 +5,8 @@
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const hp = { site: null };
-const SECTIONS = { news: ["News", "news"], guides: ["Guides", "guide"], faq: ["FAQ", "faq"] };
+// Two kinds of page: News (what's happening) and Help (guides, then questions and answers).
+const SECTIONS = { news: ["News", "news"], help: ["Help", "help"] };
 
 // Old bookmarks into the app (/#/s/...) still work: the app lives at /app now.
 if (location.hash.startsWith("#/")) location.replace(`/app${location.hash}`);
@@ -167,21 +168,26 @@ async function home() {
   return `<section class="hp-hero"><h1>${esc(s.name)}</h1>${s.tagline ? `<p class="hp-tagline">${esc(s.tagline)}</p>` : ""}</section>
     ${joinCard(s)}${serversCard(s)}
     <section><div class="hp-head"><h2>News</h2><a href="/news">All news →</a></div>${postCards(news, "No news yet.")}</section>
-    <section><div class="hp-head"><h2>Guides</h2><a href="/guides">All guides →</a></div>${postCards([...builtinCards(), ...guides].slice(0, 4), "")}</section>
+    <section><div class="hp-head"><h2>Help</h2><a href="/help">All guides and questions →</a></div>${postCards([...builtinCards(), ...guides].slice(0, 4), "")}</section>
     ${s.about ? `<section class="hp-about glass"><h2>About</h2><div class="hp-body">${markdown(s.about)}</div></section>` : ""}`;
 }
 
 async function section(key) {
+  if (key === "help") {
+    const [guides, faq] = await Promise.all([getJSON("/api/public/posts?category=guide&limit=100"), getJSON("/api/public/posts?category=faq&limit=100")]);
+    return `<section><h1>Help</h1><p class="muted">How to join, how things work here, and answers to common questions.</p></section>
+      <section><h2>Guides</h2>${postCards([...builtinCards(), ...guides], "")}</section>
+      <section id="faq"><h2>Questions</h2>${faqList(faq)}</section>`;
+  }
   const [title, cat] = SECTIONS[key];
-  let posts = await getJSON(`/api/public/posts?category=${cat}&limit=100`);
-  if (cat === "guide") posts = [...builtinCards(), ...posts];
-  return `<section><h1>${esc(title)}</h1>${cat === "faq" ? faqList(posts) : postCards(posts, `No ${title.toLowerCase()} yet.`)}</section>`;
+  const posts = await getJSON(`/api/public/posts?category=${cat}&limit=100`);
+  return `<section><h1>${esc(title)}</h1>${postCards(posts, `No ${title.toLowerCase()} yet.`)}</section>`;
 }
 
 async function article(slug) {
   let p;
   try { p = await getJSON(`/api/public/posts/${encodeURIComponent(slug)}`); } catch { return `<section><h1>Not found</h1><p class="muted">That post isn't here any more. <a href="/">Back home</a></p></section>`; }
-  const back = { news: ["/news", "News"], guide: ["/guides", "Guides"], faq: ["/faq", "FAQ"] }[p.category] || ["/", "Home"];
+  const back = { news: ["/news", "News"], guide: ["/help", "Help"], faq: ["/help", "Help"] }[p.category] || ["/", "Home"];
   document.title = `${p.title} · ${hp.site.name}`;
   return `<article class="hp-article glass"><a class="back" href="${back[0]}">← ${esc(back[1])}</a>
     <h1>${esc(p.title)}</h1><p class="hp-post-meta">${esc(dateText(p.created))}${p.author ? ` · ${esc(p.author)}` : ""}</p>
@@ -191,7 +197,7 @@ async function article(slug) {
 function builtinArticle(key) {
   const g = BUILTIN[key];
   document.title = `${g.title} · ${hp.site.name}`;
-  return `<article class="hp-article glass"><a class="back" href="/guides">← Guides</a>
+  return `<article class="hp-article glass"><a class="back" href="/help">← Help</a>
     <h1>${esc(g.title)}</h1><div class="hp-body">${markdown(g.body(hp.site))}</div></article>`;
 }
 
@@ -202,7 +208,8 @@ async function route() {
   try {
     if (path === "/") html = await home();
     else if (path.startsWith("/post/")) { nav = ""; html = await article(decodeURIComponent(path.slice(6))); }
-    else if (path.startsWith("/guides/") && BUILTIN[path.slice(8)]) { nav = "guides"; html = builtinArticle(path.slice(8)); }
+    else if (path === "/guides" || path === "/faq") { history.replaceState(null, "", path === "/faq" ? "/help#faq" : "/help"); route(); return; }   // the old pages
+    else if (path.startsWith("/guides/") && BUILTIN[path.slice(8)]) { nav = "help"; html = builtinArticle(path.slice(8)); }
     else if (SECTIONS[path.slice(1)]) { nav = path.slice(1); html = await section(nav); }
     else { nav = ""; html = `<section><h1>Not found</h1><p class="muted"><a href="/">Back home</a></p></section>`; }
   } catch {
@@ -211,7 +218,7 @@ async function route() {
   if (!path.startsWith("/post/") && !path.startsWith("/guides/")) document.title = nav && nav !== "home" ? `${SECTIONS[nav][0]} · ${hp.site.name}` : hp.site.name;
   main.innerHTML = html;
   document.querySelectorAll("[data-nav]").forEach((a) => a.toggleAttribute("aria-current", a.dataset.nav === nav));
-  window.scrollTo(0, 0);
+  if (location.hash === "#faq") $("#faq")?.scrollIntoView(); else window.scrollTo(0, 0);
 }
 
 // Links inside the site change the page without a reload; everything else is a normal link.
@@ -225,7 +232,7 @@ document.addEventListener("click", (e) => {
   if (!a || a.target || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
   const url = new URL(a.href, location.href);
   if (url.origin !== location.origin) return;
-  if (url.pathname === "/" || url.pathname.startsWith("/post/") || url.pathname.startsWith("/guides/") || SECTIONS[url.pathname.slice(1)]) {
+  if (url.pathname === "/" || url.pathname.startsWith("/post/") || url.pathname.startsWith("/guides") || url.pathname === "/faq" || SECTIONS[url.pathname.slice(1)]) {
     e.preventDefault();
     if (url.pathname !== location.pathname) history.pushState(null, "", url.pathname);
     route();

@@ -2,7 +2,8 @@
    posts (news, guides and FAQ). What's saved here shows on the home page at /. Loaded after app.js. */
 "use strict";
 
-const WS_CATS = [["news", "News"], ["guide", "Guide"], ["faq", "FAQ"]];
+// News goes on the News page; guides and questions (FAQ) both go on the Help page.
+const WS_CATS = [["news", "News"], ["guide", "Help: a guide"], ["faq", "Help: a question"]];
 const ws = { data: null, editing: null, tab: "posts" };
 
 async function viewWebsite() {
@@ -13,7 +14,7 @@ async function viewWebsite() {
   ws.data = await api("/api/posts");
   ws.editing = null;
   setView(`<div class="fwe-head"><h1>Website</h1>
-      <p class="muted">The public home page at <a href="/" target="_blank" rel="noopener">/</a>: how to join, news, guides and FAQ. Anyone can read it without signing in; private servers never show there.</p></div>
+      <p class="muted">The public home page at <a href="/" target="_blank" rel="noopener">/</a>: how to join, News, and Help (guides and questions). Anyone can read it without signing in; private servers never show there.</p></div>
     <nav class="fwe-tabs fws-tabs" role="tablist" aria-label="Website">
       <button type="button" role="tab" data-tab="posts" aria-selected="${ws.tab === "posts"}">Posts</button>
       <button type="button" role="tab" data-tab="site" aria-selected="${ws.tab === "site"}">Site details</button></nav>
@@ -52,7 +53,7 @@ function wsPosts(el) {
       <div><b>${esc(p.title)}</b>${p.pinned ? " 📌" : ""}<div class="muted">${esc(WS_CATS.find(([k]) => k === p.category)?.[1] || "")} · ${esc(wsDate(p.created))}${p.published ? "" : " · <b>Draft</b>"}</div></div>
       <span class="btn-row">${p.published ? `<a class="btn sm" href="/post/${encodeURIComponent(p.slug)}" target="_blank" rel="noopener">View</a>` : ""}
         <button class="btn sm" type="button" data-edit>Edit</button><button class="btn sm danger" type="button" data-del>Delete</button></span></div>`).join("");
-  el.innerHTML = `<section class="panel"><div class="ws-list">${rows || `<p class="muted">No posts yet. News is good for updates and events; guides for how-tos (joining on Bedrock, the rules, starting out); FAQ for quick questions.</p>`}</div>
+  el.innerHTML = `<section class="panel"><div class="ws-list">${rows || `<p class="muted">No posts yet. News is for updates and events. On the Help page, guides are for how-tos (the rules, starting out) and questions are for quick answers.</p>`}</div>
     ${ws.editing === "new" ? wsEditHtml({ category: "news", published: true }) : `<button class="btn primary" id="ws-new" style="margin-top:12px">+ New post</button>`}</section>`;
   $("#ws-new")?.addEventListener("click", () => { ws.editing = "new"; renderWebsite(); $("#ws-edit input[name=title]")?.focus(); });
   el.querySelectorAll(".ws-post[data-id]").forEach((row) => {

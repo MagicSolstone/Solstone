@@ -131,8 +131,9 @@ def main() -> int:
                 "player-advancements": f"#/s/{sid}/p/{puuid}/advancements", "world": f"#/s/{sid}/world",
                 "control": f"#/s/{sid}/control", "check": f"#/s/{sid}/check", "chat": f"#/s/{sid}/chat", "challenges": f"#/s/{sid}/challenges", "races": f"#/s/{sid}/challenges/races", "games": f"#/s/{sid}/challenges/games", "performance": f"#/s/{sid}/performance",
                 "leaderboards": f"#/s/{sid}/leaderboards", "fishing": f"#/s/{sid}/fishing", "fishing-player": f"#/s/{sid}/fishing/Tyler", "mods": f"#/s/{sid}/mods", "adventures": f"#/s/{sid}/adventures", "coming-up": "#/coming-up",
-                "fireworks-editor": "#/fireworks", "fireworks-settings": "#/fireworks/settings",
-                "announcements": "#/announcements", "admin": "#/admin", "website": "#/website",
+                "fireworks-editor": "#/fireworks", "fireworks-settings": "#/manage/fireworks",
+                "announcements": "#/manage/announcements", "admin": "#/manage/users", "manage-servers": "#/manage/servers",
+                "manage-activity": "#/manage/activity", "website": "#/manage/website",
             }
             pg.goto(f"{base}/app"); pg.wait_for_timeout(1200)
             for name, hash_ in routes.items():
@@ -224,7 +225,7 @@ def main() -> int:
             anon.add_init_script("window.__csp = []; document.addEventListener('securitypolicyviolation', (e) => window.__csp.push(e.violatedDirective + ' ' + (e.blockedURI || 'inline')));")
             anon.on("pageerror", lambda e: problems.append(f"status: JS error: {e}"))
             # the public website, signed out
-            for name, url in (("site-home", "/"), ("site-news", "/news"), ("site-guides", "/guides"), ("site-faq", "/faq"),
+            for name, url in (("site-home", "/"), ("site-news", "/news"), ("site-help", "/help"),
                               ("site-post", "/post/welcome-to-the-server")):
                 anon.goto(f"{base}{url}"); anon.wait_for_timeout(1200)
                 check(anon, name)
@@ -239,6 +240,9 @@ def main() -> int:
             anon.goto(f"{base}/#/coming-up"); anon.wait_for_timeout(1200)
             if "/app" not in anon.url:
                 problems.append("home: an old /#/ link didn't forward to the app")
+            anon.goto(f"{base}/faq"); anon.wait_for_timeout(1200)
+            if not anon.url.endswith("/help#faq") or not anon.locator("#faq details").count():
+                problems.append("help: /faq didn't lead to the questions on the Help page")
             anon.goto(f"{base}/guides/join"); anon.wait_for_timeout(1000)
             check(anon, "site-guide-join")
             if "play.example.net" not in (anon.locator(".hp-body").text_content() or "") or anon.title().find("Smoke SMP") < 0:
@@ -262,9 +266,9 @@ def main() -> int:
             pl.request.post(f"{base}/api/auth/login", data={"username": "smoke_player", "password": "player-pass-1"}, headers=H)
             pl.goto(f"{base}/app#/s/{sid}"); pl.wait_for_timeout(1500)
             check(pl, "player-account-overview")
-            tabs = pl.locator(".tabs").text_content() or ""
-            hrefs = " ".join(pl.eval_on_selector_all(".tabs a", "els => els.map(e => e.getAttribute('href'))"))
-            if "World" in tabs or "/chat" in hrefs or "/adventures" in hrefs or pl.locator(".tabs a").count() < 2:
+            tabs = pl.locator("nav[aria-label='Server sections']").text_content() or ""
+            hrefs = " ".join(pl.eval_on_selector_all("nav[aria-label='Server sections'] a", "els => els.map(e => e.getAttribute('href'))"))
+            if "World" in tabs or "/chat" in hrefs or "/adventures" in hrefs or pl.locator("nav[aria-label='Server sections'] a").count() < 2:
                 problems.append(f"player account: wrong tabs ({tabs.strip()})")
             pl.goto(f"{base}/app#/s/{sid}/p/{puuid}"); pl.wait_for_timeout(1300)
             check(pl, "player-account-own-page")

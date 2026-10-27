@@ -40,8 +40,7 @@ async function viewFireworkSettings() {
   $("#rail-servers").innerHTML = railHtml(null);
   const [data, fw, designs] = await Promise.all([api("/api/fireworks/show"), api("/api/public/fireworks"), api("/api/fireworks").catch(() => [])]);
   fws.data = data; fws.fw = fw; fws.designs = designs;
-  setView(`<div class="fwe-head"><h1>Fireworks</h1>
-      <nav class="tabs" aria-label="Fireworks"><a href="#/fireworks">Editor</a><a href="#/fireworks/settings" aria-current="page">Show settings</a></nav>
+  setView(`<div class="fwe-head"><h1>Firework show</h1>
       <p class="muted" id="fws-today"></p></div>
     <nav class="fwe-tabs fws-tabs" role="tablist" aria-label="Show settings">${FWS_TABS.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${fws.tab === k}">${l}</button>`).join("")}</nav>
     <div id="fws-body"></div>`);

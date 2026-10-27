@@ -161,7 +161,7 @@ async function viewFireworkEditor(editId) {
   ed.grids = {}; ed.frame = 1;
   if (!resume && (found || ed.base == null)) fweMarkSaved();
   setView(`<div class="fwe-head"><h1>Fireworks</h1>
-      <nav class="tabs" aria-label="Fireworks"><a href="#/fireworks" aria-current="page">Editor</a>${isAdmin() ? '<a href="#/fireworks/settings">Show settings</a>' : ""}</nav>
+      <nav class="tabs" aria-label="Fireworks"><a href="#/fireworks" aria-current="page">Editor</a>${isAdmin() ? '<a href="#/manage/fireworks">Show settings</a>' : ""}</nav>
       <p class="muted">Design a firework, watch it go off, and save it. Fireworks marked <b>In the show</b> join the sky on every page of the site, including the home, sign-in and status pages.</p></div>
     <div class="fwe-mode" id="fwe-mode" aria-live="polite"></div>
     <div class="fwe">

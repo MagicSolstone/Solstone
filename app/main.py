@@ -87,9 +87,16 @@ def _private(srv: S.Server) -> bool:
     return bool(srv.settings.get("private"))
 
 
+def _allowed(srv: S.Server) -> bool:
+    """The signed-in person may see this server (some logins are limited to one or two). Signed-out pages
+    have their own rules (public servers only)."""
+    u = _viewer.get()
+    return u is None or u.may_see(srv.id)
+
+
 def _visible(srv: S.Server) -> bool:
-    """Shown to whoever is asking: not hidden, and if private, only to an admin."""
-    return not srv.settings.get("hidden") and (not _private(srv) or _admin_viewing())
+    """Shown to whoever is asking: not hidden, if private only to an admin, and one of theirs."""
+    return not srv.settings.get("hidden") and (not _private(srv) or _admin_viewing()) and _allowed(srv)
 
 
 # What a "player" account may use. Everything else under /api/ is refused, so a new page or route is
@@ -210,7 +217,7 @@ async def require_login(request: Request, call_next):
 
 async def _server(sid: str) -> S.Server:
     srv = await S.registry.get(sid)
-    if not srv or (_private(srv) and not _admin_viewing()):
+    if not srv or (_private(srv) and not _admin_viewing()) or not _allowed(srv):
         raise HTTPException(404, "Server not found")
     return srv
 
@@ -963,7 +970,7 @@ async def firework_feed(request: Request, since: int = -1):
     names = request.state.user is not None or _status_cfg()["enabled"]
     feed = fwshow.feed_since(since, names)
     if not _admin_viewing():      # nothing from a private server, not even that something happened there
-        hidden = {x.id for x in S.registry.servers.values() if _private(x)}
+        hidden = {x.id for x in S.registry.servers.values() if _private(x) or not _allowed(x)}
         feed = {**feed, "items": [i for i in feed.get("items", []) if i.get("server_id") not in hidden]}
     return JSONResponse(feed, headers={"Cache-Control": "no-store"})
 
@@ -1339,7 +1346,10 @@ async def edit_user(uid: int, request: Request):
             if not found:
                 raise HTTPException(400, "No player by that name has joined any server")
         u = auth.link_player(uid, found)
-    changes = ", ".join(k for k in ("role", "password", "player") if k in body and (body.get(k) or k == "player"))
+    if "servers" in body:                   # the servers this login sees: a list of ids, or null for all of them
+        v = body.get("servers")
+        u = auth.set_servers(uid, [str(x) for x in v] if isinstance(v, list) else None)
+    changes = ", ".join(k for k in ("role", "password", "player", "servers") if k in body and (body.get(k) or k in ("player", "servers")))
     auth.audit(admin, None, "edit_user", f"{u.username}: {changes}")
     return u.public()
 
@@ -2298,6 +2308,7 @@ async def status_page(sid: str = ""):
 @app.get("/guides", include_in_schema=False)
 @app.get("/guides/{slug}", include_in_schema=False)
 @app.get("/faq", include_in_schema=False)
+@app.get("/help", include_in_schema=False)
 @app.get("/post/{slug}", include_in_schema=False)
 async def home_page(slug: str = ""):
     """The public website: home, news, guides, FAQ and posts. No sign-in."""

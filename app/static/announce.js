@@ -208,7 +208,7 @@ function annTv(el) {
   const t = ann.tv;
   el.innerHTML = `<section class="panel" style="max-width:760px">
     <p class="muted" style="margin-bottom:10px">TV mode turns the status page into a slideshow for a screen on the wall: one thing at a time, big enough to read across the room, with banners and fireworks on top. Open it with the 📺 button on the status page, or go straight to <a href="/status?tv=1" target="_blank" rel="noopener">${esc(location.origin)}/status?tv=1</a>.</p>
-    ${ann.data.status_enabled ? "" : `<div class="notice">The public status page is off. Turn it on under <a href="#/admin">Users &amp; activity</a> first.</div>`}
+    ${ann.data.status_enabled ? "" : `<div class="notice">The public status page is off. Turn it on under <a href="#/manage/servers">Manage → Servers &amp; status page</a> first.</div>`}
     <h3 class="fws-sub">Slides</h3>
     ${ANN_SLIDES.map(([k, l, h]) => `<label class="switch-row"><span><b>${l}</b><br><small class="muted">${h}</small></span><input type="checkbox" role="switch" data-slide="${k}" ${t.slides[k] ? "checked" : ""}></label>`).join("")}
     <div class="fw-row" style="margin-top:12px"><span>Each slide</span><span><input class="input sm" type="number" min="6" max="120" id="ann-tv-secs" value="${t.seconds}" style="width:76px"> seconds</span></div>
@@ -257,7 +257,7 @@ async function viewUpcoming() {
   const groups = [];
   for (const it of ahead) { const g = groups[groups.length - 1]; if (g && g.date === it.date) g.items.push(it); else groups.push({ date: it.date, items: [it] }); }
   setView(`<div class="fwe-head"><h1>Coming up</h1>
-      <p class="muted">Everything planned for the next ${d.days} days: contests, races and games, birthdays, holidays and their fireworks shows, and announcements counting down.${isAdmin() ? ` Add things from a server's <b>Contests</b> page, the <a href="#/fireworks/settings">fireworks calendar</a> or <a href="#/announcements">Announcements</a>.` : ""}</p></div>
+      <p class="muted">Everything planned for the next ${d.days} days: contests, races and games, birthdays, holidays and their fireworks shows, and announcements counting down.${isAdmin() ? ` Add things from a server's <b>Contests</b> page, the <a href="#/manage/fireworks">fireworks calendar</a> or <a href="#/manage/announcements">Announcements</a>.` : ""}</p></div>
     ${live.length ? `<section class="section"><div class="section-head"><h2>Happening now</h2></div><ul class="up-list panel">${live.map(row).join("")}</ul></section>` : ""}
     ${groups.length ? groups.map((g) => `<section class="section up-day"><div class="section-head"><h2>${esc(dayKey(g.date))}</h2></div><ul class="up-list panel">${g.items.map(row).join("")}</ul></section>`).join("")
       : `<div class="panel"><p class="muted">Nothing planned in the next ${d.days} days.</p></div>`}`);

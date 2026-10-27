@@ -50,6 +50,7 @@ def test_signup_with_a_code_from_the_game(client, anon, game):
         assert ok.status_code == 200, ok.text
         me = anon.get("/api/auth/me").json()["user"]
         assert me["role"] == "player" and me["player"]["name"] == "Tyler" and me["shown"] == "Tyler"
+        assert me["servers"] == [helpers.SID]                       # the server they signed up on
         # the code is used up, and a second account for the same player isn't made
         again = anon.post("/api/public/signup/finish", json={"player": "Tyler", "code": code, "username": "tyler2", "password": "long-enough-1"})
         assert again.status_code == 400
@@ -117,3 +118,17 @@ def test_every_api_route_is_judged_for_players():
     paths = {getattr(r, "path", "") for r in main.app.routes}
     assert set(main.PLAYER_ROUTES) <= paths
 
+
+
+def test_a_login_can_be_limited_to_some_servers(client, viewer, sid):
+    me = viewer.get("/api/auth/me").json()["user"]
+    assert me["servers"] is None and any(s["id"] == sid for s in viewer.get("/api/servers").json())
+    assert client.patch(f"/api/users/{me['id']}", json={"servers": ["somewhere-else"]}).json()["servers"] == ["somewhere-else"]
+    try:
+        assert not any(s.get("id") == sid for s in viewer.get("/api/servers").json())
+        for path in ("", "/players", "/leaderboard", "/chat"):
+            assert viewer.get(f"/api/servers/{sid}{path}").status_code == 404, path
+        assert client.get(f"/api/servers/{sid}").status_code == 200          # admins see every server
+    finally:
+        assert client.patch(f"/api/users/{me['id']}", json={"servers": None}).json()["servers"] is None
+    assert viewer.get(f"/api/servers/{sid}").status_code == 200

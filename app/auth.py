@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import logging
 import os
 import re
@@ -89,6 +90,8 @@ def _init() -> None:
         if "player_uuid" not in cols:                        # added with player sign-up: the linked Minecraft account
             db.conn().execute("ALTER TABLE users ADD COLUMN player_uuid TEXT")
             db.conn().execute("ALTER TABLE users ADD COLUMN player_name TEXT")
+        if "servers" not in cols:                            # added later: the servers a login is limited to
+            db.conn().execute("ALTER TABLE users ADD COLUMN servers TEXT")
         db.conn().execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_player ON users(player_uuid) WHERE player_uuid IS NOT NULL")
         db.conn().execute("UPDATE users SET role='trusted' WHERE role='viewer'")   # the old name
         _ready = True
@@ -122,6 +125,10 @@ class User:
     display_name: str | None = None
     player_uuid: str | None = None      # the Minecraft account this login belongs to (signed-up players)
     player_name: str | None = None
+    servers: list[str] | None = None    # the only servers this login sees (None: all of them; admins always see all)
+
+    def may_see(self, server_id: str) -> bool:
+        return self.is_admin or self.servers is None or server_id in self.servers
 
     @property
     def is_admin(self) -> bool:
@@ -139,14 +146,25 @@ class User:
 
     def public(self) -> dict:
         return {"id": self.id, "username": self.username, "role": self.role, "display_name": self.display_name, "shown": self.shown,
-                "player": {"uuid": self.player_uuid, "name": self.player_name} if self.player_uuid else None}
+                "player": {"uuid": self.player_uuid, "name": self.player_name} if self.player_uuid else None,
+                "servers": self.servers}
 
 
 def _row_user(r) -> User:
     keys = set(r.keys()) if hasattr(r, "keys") else set()
     g = lambda k: r[k] if k in keys else None  # noqa: E731
     return User(id=r["id"], username=r["username"], role=r["role"], display_name=g("display_name"),
-                player_uuid=g("player_uuid"), player_name=g("player_name"))
+                player_uuid=g("player_uuid"), player_name=g("player_name"), servers=_servers_of(g("servers")))
+
+
+def _servers_of(raw) -> list[str] | None:
+    if not raw:
+        return None
+    try:
+        v = json.loads(raw)
+    except ValueError:
+        return []                          # unreadable: see nothing rather than everything
+    return [str(x) for x in v] if isinstance(v, list) else None
 
 
 _DISPLAY_NAME = re.compile(r"^[A-Za-z0-9 _.'-]{1,24}$")
@@ -189,7 +207,7 @@ def validate_new(username: str | None, password: str | None, role: str | None) -
 
 
 def create_user(username: str, password: str, role: str, check: bool = True,
-                player: tuple[str, str] | None = None) -> User:
+                player: tuple[str, str] | None = None, servers: list[str] | None = None) -> User:
     _init()
     role = ROLE_ALIASES.get(role, role)
     if check:
@@ -198,8 +216,9 @@ def create_user(username: str, password: str, role: str, check: bool = True,
         raise HTTPException(409, f"There's already a user called {username}")
     if player and db.q("SELECT 1 FROM users WHERE player_uuid=?", (player[0],)):
         raise HTTPException(409, f"{player[1]} already has an account")
-    uid = db.x("INSERT INTO users(username, password_hash, role, created_ts, player_uuid, player_name) VALUES (?,?,?,?,?,?)",
-               (username, hash_password(password), role, time.time(), player[0] if player else None, player[1] if player else None))
+    uid = db.x("INSERT INTO users(username, password_hash, role, created_ts, player_uuid, player_name, servers) VALUES (?,?,?,?,?,?,?)",
+               (username, hash_password(password), role, time.time(), player[0] if player else None, player[1] if player else None,
+                json.dumps(servers) if servers is not None else None))
     return get_user(uid)
 
 
@@ -222,10 +241,21 @@ def link_player(uid: int, player: tuple[str, str] | None) -> User:
     return u
 
 
+def set_servers(uid: int, servers: list[str] | None) -> User:
+    """Limit a login to these servers (None: every server)."""
+    _init()
+    db.x("UPDATE users SET servers=? WHERE id=?", (json.dumps(sorted(set(servers))) if servers is not None else None, uid))
+    u = get_user(uid)
+    if not u:
+        raise HTTPException(404, "User not found")
+    return u
+
+
 def list_users() -> list[dict]:
     _init()
     return [{"id": r["id"], "username": r["username"], "display_name": r["display_name"], "role": r["role"], "created": r["created_ts"],
-             "last_login": r["last_login_ts"], "player_name": r["player_name"]} for r in db.q("SELECT * FROM users ORDER BY username COLLATE NOCASE")]
+             "last_login": r["last_login_ts"], "player_name": r["player_name"],
+             "servers": _servers_of(r["servers"])} for r in db.q("SELECT * FROM users ORDER BY username COLLATE NOCASE")]
 
 
 def get_user(uid: int) -> User | None:

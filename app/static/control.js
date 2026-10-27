@@ -342,22 +342,24 @@ function rulesHtml(rules, canRcon) {
 }
 
 // ================================================================ Users & activity
-async function viewAdmin() {
+// Manage → Users, Servers & status page, Activity log (one section each).
+async function viewAdmin(section = "users") {
   if (!isAdmin()) { location.replace("#/"); return; }
   curSid = null;
-  document.title = `Users & activity · ${SITE_NAME}`;
+  document.title = `${{ users: "Users", servers: "Servers & status page", activity: "Activity log" }[section] || "Manage"} · ${SITE_NAME}`;
   $("#rail-servers").innerHTML = railHtml(null);
   const [users, audit, lp, hiddenSrv, siteCfg] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/status"), api("/api/servers-hidden").catch(() => []), api("/api/posts").then((d) => d.site).catch(() => ({}))]);
   const roleOpts = (cur) => ROLE_NAMES.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("");
   const fmtWhen = (ts) => ts ? fmtAgo(ts) : "never";
-  setView(`<h1 style="margin-bottom:20px">Users &amp; activity</h1>
-    <section class="section"><div class="section-head"><h2>Users</h2><span class="muted">Players see the servers, who's on, the leaderboards and their own page. Trusted can see everything (chat, where everyone is, inventories) but can't change anything. Admins can also control servers.</span></div>
+  const srvName = (id) => state.servers.find((x) => x.id === id)?.name || id;
+  const usersHtml = `<section class="section"><div class="section-head"><h2>Users</h2><span class="muted">Players see the servers, who's on, the leaderboards and their own page. Trusted can see everything (chat, where everyone is, inventories) but can't change anything. Admins can also control servers.</span></div>
       <div class="panel rules-ctl" id="signup-ctl" style="max-width:720px;margin-bottom:12px">
         <label class="switch-row"><span><b>Let players make their own account</b><br><small class="muted">From the sign-in page: they type their Minecraft name while they're playing on a public server, get a code in the game chat, and choose a login. They start as Players. Your whitelist decides who can do this.</small></span><input type="checkbox" role="switch" id="signup-on" ${siteCfg.signup ? "checked" : ""}></label></div>
-      <div class="table-wrap"><table class="data users-table"><thead><tr><th>Username</th><th>Level</th><th>Minecraft player</th><th>Last signed in</th><th></th></tr></thead><tbody>
+      <div class="table-wrap"><table class="data users-table"><thead><tr><th>Username</th><th>Level</th><th>Minecraft player</th><th>Servers</th><th>Last signed in</th><th></th></tr></thead><tbody>
       ${users.map((u) => `<tr data-uid="${u.id}"><td><b>${esc(u.username)}</b>${u.display_name ? ` <span class="muted">shown as ${esc(u.display_name)}</span>` : ""}${u.id === me.user.id ? ' <span class="muted">(you)</span>' : ""}</td>
         <td><select class="input sm" data-role ${u.id === me.user.id ? "disabled" : ""} aria-label="Level for ${esc(u.username)}">${roleOpts(u.role)}</select></td>
         <td><button class="btn sm" type="button" data-link title="Link this account to someone who plays">${u.player_name ? esc(u.player_name) : "Link…"}</button></td>
+        <td>${u.role === "admin" ? '<span class="muted">All</span>' : `<button class="btn sm" type="button" data-srv title="Which servers they see">${u.servers ? esc(u.servers.length === 1 ? srvName(u.servers[0]) : `${u.servers.length} servers`) : "All"}</button>`}</td>
         <td>${esc(fmtWhen(u.last_login))}</td>
         <td class="row-actions"><button class="btn sm" data-reset>Set password</button>${u.id === me.user.id ? "" : `<button class="btn sm danger" data-del>Remove</button>`}</td></tr>`).join("")}
       </tbody></table></div>
@@ -366,8 +368,8 @@ async function viewAdmin() {
         <label>Password<input class="input" name="password" type="password" minlength="8" autocomplete="new-password" placeholder="8 or more characters" required></label>
         <label>Level<select class="input" name="role">${roleOpts("trusted")}</select></label>
         <button class="btn primary" type="submit">Add user</button></div></form>
-    </section>
-    ${hiddenSrv.length ? `<section class="section" id="hidden-servers"><div class="section-head"><h2>Hidden servers</h2><span class="muted">Hidden from Solstone and the status page. Nothing about the server itself changes.</span></div>
+    </section>`;
+  const serversHtml = `${hiddenSrv.length ? `<section class="section" id="hidden-servers"><div class="section-head"><h2>Hidden servers</h2><span class="muted">Hidden from Solstone and the status page. Nothing about the server itself changes.</span></div>
       <div class="panel hidden-list">${hiddenSrv.map((x) => `<div class="hidden-row" data-hsid="${esc(x.id)}"><b>${esc(x.name)}</b><span class="muted small">${esc(x.game || "")}</span><button class="btn sm" type="button" data-unhide>Show it again</button></div>`).join("")}</div></section>` : ""}
     <section class="section"><div class="section-head"><h2>Public status page</h2><span class="muted">A live, read-only big-screen view anyone can open without signing in</span></div>
       <div class="panel rules-ctl" id="status-page-settings" style="max-width:720px">
@@ -376,14 +378,15 @@ async function viewAdmin() {
         <label class="switch-row"><span>Show held items and armour</span><input type="checkbox" role="switch" data-sp="show_items" ${lp.show_items ? "checked" : ""}></label>
         <label class="switch-row"><span>Show recent joins, deaths and advancements</span><input type="checkbox" role="switch" data-sp="show_activity" ${lp.show_activity ? "checked" : ""}></label>
         <label class="switch-row"><span>Embed the web map (BlueMap, squaremap) <br><small class="muted">Only works if visitors can reach the map's address too. A plain http:// map won't load on an https:// page.</small></span><input type="checkbox" role="switch" data-sp="show_web_map" ${lp.show_web_map ? "checked" : ""}></label>
-        <p class="muted small" style="margin-top:8px">Anyone with the address can see this page. Hidden servers are never shown.</p>
+        <p class="muted small" style="margin-top:8px">Anyone with the address can see this page. Hidden and private servers are never shown.</p>
       </div></section>
-    <section class="section"><div class="section-head"><h2>Fireworks</h2></div>
-      <div class="panel"><p>Fireworks settings, game events, and the holiday calendar have their own page. <a href="#/fireworks/settings">Open firework settings</a></p></div></section>
-    <section class="section"><div class="section-head"><h2>Admin activity</h2><span class="muted">Commands, changes and sign-in failures across all servers</span></div>
-      <div class="panel">${auditHtml(audit, true)}</div></section>`);
+    <section class="section"><div class="section-head"><h2>Each server</h2></div>
+      <div class="panel"><p>A server's own settings (its name, Private, the web map, bedtime) are on its page: open it from <b>Servers</b> and press ⚙.</p></div></section>`;
+  const activityHtml = `<section class="section"><div class="section-head"><h2>Admin activity</h2><span class="muted">Commands, changes and sign-in failures across all servers</span></div>
+      <div class="panel">${auditHtml(audit, true)}</div></section>`;
+  setView({ users: usersHtml, servers: serversHtml, activity: activityHtml }[section] || usersHtml);
 
-  $("#status-page-settings").addEventListener("change", async () => {
+  $("#status-page-settings")?.addEventListener("change", async () => {
     const body = {};
     $$("[data-sp]").forEach((i) => { body[i.dataset.sp] = i.checked; });
     try { await post("/api/settings/status", body, "PUT"); showToast(body.enabled ? 'Status page updated. <a href="/status" target="_blank" rel="noopener">Open it</a>' : "Status page turned off", 3500); }
@@ -396,16 +399,16 @@ async function viewAdmin() {
     try {
       await post(`/api/servers/${encodeURIComponent(row.dataset.hsid)}/settings`, { hidden: false }, "PUT");
       showToast(`${esc(row.querySelector("b").textContent)} is back`, 2500);
-      await loadServers(); viewAdmin();
+      await loadServers(); viewAdmin(section);
     } catch (err) { showToast(esc(err.message), 5000); }
   });
-  $("#add-user").addEventListener("submit", async (e) => {
+  $("#add-user")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
-    try { await post("/api/users", { username: f.get("username"), password: f.get("password"), role: f.get("role") }); showToast(`Added ${esc(f.get("username"))}`, 2500); viewAdmin(); }
+    try { await post("/api/users", { username: f.get("username"), password: f.get("password"), role: f.get("role") }); showToast(`Added ${esc(f.get("username"))}`, 2500); viewAdmin(section); }
     catch (err) { showToast(esc(err.message), 5000); }
   });
-  $("#signup-on").addEventListener("change", async (e) => {
+  $("#signup-on")?.addEventListener("change", async (e) => {
     try { await post("/api/settings/site", { signup: e.target.checked }, "PUT"); showToast(e.target.checked ? "Players can make their own account" : "Sign-up turned off", 2500); }
     catch (err) { showToast(esc(err.message), 5000); }
   });
@@ -416,7 +419,7 @@ async function viewAdmin() {
       <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Save</button></div></form>`, (m) => {
       $("#link-form", m).addEventListener("submit", async (e) => {
         e.preventDefault();
-        try { await post(`/api/users/${tr.dataset.uid}`, { player: new FormData(e.target).get("player") }, "PATCH"); closeModal(); showToast("Saved", 2000); viewAdmin(); }
+        try { await post(`/api/users/${tr.dataset.uid}`, { player: new FormData(e.target).get("player") }, "PATCH"); closeModal(); showToast("Saved", 2000); viewAdmin(section); }
         catch (err) { showToast(esc(err.message), 5000); }
       });
     });
@@ -424,7 +427,26 @@ async function viewAdmin() {
   $$("[data-role]").forEach((sel) => sel.addEventListener("change", async () => {
     const uid = sel.closest("tr").dataset.uid;
     try { await post(`/api/users/${uid}`, { role: sel.value }, "PATCH"); showToast("Level changed", 2500); }
-    catch (err) { showToast(esc(err.message), 5000); viewAdmin(); }
+    catch (err) { showToast(esc(err.message), 5000); viewAdmin(section); }
+  }));
+  // which servers a login sees (admins always see all)
+  $$("[data-srv]").forEach((b) => b.addEventListener("click", () => {
+    const tr = b.closest("tr"), u = users.find((x) => String(x.id) === tr.dataset.uid), cur = u.servers;
+    openModal(`<h2>Servers ${esc(u.username)} sees</h2><form id="srv-form">
+      <label class="check"><input type="checkbox" name="all" ${cur ? "" : "checked"}> Every server <small class="muted">(and any added later)</small></label>
+      <fieldset class="checks" id="srv-list" ${cur ? "" : "disabled"}>${state.servers.map((x) => `<label class="check"><input type="checkbox" name="sid" value="${esc(x.id)}" ${!cur || cur.includes(x.id) ? "checked" : ""}> ${esc(x.name)}</label>`).join("")}</fieldset>
+      <p class="muted small">They don't see the others anywhere: not in the server list, the announcements or Coming up.</p>
+      <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Save</button></div></form>`, (m) => {
+      const f = $("#srv-form", m);
+      f.all.addEventListener("change", () => { $("#srv-list", m).disabled = f.all.checked; });
+      f.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const picked = [...f.querySelectorAll('[name="sid"]:checked')].map((x) => x.value);
+        if (!f.all.checked && !picked.length) { showToast("Pick at least one server", 3000); return; }
+        try { await post(`/api/users/${u.id}`, { servers: f.all.checked ? null : picked }, "PATCH"); closeModal(); showToast("Saved", 2000); viewAdmin(section); }
+        catch (err) { showToast(esc(err.message), 5000); }
+      });
+    });
   }));
   $$("[data-reset]").forEach((b) => b.addEventListener("click", () => {
     const tr = b.closest("tr"), name = tr.querySelector("b").textContent;
@@ -441,7 +463,7 @@ async function viewAdmin() {
   $$("[data-del]").forEach((b) => b.addEventListener("click", async () => {
     const tr = b.closest("tr"), name = tr.querySelector("b").textContent;
     if (!(await confirmBox(`Remove ${name}?`, "They'll be signed out and won't be able to sign in again.", "Remove"))) return;
-    try { await api(`/api/users/${tr.dataset.uid}`, { method: "DELETE" }); showToast(`Removed ${esc(name)}`, 2500); viewAdmin(); }
+    try { await api(`/api/users/${tr.dataset.uid}`, { method: "DELETE" }); showToast(`Removed ${esc(name)}`, 2500); viewAdmin(section); }
     catch (err) { showToast(esc(err.message), 5000); }
   }));
 }
