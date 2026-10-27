@@ -44,6 +44,9 @@ function wsEditHtml(p) {
       <label class="check"><input type="checkbox" name="pinned" ${p.pinned ? "checked" : ""}> Pinned <small>Stays at the top</small></label></div>
     <label>Text <small>Plain text with a little formatting: # Heading, **bold**, *italic*, - lists, [a link](https://...), &gt; a quote. A blank line starts a new paragraph.</small>
       <textarea class="input ws-text" name="body" rows="14" maxlength="20000" required>${esc(p.body || "")}</textarea></label>
+    <div class="btn-row ws-insert"><label class="btn sm ws-file">🖼 Add a picture<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-pic hidden></label>
+      <button type="button" class="btn sm" data-link>🔗 Add a link</button>
+      <small class="muted">The first picture also shows on the post's card. Under 4 MB each.</small></div>
     <div class="actions"><button type="button" class="btn" data-cancel>Cancel</button><button class="btn primary" type="submit">${p.id ? "Save" : "Publish"}</button></div>
   </form>`;
 }
@@ -70,6 +73,32 @@ function wsPosts(el) {
   const form = $("#ws-edit");
   if (!form) return;
   form.querySelector("[data-cancel]").addEventListener("click", () => { ws.editing = null; renderWebsite(); });
+  // Put text in where the cursor is (on a line of its own for a picture).
+  const ta = form.querySelector("textarea[name=body]");
+  const insert = (text, ownLine) => {
+    const a = ta.selectionStart ?? ta.value.length, b = ta.selectionEnd ?? a, before = ta.value.slice(0, a), after = ta.value.slice(b);
+    const pre = ownLine && before && !before.endsWith("\n\n") ? (before.endsWith("\n") ? "\n" : "\n\n") : "";
+    const post = ownLine ? "\n\n" : "";
+    ta.value = before + pre + text + post + after;
+    const at = (before + pre + text).length;
+    ta.focus(); ta.setSelectionRange(at, at);
+  };
+  form.querySelector("[data-pic]").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    try {
+      const r = await fetch("/api/posts/images", { method: "POST", credentials: "same-origin", headers: { "X-Solstone": "1", "Content-Type": f.type || "application/octet-stream" }, body: f });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || `Upload failed (${r.status})`);
+      insert(`![${f.name.replace(/\.[^.]+$/, "").replace(/[\[\]]/g, "")}](${d.url})`, true);
+      showToast("Picture added", 1500);
+    } catch (err) { showError(esc(err.message), 5000); }
+    e.target.value = "";
+  });
+  form.querySelector("[data-link]").addEventListener("click", () => {
+    const sel = ta.value.slice(ta.selectionStart, ta.selectionEnd) || "the words to click";
+    insert(`[${sel}](https://)`, false);
+  });
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(form);

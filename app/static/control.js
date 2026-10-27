@@ -290,7 +290,7 @@ async function viewControl(sid) {
     if (copy) { navigator.clipboard?.writeText(copy.dataset.copyName).then(() => showToast("Copied", 1500), () => showToast(esc(copy.dataset.copyName), 4000)); return; }
     if (allow) {
       const n = allow.dataset.allow;
-      if (await confirmBox(`Let ${n} in?`, "They're added to the whitelist and can join straight away.", "Let them in")) {
+      if (await confirmBox(`Let ${n} in?`, "They're added to the whitelist and can join straight away.", "Let them in", false)) {
         if (await act(`player/${encodeURIComponent(n)}/whitelist_add`, {}, `${esc(n)} can join now`)) { info.blocked = (info.blocked || []).filter((b) => b.name !== n); info.asked = (info.asked || []).filter((b) => b.player !== n); renderLists(); }
       }
       return;

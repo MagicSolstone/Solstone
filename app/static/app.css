@@ -1696,7 +1696,7 @@ body.on-editor:not(.ui-hidden) .fwbar .fwb-launch, body.on-editor:not(.ui-hidden
 .hp-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); }
 .hp-dot.on { background: var(--copper); box-shadow: 0 0 8px var(--copper); }
 .hp-posts { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-.hp-post { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: var(--radius-m); text-decoration: none; }
+.hp-post { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: var(--radius-m); text-decoration: none; overflow: hidden; }
 .hp-post:hover { border-color: var(--gold); }
 .hp-post-meta { font-size: .82rem; color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
 .hp-faq { display: flex; flex-direction: column; gap: 8px; }
@@ -1803,3 +1803,10 @@ a.glance-me:hover { border-color: var(--gold); }
 .hp-ask-done { font-size: 1.05rem; }
 .hp-live .sp-body .face { --s: 64px !important; }
 .hp-live .sp-body img.fallback { width: 64px; height: 64px; }
+/* Pictures in posts */
+.hp-body .post-img { display: block; max-width: 100%; height: auto; max-height: 70vh; margin: 12px auto; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.35); }
+.hp-post-pic { width: calc(100% + 32px); margin: -14px -16px 6px; height: 150px; object-fit: cover; border-radius: 14px 14px 0 0; display: block; }
+.ws-insert { align-items: center; margin-top: -4px; }
+.hp-ask-status { margin: 0; padding: 10px 14px; border-radius: 10px; font-size: 1.02rem; }
+.hp-ask-status.waiting { background: rgba(242, 193, 78, .12); border: 1px solid rgba(242, 193, 78, .45); }
+.hp-ask-status.in { background: rgba(76, 217, 100, .14); border: 1px solid rgba(76, 217, 100, .5); }

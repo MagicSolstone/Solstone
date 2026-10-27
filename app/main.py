@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import time
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
@@ -583,6 +584,30 @@ async def put_logo(request: Request):
     return {"logo": url}
 
 
+@app.post("/api/posts/images")
+async def upload_post_image(request: Request):
+    """A picture for a post: the request body (PNG, JPEG, WebP or GIF, under 4 MB). Answers with its address."""
+    user = auth.require_admin(request)
+    if int(request.headers.get("content-length") or 0) > site.IMAGE_MAX:
+        raise HTTPException(413, "Use a picture under 4 MB")
+    data = await request.body()
+    try:
+        url = await asyncio.to_thread(site.save_image, data)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    auth.audit(user, None, "post_image", f"{len(data)} bytes")
+    return {"url": url}
+
+
+@app.get("/api/public/images/{name}")
+async def post_image(name: str):
+    found = site.image_file(name)
+    if not found:
+        raise HTTPException(404)
+    return FileResponse(found[0], media_type=found[1], headers={"Cache-Control": "public, max-age=31536000, immutable",
+                                                                "X-Content-Type-Options": "nosniff"})
+
+
 @app.delete("/api/settings/site/logo")
 async def delete_logo(request: Request):
     user = auth.require_admin(request)
@@ -620,10 +645,29 @@ async def join_request(request: Request):
     player = player[:17]
     if signup._hit(f"ask:{auth.client_ip(request)}", 3):
         raise HTTPException(429, "You've asked a few times already. An admin will see it soon")
-    site.add_join_request(player, name, note)
+    token = secrets.token_urlsafe(18)              # only they get this: it shows them when they've been let in
+    site.add_join_request(player, name, note, hashlib.sha256(token.encode()).hexdigest())
     msg = f"{player} would like to join" + (f" ({name})" if name else "") + (f": {note}" if note else "")
     await notify.send("Asking to join", msg + "\nLet them in from Control → Whitelist.", "wave")
-    return {"ok": True, "message": "Thanks! The admins have your request. Try joining again in a little while."}
+    return {"ok": True, "token": token, "player": player,
+            "message": "Thanks! The admins have your request. This page shows here when you've been let in."}
+
+
+@app.post("/api/public/join-request/status")
+async def join_request_status(request: Request):
+    """Has my request been answered? Only the person who asked can tell (with the private token their browser kept),
+    so nobody can look up who's been let in."""
+    body = await _body(request)
+    token = str(body.get("token") or "")[:64]
+    th = hashlib.sha256(token.encode()).hexdigest() if token else ""
+    found = site.join_request_state(th)
+    if found and found["state"] == "waiting":       # let in some other way (in the game, or Control's own box)
+        await S.registry.refresh()
+        listed = {n.lower() for srv in S.registry.servers.values() if srv.is_java for n in control.whitelist_names(srv)}
+        if found["player"].lower() in listed or found["player"].lower().lstrip(".") in listed:
+            site.drop_join_request(found["player"])
+            found = site.join_request_state(th)
+    return {"state": found["state"], "player": found["player"]} if found else {"state": "unknown"}
 
 
 # ---- players making their own account (a code sent to them in the game)

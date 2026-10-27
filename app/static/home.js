@@ -27,6 +27,8 @@ function toast(text, html = false) {
 // ------------------------------------------------------------------ Markdown (a safe subset)
 function inline(s) {
   return s
+    // pictures uploaded in Website (only those: nothing loaded from elsewhere)
+    .replace(/!\[([^\]]*)\]\((\/api\/public\/images\/[0-9a-f]{16}\.(?:png|jpg|gif|webp))\)/g, '<img class="post-img" src="$2" alt="$1" loading="lazy">')
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
     .replace(/(^|[\s(])[*_]([^*_]+)[*_](?=[\s).,!?:;]|$)/g, "$1<i>$2</i>")
@@ -92,7 +94,8 @@ function serversCard(site) {
 
 function postCards(posts, empty) {
   if (!posts.length) return `<p class="muted">${esc(empty)}</p>`;
-  return `<div class="hp-posts">${posts.map((p) => `<a class="hp-post glass" href="${p.builtin ? `/guides/${p.slug}` : `/post/${encodeURIComponent(p.slug)}`}">
+  return `<div class="hp-posts">${posts.map((p) => `<a class="hp-post glass ${p.image ? "has-pic" : ""}" href="${p.builtin ? `/guides/${p.slug}` : `/post/${encodeURIComponent(p.slug)}`}">
+    ${p.image ? `<img class="hp-post-pic" src="${esc(p.image)}" alt="" loading="lazy">` : ""}
     <span class="hp-post-meta">${p.builtin ? "Guide · Start here" : `${esc(CAT_LABEL[p.category] || "")}${p.pinned ? " · 📌" : ""} · ${esc(dateText(p.created))}`}</span>
     <h3>${esc(p.title)}</h3><p class="muted">${esc(p.excerpt || "")}</p></a>`).join("")}</div>`;
 }
@@ -123,6 +126,7 @@ async function home() {
   const s = hp.site;
   const [news, guides] = await Promise.all([getJSON("/api/public/posts?category=news&limit=3"), getJSON("/api/public/posts?category=guide&limit=4")]);
   return `<section class="hp-hero"><h1>${esc(s.name)}</h1>${s.tagline ? `<p class="hp-tagline">${esc(s.tagline)}</p>` : ""}</section>
+    <p class="hp-ask-status" id="ask-status" hidden></p>
     ${joinCard(s)}${serversCard(s)}
     <section><div class="hp-head"><h2>News</h2><a href="/news">All news →</a></div>${postCards(news, "No news yet.")}</section>
     <section><div class="hp-head"><h2>Help</h2><a href="/help">All guides and questions →</a></div>${postCards([...builtinCards(), ...guides].slice(0, 4), "")}</section>
@@ -160,9 +164,34 @@ function builtinArticle(key) {
     ${key === "join" && hp.site.join_requests ? askFormHtml() : ""}`;
 }
 
+// Asked already? This browser keeps a private ticket for it, so it can show them when they're let in, without
+// anyone else being able to see who's on the list.
+function askTicket() { try { return JSON.parse(localStorage.getItem("solstone-ask") || "null"); } catch { return null; } }
+async function showAskStatus() {
+  const box = $("#ask-status"), t = askTicket();
+  if (!box || !t?.token) return;
+  let d = null;
+  try {
+    const r = await fetch("/api/public/join-request/status", { method: "POST", headers: { "Content-Type": "application/json", "X-Solstone": "1" }, body: JSON.stringify({ token: t.token }) });
+    d = r.ok ? await r.json() : null;
+  } catch { return; }
+  if (!d || d.state === "unknown") { try { localStorage.removeItem("solstone-ask"); } catch { /* fine */ } return; }
+  box.hidden = false;
+  box.className = `hp-ask-status ${d.state}`;
+  box.innerHTML = d.state === "in"
+    ? `🎉 <b>${esc(d.player)}</b>, you're in! Join the server now. <button type="button" class="link-btn" data-ask-forget>Hide this</button>`
+    : `⏳ Your request for <b>${esc(d.player)}</b> is waiting for an admin. Check back here later.`;
+}
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("[data-ask-forget]")) return;
+  try { localStorage.removeItem("solstone-ask"); } catch { /* fine */ }
+  $("#ask-status").hidden = true;
+});
+
 // Ask to join: their name goes to the admins' notifications, ready to let in from Control.
 function askFormHtml() {
   return `<section class="hp-ask glass" id="ask"><h2>Ask to join</h2>
+    <p class="hp-ask-status" id="ask-status" hidden></p>
     <p class="muted">The admins get a message with your name and can let you in. Then try joining again.</p>
     <form id="ask-form" autocomplete="off">
       <fieldset class="hp-ask-ed"><legend>I play on</legend>
@@ -183,6 +212,7 @@ document.addEventListener("submit", async (e) => {
       body: JSON.stringify({ edition: f.get("edition"), player: f.get("player"), name: f.get("name"), note: f.get("note") }) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || "That didn't send. Try again in a moment.");
+    try { localStorage.setItem("solstone-ask", JSON.stringify({ token: d.token, player: d.player })); } catch { /* private window */ }
     e.target.outerHTML = `<p class="hp-ask-done">✅ ${esc(d.message)}</p>`;
   } catch (x) { err.textContent = x.message; }
 });
@@ -205,6 +235,7 @@ async function route() {
   if (!path.startsWith("/post/") && !path.startsWith("/guides/")) document.title = nav && nav !== "home" ? `${SECTIONS[nav][0]} · ${hp.site.name}` : hp.site.name;
   main.innerHTML = html;
   document.querySelectorAll("[data-nav]").forEach((a) => a.toggleAttribute("aria-current", a.dataset.nav === nav));
+  showAskStatus();
   if (location.hash === "#faq" || location.hash === "#ask") $(location.hash)?.scrollIntoView(); else if (location.hash !== "#live") window.scrollTo(0, 0);
   if ($("#live") && typeof startLive === "function") {
     await startLive({ scene: hp.scene, toast: (h) => toast(h, true) });

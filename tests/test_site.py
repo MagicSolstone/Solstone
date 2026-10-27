@@ -91,3 +91,47 @@ def test_ask_to_join(client, anon, monkeypatch):
         client.put("/api/settings/site", json={"join_requests": False})
         main.settings_store.save_section("join_requests", [])
         signup._sent.clear()
+
+
+def test_asking_shows_only_you_when_youre_in(client, anon, monkeypatch, sid):
+    from app import main, notify, signup
+
+    async def fake_send(*a, **k):
+        return []
+    monkeypatch.setattr(notify, "send", fake_send)
+    signup._sent.clear()
+    client.put("/api/settings/site", json={"join_requests": True})
+    try:
+        r = anon.post("/api/public/join-request", json={"player": "Ticket_Kid"}).json()
+        st = lambda t: anon.post("/api/public/join-request/status", json={"token": t}).json()   # noqa: E731
+        assert st(r["token"]) == {"state": "waiting", "player": "Ticket_Kid"}
+        assert st("not-their-ticket")["state"] == "unknown" and st("")["state"] == "unknown"    # nobody else can look
+        main.site.drop_join_request("Ticket_Kid")                                               # what Let them in does
+        assert st(r["token"]) == {"state": "in", "player": "Ticket_Kid"}
+    finally:
+        client.put("/api/settings/site", json={"join_requests": False})
+        main.settings_store.save_section("join_requests", [])
+        main.settings_store.save_section("join_let_in", [])
+        signup._sent.clear()
+
+
+def test_pictures_in_posts(client, anon):
+    import io
+
+    from PIL import Image
+    buf = io.BytesIO(); Image.new("RGB", (8, 8), (200, 40, 40)).save(buf, "PNG")
+    up = client.post("/api/posts/images", content=buf.getvalue(), headers={"Content-Type": "image/png"})
+    assert up.status_code == 200 and up.json()["url"].startswith("/api/public/images/")
+    url = up.json()["url"]
+    got = anon.get(url)
+    assert got.status_code == 200 and got.headers["content-type"] == "image/png" and "immutable" in got.headers["cache-control"]
+    assert client.post("/api/posts/images", content=b"<svg onload=alert(1)>", headers={"Content-Type": "image/svg+xml"}).status_code == 400
+    assert anon.post("/api/posts/images", content=buf.getvalue()).status_code in (401, 403)
+    assert anon.get("/api/public/images/../../secret.png").status_code in (401, 404)
+    assert anon.get("/api/public/images/settings.json").status_code == 404
+    p = client.post("/api/posts", json={"title": "Look at this", "category": "news", "body": f"Our build:\n\n![tower picture]({url})\n\nNice!"}).json()
+    try:
+        card = next(x for x in anon.get("/api/public/posts?category=news").json() if x["id"] == p["id"])
+        assert card["image"] == url and "tower" not in card["excerpt"] and "Our build" in card["excerpt"]
+    finally:
+        client.delete(f"/api/posts/{p['id']}")

@@ -76,6 +76,40 @@ def remove_logo() -> str:
     return DEFAULT_LOGO
 
 
+# ---------------------------------------------------------------- pictures in posts
+# Uploaded by an admin, kept by a name made from their content, and only ever served as the picture type
+# their first bytes say they are (same check as the logo), so nothing else can be passed off as one.
+IMAGE_MAX = 4 * 1024 * 1024
+IMAGE_NAME = re.compile(r"^[0-9a-f]{16}\.(png|jpg|gif|webp)$")
+IMAGE_MD = re.compile(r"!\[[^\]]*\]\(/api/public/images/([0-9a-f]{16}\.(?:png|jpg|gif|webp))\)")
+IMAGE_MIME = {"png": "image/png", "jpg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}
+
+
+def save_image(data: bytes) -> str:
+    import hashlib
+    if len(data) > IMAGE_MAX:
+        raise ValueError("Use a picture under 4 MB")
+    kind = _logo_kind(data)
+    if not kind:
+        raise ValueError("Use a PNG, JPEG, WebP or GIF picture")
+    folder = app_config.data_dir / "site" / "images"
+    folder.mkdir(parents=True, exist_ok=True)
+    name = f"{hashlib.sha256(data).hexdigest()[:16]}.{kind[0]}"
+    path = folder / name
+    if not path.is_file():
+        tmp = folder / f"{name}.tmp"
+        tmp.write_bytes(data)
+        tmp.replace(path)
+    return f"/api/public/images/{name}"
+
+
+def image_file(name: str):
+    if not IMAGE_NAME.match(name):
+        return None
+    path = app_config.data_dir / "site" / "images" / name
+    return (path, IMAGE_MIME[name.rsplit(".", 1)[1]]) if path.is_file() else None
+
+
 def _line(v, n: int) -> str:
     return " ".join(str(v or "").split())[:n]
 
@@ -119,15 +153,34 @@ def join_requests() -> list[dict]:
     return list(settings_store.load().get("join_requests") or [])
 
 
-def add_join_request(player: str, name: str, note: str) -> dict:
-    req = {"ts": time.time(), "player": player, "name": name, "note": note}
+def add_join_request(player: str, name: str, note: str, token_hash: str = "") -> dict:
+    req = {"ts": time.time(), "player": player, "name": name, "note": note, "token": token_hash}
     keep = [r for r in join_requests() if r.get("player", "").lower() != player.lower()][-(REQUESTS_KEPT - 1):]
     settings_store.save_section("join_requests", keep + [req])
     return req
 
 
 def drop_join_request(player: str) -> None:
-    settings_store.save_section("join_requests", [r for r in join_requests() if r.get("player", "").lower() != player.lower()])
+    """Let in: off the list of requests, and remembered as let in so they can see it (their own check only)."""
+    reqs = join_requests()
+    done = [r for r in reqs if r.get("player", "").lower() == player.lower() and r.get("token")]
+    settings_store.save_section("join_requests", [r for r in reqs if r.get("player", "").lower() != player.lower()])
+    if done:
+        let_in = (settings_store.load().get("join_let_in") or [])[-(REQUESTS_KEPT - 1):]
+        settings_store.save_section("join_let_in", let_in + [{"token": r["token"], "player": r["player"], "ts": time.time()} for r in done])
+
+
+def join_request_state(token_hash: str) -> dict | None:
+    """What someone who asked can see about their own request: waiting, or let in."""
+    if not token_hash:
+        return None
+    for r in settings_store.load().get("join_let_in") or []:
+        if r.get("token") == token_hash:
+            return {"state": "in", "player": r["player"]}
+    for r in join_requests():
+        if r.get("token") == token_hash:
+            return {"state": "waiting", "player": r["player"]}
+    return None
 
 
 def save_config(body: dict) -> dict:
@@ -144,7 +197,10 @@ def _row(r, full: bool = True) -> dict:
     if full:
         out["body"] = r["body"]
     else:
-        text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", r["body"])      # a link's text, not its address
+        pic = IMAGE_MD.search(r["body"])
+        out["image"] = f"/api/public/images/{pic.group(1)}" if pic else None   # the first picture, for the card
+        text = IMAGE_MD.sub("", r["body"])
+        text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)      # a link's text, not its address
         text = re.sub(r"[#*_`>\[\]()!-]", "", text)
         out["excerpt"] = _line(text, 220)
     return out

@@ -4,6 +4,11 @@
 - **Tried to join:** when the whitelist turns someone away, their exact name shows in the server's Control → Whitelist, with **Copy** and **Let them in**. There's a notification for it too (Notifications → *Someone the whitelist turned away*).
 - **Ask to join** (Website → Join and account guides, off to start): a form at the bottom of the join guide. People pick Java or Bedrock, type their name in the game and, if they like, their first name and a note. You get a notification, and they show in Control → Whitelist under *Asked to join*, ready to let in. A few requests an hour from one address at most.
 
+- **"Are you in yet?"** Whoever asked sees their own request on the home page and the join guide: *waiting for an admin*, then *you're in! Join the server now* once you let them in. Only their own browser can see it (it keeps a private ticket), so there's no public list of names.
+
+## Pictures in posts
+- Website → Posts: **🖼 Add a picture** uploads a picture (PNG, JPEG, WebP or GIF, under 4 MB) and puts it in the post where the cursor is. **🔗 Add a link** puts a link in. The first picture also shows on the post's card on the home page and News.
+
 ## The guides, in your own words
 - Website → **Join and account guides**: rewrite *How to join the server* and *Making an account on this website*. **Start from Solstone's wording** puts the current text in with `{java_address}`, `{bedrock_address}`, `{bedrock_port}`, `{name}`, `{discord}` and `{ask}` in place, so the guides still follow Site details when an address or port changes. **Back to Solstone's wording** undoes it.
 - Solstone's own join guide no longer says some things from mods can be missing on Bedrock.

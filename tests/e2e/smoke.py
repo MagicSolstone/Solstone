@@ -126,6 +126,14 @@ def main() -> int:
                 pg.request.post(f"{base}/api/posts", data={"title": title, "category": cat,
                                                            "body": "# Heading\n\nSome **bold** text and a [link](/faq).\n\n- one\n- two"}, headers=H)
 
+            # a news post with a picture
+            import io as _io
+
+            from PIL import Image as _Image
+            _b = _io.BytesIO(); _Image.new("RGB", (320, 180), (60, 140, 220)).save(_b, "PNG")
+            pic = pg.request.post(f"{base}/api/posts/images", data=_b.getvalue(), headers={**H, "Content-Type": "image/png"}).json()["url"]
+            pg.request.post(f"{base}/api/posts", data={"title": "Our new castle", "category": "news",
+                                                       "body": f"Look what we built!\n\n![The castle]({pic})\n\nCome and see it."}, headers=H)
             routes = {
                 "home": "#/", "overview": f"#/s/{sid}", "player": f"#/s/{sid}/p/{puuid}",
                 "player-stats": f"#/s/{sid}/p/{puuid}/stats", "player-history": f"#/s/{sid}/p/{puuid}/history", "player-fishing": f"#/s/{sid}/p/{puuid}/fishing",
@@ -246,6 +254,13 @@ def main() -> int:
                 problems.append("home: the join addresses aren't shown")
             if anon.locator(".hp-post").count() < 1:
                 problems.append("home: the latest news isn't shown")
+            anon.goto(f"{base}/post/our-new-castle"); anon.wait_for_timeout(1000)
+            if not anon.locator(".hp-body img.post-img").count():
+                problems.append("post: its picture isn't shown")
+            check(anon, "site-post-picture")
+            anon.goto(f"{base}/"); anon.wait_for_timeout(1000)
+            if not anon.locator(".hp-post .hp-post-pic").count():
+                problems.append("home: a post's picture isn't on its card")
             anon.goto(f"{base}/post/welcome-to-the-server"); anon.wait_for_timeout(1000)
             if not anon.locator(".hp-body b").count() or not anon.locator(".hp-body li").count():
                 problems.append("post: its Markdown wasn't formatted")
@@ -275,6 +290,15 @@ def main() -> int:
                     problems.append("control: someone who asked to join isn't listed")
                 pg.locator(".turned-away.asked").scroll_into_view_if_needed() if pg.locator(".turned-away.asked").count() else None
                 check(pg, "control-asked")
+                anon.goto(f"{base}/"); anon.wait_for_timeout(1200)
+                if "waiting" not in (anon.locator("#ask-status").get_attribute("class") or ""):
+                    problems.append("home: someone who asked doesn't see their request waiting")
+                pg.locator('.turned-away.asked [data-allow="Smoke_Kid"]').click(); pg.wait_for_timeout(300)
+                pg.click("#cf-yes"); pg.wait_for_timeout(1200)
+                anon.reload(); anon.wait_for_timeout(1500)
+                if "in" not in (anon.locator("#ask-status").get_attribute("class") or "").split():
+                    problems.append("home: someone let in doesn't see that they're in")
+                check(anon, "site-home-youre-in")
                 pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(1000)
                 pg.click('.fws-tabs [data-tab="guides"]'); pg.wait_for_timeout(400)
                 pg.click('.ws-guide[data-guide="join"] [data-start]'); pg.wait_for_timeout(200)
