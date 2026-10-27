@@ -13,7 +13,7 @@ import time
 from collections import deque
 from datetime import date, datetime, timedelta
 
-from . import db, fireworks, settings_store
+from . import db, fireworks, mcname, settings_store
 
 # ------------------------------------------------------------------ events
 EVENT_TYPES = ("join", "advancement", "challenge", "goal", "death", "level", "night", "start")
@@ -69,7 +69,7 @@ def save_events(body: dict) -> dict:
 
 
 def save_signatures(body: dict) -> dict[str, str]:
-    clean = {str(k).lower()[:16]: str(v) for k, v in (body or {}).items() if v and re.match(r"^[A-Za-z0-9_]{1,16}$", str(k))}
+    clean = {str(k).lower()[:16]: str(v) for k, v in (body or {}).items() if v and mcname.is_name(str(k))}
     settings_store.save_section("fw_signatures", clean)
     return signatures()
 

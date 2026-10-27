@@ -10,9 +10,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from . import mcname
+
 _LINE = re.compile(r"^\[(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?\] \[([^\]]+?)/(\w+)\]: (.*)$")
 _LINE_PAPER = re.compile(r"^\[(\d{2}):(\d{2}):(\d{2}) (\w+)\]: (.*)$")
-_NAME = r"([A-Za-z0-9_]{1,16})"
+_NAME = rf"({mcname.PATTERN})"       # Java names, and Bedrock ones with Floodgate's dot
 _JOIN = re.compile(rf"^{_NAME} joined the game$")
 _LEAVE = re.compile(rf"^{_NAME} left the game$")
 _CHAT = re.compile(rf"^(?:\[Not Secure\] )?<{_NAME}> (.*)$")

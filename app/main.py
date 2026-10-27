@@ -18,7 +18,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, modpack, races, fireworks, fwshow, guard, notify, recap, selfcheck, signup, site, skins, tide, upcoming, worldmap
+from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, races, fireworks, fwshow, guard, notify, recap, selfcheck, signup, site, skins, tide, upcoming, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -30,7 +30,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.7.0"
+VERSION = "1.7.1"
 
 
 @asynccontextmanager
@@ -227,6 +227,31 @@ def _warn_proxy() -> None:
                 "Set TRUST_PROXY_HEADERS=true if Solstone is only reachable through that proxy.")
 
 
+# Anonymous visitors: at most this many public requests a minute from one address. An open home page makes about 35;
+# this stops one machine (or a few) from hammering Solstone, the game or your connection. A crowd of machines is
+# Cloudflare's job, in front of Solstone.
+PUBLIC_PER_MINUTE = int(os.getenv("PUBLIC_REQUESTS_PER_MINUTE", "240"))
+_public_hits: dict[str, list[float]] = {}
+
+
+def _public_limited(request: Request) -> bool:
+    if PUBLIC_PER_MINUTE <= 0:
+        return False
+    if not auth.TRUST_PROXY and (request.headers.get("x-forwarded-for") or request.headers.get("cf-connecting-ip")):
+        return False            # behind a proxy we can't see visitors' addresses: everyone would share one limit
+    ip, now = auth.client_ip(request), time.monotonic()
+    hits = [t for t in _public_hits.get(ip, ()) if now - t < 60]
+    if len(hits) >= PUBLIC_PER_MINUTE:
+        _public_hits[ip] = hits
+        return True
+    hits.append(now)
+    _public_hits[ip] = hits
+    if len(_public_hits) > 20000:
+        for k in [k for k, v in _public_hits.items() if not v or now - v[-1] > 60]:
+            _public_hits.pop(k, None)
+    return False
+
+
 @app.middleware("http")
 async def require_login(request: Request, call_next):
     """Every /api route needs a signed-in user except health and login. Changes also need
@@ -238,6 +263,8 @@ async def require_login(request: Request, call_next):
         request.state.user = await asyncio.to_thread(auth.user_from_request, request)
         if request.state.user is None and path not in PUBLIC_API and not path.startswith("/api/public/"):
             return JSONResponse({"detail": "Sign in to continue"}, status_code=401)
+        if request.state.user is None and path.startswith("/api/public/") and _public_limited(request):
+            return JSONResponse({"detail": "Too many requests. Slow down a little."}, status_code=429, headers={"Retry-After": "30"})
     if not auth.TRUST_PROXY and not _proxy_warned and (request.headers.get("x-forwarded-for") or request.headers.get("cf-connecting-ip")):
         _warn_proxy()
     response = await call_next(request)
@@ -482,10 +509,25 @@ async def public_status():
     return {"enabled": True, "servers": out, "build": _asset_stamp()}
 
 
+def _may_see_map(user) -> bool:
+    """Where everyone is (coordinates, the map, the web map) is for people signed in: Trusted and Admins, and Players when
+    "Players can see the map" is on. Never for anonymous visitors, so nobody outside can watch where the kids are, and the
+    map pictures (the heaviest thing Solstone sends) can't be pulled by strangers."""
+    return user is not None and (not user.is_player or _players_see_map())
+
+
+def _without_whereabouts(board: dict) -> dict:
+    strip = lambda rows: [{k: v for k, v in r.items() if k != "position"} for r in rows]   # noqa: E731
+    return {**board, "spawn": None, "race": None, "web_map": None,
+            "players": strip(board.get("players", [])), "recently": strip(board.get("recently", []))}
+
+
 @app.get("/api/public/status/{sid}")
-async def public_board(sid: str):
+async def public_board(sid: str, request: Request):
     cfg = _require_status()
     board = await _board(await _public_server(sid), cfg)
+    if not _may_see_map(request.state.user):
+        board = _without_whereabouts(board)
     if board.get("world") and board["world"].get("as_of"):
         board = {**board, "world": {**board["world"], "age": round(max(0.0, time.time() - board["world"]["as_of"]), 1)}}
     return JSONResponse(board, headers={"Cache-Control": "no-store"})
@@ -761,12 +803,9 @@ async def put_board(request: Request):
 
 # ---- the world map, drawn from region files (the live section on the home page)
 async def _map_server(request: Request, sid: str) -> S.Server:
-    if request.state.user is not None:
-        srv = await _server(sid)
-    else:
-        if not _require_status()["show_positions"]:
-            raise HTTPException(404, "The map is hidden on the status page")
-        srv = await _public_server(sid)
+    if not _may_see_map(request.state.user):
+        raise HTTPException(404, "Sign in to see the map")
+    srv = await _server(sid)
     if not srv.is_java:
         raise HTTPException(404)
     return srv
@@ -2098,7 +2137,7 @@ async def fishing_reset(sid: str, request: Request):
     player = str(body.get("player", "")).strip()
     everything = bool(body.get("everything"))
     level = body.get("level")
-    if not re.fullmatch(r"[A-Za-z0-9_]{1,16}", player):
+    if not mcname.is_name(player):
         raise HTTPException(400, "That isn't a Minecraft name")
     if level is not None and (not isinstance(level, int) or isinstance(level, bool) or not 1 <= level <= 99):
         raise HTTPException(400, "Pick a level from 1 to 99")

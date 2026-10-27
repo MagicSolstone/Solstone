@@ -1,3 +1,19 @@
+# Solstone 1.7.1
+
+## Bedrock players
+- Names with Floodgate's dot in front (like **.Steve**) work everywhere a name is typed or checked: giving items, healing, teleporting, kicking, game mode, birthdays, bedtime exemptions, join fireworks and the level check.
+- **The log reader now counts Bedrock players too.** Before, their joins, leaves, deaths, advancements and chat were skipped. Now they show in recent activity, the recap, Adventures and notifications like everyone else's.
+- **Whitelist:** adding a name that starts with a dot uses Floodgate's own whitelist (`fwhitelist add Steve`), which is how Bedrock players are let in.
+
+## The map is for people signed in
+- Where everyone is (coordinates, the position map and the web map) is no longer sent to visitors who aren't signed in, even with *Show coordinates and the position map* on. Signed in, Trusted and Admins see it, and Players do when *Players can see the map* is on.
+- The map pictures can't be fetched without signing in either, so strangers can't make Solstone draw the world over and over.
+- Everything else on the home page's live section (who's playing, the world, leaderboards, recap, activity) stays public.
+
+## Busy times
+- One address can make at most 240 public requests a minute (an open home page makes about 35). Above that it gets *Too many requests* for a little while. Change it with `PUBLIC_REQUESTS_PER_MINUTE` (0 turns it off).
+- Who's online is asked of the game at most once every two seconds, however many pages are open.
+
 # Solstone 1.7.0
 
 ## Fireworks in one place

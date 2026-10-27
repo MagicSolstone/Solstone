@@ -51,3 +51,30 @@ def test_only_servers_keeps_one_solstone_to_its_own(monkeypatch, sid):
     finally:
         monkeypatch.setattr(config, "only_servers", ())
         asyncio.run(S.registry.refresh(force=True))
+
+
+def test_whereabouts_and_the_map_need_sign_in(client, anon, viewer, sid):
+    from app import main
+    client.put("/api/settings/status", json={"enabled": True, "show_positions": True, "show_web_map": True})
+    main._board_cache.clear()
+    try:
+        board = anon.get(f"/api/public/status/{sid}").json()
+        assert board["spawn"] is None and board["web_map"] is None
+        assert all("position" not in p for p in board["players"] + board["recently"])
+        assert anon.get(f"/api/public/map/{sid}/regions").status_code == 404           # no map pictures for strangers
+        assert anon.get(f"/api/public/map/{sid}/tile?x=0&z=0").status_code == 404
+        assert viewer.get(f"/api/public/map/{sid}/regions").status_code == 200         # signed in: there it is
+        signed = viewer.get(f"/api/public/status/{sid}").json()
+        assert signed["spawn"] is not None or any("position" in p for p in signed["players"] + signed["recently"])
+    finally:
+        client.put("/api/settings/status", json={"enabled": False, "show_positions": False, "show_web_map": False})
+        main._board_cache.clear()
+
+
+def test_public_requests_are_limited_per_address(anon, monkeypatch):
+    from app import main
+    monkeypatch.setattr(main, "PUBLIC_PER_MINUTE", 5)
+    main._public_hits.clear()
+    codes = [anon.get("/api/public/site").status_code for _ in range(7)]
+    assert codes[:5] == [200] * 5 and codes[5:] == [429, 429]
+    main._public_hits.clear()

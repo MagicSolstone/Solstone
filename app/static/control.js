@@ -275,7 +275,7 @@ async function viewControl(sid) {
     el.innerHTML = `<p class="muted small" style="margin-bottom:10px">The whitelist is <b>${L.enabled ? "on" : "off"}</b>${L.enabled ? ": only these players can join." : ". Anyone with the address can join. Turn it on in server.properties (white-list=true) or with /whitelist on."}</p>
       <div class="lists"><div><h3>Whitelist</h3><div class="chips">${chips(L.whitelist, "whitelist_remove", "Remove")}</div></div>
       <div><h3>Operators</h3><div class="chips">${chips(L.ops, "deop", "Remove operator")}</div></div></div>
-      <form class="btn-row" id="list-form" style="margin-top:12px"><input class="input sm" name="name" placeholder="Minecraft username" pattern="[A-Za-z0-9_]{1,16}" required>
+      <form class="btn-row" id="list-form" style="margin-top:12px"><input class="input sm" name="name" placeholder="Name (.Name for Bedrock)" pattern="\.?[A-Za-z0-9_]{1,16}" required>
         <button class="btn sm" name="do" value="whitelist_add">Add to whitelist</button><button class="btn sm" name="do" value="op">Make operator</button></form>`;
   }
   $("#ctl-lists")?.addEventListener("click", async (e) => {
@@ -375,10 +375,10 @@ async function viewAdmin(section = "users") {
     <section class="section"><div class="section-head"><h2>Live on the home page</h2><span class="muted">Who's playing right now, for anyone visiting, without signing in</span></div>
       <div class="panel rules-ctl" id="status-page-settings" style="max-width:720px">
         <label class="switch-row"><span><b>Show the servers live on the home page</b><br><small class="muted">Under Help on <a href="/#live" target="_blank" rel="noopener">the home page</a>: who's playing, their health and level, the in-game day, leaderboards and the recap. Never shows chat, and never how long anyone played.</small></span><input type="checkbox" role="switch" data-sp="enabled" ${lp.enabled ? "checked" : ""}></label>
-        <label class="switch-row"><span>Show coordinates and the position map</span><input type="checkbox" role="switch" data-sp="show_positions" ${lp.show_positions ? "checked" : ""}></label>
+        <label class="switch-row"><span>Show coordinates and the position map<br><small class="muted">Only to people signed in (Trusted and Admins, and Players when “Players can see the map” is on in Users). Visitors who aren't signed in never see where anyone is, or the map.</small></span><input type="checkbox" role="switch" data-sp="show_positions" ${lp.show_positions ? "checked" : ""}></label>
         <label class="switch-row"><span>Show held items and armour</span><input type="checkbox" role="switch" data-sp="show_items" ${lp.show_items ? "checked" : ""}></label>
         <label class="switch-row"><span>Show recent joins, deaths and advancements</span><input type="checkbox" role="switch" data-sp="show_activity" ${lp.show_activity ? "checked" : ""}></label>
-        <label class="switch-row"><span>Embed the web map (BlueMap, squaremap) <br><small class="muted">Only works if visitors can reach the map's address too. A plain http:// map won't load on an https:// page.</small></span><input type="checkbox" role="switch" data-sp="show_web_map" ${lp.show_web_map ? "checked" : ""}></label>
+        <label class="switch-row"><span>Embed the web map (BlueMap, squaremap) <br><small class="muted">Also only for people signed in. Only works if they can reach the map's address too. A plain http:// map won't load on an https:// page.</small></span><input type="checkbox" role="switch" data-sp="show_web_map" ${lp.show_web_map ? "checked" : ""}></label>
         <p class="muted small" style="margin-top:8px">Anyone visiting the home page sees this. Hidden and private servers are never shown.</p>
       </div></section>
     <section class="section"><div class="section-head"><h2>Recap history</h2></div>

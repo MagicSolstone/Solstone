@@ -11,7 +11,7 @@ import re
 import secrets
 from datetime import date, datetime
 
-from . import db, fwshow, guard, settings_store
+from . import db, fwshow, guard, mcname, settings_store
 from . import servers as S
 from .control import clean_text, component
 from .rcon import RconError
@@ -22,7 +22,7 @@ STYLES = ("info", "party", "heads")
 WHERE = ("home", "status", "app", "login")
 DEFAULTS = {"items": [], "birthdays": [], "bedtime": {"show": True, "minutes": 30}, "birthday_soon": 7}
 _DT = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")
-_NAME = re.compile(r"^[A-Za-z0-9_]{1,16}$")
+_NAME = mcname.NAME_RE
 
 
 def _dt(v) -> str:

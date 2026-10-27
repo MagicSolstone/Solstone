@@ -321,20 +321,24 @@ def main() -> int:
             rows = anon.evaluate("() => new Set([...document.querySelectorAll('#live .tv-dots [data-tv]')].map(b => Math.round(b.getBoundingClientRect().top))).size")
             if rows > 1:
                 problems.append(f"live: the screens' names take {rows} lines")
-            mp = anon.locator("#live .tv-dots [data-tv='map']")
+            if anon.locator("#live .tv-dots [data-tv='map']").count():
+                problems.append("live: someone not signed in can see where everyone is")
+            # signed in, the map is there: drag to move around, then Reset view
+            pg.goto(f"{base}/#live"); pg.wait_for_timeout(2500)
+            mp = pg.locator("#live .tv-dots [data-tv='map']")
             if not mp.count():
-                problems.append("live: no map screen with positions on")
+                problems.append("live: no map screen for an admin with positions on")
             else:
-                mp.click(); anon.wait_for_timeout(1200)
-                box = anon.locator("#sp-map canvas").bounding_box()
-                anon.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2); anon.mouse.down()
-                anon.mouse.move(box["x"] + box["width"] / 2 + 120, box["y"] + box["height"] / 2 + 60, steps=6); anon.mouse.up()
-                anon.wait_for_timeout(300)
-                if not anon.locator("#sp-map [data-reset]:not([hidden])").count():
+                mp.click(); pg.wait_for_timeout(1200)
+                box = pg.locator("#sp-map canvas").bounding_box()
+                pg.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2); pg.mouse.down()
+                pg.mouse.move(box["x"] + box["width"] / 2 + 120, box["y"] + box["height"] / 2 + 60, steps=6); pg.mouse.up()
+                pg.wait_for_timeout(300)
+                if not pg.locator("#sp-map [data-reset]:not([hidden])").count():
                     problems.append("live map: dragging didn't move the view (no Reset view)")
-                check(anon, "live-map-moved")
-                anon.click("#sp-map [data-reset]"); anon.wait_for_timeout(1200)
-                if anon.locator("#sp-map [data-reset]:not([hidden])").count():
+                check(pg, "live-map-moved")
+                pg.click("#sp-map [data-reset]"); pg.wait_for_timeout(1200)
+                if pg.locator("#sp-map [data-reset]:not([hidden])").count():
                     problems.append("live map: Reset view stayed")
             anon.set_viewport_size({"width": 390, "height": 800}); anon.goto(f"{base}/#live"); anon.wait_for_timeout(2000)
             check(anon, "m-live")

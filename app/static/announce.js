@@ -182,7 +182,7 @@ function annBirthdays(el) {
   $("#ann-bd-save").addEventListener("click", async () => {
     const birthdays = $$(".ann-bday").map((r) => ({ player: r.querySelector("[name=player]").value.trim(), month: +r.querySelector("[name=month]").value,
       day: +r.querySelector("[name=day]").value, show: r.querySelector("[name=show]").value, say: r.querySelector("[name=say]").checked })).filter((b) => b.player);
-    const bad = birthdays.find((b) => !/^[A-Za-z0-9_]{1,16}$/.test(b.player));
+    const bad = birthdays.find((b) => !/^\.?[A-Za-z0-9_]{1,16}$/.test(b.player));
     if (bad) { showToast(`“${esc(bad.player)}” isn't a Minecraft name`, 4000); return; }
     if (await annSave({ birthdays, birthday_soon: +$("#ann-soon").value || 0 }, "Birthdays saved")) renderAnn();
   });

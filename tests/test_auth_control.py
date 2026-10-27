@@ -173,6 +173,14 @@ def test_control_actions(client, sid, rcon):
     assert "kick Tyler bed" in cmds and "give Tyler minecraft:diamond 3" in cmds
     assert "gamemode creative Tyler" in cmds and "tp Gimli_Jr Tyler" in cmds and "say hello" in cmds
 
+    # Bedrock players (through Geyser and Floodgate) have a dot in front of their name
+    rcon["cmds"].clear()
+    assert client.post(f"{base}/player/.Steve_K/give", json={"item": "diamond", "count": 2}).status_code == 200
+    client.post(f"{base}/player/.Steve_K/whitelist_add", json={})
+    client.post(f"{base}/player/Tyler/whitelist_add", json={})
+    assert "give .Steve_K minecraft:diamond 2" in rcon["cmds"]
+    assert "fwhitelist add Steve_K" in rcon["cmds"] and "whitelist add Tyler" in rcon["cmds"]     # Floodgate's list, by gamertag
+    assert client.post(f"{base}/player/..Steve/give", json={"item": "diamond"}).status_code == 400
     assert client.post(f"{base}/player/Tyler/give", json={"item": "diamond 64 @a"}).status_code == 400
     assert client.post(f"{base}/quick", json={"action": "time", "value": "dawn"}).status_code == 400
     assert client.post(f"{base}/command", json={"command": "say a\nop Tyler"}).status_code == 400

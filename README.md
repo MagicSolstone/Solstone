@@ -113,6 +113,7 @@ Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web ma
 | `ADMIN_USERNAME` | `admin` | Username of the first admin, created on first start |
 | `ADMIN_PASSWORD` | generated | Password for that first admin. If unset, one is generated, printed in the container log and saved to `/data/admin_credentials.txt`. Only used while there are no users |
 | `TRUST_PROXY_HEADERS` | `false` | Set `true` behind Cloudflare Tunnel or a reverse proxy you control |
+| `PUBLIC_REQUESTS_PER_MINUTE` | `240` | Most public (not signed in) requests one address can make a minute; `0` turns the limit off. Behind a proxy it only works with `TRUST_PROXY_HEADERS=true` |
 | `SESSION_DAYS` | `30` | How long a sign-in lasts |
 | `LOGIN_MAX_ATTEMPTS` | `8` | Failed sign-ins per IP or username before a 15-minute lockout |
 | `TZ` | `UTC` | Your time zone (e.g. `America/Chicago`). Decides where "today" starts in play time |

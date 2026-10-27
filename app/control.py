@@ -15,11 +15,12 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
+from . import mcname
 from . import servers as S
 from .crafty import crafty
 from .rcon import RconError
 
-NAME_RE = re.compile(r"^[A-Za-z0-9_]{1,16}$")
+NAME_RE = mcname.NAME_RE
 ITEM_RE = re.compile(r"^[a-z0-9_.-]+:[a-z0-9_./-]+$")
 CHOICES = {
     "time": ("day", "noon", "night", "midnight"),
@@ -220,6 +221,8 @@ async def player_action(srv: S.Server, player: str, action: str, body: dict, sen
         reason = clean_text(body.get("reason") or "Kicked by an admin", 120)
         return await run_all(srv, [f"kick {p} {reason}"])
     if action in ("whitelist_add", "whitelist_remove"):
+        if mcname.is_bedrock(p):          # Bedrock players are let in by Floodgate's own list, by gamertag (no dot)
+            return await run_all(srv, [f"fwhitelist {'add' if action == 'whitelist_add' else 'remove'} {p[1:]}"])
         return await run_all(srv, [f"whitelist {'add' if action == 'whitelist_add' else 'remove'} {p}"])
     if action in ("op", "deop"):
         return await run_all(srv, [f"{action} {p}"])

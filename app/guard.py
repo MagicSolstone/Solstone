@@ -11,10 +11,9 @@ disconnected after a grace period, and again if they rejoin that day.
 from __future__ import annotations
 
 import logging
-import re
 from datetime import date, datetime, timedelta
 
-from . import auth, db, notify
+from . import auth, db, mcname, notify
 from . import servers as S
 from .control import component
 from .rcon import RconError
@@ -43,7 +42,7 @@ def validate_bedtime(raw: dict) -> dict:
     cfg["days"] = sorted({int(d) for d in raw.get("days", DEFAULT_BEDTIME["days"]) if 0 <= int(d) <= 6})
     cfg["warn_minutes"] = sorted({int(m) for m in raw.get("warn_minutes", DEFAULT_BEDTIME["warn_minutes"]) if 0 < int(m) <= 120},
                                  reverse=True)
-    cfg["exempt"] = sorted({str(n) for n in raw.get("exempt", []) if re.fullmatch(r"[A-Za-z0-9_]{1,16}", str(n))}, key=str.lower)
+    cfg["exempt"] = sorted({str(n) for n in raw.get("exempt", []) if mcname.is_name(str(n))}, key=str.lower)
     cfg["message"] = " ".join(str(raw.get("message") or "").split())[:120]
     return cfg
 
