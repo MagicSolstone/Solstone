@@ -2,6 +2,7 @@
 
 ## One site
 - **The website is always one click away.** Inside the app, a bar along the top has Home, News, Guides, FAQ and Live status.
+- **Signing out takes you to the home page.**
 - **Signed in, the home page knows you.** It shows a **Servers** link and your name instead of *Sign in*, both going straight to the servers.
 
 ## Music is gone

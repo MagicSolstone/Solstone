@@ -180,7 +180,7 @@ function wireAccountMenu() {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) { close(); btn.focus(); } });
   addEventListener("resize", close);
   addEventListener("scroll", close, { passive: true });
-  $("#btn-logout").addEventListener("click", async () => { close(); await post("/api/auth/logout").catch(() => {}); showLogin(); });
+  $("#btn-logout").addEventListener("click", async () => { close(); await post("/api/auth/logout").catch(() => {}); location.href = "/"; });   // signed out: back to the home page
   $("#btn-password").addEventListener("click", () => { close(); openPasswordChange(); });
   $("#btn-display-name").addEventListener("click", () => { close(); openDisplayName(); });
 }
