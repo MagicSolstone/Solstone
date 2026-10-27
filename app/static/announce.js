@@ -226,8 +226,10 @@ async function viewUpcoming() {
   const groups = [];
   for (const it of ahead) { const g = groups[groups.length - 1]; if (g && g.date === it.date) g.items.push(it); else groups.push({ date: it.date, items: [it] }); }
   setView(`<div class="fwe-head"><h1>Events</h1>
-      <p class="muted">Everything planned for the next ${d.days} days: contests, races and games, birthdays, holidays and their fireworks shows, and announcements counting down.${isAdmin() ? ` Add things from a server's <b>Contests</b> page, the <a href="#/manage/fireworks">fireworks calendar</a> or <a href="#/manage/announcements">Announcements</a>.` : ""}</p></div>
+      <p class="muted">Everything planned for the next ${d.days} days: contests, races and games, birthdays, holidays and their fireworks shows, and announcements counting down.${isAdmin() ? ` Add things from a server's <b>Contests</b> page, the <a href="#/fireworks/show">fireworks calendar</a> or <a href="#/manage/announcements">Announcements</a>.` : ""}</p></div>
     ${live.length ? `<section class="section"><div class="section-head"><h2>Happening now</h2></div><ul class="up-list panel">${live.map(row).join("")}</ul></section>` : ""}
     ${groups.length ? groups.map((g) => `<section class="section up-day"><div class="section-head"><h2>${esc(dayKey(g.date))}</h2></div><ul class="up-list panel">${g.items.map(row).join("")}</ul></section>`).join("")
-      : `<div class="panel"><p class="muted">Nothing planned in the next ${d.days} days.</p></div>`}`);
+      : live.length ? "" : `<div class="panel up-empty"><span class="up-empty-emoji" aria-hidden="true">🗓️</span><h2>No events scheduled</h2>
+          <p class="muted">Nothing's planned for the next ${Math.round(d.days / 30)} months yet. Contests, races, birthdays and holidays show up here when they're added.</p>
+          ${isAdmin() ? `<p class="muted small">Add a contest from a server's <b>Contests</b> page, a holiday on the <a href="#/fireworks/show">fireworks calendar</a>, or a countdown in <a href="#/manage/announcements">Announcements</a>.</p>` : ""}</div>`}`);
 }

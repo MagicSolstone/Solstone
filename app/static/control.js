@@ -348,13 +348,14 @@ async function viewAdmin(section = "users") {
   curSid = null;
   document.title = `${{ users: "Users", servers: "Servers & live info", activity: "Activity log" }[section] || "Manage"} · ${SITE_NAME}`;
   fillServersMenu(state.servers, null);
-  const [users, audit, lp, hiddenSrv, siteCfg] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/status"), api("/api/servers-hidden").catch(() => []), api("/api/posts").then((d) => d.site).catch(() => ({}))]);
+  const [users, audit, lp, hiddenSrv, siteCfg, playerCfg] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/status"), api("/api/servers-hidden").catch(() => []), api("/api/posts").then((d) => d.site).catch(() => ({})), api("/api/settings/players").catch(() => ({}))]);
   const roleOpts = (cur) => ROLE_NAMES.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("");
   const fmtWhen = (ts) => ts ? fmtAgo(ts) : "never";
   const srvName = (id) => state.servers.find((x) => x.id === id)?.name || id;
   const usersHtml = `<section class="section"><div class="section-head"><h2>Users</h2><span class="muted">Players see the servers, who's on, the leaderboards and their own page. Trusted can see everything (chat, where everyone is, inventories) but can't change anything. Admins can also control servers.</span></div>
       <div class="panel rules-ctl" id="signup-ctl" style="max-width:720px;margin-bottom:12px">
-        <label class="switch-row"><span><b>Let players make their own account</b><br><small class="muted">From the sign-in page: they type their Minecraft name while they're playing on a public server, get a code in the game chat, and choose a login. They start as Players. Your whitelist decides who can do this.</small></span><input type="checkbox" role="switch" id="signup-on" ${siteCfg.signup ? "checked" : ""}></label></div>
+        <label class="switch-row"><span><b>Let players make their own account</b><br><small class="muted">From the sign-in page: they type their Minecraft name while they're playing on a public server, get a code in the game chat, and choose a login. They start as Players. Your whitelist decides who can do this.</small></span><input type="checkbox" role="switch" id="signup-on" ${siteCfg.signup ? "checked" : ""}></label>
+        <label class="switch-row"><span><b>Players can see the map</b><br><small class="muted">Gives Players the World tab: the map of the world with where everyone is (and the web map, if the server has one). The world's seed stays hidden.</small></span><input type="checkbox" role="switch" id="players-map-on" ${playerCfg.see_map ? "checked" : ""}></label></div>
       <div class="table-wrap"><table class="data users-table"><thead><tr><th>Username</th><th>Level</th><th>Minecraft player</th><th>Servers</th><th>Last signed in</th><th></th></tr></thead><tbody>
       ${users.map((u) => `<tr data-uid="${u.id}"><td><b>${esc(u.username)}</b>${u.display_name ? ` <span class="muted">shown as ${esc(u.display_name)}</span>` : ""}${u.id === me.user.id ? ' <span class="muted">(you)</span>' : ""}</td>
         <td><select class="input sm" data-role ${u.id === me.user.id ? "disabled" : ""} aria-label="Level for ${esc(u.username)}">${roleOpts(u.role)}</select></td>
@@ -416,6 +417,10 @@ async function viewAdmin(section = "users") {
     const f = new FormData(e.target);
     try { await post("/api/users", { username: f.get("username"), password: f.get("password"), role: f.get("role") }); showToast(`Added ${esc(f.get("username"))}`, 2500); viewAdmin(section); }
     catch (err) { showToast(esc(err.message), 5000); }
+  });
+  $("#players-map-on")?.addEventListener("change", async (e) => {
+    try { await post("/api/settings/players", { see_map: e.target.checked }, "PUT"); showToast(e.target.checked ? "Players can see the map (World tab)" : "The map is for Trusted and Admins only", 2500); }
+    catch (err) { showToast(esc(err.message), 5000); e.target.checked = !e.target.checked; }
   });
   $("#signup-on")?.addEventListener("change", async (e) => {
     try { await post("/api/settings/site", { signup: e.target.checked }, "PUT"); showToast(e.target.checked ? "Players can make their own account" : "Sign-up turned off", 2500); }

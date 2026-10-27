@@ -302,8 +302,11 @@ function mountMap(el, b, prev) {
   if (el._sig !== sig || !$("canvas", el)) {
     el._sig = sig;
     el.innerHTML = `${order.length > 1 ? `<div class="seg sp-dims" role="group" aria-label="Dimension">${order.map((k) => `<button data-dim="${k}" aria-pressed="${k === dim}">${esc(dimName(dims[k].id))} · ${dims[k].players.length}</button>`).join("")}</div>` : ""}
-    <canvas id="sp-map-canvas" role="img" aria-label="Map of player positions"></canvas>`;
-    el.querySelectorAll("[data-dim]").forEach((btn) => btn.addEventListener("click", () => { st.map.dim = btn.dataset.dim; st.map.shown = {}; st.map.bounds = null; mountMap(el, st.board, st.map); }));
+    <div class="map-box"><canvas id="sp-map-canvas" role="img" aria-label="Map of player positions. Drag to move around, scroll or pinch to zoom."></canvas>
+      <div class="map-ctl"><button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">−</button>
+        <button type="button" data-reset ${prev?.user ? "" : "hidden"}>Reset view</button></div></div>`;
+    el.querySelectorAll("[data-dim]").forEach((btn) => btn.addEventListener("click", () => { st.map.dim = btn.dataset.dim; st.map.shown = {}; st.map.bounds = null; st.map.user = null; mountMap(el, st.board, st.map); }));
+    wireMapMoves(el);
   }
   const cv = $("canvas", el);
   const map = prev || { heads: {}, shown: {}, bounds: null };
@@ -375,7 +378,8 @@ function mountMap(el, b, prev) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const t = Math.min(1, (performance.now() - map.anim) / 900), ease = 1 - (1 - t) ** 3;
     const tb = targetBounds();
-    const bnd = map.bounds ? { cx: map.bounds.cx + (tb.cx - map.bounds.cx) * ease, cz: map.bounds.cz + (tb.cz - map.bounds.cz) * ease, span: map.bounds.span + (tb.span - map.bounds.span) * ease } : tb;
+    const bnd = map.user ? map.user : map.bounds ? { cx: map.bounds.cx + (tb.cx - map.bounds.cx) * ease, cz: map.bounds.cz + (tb.cz - map.bounds.cz) * ease, span: map.bounds.span + (tb.span - map.bounds.span) * ease } : tb;
+    map.cur = bnd;
     const scale = Math.min(w, h) / bnd.span;
     const sx = (x) => w / 2 + (x - bnd.cx) * scale, sz = (z) => h / 2 + (z - bnd.cz) * scale;
     const g = ctx.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, Math.max(w, h) * 0.7);
@@ -453,14 +457,64 @@ function mountMap(el, b, prev) {
       ctx.fillStyle = "#ebe6d9"; ctx.fillText(label, x, y + s / 2 + 18);
     }
     ctx.textAlign = "start";
-    if (t >= 1) map.bounds = tb;
+    if (t >= 1 && !map.user) map.bounds = tb;
     return t < 1;
   }
   const loop = () => { if (draw()) requestAnimationFrame(loop); };
   map.redraw = () => { if (cv.isConnected) draw(); };
+  map.play = () => requestAnimationFrame(loop);
   if (!map.bounds) map.bounds = targetBounds();
   requestAnimationFrame(loop);
   if (!map.resizeBound) { map.resizeBound = true; addEventListener("resize", () => st.map === map && draw()); }
+}
+
+// Drag to move around the map, scroll or pinch to zoom, and Reset view to go back to following everyone.
+function wireMapMoves(el) {
+  const cv = $("canvas", el), reset = $("[data-reset]", el);
+  const view = () => { const m = st.map; return { ...(m.user || m.cur || m.bounds) }; };
+  const scaleOf = (v) => Math.min(cv.clientWidth, cv.clientHeight) / v.span;
+  const setView = (v) => {
+    const m = st.map;
+    if (!m || !v.span) return;
+    m.user = { cx: v.cx, cz: v.cz, span: Math.max(24, Math.min(6000, v.span)) };
+    reset.hidden = false;
+    m.redraw();
+  };
+  // zoom keeping one spot of the world under the same spot on the screen
+  const zoomAt = (f, px, py) => {
+    const v = view(), r = cv.getBoundingClientRect(), s1 = scaleOf(v);
+    const ox = px - r.left - r.width / 2, oy = py - r.top - r.height / 2;
+    const wx = v.cx + ox / s1, wz = v.cz + oy / s1, span = Math.max(24, Math.min(6000, v.span * f)), s2 = Math.min(r.width, r.height) / span;
+    setView({ span, cx: wx - ox / s2, cz: wz - oy / s2 });
+  };
+  const pts = new Map();
+  cv.addEventListener("pointerdown", (e) => { cv.setPointerCapture?.(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); cv.classList.add("grabbing"); });
+  cv.addEventListener("pointermove", (e) => {
+    const prev = pts.get(e.pointerId);
+    if (!prev) return;
+    const now = { x: e.clientX, y: e.clientY };
+    if (pts.size === 1) {
+      const v = view(), s1 = scaleOf(v);
+      setView({ ...v, cx: v.cx - (now.x - prev.x) / s1, cz: v.cz - (now.y - prev.y) / s1 });
+    } else if (pts.size === 2) {
+      const other = [...pts].find(([id]) => id !== e.pointerId)[1];
+      const d0 = Math.hypot(prev.x - other.x, prev.y - other.y), d1 = Math.hypot(now.x - other.x, now.y - other.y);
+      if (d0 > 0 && d1 > 0) zoomAt(d0 / d1, (now.x + other.x) / 2, (now.y + other.y) / 2);
+    }
+    pts.set(e.pointerId, now);
+  });
+  const up = (e) => { pts.delete(e.pointerId); if (!pts.size) cv.classList.remove("grabbing"); };
+  cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+  cv.addEventListener("wheel", (e) => { e.preventDefault(); zoomAt(Math.exp(Math.max(-1, Math.min(1, e.deltaY / 300))), e.clientX, e.clientY); }, { passive: false });
+  const r = () => cv.getBoundingClientRect();
+  $("[data-z=in]", el).addEventListener("click", () => zoomAt(1 / 1.6, r().left + r().width / 2, r().top + r().height / 2));
+  $("[data-z=out]", el).addEventListener("click", () => zoomAt(1.6, r().left + r().width / 2, r().top + r().height / 2));
+  reset.addEventListener("click", () => {
+    const m = st.map;
+    if (!m) return;
+    m.bounds = m.user; m.user = null; m.anim = performance.now(); reset.hidden = true;
+    m.play();                                   // glide back to everyone
+  });
 }
 
 // ------------------------------------------------------------------ recap, leaderboards (fetched now and then)
@@ -534,9 +588,8 @@ function renderTv(b) {
   const main = $("#sp-main");
   if (main.dataset.sid !== b.id || main.dataset.mode !== "tv") {
     main.dataset.sid = b.id; main.dataset.mode = "tv";
-    main.innerHTML = `<div class="tv-wrap"><div class="tv-main"><div class="tv-stage">${SCREENS.map(([k, title]) => `<section class="tv-slide" data-slide="${k}" aria-hidden="true">
-        <h2 class="tv-title">${esc(title)}<span class="tv-sub" data-sub="${k}"></span></h2><div class="tv-scroll"><div class="tv-inner" id="tv-${k}"></div></div></section>`).join("")}</div>
-      <nav class="tv-dots" id="tv-dots" aria-label="Screens"></nav></div>
+    main.innerHTML = `<nav class="tv-dots" id="tv-dots" aria-label="Screens"></nav><div class="tv-wrap"><div class="tv-main"><div class="tv-stage">${SCREENS.map(([k, title]) => `<section class="tv-slide" data-slide="${k}" aria-hidden="true">
+        <h2 class="tv-title">${esc(title)}<span class="tv-sub" data-sub="${k}"></span></h2><div class="tv-scroll"><div class="tv-inner" id="tv-${k}"></div></div></section>`).join("")}</div></div>
       <aside class="tv-side" aria-label="Recent events"><div id="tv-side-feed"></div></aside></div>`;
     st.map = null; tv.idx = -1; tv.shown = null;
   }
@@ -556,6 +609,7 @@ function renderTv(b) {
   if (tv.idx < 0) tvShow(tvAvailable("live", b) ? "live" : tv.pick && tvAvailable(tv.pick, b) ? tv.pick : "now");
   else if (!tvAvailable(tv.shown, b)) tvShow("now");       // what was showing has nothing left in it
   tvDots(b);
+  requestAnimationFrame(alignSide);
 }
 function tvDots(b) {
   const dots = $("#tv-dots");
@@ -569,7 +623,7 @@ function tvDots(b) {
 }
 // The "Lately" panel starts level with the screen's first card, not with the tabs and title above it.
 function alignSide() {
-  const side = $(".tv-side"), main = $(".tv-main"), first = $(".tv-slide.on .tv-inner > *");
+  const side = $(".tv-side"), main = $(".tv-main"), first = $(".tv-slide.on .tv-inner .glass, .tv-slide.on .tv-inner canvas, .tv-slide.on .tv-inner iframe") || $(".tv-slide.on .tv-inner > *");
   if (!side || !main) return;
   if (!first || innerWidth <= 1000) { side.style.marginTop = ""; return; }
   side.style.marginTop = `${Math.max(0, Math.round(first.getBoundingClientRect().top - main.getBoundingClientRect().top))}px`;

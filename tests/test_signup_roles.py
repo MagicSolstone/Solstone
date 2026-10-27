@@ -151,3 +151,21 @@ def test_only_admins_see_how_long_anyone_played(client, viewer, player, anon, si
     act = viewer.get(f"/api/servers/{sid}/activity").json()
     assert act["durations"] is False and all(set(v.values()) <= {1} for d in act["daily"] for v in [d["players"]])
     assert all(b["key"] != "play_time" for b in client.get(f"/api/servers/{sid}/leaderboard").json()["boards"])
+
+
+def test_players_can_see_the_map_when_allowed(player, client, viewer, sid):
+    other = helpers.PLAYERS[1][1]
+    assert viewer.put("/api/settings/players", json={"see_map": True}).status_code == 403
+    assert client.get("/api/settings/players").json() == {"see_map": False}
+    assert player.get(f"/api/servers/{sid}/world").status_code == 403           # off: no World tab
+    assert "player_map" not in player.get(f"/api/servers/{sid}").json()
+    try:
+        assert client.put("/api/settings/players", json={"see_map": True}).json() == {"see_map": True}
+        assert player.get(f"/api/servers/{sid}/world").status_code == 200
+        assert player.get(f"/api/servers/{sid}").json()["player_map"] is True
+        assert any(s.get("player_map") for s in player.get("/api/servers").json())
+        them = next(p for p in player.get(f"/api/servers/{sid}/players").json()["players"] if p["uuid"] == other)
+        assert "position" in them                                               # where everyone is, on the map
+        assert player.get(f"/api/servers/{sid}/players/{other}").status_code == 404   # still not their page
+    finally:
+        client.put("/api/settings/players", json={"see_map": False})

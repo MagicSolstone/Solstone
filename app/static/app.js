@@ -147,7 +147,8 @@ async function signedIn(user) {
   state.buildCheck = setInterval(async () => {
     try { const d = await (await fetch("/api/public/status")).json(); if (appBuild && d.build && d.build !== appBuild) { showToast('Solstone has been updated. <a href="" data-reload>Reload to get the new version</a>', 0); clearInterval(state.buildCheck); } } catch { /* offline for a moment */ }
   }, 5 * 60 * 1000);
-  await loadServers();
+  // Pages that don't need the server list (Events, Fireworks, Manage) show without waiting for it.
+  loadServers();
   route();
 }
 
@@ -632,7 +633,11 @@ function serverIconHtml(s, withDot = true) {
   const inner = s.has_icon ? `<img src="/api/servers/${encodeURIComponent(s.id)}/icon.png" alt="">` : esc((s.name || "?")[0]);
   return `<span class="server-icon">${inner}${dot}</span>`;
 }
-async function loadServers() {
+// One request at a time: callers at the same moment share it.
+function loadServers() {
+  return (state.serversLoading ||= fetchServers().finally(() => { state.serversLoading = null; }));
+}
+async function fetchServers() {
   const uuids = api("/api/players/uuids").then((m) => Object.assign(knownUuids, m)).catch(() => null);
   try { state.servers = await api("/api/servers"); } catch (e) { state.servers = state.servers || []; }
   await uuids;
@@ -697,7 +702,7 @@ function serverHeader(s, tab) {
   // The group you're in shows its own row of tabs underneath.
   const groups = [
     ["overview", "Overview", [["overview", "Overview", base]]],
-    ...(java ? [...(isPlayer() ? [] : [["world", "World", [["world", "World", `${base}/world`]]]]),
+    ...(java ? [...(isPlayer() && !s.player_map ? [] : [["world", "World", [["world", "World", `${base}/world`]]]]),
       ["leaderboards", "Leaderboards", [["leaderboards", "Leaderboards", `${base}/leaderboards`]]],
       ["play", "Play", [...(s.fishing ? [["fishing", "Fishing", `${base}/fishing`]] : []), ...(isPlayer() ? [] : [["adventures", "Adventures", `${base}/adventures`]]),
         ...(isAdmin() ? [["challenges", "Challenges", `${base}/challenges`]] : [])]]] : []),
@@ -809,7 +814,7 @@ function mountPlayerGlance(el, daysEl, s, data) {
       <div class="glance-card"><small>In the world</small>${world}</div>
       ${mine ? `<a class="glance-card glance-me" href="#/s/${encodeURIComponent(sid)}/p/${mine.uuid}"><small>You</small>
         <b>${headHtml(mine, 28)} ${esc(mine.name)}${mine.xp_level != null ? ` <span class="lvl">${mine.xp_level}</span>` : ""}</b>
-        <span>${mine.online ? "Playing now" : `Last seen ${esc(fmtAgo(mine.last_seen))}`} · your inventory, stats and fishing →</span></a>` : ""}
+        <span>${mine.online ? "Playing now" : `Last seen ${esc(fmtAgo(mine.last_seen))}`} · your inventory${s.fishing ? ", stats and fishing" : " and stats"} →</span></a>` : ""}
       <div class="glance-card"><small>Events</small>${next.length ? next.map((x) => `<span>${esc(x.emoji || "")} <b>${esc(x.title)}</b> ${x.live ? "· on now" : `· ${esc(new Date(x.at * 1000).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }))}${x.time ? ` ${esc(x.time)}` : ""}`}</span>`).join("")
         : "<span>Nothing planned yet</span>"}<a class="glance-more" href="#/events">All of it →</a></div>
     </div>`;
@@ -1159,20 +1164,20 @@ async function viewWorld(sid) {
   // Two maps: Solstone's own (drawn from the world files, with everyone's last spot) and a web map (BlueMap...) if set
   const webMap = s.map_url
     ? `<iframe class="map-frame" src="${esc(s.map_url)}" title="World map" loading="lazy"></iframe><p class="muted" style="margin-top:8px;font-size:.9rem"><a href="${esc(s.map_url)}" target="_blank" rel="noopener">Open the map full screen</a></p>`
-    : `<div class="empty"><h3>Add a 3D web map too</h3><p>Install the <b>BlueMap</b> or <b>squaremap</b> Fabric mod on this server, then paste its web address (for example <code>http://your-server:8100</code>) in server settings. It shows here beside Solstone's map.</p><p style="margin-top:12px"><button class="btn primary" id="btn-map">Add map address</button></p></div>`;
+    : isPlayer() ? "" : `<div class="empty"><h3>Add a 3D web map too</h3><p>Install the <b>BlueMap</b> or <b>squaremap</b> Fabric mod on this server, then paste its web address (for example <code>http://your-server:8100</code>) in server settings. It shows here beside Solstone's map.</p><p style="margin-top:12px"><button class="btn primary" id="btn-map">Add map address</button></p></div>`;
   const DIM_ORDER = ["minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"];
   const mapDims = w.dimensions.filter((d) => d.chunks > 0).map((d) => d.id)
     .sort((a, b) => ((DIM_ORDER.indexOf(a) + 1 || 9) - (DIM_ORDER.indexOf(b) + 1 || 9)));
   let pick = "own";
   try { if (localStorage.getItem("solstone-world-map") === "web" && s.map_url) pick = "web"; } catch { /* private window */ }
-  const map = `<div class="world-map-pick"><span class="seg" role="group" aria-label="Which map"><button type="button" data-wm="own" aria-pressed="${pick === "own"}">🗺️ Solstone map</button><button type="button" data-wm="web" aria-pressed="${pick === "web"}">${s.map_url ? "🧊 Web map" : "＋ Web map"}</button></span>
+  const map = `<div class="world-map-pick">${isPlayer() && !s.map_url ? "" : `<span class="seg" role="group" aria-label="Which map"><button type="button" data-wm="own" aria-pressed="${pick === "own"}">🗺️ Solstone map</button><button type="button" data-wm="web" aria-pressed="${pick === "web"}">${s.map_url ? "🧊 Web map" : "＋ Web map"}</button></span>`}
       ${mapDims.length > 1 ? `<select class="input sm" id="wm-dim" aria-label="Dimension">${mapDims.map((d) => `<option value="${esc(d)}">${esc(dimName(d))}</option>`).join("")}</select>` : ""}</div>
     <div id="wm-own" class="world-own-map" ${pick === "own" ? "" : "hidden"}></div><div id="wm-web" ${pick === "web" ? "" : "hidden"}>${webMap}</div>`;
   setView(serverHeader(s, "world") + `
     <div class="world-top"><div id="world-sky" class="world-sky">${skyHtml(w)}</div>
       <div class="panel"><dl class="kv">
         <dt>World</dt><dd>${esc(w.level_name)}</dd>
-        <dt>Seed</dt><dd>${w.seed ? `<span class="num">${esc(w.seed)}</span><button class="copy" data-copy="${esc(w.seed)}">Copy</button>` : "Unknown"}</dd>
+        ${isPlayer() ? "" : `<dt>Seed</dt><dd>${w.seed ? `<span class="num">${esc(w.seed)}</span><button class="copy" data-copy="${esc(w.seed)}">Copy</button>` : "Unknown"}</dd>`}
         <dt>Difficulty</dt><dd>${esc(humanize(w.difficulty || "?"))}${w.hardcore ? " · Hardcore" : ""}</dd>
         <dt>Game mode</dt><dd>${esc(humanize(w.default_gamemode))}</dd>
         <dt>World spawn</dt><dd>${w.spawn ? `<span class="num">${w.spawn.x}, ${w.spawn.y}, ${w.spawn.z}</span>` : "Unknown"}</dd>
@@ -1180,7 +1185,7 @@ async function viewWorld(sid) {
       </dl></div></div>
     <section class="section"><div class="section-head"><h2>Map</h2></div>${map}</section>
     <section class="section"><div class="section-head"><h2>Where everyone is</h2><span class="muted">Live for players online with RCON, otherwise from their last save</span></div>
-      ${located.length ? `<div class="where">${located.map((p) => `<a class="where-row" href="#/s/${encodeURIComponent(sid)}/p/${p.uuid}">${miniHead(p, 32)}
+      ${located.length ? `<div class="where">${located.map((p) => `<a class="where-row" ${!isPlayer() || isMine(p.uuid) ? `href="#/s/${encodeURIComponent(sid)}/p/${p.uuid}"` : ""}>${miniHead(p, 32)}
         <div><b>${esc(p.name)}</b> ${p.online ? '<span class="live-tag" style="font-size:.85rem"><span class="status-dot on"></span>online</span>' : `<span class="faint" style="font-size:.85rem">${esc(fmtAgo(p.last_seen))}</span>`}
           <div class="coords">${Math.round(p.position.x)}, ${Math.round(p.position.y)}, ${Math.round(p.position.z)}</div></div>
         <span class="dim-tag ${dimClass(p.position.dimension)}">${esc(dimName(p.position.dimension))}</span></a>`).join("")}</div>` : `<div class="empty"><p>No player positions saved yet.</p></div>`}
@@ -1372,22 +1377,24 @@ async function route() {
     // Manage: the old addresses lead to their tab
     const OLD = { admin: "users", announcements: "announcements", website: "website" };
     if (OLD[parts[0]]) { location.replace(`#/manage/${OLD[parts[0]]}`); return; }
-    if (parts[0] === "fireworks" && parts[1] === "settings") { location.replace("#/manage/fireworks"); return; }
+    if ((parts[0] === "fireworks" && parts[1] === "settings") || (parts[0] === "manage" && parts[1] === "fireworks")) { location.replace("#/fireworks/show"); return; }
     setManageNav(parts[0] === "manage" ? parts[1] || "announcements" : null);
     if (parts[0] === "manage") {
       const tab = parts[1] || "announcements";
       if (tab === "announcements") await viewAnnouncements();
       else if (tab === "website") await viewWebsite();
-      else if (tab === "fireworks") await viewFireworkSettings();
       else await viewAdmin(tab);
       return;
     }
     if (parts[0] === "coming-up") { location.replace("#/events"); return; }      // its old name
     if (parts[0] === "events") { await viewUpcoming(); return; }
+    if (parts[0] === "fireworks" && parts[1] === "show") { await viewFireworkSettings(); return; }
     if (parts[0] === "fireworks") { await viewFireworkEditor(parts[1]); return; }
     if (parts[0] === "s" && parts[1]) {
       const sid = parts[1];
-      if (isPlayer() && PLAYER_HIDDEN.has(parts[2])) { location.replace(`#/s/${encodeURIComponent(sid)}`); return; }
+      if (isPlayer() && parts[2] === "world" && !state.servers?.length) await loadServers();
+      const mapOk = parts[2] === "world" && state.servers?.find((x) => x.id === sid)?.player_map;
+      if (isPlayer() && PLAYER_HIDDEN.has(parts[2]) && !mapOk) { location.replace(`#/s/${encodeURIComponent(sid)}`); return; }
       if (parts[2] === "p" && parts[3]) await viewPlayer(sid, parts[3], parts[4] || "inventory");
       else if (parts[2] === "world") await viewWorld(sid);
       else if (parts[2] === "activity") location.replace(`#/s/${encodeURIComponent(sid)}`);

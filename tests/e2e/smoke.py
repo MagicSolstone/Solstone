@@ -117,7 +117,7 @@ def main() -> int:
             if "script-src 'self'" not in hdrs.get("content-security-policy", ""):
                 problems.append("index: no Content-Security-Policy header")
             # turn on live server info so the home page shows it too
-            pg.request.put(f"{base}/api/settings/status", data={"enabled": True}, headers=H)
+            pg.request.put(f"{base}/api/settings/status", data={"enabled": True, "show_positions": True}, headers=H)
             # the website: how to join, and a post of each kind
             pg.request.put(f"{base}/api/settings/site", data={"name": "Smoke SMP", "tagline": "A test server", "java_address": "play.example.net",
                                                               "bedrock_address": "play.example.net", "about": "We **fish** a lot."}, headers=H)
@@ -131,7 +131,7 @@ def main() -> int:
                 "player-advancements": f"#/s/{sid}/p/{puuid}/advancements", "world": f"#/s/{sid}/world",
                 "control": f"#/s/{sid}/control", "check": f"#/s/{sid}/check", "chat": f"#/s/{sid}/chat", "challenges": f"#/s/{sid}/challenges", "races": f"#/s/{sid}/challenges/races", "games": f"#/s/{sid}/challenges/games", "performance": f"#/s/{sid}/performance",
                 "leaderboards": f"#/s/{sid}/leaderboards", "fishing": f"#/s/{sid}/fishing", "fishing-player": f"#/s/{sid}/fishing/Tyler", "mods": f"#/s/{sid}/mods", "adventures": f"#/s/{sid}/adventures", "events": "#/events",
-                "fireworks-editor": "#/fireworks", "fireworks-settings": "#/manage/fireworks",
+                "fireworks-editor": "#/fireworks", "fireworks-settings": "#/fireworks/show",
                 "announcements": "#/manage/announcements", "admin": "#/manage/users", "manage-servers": "#/manage/servers",
                 "manage-activity": "#/manage/activity", "website": "#/manage/website",
             }
@@ -316,6 +316,26 @@ def main() -> int:
                         return ''; }""")
                     if clipped:
                         problems.append(f"live: Recent activity is cut off by {clipped}")
+            # the map on the live section: drag to move around, then Reset view; the screens' names fit on one line
+            anon.goto(f"{base}/#live"); anon.wait_for_timeout(2500)
+            rows = anon.evaluate("() => new Set([...document.querySelectorAll('#live .tv-dots [data-tv]')].map(b => Math.round(b.getBoundingClientRect().top))).size")
+            if rows > 1:
+                problems.append(f"live: the screens' names take {rows} lines")
+            mp = anon.locator("#live .tv-dots [data-tv='map']")
+            if not mp.count():
+                problems.append("live: no map screen with positions on")
+            else:
+                mp.click(); anon.wait_for_timeout(1200)
+                box = anon.locator("#sp-map canvas").bounding_box()
+                anon.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2); anon.mouse.down()
+                anon.mouse.move(box["x"] + box["width"] / 2 + 120, box["y"] + box["height"] / 2 + 60, steps=6); anon.mouse.up()
+                anon.wait_for_timeout(300)
+                if not anon.locator("#sp-map [data-reset]:not([hidden])").count():
+                    problems.append("live map: dragging didn't move the view (no Reset view)")
+                check(anon, "live-map-moved")
+                anon.click("#sp-map [data-reset]"); anon.wait_for_timeout(1200)
+                if anon.locator("#sp-map [data-reset]:not([hidden])").count():
+                    problems.append("live map: Reset view stayed")
             anon.set_viewport_size({"width": 390, "height": 800}); anon.goto(f"{base}/#live"); anon.wait_for_timeout(2000)
             check(anon, "m-live")
             off = anon.evaluate("() => [...document.querySelectorAll('.tv-dots [data-tv]')].filter(b => b.getBoundingClientRect().right > innerWidth).length")

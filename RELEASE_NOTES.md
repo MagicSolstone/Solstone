@@ -1,3 +1,24 @@
+# Solstone 1.7.0
+
+## Fireworks in one place
+- The **Firework show** tab has left Manage. Admins now find it on the Fireworks page (in the menu under your name), next to the **Editor**: Fireworks → 🎨 Editor · 🎆 Firework show. Old links still work.
+
+## The map
+- **Move around the live map**: on the home page's *Where everyone is*, drag to move, scroll or pinch to zoom, or use **+** and **−**. **Reset view** goes back to following everyone.
+- **Players can see the map** (new switch in Manage → Users, off to start): Players get the World tab, with the map of the world, where everyone is, and the web map (BlueMap or squaremap) if the server has one. The world's seed stays hidden, and other players' own pages stay private.
+
+## Live on the home page
+- The screens' names sit in one row across the whole width, so *Recent activity* stays on the same line as *World map*.
+- *Lately* lines up with the panel beside it on every screen.
+- *Live · updated* sits next to the heading.
+
+## Events
+- Opens straight away, without waiting for every server's details first.
+- With nothing planned, it says so: **No events scheduled**, and (for admins) where to add some.
+
+## Player accounts
+- The *You* card says "your inventory and stats", and only mentions fishing on servers with the fishing mod.
+
 # Solstone 1.6.0
 
 ## One bar on every page

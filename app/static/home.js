@@ -105,9 +105,8 @@ function faqList(posts) {
 
 // Live: who's playing right now, the world, leaderboards and the recap (live.js fills it in).
 function liveSection() {
-  return `<section class="hp-live" id="live" hidden><div class="hp-head"><h2>Live on the servers</h2></div>
-    <div class="sp-top"><nav class="sp-servers" id="sp-servers" aria-label="Servers"></nav>
-      <div class="sp-right"><span class="sp-updated" id="sp-updated" aria-live="polite"></span></div></div>
+  return `<section class="hp-live" id="live" hidden><div class="hp-head"><h2>Live on the servers</h2><span class="sp-updated" id="sp-updated" aria-live="polite"></span></div>
+    <nav class="sp-servers" id="sp-servers" aria-label="Servers"></nav>
     <div id="sp-main" class="sp-main"><p class="muted sp-loading">Loading…</p></div></section>`;
 }
 
@@ -151,7 +150,7 @@ Good to know on Bedrock:
   account: {
     title: "Making an account on this website",
     excerpt: "See the servers, leaderboards and your own stats. Takes a minute, from inside the game.",
-    body: (s) => s.signup ? `Your account here shows the servers, who's on, the leaderboards, fishing, and your own page: your inventory, stats and play time.
+    body: (s) => s.signup ? `Your account here shows the servers, who's on, the leaderboards and your own page: your inventory and stats.
 
 ## Make one
 1. Join the server and stay in the game (see [How to join](/guides/join)).

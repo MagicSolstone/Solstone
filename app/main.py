@@ -30,7 +30,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 
 
 @asynccontextmanager
@@ -132,10 +132,20 @@ PLAYER_ROUTES: dict[str, set[str]] = {
 }
 
 
+# With "Players can see the map" on (Manage → Users), players also get the World tab: the map, with where everyone is.
+PLAYER_MAP_ROUTES = {"/api/servers/{sid}/world": {"GET"}}
+
+
+def _players_see_map() -> bool:
+    return bool(settings_store.load().get("players", {}).get("see_map", False))
+
+
 def _player_may(method: str, path: str) -> bool:
     if not path.startswith("/api/") or path.startswith(("/api/public/", "/api/auth/")):
         return True
     if path.startswith("/api/fireworks"):                      # fireworks are for everyone
+        return True
+    if method in PLAYER_MAP_ROUTES.get(path, ()) and _players_see_map():
         return True
     return method in PLAYER_ROUTES.get(path, ()) or (method == "HEAD" and "GET" in PLAYER_ROUTES.get(path, ()))
 
@@ -195,7 +205,10 @@ def _for_player(summary: dict) -> dict:
     u = _viewer.get()
     if u is None or not u.is_player:
         return summary
-    return {k: summary[k] for k in _SUMMARY_FOR_PLAYERS if k in summary} | {"folder_found": True}
+    out = {k: summary[k] for k in _SUMMARY_FOR_PLAYERS if k in summary} | {"folder_found": True}
+    if _players_see_map():
+        out |= {"player_map": True, "map_url": summary.get("map_url")}
+    return out
 
 
 app.router.dependencies.append(Depends(_note_viewer))
@@ -1229,6 +1242,22 @@ async def put_fireworks(request: Request):
     return cur
 
 
+@app.get("/api/settings/players")
+async def get_player_settings(request: Request):
+    auth.require_admin(request)
+    return {"see_map": _players_see_map()}
+
+
+@app.put("/api/settings/players")
+async def put_player_settings(request: Request):
+    user = auth.require_admin(request)
+    body = await _body(request)
+    cfg = {"see_map": bool(body.get("see_map", False))}
+    settings_store.save_section("players", cfg)
+    auth.audit(user, None, "player_settings", f"see_map={cfg['see_map']}")
+    return cfg
+
+
 @app.get("/api/settings/status")
 async def get_status_settings(request: Request):
     auth.require_admin(request)
@@ -1558,8 +1587,9 @@ async def get_players(sid: str):
     data = await S.players_overview(await _server(sid))
     if not _shows_play_time():
         data = _no_durations(data)
+    see_map = _players_see_map()
     for p in data["players"]:
-        if not _own(p.get("uuid") or ""):          # a player account doesn't see where anyone else is
+        if not see_map and not _own(p.get("uuid") or ""):          # a player account doesn't see where anyone else is (unless the map is on for them)
             p.pop("position", None)
             p.pop("dimension", None)
     return data

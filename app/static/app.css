@@ -1749,3 +1749,19 @@ a.glance-me:hover { border-color: var(--gold); }
 .hp-live .sp-main { padding: 0; max-width: none; }
 .hp-live .tv-title { font-size: 1.3rem; }
 .hp-live[hidden] { display: none; }
+.up-empty { text-align: center; padding: 36px 20px; display: grid; gap: 8px; justify-items: center; }
+.up-empty-emoji { font-size: 2.6rem; }
+.up-empty h2 { margin: 0; }
+.up-empty p { max-width: 520px; }
+/* The live map: drag to move, scroll or pinch to zoom */
+.map-box { position: relative; height: 100%; }
+.map-box canvas { touch-action: none; cursor: grab; }
+.map-box canvas.grabbing { cursor: grabbing; }
+.map-ctl { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 6px; }
+.map-ctl button { min-width: 34px; height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--glass-edge); background: rgba(8, 10, 18, .72);
+  color: var(--bone); font-weight: 700; font-size: 1rem; cursor: pointer; }
+.map-ctl button:hover { background: rgba(30, 36, 56, .9); }
+.map-ctl button[hidden] { display: none; }
+#live > .sp-main > .tv-dots { margin-bottom: 8px; }
+.hp-live .sp-servers { margin-bottom: 12px; }
+.hp-live .sp-servers:empty { display: none; }

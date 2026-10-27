@@ -140,6 +140,11 @@ function fweSetPicture(grid, f = ed.frame) {
   ed.grids[f] = grid;
 }
 
+// Fireworks in one place: the editor for everyone, and for admins the show (what the sky does by itself).
+function fireworksTabs(on) {
+  if (!isAdmin()) return "";
+  return `<nav class="tabs" aria-label="Fireworks"><a href="#/fireworks" ${on === "editor" ? 'aria-current="page"' : ""}>🎨 Editor</a><a href="#/fireworks/show" ${on === "show" ? 'aria-current="page"' : ""}>🎆 Firework show</a></nav>`;
+}
 async function viewFireworkEditor(editId) {
   curSid = null;
   document.title = `Firework editor · ${SITE_NAME}`;
@@ -161,8 +166,8 @@ async function viewFireworkEditor(editId) {
   ed.grids = {}; ed.frame = 1;
   if (!resume && (found || ed.base == null)) fweMarkSaved();
   setView(`<div class="fwe-head"><h1>Fireworks</h1>
-      <nav class="tabs" aria-label="Fireworks"><a href="#/fireworks" aria-current="page">Editor</a>${isAdmin() ? '<a href="#/manage/fireworks">Show settings</a>' : ""}</nav>
-      <p class="muted">Design a firework, watch it go off, and save it. Fireworks marked <b>In the show</b> join the sky on every page of the site, including the home, sign-in and status pages.</p></div>
+      ${fireworksTabs("editor")}
+      <p class="muted">Design a firework, watch it go off, and save it. Fireworks marked <b>In the show</b> join the sky on every page of the site, including the home and sign-in pages.</p></div>
     <div class="fwe-mode" id="fwe-mode" aria-live="polite"></div>
     <div class="fwe">
       <div class="fwe-left">
