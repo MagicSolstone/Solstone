@@ -96,6 +96,10 @@ function openSignup() {
     <form id="su-finish" autocomplete="off"><label>The six-digit code<input class="input" name="code" inputmode="numeric" maxlength="7" required autocomplete="one-time-code"></label>
       <label>Pick a username <small>What you'll sign in with here. Letters, numbers, dots, dashes and underscores.</small><input class="input" name="username" required pattern="[A-Za-z0-9_.\\-]{2,32}" autocapitalize="off" autocomplete="username"></label>
       <label>Pick a password <small>8 or more characters. Not the one for your Microsoft account.</small><input class="input" type="password" name="password" minlength="8" required autocomplete="new-password"></label>
+      <label>Your first name <small>Optional. Only the admins see it, so they know who you are.</small><input class="input" name="real_name" maxlength="40" autocomplete="given-name"></label>
+      <div class="su-bday"><span>Your birthday <small>Optional. You get a birthday banner and fireworks on the day.</small></span>
+        <span class="su-bday-row"><select class="input sm" name="bmonth" aria-label="Birthday month"><option value="">Month</option>${["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map((m, i) => `<option value="${i + 1}">${m}</option>`).join("")}</select>
+          <select class="input sm" name="bday" aria-label="Birthday day"><option value="">Day</option>${Array.from({ length: 31 }, (_, i) => `<option>${i + 1}</option>`).join("")}</select></span></div>
       <p class="login-error" role="alert"></p>
       <div class="actions"><button type="button" class="btn" id="su-back">Send a new code</button><button class="btn primary" type="submit">Make my account</button></div></form>`;
   openModal(step1(), (m) => {
@@ -113,7 +117,9 @@ function openSignup() {
         e.preventDefault();
         const f = new FormData(e.target);
         try {
-          const r = await post("/api/public/signup/finish", { player, code: f.get("code"), username: f.get("username"), password: f.get("password") });
+          const birthday = f.get("bmonth") && f.get("bday") ? { month: +f.get("bmonth"), day: +f.get("bday") } : null;
+          const r = await post("/api/public/signup/finish", { player, code: f.get("code"), username: f.get("username"), password: f.get("password"),
+            real_name: f.get("real_name") || "", birthday });
           closeModal(); signedIn(r.user); showToast(`Welcome, ${esc(r.user.shown)}!`, 3000);
         } catch (err) { $(".login-error", e.target).textContent = err.message; }
       });
@@ -140,6 +146,7 @@ async function signedIn(user) {
   const root = $("#login-root"); root.hidden = true; root.innerHTML = "";
   if (!appSky.board) appSky.board = startBoard($("#app-board"), { where: "app", sid: () => curSid || "", scene: () => appSky.scene, dismiss: true, max: innerWidth < 700 ? 1 : 2 });
   $("#account-name").textContent = user.shown || user.username;
+  $("#btn-account").title = [user.real_name, user.player?.name && `In the game: ${user.player.name}`].filter(Boolean).join(" · ");
   $("#account-role").textContent = (ROLE_NAMES.find(([v]) => v === user.role) || [, "Signed in"])[1] + (user.player ? ` · ${user.player.name}` : "");
   fetch("/api/public/status").then((r) => r.json()).then((d) => { appBuild = d.build; }).catch(() => {});
   // Left open for a while? Say when Solstone has been updated (a reload loads it).

@@ -46,10 +46,15 @@ def test_signup_with_a_code_from_the_game(client, anon, game):
 
         bad = anon.post("/api/public/signup/finish", json={"player": "Tyler", "code": "000000", "username": "tyler_web", "password": "long-enough-1"})
         assert bad.status_code == 400
-        ok = anon.post("/api/public/signup/finish", json={"player": "Tyler", "code": code, "username": "tyler_web", "password": "long-enough-1"})
+        ok = anon.post("/api/public/signup/finish", json={"player": "Tyler", "code": code, "username": "tyler_web", "password": "long-enough-1",
+                                                          "real_name": "Tyler J", "birthday": {"month": 3, "day": 14}})
         assert ok.status_code == 200, ok.text
         me = anon.get("/api/auth/me").json()["user"]
         assert me["role"] == "player" and me["player"]["name"] == "Tyler" and me["shown"] == "Tyler"
+        assert me["real_name"] == "Tyler J"                         # their own, and the admins' (below)
+        assert next(u for u in client.get("/api/users").json() if u["username"] == "tyler_web")["real_name"] == "Tyler J"
+        bdays = client.get("/api/board").json()["birthdays"]
+        assert {"player": "Tyler", "month": 3, "day": 14} == {k: v for k, v in next(b for b in bdays if b["player"] == "Tyler").items() if k in ("player", "month", "day")}
         assert me["servers"] == [helpers.SID]                       # the server they signed up on
         # the code is used up, and a second account for the same player isn't made
         again = anon.post("/api/public/signup/finish", json={"player": "Tyler", "code": code, "username": "tyler2", "password": "long-enough-1"})
@@ -58,6 +63,7 @@ def test_signup_with_a_code_from_the_game(client, anon, game):
         assert "already have an account" in game[-1] and "tyler_web" in game[-1]
     finally:
         _signup_on(client, False)
+        client.put("/api/board", json={"birthdays": [b for b in client.get("/api/board").json()["birthdays"] if b["player"] != "Tyler"]})
         for u in client.get("/api/users").json():
             if u["username"] == "tyler_web":
                 client.delete(f"/api/users/{u['id']}")

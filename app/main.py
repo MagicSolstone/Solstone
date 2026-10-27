@@ -618,8 +618,9 @@ async def signup_finish(request: Request):
     _signup_on()
     body = await _body(request)
     password = str(body.get("password") or "")
+    bd = body.get("birthday") if isinstance(body.get("birthday"), dict) else None
     u = await asyncio.to_thread(signup.finish, str(body.get("player") or ""), str(body.get("code") or ""),
-                                str(body.get("username") or ""), password)
+                                str(body.get("username") or ""), password, str(body.get("real_name") or "")[:60], bd)
     auth.audit(u, None, "signup", f"{u.username} as {u.player_name}")
     user, token = await asyncio.to_thread(auth.login, request, u.username, password)
     resp = JSONResponse({"user": _me(user)})
@@ -1412,7 +1413,9 @@ async def edit_user(uid: int, request: Request):
     if "servers" in body:                   # the servers this login sees: a list of ids, or null for all of them
         v = body.get("servers")
         u = auth.set_servers(uid, [str(x) for x in v] if isinstance(v, list) else None)
-    changes = ", ".join(k for k in ("role", "password", "player", "servers") if k in body and (body.get(k) or k in ("player", "servers")))
+    if "real_name" in body:
+        u = auth.set_real_name(uid, str(body.get("real_name") or ""))
+    changes = ", ".join(k for k in ("role", "password", "player", "servers", "real_name") if k in body and (body.get(k) or k in ("player", "servers", "real_name")))
     auth.audit(admin, None, "edit_user", f"{u.username}: {changes}")
     return u.public()
 

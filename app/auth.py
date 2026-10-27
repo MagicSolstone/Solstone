@@ -92,6 +92,8 @@ def _init() -> None:
             db.conn().execute("ALTER TABLE users ADD COLUMN player_name TEXT")
         if "servers" not in cols:                            # added later: the servers a login is limited to
             db.conn().execute("ALTER TABLE users ADD COLUMN servers TEXT")
+        if "real_name" not in cols:                          # added later: their real name, for admins only
+            db.conn().execute("ALTER TABLE users ADD COLUMN real_name TEXT")
         db.conn().execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_player ON users(player_uuid) WHERE player_uuid IS NOT NULL")
         db.conn().execute("UPDATE users SET role='trusted' WHERE role='viewer'")   # the old name
         _ready = True
@@ -126,6 +128,7 @@ class User:
     player_uuid: str | None = None      # the Minecraft account this login belongs to (signed-up players)
     player_name: str | None = None
     servers: list[str] | None = None    # the only servers this login sees (None: all of them; admins always see all)
+    real_name: str | None = None        # who they really are, so admins know; never shown to other players
 
     def may_see(self, server_id: str) -> bool:
         return self.is_admin or self.servers is None or server_id in self.servers
@@ -147,14 +150,15 @@ class User:
     def public(self) -> dict:
         return {"id": self.id, "username": self.username, "role": self.role, "display_name": self.display_name, "shown": self.shown,
                 "player": {"uuid": self.player_uuid, "name": self.player_name} if self.player_uuid else None,
-                "servers": self.servers}
+                "servers": self.servers, "real_name": self.real_name}
 
 
 def _row_user(r) -> User:
     keys = set(r.keys()) if hasattr(r, "keys") else set()
     g = lambda k: r[k] if k in keys else None  # noqa: E731
     return User(id=r["id"], username=r["username"], role=r["role"], display_name=g("display_name"),
-                player_uuid=g("player_uuid"), player_name=g("player_name"), servers=_servers_of(g("servers")))
+                player_uuid=g("player_uuid"), player_name=g("player_name"), servers=_servers_of(g("servers")),
+                real_name=g("real_name"))
 
 
 def _servers_of(raw) -> list[str] | None:
@@ -181,6 +185,22 @@ def set_display_name(uid: int, name: str | None) -> User:
         if taken:
             raise HTTPException(400, "Someone else already goes by that name")
     db.x("UPDATE users SET display_name=? WHERE id=?", (name or None, uid))
+    u = get_user(uid)
+    if not u:
+        raise HTTPException(404, "User not found")
+    return u
+
+
+_REAL_NAME = re.compile(r"^[^\x00-\x1f<>]{1,40}$")
+
+
+def set_real_name(uid: int, name: str | None) -> User:
+    """Their real name (up to 40 characters; empty clears it). Only admins and the person themselves see it."""
+    _init()
+    name = " ".join((name or "").split())
+    if name and not _REAL_NAME.match(name):
+        raise HTTPException(400, "Use up to 40 characters for the name")
+    db.x("UPDATE users SET real_name=? WHERE id=?", (name or None, uid))
     u = get_user(uid)
     if not u:
         raise HTTPException(404, "User not found")
@@ -254,7 +274,7 @@ def set_servers(uid: int, servers: list[str] | None) -> User:
 def list_users() -> list[dict]:
     _init()
     return [{"id": r["id"], "username": r["username"], "display_name": r["display_name"], "role": r["role"], "created": r["created_ts"],
-             "last_login": r["last_login_ts"], "player_name": r["player_name"],
+             "last_login": r["last_login_ts"], "player_name": r["player_name"], "real_name": r["real_name"],
              "servers": _servers_of(r["servers"])} for r in db.q("SELECT * FROM users ORDER BY username COLLATE NOCASE")]
 
 

@@ -357,7 +357,7 @@ async function viewAdmin(section = "users") {
         <label class="switch-row"><span><b>Let players make their own account</b><br><small class="muted">From the sign-in page: they type their Minecraft name while they're playing on a public server, get a code in the game chat, and choose a login. They start as Players. Your whitelist decides who can do this.</small></span><input type="checkbox" role="switch" id="signup-on" ${siteCfg.signup ? "checked" : ""}></label>
         <label class="switch-row"><span><b>Players can see the map</b><br><small class="muted">Gives Players the World tab: the map of the world with where everyone is (and the web map, if the server has one). The world's seed stays hidden.</small></span><input type="checkbox" role="switch" id="players-map-on" ${playerCfg.see_map ? "checked" : ""}></label></div>
       <div class="table-wrap"><table class="data users-table"><thead><tr><th>Username</th><th>Level</th><th>Minecraft player</th><th>Servers</th><th>Last signed in</th><th></th></tr></thead><tbody>
-      ${users.map((u) => `<tr data-uid="${u.id}"><td><b>${esc(u.username)}</b>${u.display_name ? ` <span class="muted">shown as ${esc(u.display_name)}</span>` : ""}${u.id === me.user.id ? ' <span class="muted">(you)</span>' : ""}</td>
+      ${users.map((u) => `<tr data-uid="${u.id}"><td><b>${esc(u.username)}</b>${u.display_name ? ` <span class="muted">shown as ${esc(u.display_name)}</span>` : ""}${u.real_name ? `<br><small class="muted" title="Their real name: only admins see it">👤 ${esc(u.real_name)}</small>` : ""}${u.id === me.user.id ? ' <span class="muted">(you)</span>' : ""}</td>
         <td><select class="input sm" data-role ${u.id === me.user.id ? "disabled" : ""} aria-label="Level for ${esc(u.username)}">${roleOpts(u.role)}</select></td>
         <td><button class="btn sm" type="button" data-link title="Link this account to someone who plays">${u.player_name ? esc(u.player_name) : "Link…"}</button></td>
         <td>${u.role === "admin" ? '<span class="muted">All</span>' : `<button class="btn sm" type="button" data-srv title="Which servers they see">${u.servers ? esc(u.servers.length === 1 ? srvName(u.servers[0]) : `${u.servers.length} servers`) : "All"}</button>`}</td>
@@ -428,12 +428,13 @@ async function viewAdmin(section = "users") {
   });
   $$("[data-link]").forEach((b) => b.addEventListener("click", () => {
     const tr = b.closest("tr"), name = tr.querySelector("b").textContent;
-    openModal(`<h2>Link ${esc(name)} to a player</h2><form id="link-form">
+    openModal(`<h2>${esc(name)}: player and name</h2><form id="link-form">
       <label>Minecraft name <small>Someone who has joined one of the servers. Leave it empty to unlink. A Player account sees its own page.</small><input class="input" name="player" value="${esc(b.textContent === "Link…" ? "" : b.textContent)}" autocapitalize="off"></label>
+      <label>Real name <small>Optional. Only admins see it.</small><input class="input" name="real_name" maxlength="40" value="${esc(users.find((x) => String(x.id) === tr.dataset.uid)?.real_name || "")}"></label>
       <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Save</button></div></form>`, (m) => {
       $("#link-form", m).addEventListener("submit", async (e) => {
         e.preventDefault();
-        try { await post(`/api/users/${tr.dataset.uid}`, { player: new FormData(e.target).get("player") }, "PATCH"); closeModal(); showToast("Saved", 2000); viewAdmin(section); }
+        try { await post(`/api/users/${tr.dataset.uid}`, { player: new FormData(e.target).get("player"), real_name: new FormData(e.target).get("real_name") || "" }, "PATCH"); closeModal(); showToast("Saved", 2000); viewAdmin(section); }
         catch (err) { showError(esc(err.message), 5000); }
       });
     });

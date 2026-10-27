@@ -80,6 +80,17 @@ def config() -> dict:
             "birthday_soon": max(0, min(31, int(saved.get("birthday_soon", 7) or 0)))}
 
 
+def add_birthday(player: str, month, day) -> bool:
+    """A player's birthday (from signing up): a banner and their show on the day. Keeps one per player."""
+    b = clean_birthday({"player": player, "month": month, "day": day})
+    if not b:
+        return False
+    cur = config()
+    cur["birthdays"] = [x for x in cur["birthdays"] if x["player"].lower() != player.lower()] + [b]
+    settings_store.save_section("board", cur)
+    return True
+
+
 def save(body: dict) -> dict:
     cur = config()
     if isinstance(body.get("items"), list):

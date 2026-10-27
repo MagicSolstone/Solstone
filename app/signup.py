@@ -21,7 +21,7 @@ import time
 
 from fastapi import HTTPException, Request
 
-from . import auth
+from . import auth, board
 from . import servers as S
 from .control import component
 
@@ -110,7 +110,7 @@ async def start(request: Request, typed: str, servers: list[S.Server]) -> str:
     return SENT_TEXT
 
 
-def finish(typed: str, code: str, username: str, password: str) -> auth.User:
+def finish(typed: str, code: str, username: str, password: str, real_name: str = "", birthday: dict | None = None) -> auth.User:
     """Check the code and make the player's account. Raises if it's wrong, used up or old."""
     want = _names((typed or "").strip())
     uuid = next((u for u, c in _codes.items() if c["name"].lower() in want), None)
@@ -132,4 +132,11 @@ def finish(typed: str, code: str, username: str, password: str) -> auth.User:
         auth.set_display_name(user.id, entry["name"].lstrip("."))
     except HTTPException:
         pass                    # their in-game name is someone's login already: they can pick one later
+    if real_name.strip():
+        try:
+            auth.set_real_name(user.id, real_name)
+        except HTTPException:
+            pass
+    if birthday:
+        board.add_birthday(entry["name"], birthday.get("month"), birthday.get("day"))
     return auth.get_user(user.id)

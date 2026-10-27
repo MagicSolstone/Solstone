@@ -1769,3 +1769,6 @@ a.glance-me:hover { border-color: var(--gold); }
 #live > .sp-main > .tv-dots { margin-bottom: 8px; }
 .hp-live .sp-servers { margin-bottom: 12px; }
 .hp-live .sp-servers:empty { display: none; }
+.su-bday { display: grid; gap: 6px; margin: 6px 0 4px; }
+.su-bday small { display: block; color: var(--muted); }
+.su-bday-row { display: flex; gap: 8px; }
