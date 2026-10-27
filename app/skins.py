@@ -3,6 +3,10 @@
 Third-party head services cache skins for a long time and sometimes hand back the
 default Steve skin. Mojang's session server is the source of truth: the profile for
 a UUID names the current skin file on textures.minecraft.net.
+
+Bedrock players (joining through Geyser and Floodgate) have no Mojang profile. Their
+UUID is 16 zeros then their Xbox ID (XUID), and GeyserMC's global API keeps their
+skin, already uploaded to textures.minecraft.net. Both end at the same skin file.
 """
 from __future__ import annotations
 
@@ -23,6 +27,7 @@ from .config import config
 log = logging.getLogger("solstone.skins")
 
 PROFILE_URL = "https://sessionserver.mojang.com/session/minecraft/profile/{uuid}"
+GEYSER_SKIN_URL = "https://api.geysermc.org/v2/skin/{xuid}"
 FRESH = 3600              # re-check Mojang this often (skins can change; a join re-checks at once)
 MISS_TTL = 30 * 60        # remember "no skin" (offline-mode UUIDs, outages) this long
 _UUID = re.compile(r"^[0-9a-f]{32}$")
@@ -36,18 +41,43 @@ def clean_uuid(u: str) -> str | None:
     return u if _UUID.match(u) else None
 
 
+def bedrock_xuid(uuid: str) -> int | None:
+    """A Floodgate (Bedrock) player's Xbox ID, from their UUID; None for a Java player."""
+    uuid = clean_uuid(uuid)
+    if not uuid or not uuid.startswith("0" * 16) or uuid == "0" * 32:
+        return None
+    return int(uuid[16:], 16)
+
+
+def _texture(value: str | None) -> tuple[str | None, bool]:
+    """The skin URL and slim-arms flag from a base64 'textures' property."""
+    if not value:
+        return None, False
+    info = json.loads(base64.b64decode(value)).get("textures", {}).get("SKIN") or {}
+    return info.get("url"), (info.get("metadata") or {}).get("model") == "slim"
+
+
+async def _skin_url(c: httpx.AsyncClient, uuid: str) -> tuple[str | None, bool]:
+    xuid = bedrock_xuid(uuid)
+    if xuid is not None:
+        r = await c.get(GEYSER_SKIN_URL.format(xuid=xuid))
+        if r.status_code != 200:
+            return None, False
+        data = r.json() or {}
+        if not data.get("texture_id") or data.get("is_steve"):
+            return None, False   # not seen by Geyser yet, or wearing a default skin
+        url, slim = _texture(data.get("value"))
+        return url or f"https://textures.minecraft.net/texture/{data['texture_id']}", slim
+    r = await c.get(PROFILE_URL.format(uuid=uuid))
+    if r.status_code != 200:
+        return None, False       # 204 = no such Mojang profile (offline-mode UUID)
+    props = r.json().get("properties") or []
+    return _texture(next((p.get("value") for p in props if p.get("name") == "textures"), None))
+
+
 async def _fetch(uuid: str) -> tuple[bytes, bool] | None:
     async with httpx.AsyncClient(timeout=6, follow_redirects=False) as c:
-        r = await c.get(PROFILE_URL.format(uuid=uuid))
-        if r.status_code != 200:
-            return None          # 204 = no such Mojang profile (offline-mode UUID)
-        props = r.json().get("properties") or []
-        tex = next((p.get("value") for p in props if p.get("name") == "textures"), None)
-        if not tex:
-            return None
-        info = json.loads(base64.b64decode(tex)).get("textures", {}).get("SKIN") or {}
-        url = info.get("url")
-        slim = (info.get("metadata") or {}).get("model") == "slim"
+        url, slim = await _skin_url(c, uuid)
         if not url or urlparse(url).hostname != "textures.minecraft.net":
             return None
         r = await c.get(url.replace("http://", "https://", 1))

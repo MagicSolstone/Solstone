@@ -49,3 +49,50 @@ def test_stale_makes_the_next_request_recheck(tmp_path, monkeypatch):
     skins._misses[U] = time.monotonic()
     skins.stale(U)
     assert os.stat(p).st_mtime == 0 and U not in skins._misses
+
+
+def test_bedrock_uuid_is_its_xbox_id():
+    assert skins.bedrock_xuid("00000000-0000-0000-0009-01f2a3b4c5d6") == 0x000901F2A3B4C5D6
+    assert skins.bedrock_xuid(U) is None                   # a Java player
+    assert skins.bedrock_xuid("0" * 32) is None
+
+
+def test_bedrock_skin_comes_from_geyser(monkeypatch):
+    import asyncio
+    import base64
+    import json as _json
+    png = _skin()
+    value = base64.b64encode(_json.dumps({"textures": {"SKIN": {"url": "http://textures.minecraft.net/texture/abc",
+                                                                   "metadata": {"model": "slim"}}}}).encode()).decode()
+    seen = []
+
+    class R:
+        def __init__(self, code, body=None, content=b""):
+            self.status_code, self._body, self.content = code, body, content
+
+        def json(self):
+            return self._body
+
+    class C:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url):
+            seen.append(url)
+            if "api.geysermc.org" in url:
+                return R(200, {"texture_id": "abc", "value": value, "is_steve": False})
+            if url == "https://textures.minecraft.net/texture/abc":
+                return R(200, content=png)
+            return R(404)
+
+    monkeypatch.setattr(skins.httpx, "AsyncClient", C)
+    data, slim = asyncio.run(skins._fetch("00000000000000000009" + "01f2a3b4c5d6"))
+    assert data == png and slim
+    assert seen[0] == "https://api.geysermc.org/v2/skin/" + str(0x000901F2A3B4C5D6)
+    assert not any("sessionserver" in u for u in seen)     # Bedrock players never ask Mojang
