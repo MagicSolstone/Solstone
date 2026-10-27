@@ -4,7 +4,7 @@
 - **Tried to join:** when the whitelist turns someone away, their exact name shows in the server's Control → Whitelist, with **Copy** and **Let them in**. There's a notification for it too (Notifications → *Someone the whitelist turned away*).
 - **Ask to join** (Website → Join and account guides, off to start): a form at the bottom of the join guide. People pick Java or Bedrock, type their name in the game and, if they like, their first name and a note. You get a notification, and they show in Control → Whitelist under *Asked to join*, ready to let in. A few requests an hour from one address at most.
 
-- **"Are you in yet?"** Whoever asked sees their own request on the home page and the join guide: *waiting for an admin*, then *you're in! Join the server now* once you let them in. Only their own browser can see it (it keeps a private ticket), so there's no public list of names.
+- **"Are you in yet?"** Whoever asked gets a small **Request sent** badge in the corner, with a spinner, that checks once a minute and turns into **You're in!** when you let them in. The home page and the join guide say the same. The badge can be closed, goes by itself after a week, and is never left behind for a request that's gone. Only their own browser can see it (it keeps a private ticket), so there's no public list of names.
 
 ## Pictures in posts
 - Website → Posts: **🖼 Add a picture** uploads a picture (PNG, JPEG, WebP or GIF, under 4 MB) and puts it in the post where the cursor is. **🔗 Add a link** puts a link in. The first picture also shows on the post's card on the home page and News.

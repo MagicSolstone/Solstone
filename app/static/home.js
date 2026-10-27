@@ -167,26 +167,58 @@ function builtinArticle(key) {
 // Asked already? This browser keeps a private ticket for it, so it can show them when they're let in, without
 // anyone else being able to see who's on the list.
 function askTicket() { try { return JSON.parse(localStorage.getItem("solstone-ask") || "null"); } catch { return null; } }
+// A small badge in the corner while a request is out: sent, waiting (it can take a while), then "you're in".
+// It checks once a minute, and never gets stuck: × hides it, a ticket the server no longer knows is dropped,
+// and after a week of waiting the badge stops (the request still shows on the join guide).
+const ASK_BADGE_DAYS = 7;
+let askTimer = 0;
 async function showAskStatus() {
-  const box = $("#ask-status"), t = askTicket();
-  if (!box || !t?.token) return;
+  clearTimeout(askTimer);
+  const t = askTicket();
+  if (!t?.token) { renderAskBadge(null); return; }
   let d = null;
   try {
     const r = await fetch("/api/public/join-request/status", { method: "POST", headers: { "Content-Type": "application/json", "X-Solstone": "1" }, body: JSON.stringify({ token: t.token }) });
     d = r.ok ? await r.json() : null;
-  } catch { return; }
-  if (!d || d.state === "unknown") { try { localStorage.removeItem("solstone-ask"); } catch { /* fine */ } return; }
-  box.hidden = false;
-  box.className = `hp-ask-status ${d.state}`;
-  box.innerHTML = d.state === "in"
-    ? `🎉 <b>${esc(d.player)}</b>, you're in! Join the server now. <button type="button" class="link-btn" data-ask-forget>Hide this</button>`
-    : `⏳ Your request for <b>${esc(d.player)}</b> is waiting for an admin. Check back here later.`;
+  } catch { askTimer = setTimeout(showAskStatus, 60000); return; }
+  if (!d || d.state === "unknown") { forgetAsk(); return; }
+  const box = $("#ask-status");
+  if (box) {
+    box.hidden = false;
+    box.className = `hp-ask-status ${d.state}`;
+    box.innerHTML = d.state === "in"
+      ? `🎉 <b>${esc(d.player)}</b>, you're in! Join the server now. <button type="button" class="link-btn" data-ask-forget>Hide this</button>`
+      : `<span class="spin" aria-hidden="true"></span> Your request for <b>${esc(d.player)}</b> is waiting for an admin. It may not be right away, but they'll get to it as soon as they can.`;
+  }
+  const old = Date.now() - (t.at || Date.now()) > ASK_BADGE_DAYS * 86400000;
+  renderAskBadge(d.state === "in" || (!old && !t.hidden) ? d : null);
+  if (d.state === "waiting") askTimer = setTimeout(showAskStatus, document.hidden ? 180000 : 60000);
+}
+function renderAskBadge(d) {
+  let b = $("#ask-badge");
+  if (!d) { b?.remove(); return; }
+  if (!b) { b = document.createElement("div"); b.id = "ask-badge"; b.setAttribute("role", "status"); document.body.append(b); }
+  b.className = `ask-badge glass ${d.state}`;
+  b.innerHTML = d.state === "in"
+    ? `<span aria-hidden="true">🎉</span><span><b>You're in, ${esc(d.player)}!</b><small>Join the server now</small></span><button type="button" class="ask-x" data-ask-forget aria-label="Close">×</button>`
+    : `<span class="spin" aria-hidden="true"></span><span><b>Request sent</b><small>Waiting for an admin to let ${esc(d.player)} in</small></span><button type="button" class="ask-x" data-ask-hide aria-label="Hide">×</button>`;
+}
+function forgetAsk() {
+  try { localStorage.removeItem("solstone-ask"); } catch { /* fine */ }
+  clearTimeout(askTimer);
+  renderAskBadge(null);
+  const box = $("#ask-status");
+  if (box) box.hidden = true;
 }
 document.addEventListener("click", (e) => {
-  if (!e.target.closest("[data-ask-forget]")) return;
-  try { localStorage.removeItem("solstone-ask"); } catch { /* fine */ }
-  $("#ask-status").hidden = true;
+  if (e.target.closest("[data-ask-forget]")) { forgetAsk(); return; }
+  if (e.target.closest("[data-ask-hide]")) {          // hide the badge only: the request is still waiting
+    const t = askTicket();
+    if (t) { try { localStorage.setItem("solstone-ask", JSON.stringify({ ...t, hidden: true })); } catch { /* fine */ } }
+    renderAskBadge(null);
+  }
 });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && askTicket()) showAskStatus(); });
 
 // Ask to join: their name goes to the admins' notifications, ready to let in from Control.
 function askFormHtml() {
@@ -212,8 +244,9 @@ document.addEventListener("submit", async (e) => {
       body: JSON.stringify({ edition: f.get("edition"), player: f.get("player"), name: f.get("name"), note: f.get("note") }) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || "That didn't send. Try again in a moment.");
-    try { localStorage.setItem("solstone-ask", JSON.stringify({ token: d.token, player: d.player })); } catch { /* private window */ }
+    try { localStorage.setItem("solstone-ask", JSON.stringify({ token: d.token, player: d.player, at: Date.now() })); } catch { /* private window */ }
     e.target.outerHTML = `<p class="hp-ask-done">✅ ${esc(d.message)}</p>`;
+    showAskStatus();
   } catch (x) { err.textContent = x.message; }
 });
 

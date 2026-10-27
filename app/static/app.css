@@ -1810,3 +1810,16 @@ a.glance-me:hover { border-color: var(--gold); }
 .hp-ask-status { margin: 0; padding: 10px 14px; border-radius: 10px; font-size: 1.02rem; }
 .hp-ask-status.waiting { background: rgba(242, 193, 78, .12); border: 1px solid rgba(242, 193, 78, .45); }
 .hp-ask-status.in { background: rgba(76, 217, 100, .14); border: 1px solid rgba(76, 217, 100, .5); }
+/* Asked to join: a little badge in the corner until they're in */
+.ask-badge { position: fixed; left: 16px; bottom: 16px; z-index: 110; display: flex; align-items: center; gap: 12px; padding: 12px 14px 12px 16px;
+  border-radius: 14px; max-width: min(360px, calc(100vw - 32px)); box-shadow: 0 10px 30px rgba(0,0,0,.45); border: 1px solid rgba(242, 193, 78, .5);
+  background: rgba(16, 20, 32, .96) !important; animation: toastpop .35s ease-out; }
+.ask-badge.in { border-color: rgba(76, 217, 100, .7); background: rgba(16, 48, 28, .96) !important; }
+.ask-badge > span:nth-child(2) { display: grid; }
+.ask-badge small { color: var(--muted); }
+.ask-x { margin-left: auto; border: 0; background: none; color: var(--muted); font-size: 1.3rem; cursor: pointer; padding: 0 4px; }
+.ask-x:hover { color: var(--bone); }
+.spin { width: 18px; height: 18px; flex: none; display: inline-block; vertical-align: -3px; border-radius: 50%; border: 3px solid rgba(242, 193, 78, .25); border-top-color: var(--gold); animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } .ask-badge { animation: none; } }
+@media (max-width: 640px) { .ask-badge { bottom: 76px; } }

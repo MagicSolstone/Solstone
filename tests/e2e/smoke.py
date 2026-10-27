@@ -293,11 +293,19 @@ def main() -> int:
                 anon.goto(f"{base}/"); anon.wait_for_timeout(1200)
                 if "waiting" not in (anon.locator("#ask-status").get_attribute("class") or ""):
                     problems.append("home: someone who asked doesn't see their request waiting")
+                if "Request sent" not in (anon.locator("#ask-badge").text_content() if anon.locator("#ask-badge").count() else ""):
+                    problems.append("home: no Request sent badge while waiting")
+                check(anon, "site-home-waiting")
                 pg.locator('.turned-away.asked [data-allow="Smoke_Kid"]').click(); pg.wait_for_timeout(300)
                 pg.click("#cf-yes"); pg.wait_for_timeout(1200)
                 anon.reload(); anon.wait_for_timeout(1500)
                 if "in" not in (anon.locator("#ask-status").get_attribute("class") or "").split():
                     problems.append("home: someone let in doesn't see that they're in")
+                if "in" not in (anon.locator("#ask-badge").get_attribute("class") or "").split():
+                    problems.append("home: the badge didn't turn to You're in")
+                anon.click("#ask-badge [data-ask-forget]"); anon.wait_for_timeout(200)
+                if anon.locator("#ask-badge").count():
+                    problems.append("home: closing the badge didn't close it")
                 check(anon, "site-home-youre-in")
                 pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(1000)
                 pg.click('.fws-tabs [data-tab="guides"]'); pg.wait_for_timeout(400)
