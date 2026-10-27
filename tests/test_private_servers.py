@@ -21,6 +21,14 @@ def test_private_server_is_for_admins_only(client, viewer, anon, sid):
         assert not any(s["id"] == sid for s in anon.get("/api/public/status").json()["servers"])
         assert anon.get(f"/api/public/status/{sid}").status_code == 404
         assert anon.get(f"/api/public/leaderboard/{sid}").status_code == 404
+        # nor its announcements
+        client.put("/api/board", json={"items": [{"text": "Home only", "where": ["home", "status"], "server": sid},
+                                                 {"text": "For everyone", "where": ["home"]}]})
+        texts = lambda c, **q: [i["text"] for i in c.get("/api/public/board", params=q).json()["items"]]  # noqa: E731
+        assert "For everyone" in texts(anon, where="home") and "Home only" not in texts(anon, where="home")
+        assert "Home only" not in texts(anon, where="status", sid=sid)
+        assert "Home only" in texts(client, where="status", sid=sid)
     finally:
+        client.put("/api/board", json={"items": [], "birthdays": []})
         _set(client, sid, private="")
     assert viewer.get(f"/api/servers/{sid}").status_code == 200

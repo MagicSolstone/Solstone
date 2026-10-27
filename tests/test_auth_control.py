@@ -299,7 +299,7 @@ def test_public_status_page(anon, client, viewer, monkeypatch):
 
     assert viewer.put("/api/settings/status", json={"enabled": True}).status_code == 403
     cfg = client.put("/api/settings/status", json={"enabled": True}).json()
-    assert cfg == {"enabled": True, "show_positions": True, "show_items": True, "show_activity": True, "show_web_map": False}
+    assert cfg == {"enabled": True, "show_positions": False, "show_items": True, "show_activity": True, "show_web_map": False}
     try:
         lst = anon.get("/api/public/status").json()
         assert lst["enabled"] is True

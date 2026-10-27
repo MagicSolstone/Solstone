@@ -123,7 +123,10 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
     t = now.timestamp()
     cfg = config()
     out: list[dict] = []
+    allowed = None if servers is None else {x.id for x in servers}     # given: only these servers' items (none of a private one's)
     for it in cfg["items"]:
+        if allowed is not None and it["server"] and it["server"] not in allowed:
+            continue
         shown_here = where in it["where"] or (where == "home" and "status" in it["where"])      # status-page notes show at home too
         if not it["enabled"] or not shown_here or (it["server"] and sid and it["server"] != sid):
             continue
@@ -169,7 +172,8 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
                     "text": th.get("message") or th["name"], "detail": "", "countdown": None})
     if names:
         from . import challenges, games, races
-        out += challenges.banners(sid) + races.banners(sid) + games.banners(sid)
+        for one in ([sid] if sid or allowed is None else sorted(allowed)):
+            out += challenges.banners(one) + races.banners(one) + games.banners(one)
     order = {"bedtime": 0, "challenge": 0.5, "note": 1, "birthday": 2, "holiday": 3, "birthday-soon": 4}
     out.sort(key=lambda x: (order.get(x["kind"], 5), x.get("countdown") or 1e12))
     return out

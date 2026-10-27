@@ -207,7 +207,7 @@ async def status():
 # ------------------------------------------------------------------ public status page (no login needed)
 # Off until an admin turns it on. Everything here is read-only and cached so anonymous
 # visitors can't hammer RCON or Crafty, and chat is never included.
-STATUS_DEFAULTS = {"enabled": False, "show_positions": True, "show_items": True,
+STATUS_DEFAULTS = {"enabled": False, "show_positions": False, "show_items": True,
                    "show_activity": True, "show_web_map": False}
 STATUS_TTL = 4.0
 _board_cache: dict[str, tuple[float, dict]] = {}
@@ -600,7 +600,7 @@ async def public_board_items(request: Request, where: str = "status", sid: str =
     if where == "status" and not status_on:
         raise HTTPException(404, "The public status page is turned off")
     await S.registry.refresh()
-    servers = _board_servers()
+    servers = [x for x in _board_servers() if _visible(x)]     # a private server's announcements stay private
     if sid and not any(x.id == sid for x in servers):
         sid = ""
     items = await asyncio.to_thread(board.active, where, sid or None, signed_in or status_on, None, servers)
