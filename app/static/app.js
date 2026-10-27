@@ -28,7 +28,14 @@ const post = (path, body = {}, method = "POST") => api(path, { method, body: JSO
 const me = { user: null };
 const appSky = { scene: null, bar: null, board: null };
 let appBuild = null;  // the night sky behind the signed-in app
+// The server's own name (Website → Site details); Solstone itself only says so in small print.
+const SITE_NAME = document.querySelector('meta[name="site-name"]')?.content || SITE_NAME;
 const isAdmin = () => me.user?.role === "admin";
+// Players (often signed up from the game) see the servers, who's on, leaderboards and their own page.
+const isPlayer = () => me.user?.role === "player";
+const isMine = (uuid) => !isPlayer() || (!!uuid && !!me.user?.player && String(uuid).replace(/-/g, "") === me.user.player.uuid.replace(/-/g, ""));
+const ROLE_NAMES = [["player", "Player"], ["trusted", "Trusted"], ["admin", "Admin"]];
+const PLAYER_HIDDEN = new Set(["world", "chat", "adventures", "control", "check", "challenges"]);
 
 function showLogin(message = "") {
   clearTimers?.();
@@ -41,14 +48,21 @@ function showLogin(message = "") {
   root.innerHTML = `<canvas id="login-sky" aria-hidden="true"></canvas>
     <div class="login-wrap"><div id="login-board" class="board-stack" hidden></div><form class="login-card" id="login-form" autocomplete="on">
       <img src="/static/solstone.svg" alt="" width="56" height="56">
-      <div class="login-title"><h1>Solstone</h1><p class="tagline">Server explorer for Minecraft</p></div>
+      <div class="login-title"><h1>${esc(SITE_NAME)}</h1><p class="tagline" id="login-tagline">Sign in to see the servers</p></div>
       <label>Username<input class="input" name="username" autocomplete="username" autocapitalize="off" required></label>
       <label>Password<input class="input" type="password" name="password" autocomplete="current-password" required></label>
       <p class="login-error" role="alert">${esc(message)}</p>
       <button class="btn primary" type="submit">Sign in</button>
+      <p class="login-alt"><span id="login-signup" hidden>New here? <button type="button" class="link-btn" id="btn-signup">Make an account</button> · </span><a href="/guides/join">How to join the server</a> · <a href="/">Home</a></p>
+      <p class="login-made">Made with Solstone</p>
     </form><a class="login-status glass" id="login-status-link" href="/status" hidden></a></div>`;
   const form = $("#login-form");
   form.querySelector("input").focus();
+  fetch("/api/public/site").then((r) => r.json()).then((site) => {
+    if (site.tagline) $("#login-tagline").textContent = site.tagline;
+    $("#login-signup").hidden = !site.signup;
+  }).catch(() => {});
+  $("#btn-signup").addEventListener("click", openSignup);
   loadPublicStatus().then(() => startLoginScene());
   state.loginRefresh && clearInterval(state.loginRefresh);
   state.loginRefresh = setInterval(() => { if (!me.user) loadPublicStatus(); }, 30000);
@@ -64,6 +78,47 @@ function showLogin(message = "") {
       btn.disabled = false;
       form.querySelector('[name="password"]').select();
     }
+  });
+}
+
+// Making an account from the game: their Minecraft name, a code whispered to them in the game, then a login.
+function openSignup() {
+  let player = "";
+  const step1 = () => `<h2>Make an account</h2>
+    <p class="muted">You need to be playing on the server right now: we'll send a code to you in the game chat, so only you can see it.</p>
+    <form id="su-start"><label>Your Minecraft name <small>As it shows in the game. On Bedrock (phone, tablet, console) it may start with a dot, like .Steve</small>
+      <input class="input" name="player" required maxlength="18" autocapitalize="off" autocomplete="off" value="${esc(player)}"></label>
+      <p class="login-error" role="alert"></p>
+      <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Send me a code</button></div></form>
+    <p class="muted small" style="margin-top:12px">Not on the server yet? <a href="/guides/join">How to join</a></p>`;
+  const step2 = (msg) => `<h2>Check the game chat</h2><p class="muted">${esc(msg)}</p>
+    <form id="su-finish" autocomplete="off"><label>The six-digit code<input class="input" name="code" inputmode="numeric" maxlength="7" required autocomplete="one-time-code"></label>
+      <label>Pick a username <small>What you'll sign in with here. Letters, numbers, dots, dashes and underscores.</small><input class="input" name="username" required pattern="[A-Za-z0-9_.\\-]{2,32}" autocapitalize="off" autocomplete="username"></label>
+      <label>Pick a password <small>8 or more characters. Not the one for your Microsoft account.</small><input class="input" type="password" name="password" minlength="8" required autocomplete="new-password"></label>
+      <p class="login-error" role="alert"></p>
+      <div class="actions"><button type="button" class="btn" id="su-back">Send a new code</button><button class="btn primary" type="submit">Make my account</button></div></form>`;
+  openModal(step1(), (m) => {
+    const wire1 = () => $("#su-start", m).addEventListener("submit", async (e) => {
+      e.preventDefault();
+      player = new FormData(e.target).get("player").trim();
+      try { const r = await post("/api/public/signup/start", { player }); render2(r.message); }
+      catch (err) { $(".login-error", e.target).textContent = err.message; }
+    });
+    const container = m;
+    const render2 = (msg) => {
+      container.innerHTML = step2(msg);
+      $("#su-back", m).addEventListener("click", () => { container.innerHTML = step1(); wire1(); });
+      $("#su-finish", m).addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const f = new FormData(e.target);
+        try {
+          const r = await post("/api/public/signup/finish", { player, code: f.get("code"), username: f.get("username"), password: f.get("password") });
+          closeModal(); signedIn(r.user); showToast(`Welcome, ${esc(r.user.shown)}!`, 3000);
+        } catch (err) { $(".login-error", e.target).textContent = err.message; }
+      });
+      $("#su-finish input", m).focus();
+    };
+    wire1();
   });
 }
 
@@ -83,7 +138,7 @@ async function signedIn(user) {
   const root = $("#login-root"); root.hidden = true; root.innerHTML = "";
   if (!appSky.board) appSky.board = startBoard($("#app-board"), { where: "app", sid: () => curSid || "", scene: () => appSky.scene, dismiss: true, max: innerWidth < 700 ? 1 : 2 });
   $("#account-name").textContent = user.shown || user.username;
-  $("#account-role").textContent = user.role === "admin" ? "Admin" : "Viewer";
+  $("#account-role").textContent = (ROLE_NAMES.find(([v]) => v === user.role) || [, "Signed in"])[1] + (user.player ? ` · ${user.player.name}` : "");
   fetch("/api/public/status").then((r) => r.json()).then((d) => { $("#btn-status").hidden = !d.enabled; appBuild = d.build; }).catch(() => {});
   // Left open for a while? Say when Solstone has been updated (a reload loads it).
   clearInterval(state.buildCheck);
@@ -602,7 +657,7 @@ async function loadServers() {
 }
 function setRailTitle() {
   const t = $("#rail-title");
-  if (t) t.textContent = state.servers.find((x) => x.id === curSid)?.name || "Solstone";
+  if (t) t.textContent = state.servers.find((x) => x.id === curSid)?.name || SITE_NAME;
 }
 
 // ================================================================ views
@@ -611,7 +666,7 @@ function setView(html) { state.items.clear(); hideTip(); view().innerHTML = html
 
 async function viewHome() {
   curSid = null;
-  document.title = "Solstone";
+  document.title = SITE_NAME;
   await loadServers();
   if (state.servers.length === 1) { location.replace(`#/s/${encodeURIComponent(state.servers[0].id)}`); return; }
   if (!state.servers.length) {
@@ -658,11 +713,11 @@ function serverHeader(s, tab) {
   // The group you're in shows its own row of tabs underneath.
   const groups = [
     ["overview", "Overview", [["overview", "Overview", base]]],
-    ...(java ? [["world", "World", [["world", "World", `${base}/world`]]],
+    ...(java ? [...(isPlayer() ? [] : [["world", "World", [["world", "World", `${base}/world`]]]]),
       ["leaderboards", "Leaderboards", [["leaderboards", "Leaderboards", `${base}/leaderboards`]]],
-      ["play", "Play", [...(s.fishing ? [["fishing", "Fishing", `${base}/fishing`]] : []), ["adventures", "Adventures", `${base}/adventures`],
+      ["play", "Play", [...(s.fishing ? [["fishing", "Fishing", `${base}/fishing`]] : []), ...(isPlayer() ? [] : [["adventures", "Adventures", `${base}/adventures`]]),
         ...(isAdmin() ? [["challenges", "Challenges", `${base}/challenges`]] : [])]]] : []),
-    ["server", "Server", [...(java ? [["chat", "Chat", `${base}/chat`], ["mods", "Mods", `${base}/mods`]] : []), ["performance", "Performance", `${base}/performance`],
+    ["server", "Server", [...(java ? [...(isPlayer() ? [] : [["chat", "Chat", `${base}/chat`]]), ["mods", "Mods", `${base}/mods`]] : []), ["performance", "Performance", `${base}/performance`],
       ...(isAdmin() ? [["control", "Control", `${base}/control`]] : []), ...(isAdmin() && java ? [["check", "Check", `${base}/check`]] : [])]],
   ].filter(([, , items]) => items.length);
   const inGroup = groups.find(([, , items]) => items.some(([k]) => k === tab));
@@ -695,7 +750,7 @@ async function serverFrame(sid, tab) {
   const s = await api(`/api/servers/${encodeURIComponent(sid)}`);
   const idx = state.servers.findIndex((x) => x.id === sid);
   if (idx >= 0) state.servers[idx] = s;
-  document.title = `${s.name} · Solstone`;
+  document.title = `${s.name} · ${SITE_NAME}`;
   if (!s.game || s.game === "minecraft-java") ensureServerAssets(sid);
   if (!state.lang[sid]) await api(`/api/servers/${sid}/assets/lang`).then((l) => (state.lang[sid] = l)).catch(() => {});
   return s;
@@ -710,7 +765,7 @@ function wireHeader(s) {
 // ---------------------------------------------------------------- overview tab
 // Players down the side, play time and the activity timeline in the main column.
 function playerRow(p) {
-  const href = p.uuid ? `#/s/${encodeURIComponent(curSid)}/p/${p.uuid}` : null;
+  const href = p.uuid && isMine(p.uuid) ? `#/s/${encodeURIComponent(curSid)}/p/${p.uuid}` : null;
   const h = p.headline || {};
   const sub = p.online
     ? `<span class="live-tag"><span class="status-dot on"></span>Playing</span>${p.dimension ? `<span>${esc(dimName(p.dimension))}</span>` : ""}`
@@ -739,7 +794,7 @@ async function viewOverview(sid) {
       <div class="ov-main"><section class="rc-wrap" id="ov-recap" aria-label="Daily recap"></section><div id="ov-activity"></div></div></div>`);
   wireHeader(s);
   const refreshRecap = mountRecap($("#ov-recap"), sid);
-  const refreshActivity = mountActivity($("#ov-activity"), sid, data.players.map((p) => p.name));
+  const refreshActivity = isPlayer() ? () => {} : mountActivity($("#ov-activity"), sid, data.players.map((p) => p.name));
   every(10000, async () => {
     const d = await api(`/api/servers/${sid}/players`).catch(() => null);
     if (d && $("#players-body")) $("#players-body").innerHTML = playersListHtml(d);
@@ -1299,6 +1354,7 @@ async function route() {
     if (parts[0] === "fireworks") { await viewFireworkEditor(parts[1]); return; }
     if (parts[0] === "s" && parts[1]) {
       const sid = parts[1];
+      if (isPlayer() && PLAYER_HIDDEN.has(parts[2])) { location.replace(`#/s/${encodeURIComponent(sid)}`); return; }
       if (parts[2] === "p" && parts[3]) await viewPlayer(sid, parts[3], parts[4] || "inventory");
       else if (parts[2] === "world") await viewWorld(sid);
       else if (parts[2] === "activity") location.replace(`#/s/${encodeURIComponent(sid)}`);

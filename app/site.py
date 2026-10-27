@@ -14,7 +14,7 @@ from . import db, settings_store
 
 CATEGORIES = ("news", "guide", "faq")
 DEFAULTS = {"name": "Solstone", "tagline": "", "java_address": "", "bedrock_address": "", "bedrock_port": 19132,
-            "discord": "", "about": "", "home_live": True}
+            "discord": "", "about": "", "home_live": True, "signup": False}
 _SLUG = re.compile(r"[^a-z0-9]+")
 
 
@@ -43,8 +43,9 @@ def clean_config(body: dict) -> dict:
             out["bedrock_port"] = max(1, min(65535, int(body["bedrock_port"])))
         except (TypeError, ValueError):
             pass
-    if "home_live" in body:
-        out["home_live"] = bool(body["home_live"])
+    for k in ("home_live", "signup"):
+        if k in body:
+            out[k] = bool(body[k])
     out["name"] = out["name"] or DEFAULTS["name"]
     return out
 

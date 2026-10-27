@@ -19,7 +19,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, modpack, races, fireworks, fwshow, guard, music, notify, recap, selfcheck, site, skins, tide, upcoming, worldmap
+from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, modpack, races, fireworks, fwshow, guard, music, notify, recap, selfcheck, signup, site, skins, tide, upcoming, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -31,7 +31,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 
 @asynccontextmanager
@@ -104,9 +104,73 @@ def _visible(srv: S.Server) -> bool:
     return not srv.settings.get("hidden") and (not _private(srv) or _admin_viewing())
 
 
+# What a "player" account may use. Everything else under /api/ is refused, so a new page or route is
+# closed to players until it's added here on purpose. (The public routes and sign-in are open to all.)
+_ANY = {"GET", "POST", "PUT", "PATCH", "DELETE"}
+PLAYER_ROUTES: dict[str, set[str]] = {
+    "/api/health": {"GET"},
+    "/api/servers": {"GET"},
+    "/api/servers/{sid}": {"GET"},
+    "/api/servers/{sid}/players": {"GET"},              # who's on; nobody else's whereabouts (see _for_player)
+    "/api/servers/{sid}/players/{uuid}": {"GET"},       # their own page only
+    "/api/servers/{sid}/players/{uuid}/history": {"GET"},
+    "/api/servers/{sid}/leaderboard": {"GET"},
+    "/api/servers/{sid}/icon.png": {"GET"},
+    "/api/servers/{sid}/metrics": {"GET"},
+    "/api/servers/{sid}/mods": {"GET"},
+    "/api/servers/{sid}/recap": {"GET"},
+    "/api/servers/{sid}/fishing/journal": {"GET"},
+    "/api/servers/{sid}/fishing/tackle": {"GET"},
+    "/api/servers/{sid}/assets/status": {"GET"},
+    "/api/servers/{sid}/assets/lang": {"GET"},
+    "/api/servers/{sid}/assets/items": {"GET"},
+    "/api/servers/{sid}/assets/advancements": {"GET"},
+    "/api/servers/{sid}/assets/item/{ns}/{name}.png": {"GET"},
+    "/api/servers/{sid}/assets/texture/{path:path}": {"GET"},
+    "/api/players/uuids": {"GET"},
+    "/api/players/skins": {"GET"},
+    "/api/skins/{uuid}.png": {"GET"},
+    "/api/skins/{uuid}/body.png": {"GET"},
+    "/api/upcoming": {"GET"},
+    "/api/sounds": {"GET"},
+}
+
+
+def _player_may(method: str, path: str) -> bool:
+    if not path.startswith("/api/") or path.startswith(("/api/public/", "/api/auth/")):
+        return True
+    if path.startswith(("/api/music", "/api/fireworks")):     # music and fireworks are for everyone
+        return True
+    return method in PLAYER_ROUTES.get(path, ()) or (method == "HEAD" and "GET" in PLAYER_ROUTES.get(path, ()))
+
+
 async def _note_viewer(request: Request) -> None:
-    """Run before every route, in the route's own context (unlike the middleware), so _viewer is set there."""
-    _viewer.set(getattr(request.state, "user", None))
+    """Run before every route, in the route's own context (unlike the middleware), so _viewer is set there.
+    Also where a player account is kept to its own pages."""
+    user = getattr(request.state, "user", None)
+    _viewer.set(user)
+    if user is not None and user.is_player:
+        route = request.scope.get("route")
+        if not _player_may(request.method, getattr(route, "path", request.url.path)):
+            raise HTTPException(403, "Your account can't see that")
+
+
+def _own(uuid: str) -> bool:
+    """For a player account: is this their own Minecraft player? (Everyone else may see anyone.)"""
+    u = _viewer.get()
+    return u is None or not u.is_player or (u.player_uuid is not None and S.norm_uuid(uuid) == u.player_uuid)
+
+
+_SUMMARY_FOR_PLAYERS = ("id", "name", "running", "crashed", "started", "cpu", "mem", "mem_percent", "world_size", "version", "motd",
+                        "max_players", "online", "has_icon", "loader", "game", "game_label", "perf", "fishing", "error")
+
+
+def _for_player(summary: dict) -> dict:
+    """A server's summary without the running of it (folders, ports, RCON, backups, the web map)."""
+    u = _viewer.get()
+    if u is None or not u.is_player:
+        return summary
+    return {k: summary[k] for k in _SUMMARY_FOR_PLAYERS if k in summary} | {"folder_found": True}
 
 
 app.router.dependencies.append(Depends(_note_viewer))
@@ -423,6 +487,34 @@ async def put_site(request: Request):
     cfg = site.save_config(await _body(request))
     auth.audit(user, None, "site_settings", cfg["name"])
     return cfg
+
+
+# ---- players making their own account (a code sent to them in the game)
+def _signup_on() -> None:
+    if not site.config()["signup"]:
+        raise HTTPException(404, "Sign-up is turned off")
+
+
+@app.post("/api/public/signup/start")
+async def signup_start(request: Request):
+    _signup_on()
+    body = await _body(request)
+    await S.registry.refresh()
+    return {"message": await signup.start(request, str(body.get("player") or ""), _public_servers_list())}
+
+
+@app.post("/api/public/signup/finish")
+async def signup_finish(request: Request):
+    _signup_on()
+    body = await _body(request)
+    password = str(body.get("password") or "")
+    u = await asyncio.to_thread(signup.finish, str(body.get("player") or ""), str(body.get("code") or ""),
+                                str(body.get("username") or ""), password)
+    auth.audit(u, None, "signup", f"{u.username} as {u.player_name}")
+    user, token = await asyncio.to_thread(auth.login, request, u.username, password)
+    resp = JSONResponse({"user": user.public()})
+    auth.set_cookie(resp, request, token)
+    return resp
 
 
 @app.get("/api/public/posts")
@@ -1272,7 +1364,7 @@ def _can_edit(user, d: dict) -> bool:
 async def get_upcoming(request: Request):
     """Everything coming up, for the Coming up page (anyone signed in)."""
     await S.registry.refresh()
-    names = {sid: srv.display_name for sid, srv in S.registry.servers.items()}
+    names = {sid: srv.display_name for sid, srv in S.registry.servers.items() if _visible(srv)}
     return {"items": upcoming.items(names), "days": upcoming.DAYS, "now": time.time()}
 
 
@@ -1483,7 +1575,7 @@ async def users(request: Request):
 async def add_user(request: Request):
     admin = auth.require_admin(request)
     body = await _body(request)
-    u = auth.create_user(str(body.get("username", "")).strip(), str(body.get("password", "")), str(body.get("role", "viewer")))
+    u = auth.create_user(str(body.get("username", "")).strip(), str(body.get("password", "")), str(body.get("role", "trusted")))
     auth.audit(admin, None, "add_user", f"{u.username} ({u.role})")
     return u.public()
 
@@ -1493,7 +1585,17 @@ async def edit_user(uid: int, request: Request):
     admin = auth.require_admin(request)
     body = await _body(request)
     u = auth.update_user(uid, role=body.get("role") or None, password=body.get("password") or None)
-    changes = ", ".join(k for k in ("role", "password") if body.get(k))
+    if "player" in body:                    # link the account to a Minecraft player ("" unlinks)
+        name = str(body.get("player") or "").strip().lower()
+        found = None
+        if name:
+            await S.registry.refresh()
+            found = next(((uu, p["name"]) for srv in S.registry.servers.values() for uu, p in S.known_players(srv).items()
+                          if p["name"].lower() in (name, "." + name.lstrip("."))), None)
+            if not found:
+                raise HTTPException(400, "No player by that name has joined any server")
+        u = auth.link_player(uid, found)
+    changes = ", ".join(k for k in ("role", "password", "player") if k in body and (body.get(k) or k == "player"))
     auth.audit(admin, None, "edit_user", f"{u.username}: {changes}")
     return u.public()
 
@@ -1526,7 +1628,7 @@ async def list_servers():
             log.warning("summary failed for %s: %s", srv.id, r)
             out.append({"id": srv.id, "name": srv.display_name, "error": str(r)})
         else:
-            out.append(r)
+            out.append(_for_player(r))
     return out
 
 
@@ -1551,7 +1653,7 @@ async def hidden_servers(request: Request):
 
 @app.get("/api/servers/{sid}")
 async def get_server(sid: str):
-    return await S.server_summary(await _server(sid))
+    return _for_player(await S.server_summary(await _server(sid)))
 
 
 @app.get("/api/servers/{sid}/world")
@@ -1704,11 +1806,18 @@ async def pack_file(token: str, path: str, request: Request):
 
 @app.get("/api/servers/{sid}/players")
 async def get_players(sid: str):
-    return await S.players_overview(await _server(sid))
+    data = await S.players_overview(await _server(sid))
+    for p in data["players"]:
+        if not _own(p.get("uuid") or ""):          # a player account doesn't see where anyone else is
+            p.pop("position", None)
+            p.pop("dimension", None)
+    return data
 
 
 @app.get("/api/servers/{sid}/players/{uuid}")
 async def get_player(sid: str, uuid: str):
+    if not _own(uuid):
+        raise HTTPException(404, "Player not found")
     data = await S.player_detail(await _server(sid), uuid)
     if not data:
         raise HTTPException(404, "Player not found")
@@ -1795,6 +1904,8 @@ async def server_metrics(sid: str, range: str = "24h"):  # noqa: A002 - query pa
 
 @app.get("/api/servers/{sid}/players/{uuid}/history")
 async def player_history(sid: str, uuid: str, days: int = 30):
+    if not _own(uuid):
+        raise HTTPException(404, "Player not found")
     srv = await _server(sid)
     p = S.known_players(srv).get(S.norm_uuid(uuid))
     if not p:
@@ -2441,6 +2552,7 @@ async def status_page(sid: str = ""):
 @app.get("/", include_in_schema=False)
 @app.get("/news", include_in_schema=False)
 @app.get("/guides", include_in_schema=False)
+@app.get("/guides/{slug}", include_in_schema=False)
 @app.get("/faq", include_in_schema=False)
 @app.get("/post/{slug}", include_in_schema=False)
 async def home_page(slug: str = ""):
@@ -2470,10 +2582,14 @@ def _asset_stamp() -> str:
     return format(int(max(f.stat().st_mtime for f in files if f.exists())), "x")
 
 
+def _html_escape(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;")
+
+
 def _page(name: str) -> str:
     """An HTML page with ?v= on the CSS/JS links so browsers pick up new versions after an update."""
     stamp = _asset_stamp()
     html = (STATIC / name).read_text(encoding="utf-8")
     for n in ASSET_NAMES:
         html = html.replace(f"/static/{n}\"", f"/static/{n}?v={stamp}\"")
-    return html
+    return html.replace("{{SITE_NAME}}", _html_escape(site.config()["name"]))

@@ -8,7 +8,7 @@ const ws = { data: null, editing: null, tab: "posts" };
 async function viewWebsite() {
   if (!isAdmin()) { location.replace("#/"); return; }
   curSid = null;
-  document.title = "Website · Solstone";
+  document.title = `Website · ${SITE_NAME}`;
   $("#rail-servers").innerHTML = railHtml(null);
   ws.data = await api("/api/posts");
   ws.editing = null;

@@ -547,6 +547,9 @@ body.logged-out .shell { display: none; }
 .login-card img { image-rendering: pixelated; border-radius: 6px; width: 64px; height: 64px; filter: drop-shadow(0 0 14px rgba(255,150,40,.35)); }
 .login-title h1 { font-size: 2.1rem; }
 .tagline { color: rgba(235,230,217,.72); font-size: .95rem; margin-top: 2px; }
+.login-alt { font-size: .88rem; text-align: center; color: rgba(235,230,217,.72); margin-top: 4px; }
+.login-alt a, .login-alt .link-btn { color: #9fb6f0; font-size: inherit; padding: 0; }
+.login-made, .made-with { font-size: .75rem; color: rgba(235,230,217,.45); text-align: center; letter-spacing: .02em; }
 .login-card label { display: grid; gap: 4px; font-weight: 700; font-size: .92rem; }
 .login-card .input { background: rgba(10,12,18,.45); border-color: rgba(255,255,255,.14); }
 .login-card .input:focus { border-color: #f2a43a; box-shadow: 0 0 0 3px rgba(242,164,58,.18); }

@@ -88,7 +88,7 @@ def test_changes_need_csrf_header(client):
 def test_viewer_is_read_only(viewer, sid):
     assert viewer.get("/api/servers").status_code == 200
     assert viewer.get(f"/api/servers/{sid}/players").status_code == 200
-    assert viewer.get("/api/auth/me").json()["user"]["role"] == "viewer"
+    assert viewer.get("/api/auth/me").json()["user"]["role"] == "trusted"
     for method, url in (("get", "/api/users"), ("get", f"/api/servers/{sid}/control"),
                         ("post", f"/api/servers/{sid}/control/command"), ("get", "/api/settings/notifications"),
                         ("get", f"/api/servers/{sid}/console/stream")):

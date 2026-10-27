@@ -234,6 +234,35 @@ def main() -> int:
             anon.goto(f"{base}/#/coming-up"); anon.wait_for_timeout(1200)
             if "/app" not in anon.url:
                 problems.append("home: an old /#/ link didn't forward to the app")
+            anon.goto(f"{base}/guides/join"); anon.wait_for_timeout(1000)
+            check(anon, "site-guide-join")
+            if "play.example.net" not in (anon.locator(".hp-body").text_content() or "") or anon.title().find("Smoke SMP") < 0:
+                problems.append("join guide: the addresses or the site name are missing")
+            # sign-up from the sign-in page, and what a player account sees
+            pg.request.put(f"{base}/api/settings/site", data={"signup": True}, headers=H)
+            anon.goto(f"{base}/app"); anon.wait_for_timeout(1500)
+            if "Smoke SMP" not in (anon.locator(".login-title h1").text_content() or ""):
+                problems.append("sign-in: the site name isn't shown")
+            if not anon.locator("#btn-signup").is_visible():
+                problems.append("sign-in: no Make an account button with sign-up on")
+            else:
+                anon.click("#btn-signup"); anon.wait_for_timeout(400)
+                check(anon, "signup")
+                if not anon.locator("#su-start").count():
+                    problems.append("sign-up: the form didn't open")
+            u = pg.request.post(f"{base}/api/users", data={"username": "smoke_player", "password": "player-pass-1", "role": "player"}, headers=H).json()
+            pg.request.patch(f"{base}/api/users/{u['id']}", data={"player": "Tyler"}, headers=H)
+            pl = browser.new_page(viewport={"width": 1280, "height": 860})
+            pl.on("pageerror", lambda e: problems.append(f"player account: JS error: {e}"))
+            pl.request.post(f"{base}/api/auth/login", data={"username": "smoke_player", "password": "player-pass-1"}, headers=H)
+            pl.goto(f"{base}/app#/s/{sid}"); pl.wait_for_timeout(1500)
+            check(pl, "player-account-overview")
+            tabs = pl.locator(".tabs").text_content() or ""
+            hrefs = " ".join(pl.eval_on_selector_all(".tabs a", "els => els.map(e => e.getAttribute('href'))"))
+            if "World" in tabs or "/chat" in hrefs or "/adventures" in hrefs or pl.locator(".tabs a").count() < 2:
+                problems.append(f"player account: wrong tabs ({tabs.strip()})")
+            pl.goto(f"{base}/app#/s/{sid}/p/{puuid}"); pl.wait_for_timeout(1300)
+            check(pl, "player-account-own-page")
             for name, url in (("status", "/status"), ("status-tv", f"/status/{sid}?tv=1")):
                 anon.goto(f"{base}{url}"); anon.wait_for_timeout(2000)
                 check(anon, name)

@@ -11,7 +11,7 @@ const muMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep",
 
 async function viewMusic(tab, id) {
   curSid = null;
-  document.title = "Music · Solstone";
+  document.title = `Music · ${SITE_NAME}`;
   $("#rail-servers").innerHTML = railHtml(null);
   if (tab && (MU_TABS.some(([k]) => k === tab) || tab === "library")) mu.tab = tab;
   mu.view = id ? { type: mu.tab, id } : null;

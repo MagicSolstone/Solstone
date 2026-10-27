@@ -30,7 +30,7 @@ A family-friendly web dashboard for Minecraft Java servers run by **Crafty Contr
 - **Mods:** the Fabric or Quilt mods installed, with modded item icons and names read from the mod jars.
 - **Public status page** (`/status`, off until an admin turns it on): a live, read-only big-screen view with no sign-in. Server state, in-game day and weather, TPS, and a card per online player with health, hunger, level, dimension, coordinates, held item and armour, plus a map of where everyone is, drawn from the world's own region files (terrain from the game's block textures, shaded by height, water by depth, the Nether's cave floor), and recent joins, deaths and advancements. Fireworks go off when someone joins. Chat is never shown, and admins can hide coordinates, items or activity.
 - **Mods:** item icons, names and advancements come from the jars in each server's `mods` folder. RPG gear shows its attribute bonuses, and items mods keep in extra slots (Trinkets, Accessories, backpacks) appear under the inventory.
-- **Accounts:** everyone signs in to the app (the website and the status page are public). Viewers see everything read-only; admins also get the Control tab, settings and user management. Every admin action is logged.
+- **Accounts:** everyone signs in to the app (the website and the status page are public). Three levels: **Players** see the servers, who's on, CPU/RAM/TPS, leaderboards, fishing and their own page (never anyone else's position, inventory or chat); **Trusted** see everything read-only and can chat; **Admins** also get the Control tab, settings and user management. Every admin action is logged. With sign-up on (Users & activity), players make their own account: they type their Minecraft name on the sign-in page while playing, get a six-digit code in the game chat, and pick a login. The whitelist decides who can.
 - **Control (admins):** a live console with command history, one-click time, weather and difficulty, game-rule switches, and a message to everyone (optionally shown big on screen). Player actions: heal, send to spawn or bed, teleport, game mode, give items, private message and kick. Also whitelist and operator management, and start, stop, restart and back up through Crafty.
 - **Bedtime mode:** in-game warnings, then save and disconnect at a set time, with joins blocked until wake-up. Daily screen-time limits can also warn then disconnect a player.
 
@@ -141,7 +141,7 @@ Without Crafty configured, Solstone still works by scanning `SERVERS_DIR` for fo
 
 - **Player skins** come from mc-heads.net in the visitor's browser. Offline-mode servers fall back to initials.
 - **Block-entity items** (chests, beds, heads, banners) are drawn as a cube of their particle texture. Everything else renders like the game's own icons.
-- **Exposing it outside your LAN:** everything needs a sign-in, so a Cloudflare Tunnel or reverse proxy is reasonable. Set `TRUST_PROXY_HEADERS=true` behind one so sign-in rate limits see real visitor IPs and cookies are marked secure. Give friends viewer accounts; only admins can send commands.
+- **Exposing it outside your LAN:** everything needs a sign-in, so a Cloudflare Tunnel or reverse proxy is reasonable. Set `TRUST_PROXY_HEADERS=true` behind one so sign-in rate limits see real visitor IPs and cookies are marked secure. Give friends Player accounts (or let them sign up); keep Trusted for family. Only admins can send commands.
 - **Bedrock servers** aren't supported. They store player data in LevelDB and have no statistics files.
 
 ## Choosing a release channel

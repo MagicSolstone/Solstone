@@ -12,7 +12,7 @@ const ann = { tab: "banners", data: null, editing: null, tv: null };
 async function viewAnnouncements() {
   if (!isAdmin()) { location.replace("#/"); return; }
   curSid = null;
-  document.title = "Announcements · Solstone";
+  document.title = `Announcements · ${SITE_NAME}`;
   $("#rail-servers").innerHTML = railHtml(null);
   [ann.data, ann.tv] = await Promise.all([api("/api/board"), api("/api/settings/tv")]);
   ann.editing = null;
@@ -237,7 +237,7 @@ function annTv(el) {
 const UP_KIND = { contest: "Contest", race: "Race", game: "Game", birthday: "Birthday", holiday: "Holiday", show: "Fireworks", note: "Announcement" };
 async function viewUpcoming() {
   curSid = null;
-  document.title = "Coming up · Solstone";
+  document.title = `Coming up · ${SITE_NAME}`;
   $("#rail-servers").innerHTML = railHtml(null);
   const d = await api("/api/upcoming");
   const zone = new Date();

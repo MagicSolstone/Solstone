@@ -125,7 +125,7 @@ def test_settings_require_admin(client, viewer, sid):
 
 
 def test_pages_home_app_and_not_found(client, anon):
-    for path in ("/", "/news", "/guides", "/faq", "/post/anything"):          # the public website
+    for path in ("/", "/news", "/guides", "/guides/join", "/faq", "/post/anything"):          # the public website
         r = anon.get(path)
         assert r.status_code == 200 and "/static/home.js" in r.text, path
     r = anon.get("/app")                                                       # the app, signed in or not (it shows sign-in)
@@ -134,6 +134,14 @@ def test_pages_home_app_and_not_found(client, anon):
     r = anon.get("/no-such-page")
     assert r.status_code == 404 and "/static/home.js" in r.text
     assert client.get("/api/does-not-exist").status_code == 404
+    # the server's own name everywhere (Solstone is just "made with")
+    client.put("/api/settings/site", json={"name": 'Pine & "Oak"'})
+    try:
+        for path in ("/", "/app"):
+            t = anon.get(path).text
+            assert "<title>Pine &amp; &quot;Oak&quot;</title>" in t and "{{SITE_NAME}}" not in t
+    finally:
+        client.put("/api/settings/site", json={"name": "Solstone"})
 
 
 def test_one_leaderboard_list_for_app_and_status_page(client, anon, sid):

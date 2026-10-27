@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0f1424">
   <meta name="description" content="A family Minecraft server: how to join on Java or Bedrock, who's on, news and guides.">
-  <title>Solstone</title>
+  <title>{{SITE_NAME}}</title>
+  <meta name="site-name" content="{{SITE_NAME}}">
   <link rel="icon" href="/static/solstone.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
 </head>
@@ -15,7 +16,7 @@
     <header class="hp-top">
       <a class="brand" href="/">
         <img src="/static/solstone.svg" alt="" width="34" height="34">
-        <span id="hp-name">Solstone</span>
+        <span id="hp-name">{{SITE_NAME}}</span>
       </a>
       <nav class="hp-nav" aria-label="Site">
         <a href="/" data-nav="home">Home</a>
@@ -28,7 +29,7 @@
     </header>
     <div id="hp-board" class="board-stack" hidden></div>
     <main id="hp-main" class="hp-main"><p class="muted">Loading…</p></main>
-    <footer class="hp-foot muted"><span id="hp-foot-name">Solstone</span> · <a href="/app">Sign in</a></footer>
+    <footer class="hp-foot muted"><span id="hp-foot-name">{{SITE_NAME}}</span> · <a href="/app">Sign in</a> · <span class="made-with">Made with Solstone</span></footer>
   </div>
   <div id="hp-toast" class="toast" hidden></div>
   <script src="/static/sky.js" defer></script>

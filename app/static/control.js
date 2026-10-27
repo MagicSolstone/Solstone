@@ -345,22 +345,26 @@ function rulesHtml(rules, canRcon) {
 async function viewAdmin() {
   if (!isAdmin()) { location.replace("#/"); return; }
   curSid = null;
-  document.title = "Users & activity · Solstone";
+  document.title = `Users & activity · ${SITE_NAME}`;
   $("#rail-servers").innerHTML = railHtml(null);
-  const [users, audit, lp, hiddenSrv] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/status"), api("/api/servers-hidden").catch(() => [])]);
+  const [users, audit, lp, hiddenSrv, siteCfg] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/status"), api("/api/servers-hidden").catch(() => []), api("/api/posts").then((d) => d.site).catch(() => ({}))]);
+  const roleOpts = (cur) => ROLE_NAMES.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("");
   const fmtWhen = (ts) => ts ? fmtAgo(ts) : "never";
   setView(`<h1 style="margin-bottom:20px">Users &amp; activity</h1>
-    <section class="section"><div class="section-head"><h2>Users</h2><span class="muted">Viewers can see everything but can't change anything. Admins can also control servers.</span></div>
-      <div class="table-wrap"><table class="data users-table"><thead><tr><th>Username</th><th>Role</th><th>Last signed in</th><th></th></tr></thead><tbody>
+    <section class="section"><div class="section-head"><h2>Users</h2><span class="muted">Players see the servers, who's on, the leaderboards and their own page. Trusted can see everything (chat, where everyone is, inventories) but can't change anything. Admins can also control servers.</span></div>
+      <div class="panel rules-ctl" id="signup-ctl" style="max-width:720px;margin-bottom:12px">
+        <label class="switch-row"><span><b>Let players make their own account</b><br><small class="muted">From the sign-in page: they type their Minecraft name while they're playing on a public server, get a code in the game chat, and choose a login. They start as Players. Your whitelist decides who can do this.</small></span><input type="checkbox" role="switch" id="signup-on" ${siteCfg.signup ? "checked" : ""}></label></div>
+      <div class="table-wrap"><table class="data users-table"><thead><tr><th>Username</th><th>Level</th><th>Minecraft player</th><th>Last signed in</th><th></th></tr></thead><tbody>
       ${users.map((u) => `<tr data-uid="${u.id}"><td><b>${esc(u.username)}</b>${u.display_name ? ` <span class="muted">shown as ${esc(u.display_name)}</span>` : ""}${u.id === me.user.id ? ' <span class="muted">(you)</span>' : ""}</td>
-        <td><select class="input sm" data-role ${u.id === me.user.id ? "disabled" : ""} aria-label="Role for ${esc(u.username)}"><option value="viewer" ${u.role === "viewer" ? "selected" : ""}>Viewer</option><option value="admin" ${u.role === "admin" ? "selected" : ""}>Admin</option></select></td>
+        <td><select class="input sm" data-role ${u.id === me.user.id ? "disabled" : ""} aria-label="Level for ${esc(u.username)}">${roleOpts(u.role)}</select></td>
+        <td><button class="btn sm" type="button" data-link title="Link this account to someone who plays">${u.player_name ? esc(u.player_name) : "Link…"}</button></td>
         <td>${esc(fmtWhen(u.last_login))}</td>
         <td class="row-actions"><button class="btn sm" data-reset>Set password</button>${u.id === me.user.id ? "" : `<button class="btn sm danger" data-del>Remove</button>`}</td></tr>`).join("")}
       </tbody></table></div>
       <form class="panel add-user" id="add-user" autocomplete="off"><h3>Add a user</h3>
         <div class="add-grid"><label>Username<input class="input" name="username" required pattern="[A-Za-z0-9_.\\-]{2,32}" autocapitalize="off"></label>
         <label>Password<input class="input" name="password" type="password" minlength="8" autocomplete="new-password" placeholder="8 or more characters" required></label>
-        <label>Role<select class="input" name="role"><option value="viewer">Viewer (read-only)</option><option value="admin">Admin</option></select></label>
+        <label>Level<select class="input" name="role">${roleOpts("trusted")}</select></label>
         <button class="btn primary" type="submit">Add user</button></div></form>
     </section>
     ${hiddenSrv.length ? `<section class="section" id="hidden-servers"><div class="section-head"><h2>Hidden servers</h2><span class="muted">Hidden from Solstone and the status page. Nothing about the server itself changes.</span></div>
@@ -401,9 +405,25 @@ async function viewAdmin() {
     try { await post("/api/users", { username: f.get("username"), password: f.get("password"), role: f.get("role") }); showToast(`Added ${esc(f.get("username"))}`, 2500); viewAdmin(); }
     catch (err) { showToast(esc(err.message), 5000); }
   });
+  $("#signup-on").addEventListener("change", async (e) => {
+    try { await post("/api/settings/site", { signup: e.target.checked }, "PUT"); showToast(e.target.checked ? "Players can make their own account" : "Sign-up turned off", 2500); }
+    catch (err) { showToast(esc(err.message), 5000); }
+  });
+  $$("[data-link]").forEach((b) => b.addEventListener("click", () => {
+    const tr = b.closest("tr"), name = tr.querySelector("b").textContent;
+    openModal(`<h2>Link ${esc(name)} to a player</h2><form id="link-form">
+      <label>Minecraft name <small>Someone who has joined one of the servers. Leave it empty to unlink. A Player account sees its own page.</small><input class="input" name="player" value="${esc(b.textContent === "Link…" ? "" : b.textContent)}" autocapitalize="off"></label>
+      <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Save</button></div></form>`, (m) => {
+      $("#link-form", m).addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try { await post(`/api/users/${tr.dataset.uid}`, { player: new FormData(e.target).get("player") }, "PATCH"); closeModal(); showToast("Saved", 2000); viewAdmin(); }
+        catch (err) { showToast(esc(err.message), 5000); }
+      });
+    });
+  }));
   $$("[data-role]").forEach((sel) => sel.addEventListener("change", async () => {
     const uid = sel.closest("tr").dataset.uid;
-    try { await post(`/api/users/${uid}`, { role: sel.value }, "PATCH"); showToast("Role changed", 2500); }
+    try { await post(`/api/users/${uid}`, { role: sel.value }, "PATCH"); showToast("Level changed", 2500); }
     catch (err) { showToast(esc(err.message), 5000); viewAdmin(); }
   }));
   $$("[data-reset]").forEach((b) => b.addEventListener("click", () => {

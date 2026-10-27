@@ -86,7 +86,7 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
 
     # announcements counting down to something, or starting later
     for it in cfg["items"]:
-        if not it["enabled"]:
+        if not it["enabled"] or (it["server"] and it["server"] not in server_names):
             continue
         start, end, cd = board.item_window(it)
         when = cd or start

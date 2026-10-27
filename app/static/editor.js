@@ -142,7 +142,7 @@ function fweSetPicture(grid, f = ed.frame) {
 
 async function viewFireworkEditor(editId) {
   curSid = null;
-  document.title = "Firework editor · Solstone";
+  document.title = `Firework editor · ${SITE_NAME}`;
   $("#rail-servers").innerHTML = railHtml(null);
   [ed.list, ed.sounds, ed.limit] = await Promise.all([api("/api/fireworks").catch(() => []), api("/api/sounds").catch(() => []), api("/api/fireworks/limit").catch(() => null)]);
   // After a reload (nothing in memory yet), bring back the firework that was being worked on.

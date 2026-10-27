@@ -36,7 +36,7 @@ const fwsTime = (t) => { const [h, m] = t.split(":").map(Number); return new Dat
 async function viewFireworkSettings() {
   if (!isAdmin()) { location.replace("#/fireworks"); return; }
   curSid = null;
-  document.title = "Firework settings · Solstone";
+  document.title = `Firework settings · ${SITE_NAME}`;
   $("#rail-servers").innerHTML = railHtml(null);
   const [data, fw, designs] = await Promise.all([api("/api/fireworks/show"), api("/api/public/fireworks"), api("/api/fireworks").catch(() => [])]);
   fws.data = data; fws.fw = fw; fws.designs = designs;
