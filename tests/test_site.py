@@ -30,3 +30,28 @@ def test_posts_drafts_slugs_and_categories(client, viewer, anon):
     for p in (a, b, draft):
         assert client.delete(f"/api/posts/{p['id']}").status_code == 200
     assert client.delete(f"/api/posts/{a['id']}").status_code == 404
+
+
+def test_site_logo(client, anon, viewer):
+    import struct
+    import zlib
+
+    def png():
+        raw = b"\x00\xff\x00\x00\xff"
+        chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d))  # noqa: E731
+        return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+
+    assert anon.get("/api/public/logo").status_code == 404
+    assert '<link rel="icon" href="/static/solstone.svg">' in anon.get("/").text
+    assert viewer.post("/api/settings/site/logo", content=png()).status_code == 403
+    bad = client.post("/api/settings/site/logo", content=b"<svg onload=alert(1)></svg>")
+    assert bad.status_code == 400                                          # pictures only, never SVG
+    url = client.post("/api/settings/site/logo", content=png(), headers={"Content-Type": "image/png"}).json()["logo"]
+    try:
+        assert url.startswith("/api/public/logo?v=")
+        r = anon.get("/api/public/logo")
+        assert r.status_code == 200 and r.headers["content-type"] == "image/png" and r.headers["x-content-type-options"] == "nosniff"
+        assert url in anon.get("/").text and url in anon.get("/app").text
+    finally:
+        assert client.delete("/api/settings/site/logo").json()["logo"] == "/static/solstone.svg"
+    assert anon.get("/api/public/logo").status_code == 404

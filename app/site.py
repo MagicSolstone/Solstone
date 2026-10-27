@@ -11,11 +11,64 @@ import re
 import time
 
 from . import db, settings_store
+from .config import config as app_config
 
 CATEGORIES = ("news", "guide", "faq")
 DEFAULTS = {"name": "Solstone", "tagline": "", "java_address": "", "bedrock_address": "", "bedrock_port": 19132,
             "discord": "", "about": "", "home_live": True, "signup": False}
 _SLUG = re.compile(r"[^a-z0-9]+")
+
+
+# ---------------------------------------------------------------- the logo
+# An admin's own picture in place of Solstone's, everywhere the site shows its logo. Pictures only
+# (PNG, JPEG, WebP, GIF), checked by their first bytes; never SVG, which can carry script.
+LOGO_TYPES = {b"\x89PNG\r\n\x1a\n": ("png", "image/png"), b"\xff\xd8\xff": ("jpg", "image/jpeg"),
+              b"GIF87a": ("gif", "image/gif"), b"GIF89a": ("gif", "image/gif")}
+LOGO_MAX = 1024 * 1024
+DEFAULT_LOGO = "/static/solstone.svg"
+
+
+def _logo_kind(data: bytes) -> tuple[str, str] | None:
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp", "image/webp"
+    return next((v for k, v in LOGO_TYPES.items() if data.startswith(k)), None)
+
+
+def logo() -> dict | None:
+    """{"file", "mime", "v"} when there's an uploaded logo."""
+    saved = settings_store.load().get("site_logo") or {}
+    path = app_config.data_dir / "site" / f"logo.{saved.get('ext', '')}"
+    return {"file": path, "mime": saved["mime"], "v": saved["v"]} if saved.get("ext") and path.is_file() else None
+
+
+def logo_url() -> str:
+    lg = logo()
+    return f"/api/public/logo?v={lg['v']}" if lg else DEFAULT_LOGO
+
+
+def save_logo(data: bytes) -> str:
+    """Store a new logo. Raises ValueError with a message for the admin if it isn't a picture we take."""
+    if len(data) > LOGO_MAX:
+        raise ValueError("Use a picture under 1 MB")
+    kind = _logo_kind(data)
+    if not kind:
+        raise ValueError("Use a PNG, JPEG, WebP or GIF picture")
+    folder = app_config.data_dir / "site"
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in folder.glob("logo.*"):
+        old.unlink(missing_ok=True)
+    tmp = folder / f"logo.{kind[0]}.tmp"
+    tmp.write_bytes(data)
+    tmp.replace(folder / f"logo.{kind[0]}")
+    settings_store.save_section("site_logo", {"ext": kind[0], "mime": kind[1], "v": int(time.time())})
+    return logo_url()
+
+
+def remove_logo() -> str:
+    for old in (app_config.data_dir / "site").glob("logo.*"):
+        old.unlink(missing_ok=True)
+    settings_store.save_section("site_logo", {})
+    return DEFAULT_LOGO
 
 
 def _line(v, n: int) -> str:

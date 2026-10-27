@@ -611,6 +611,14 @@ function tvNext() {
   }
   tvShow(keys[next]);
 }
+// The "Lately" panel starts level with the screen's first card, not with the tabs and title above it.
+function alignSide() {
+  const side = $(".tv-side"), main = $(".tv-main"), first = $(".tv-slide.on .tv-inner > *");
+  if (!side || !main) return;
+  if (!first || innerWidth <= 1000) { side.style.marginTop = ""; return; }
+  side.style.marginTop = `${Math.max(0, Math.round(first.getBoundingClientRect().top - main.getBoundingClientRect().top))}px`;
+}
+addEventListener("resize", () => requestAnimationFrame(alignSide));
 // Show one screen now and start its timer (also used when a screen's name is clicked).
 function tvShow(key) {
   clearTimeout(tv.timer);
@@ -624,6 +632,7 @@ function tvShow(key) {
     el.classList.toggle("on", on); el.setAttribute("aria-hidden", String(!on));
   });
   if (tv.shown === "map" && hasMap(b)) { st.map = null; mountMap($("#sp-map"), b, null); }
+  requestAnimationFrame(alignSide);
   if (!st.tv) {                            // picked by hand: it stays, and the page scrolls as usual
     document.querySelectorAll(".tv-inner").forEach((el) => el.getAnimations?.().forEach((a) => a.cancel()));
     tv.dur = 0; tvDots(b); return;

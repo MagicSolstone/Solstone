@@ -84,6 +84,10 @@ function wsPosts(el) {
 function wsSite(el) {
   const s = ws.data.site;
   el.innerHTML = `<form class="panel ws-site" id="ws-site">
+    <div class="ws-logo"><img src="${esc(ws.data.logo || SITE_LOGO)}" alt="The site's logo" width="64" height="64" id="ws-logo-img">
+      <div><b>Logo</b><small class="muted">A square picture works best (PNG, JPEG, WebP or GIF, under 1 MB). It shows beside the name and in the browser tab.</small>
+        <span class="btn-row"><label class="btn sm ws-file">Choose a picture<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" id="ws-logo-file" hidden></label>
+          <button type="button" class="btn sm" id="ws-logo-reset">Use Solstone's</button></span></div></div>
     <label>Site name<input class="input" name="name" maxlength="80" value="${esc(s.name)}"></label>
     <label>Tagline <small>One line under the name</small><input class="input" name="tagline" maxlength="160" value="${esc(s.tagline)}" placeholder="A family Minecraft server"></label>
     <div class="ws-row"><label>Java address<input class="input" name="java_address" maxlength="80" value="${esc(s.java_address)}" placeholder="play.example.net"></label>
@@ -94,6 +98,20 @@ function wsSite(el) {
     <label class="check"><input type="checkbox" name="home_live" ${s.home_live ? "checked" : ""}> Show the public servers' status on the home page <small>Running or not and how many are on. Private servers are never shown.</small></label>
     <div class="actions"><a class="btn" href="/" target="_blank" rel="noopener">Open the home page</a><button class="btn primary" type="submit">Save</button></div>
   </form>`;
+  $("#ws-logo-file").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    try {
+      const r = await fetch("/api/settings/site/logo", { method: "POST", credentials: "same-origin", headers: { "X-Solstone": "1", "Content-Type": f.type || "application/octet-stream" }, body: f });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || `Upload failed (${r.status})`);
+      ws.data.logo = d.logo; $("#ws-logo-img").src = d.logo; showToast("Logo saved. Reload to see it everywhere.", 3000);
+    } catch (err) { showToast(esc(err.message), 5000); }
+  });
+  $("#ws-logo-reset").addEventListener("click", async () => {
+    try { const d = await post("/api/settings/site/logo", {}, "DELETE"); ws.data.logo = d.logo; $("#ws-logo-img").src = d.logo; showToast("Back to Solstone's logo", 2500); }
+    catch (err) { showToast(esc(err.message), 5000); }
+  });
   $("#ws-site").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);

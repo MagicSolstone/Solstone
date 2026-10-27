@@ -47,7 +47,7 @@ function showLogin(message = "") {
   root.hidden = false;
   root.innerHTML = `<canvas id="login-sky" aria-hidden="true"></canvas>
     <div class="login-wrap"><div id="login-board" class="board-stack" hidden></div><form class="login-card" id="login-form" autocomplete="on">
-      <img src="/static/solstone.svg" alt="" width="56" height="56">
+      <img src="${esc(SITE_LOGO)}" alt="" width="56" height="56">
       <div class="login-title"><h1>${esc(SITE_NAME)}</h1><p class="tagline" id="login-tagline">Sign in to see the servers</p></div>
       <label>Username<input class="input" name="username" autocomplete="username" autocapitalize="off" required></label>
       <label>Password<input class="input" type="password" name="password" autocomplete="current-password" required></label>
@@ -717,7 +717,7 @@ function serverHeader(s, tab) {
       ["leaderboards", "Leaderboards", [["leaderboards", "Leaderboards", `${base}/leaderboards`]]],
       ["play", "Play", [...(s.fishing ? [["fishing", "Fishing", `${base}/fishing`]] : []), ...(isPlayer() ? [] : [["adventures", "Adventures", `${base}/adventures`]]),
         ...(isAdmin() ? [["challenges", "Challenges", `${base}/challenges`]] : [])]]] : []),
-    ["server", "Server", [...(java ? [...(isPlayer() ? [] : [["chat", "Chat", `${base}/chat`]]), ["mods", "Mods", `${base}/mods`]] : []), ["performance", "Performance", `${base}/performance`],
+    ["server", "Server", [["performance", "Performance", `${base}/performance`], ...(java ? [["mods", "Mods", `${base}/mods`], ...(isPlayer() ? [] : [["chat", "Chat", `${base}/chat`]])] : []),
       ...(isAdmin() ? [["control", "Control", `${base}/control`]] : []), ...(isAdmin() && java ? [["check", "Check", `${base}/check`]] : [])]],
   ].filter(([, , items]) => items.length);
   const inGroup = groups.find(([, , items]) => items.some(([k]) => k === tab));

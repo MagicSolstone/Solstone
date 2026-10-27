@@ -692,6 +692,23 @@ def world_debug(srv: Server) -> dict:
 
 
 # ---------------------------------------------------------------- mods
+# What some well-known mods do, for the ones whose files don't say (Floodgate's doesn't).
+KNOWN_MODS = {
+    "floodgate": "Lets Bedrock players (phones, tablets, consoles, Windows) join through Geyser without a Java account.",
+    "geyser-fabric": "Lets Bedrock players join this Java server, translating between the two editions.",
+    "geyser": "Lets Bedrock players join this Java server, translating between the two editions.",
+    "fabric-api": "The shared toolkit most Fabric mods need.",
+    "lithium": "Makes the server run faster without changing how the game plays.",
+    "ferritecore": "Cuts down how much memory the game uses.",
+    "c2me": "Generates new land faster by using more of the processor.",
+    "krypton": "Makes the server's networking faster.",
+    "spark": "A performance profiler for finding lag.",
+    "bluemap": "Draws a 3D map of the world you can open in a web browser.",
+    "squaremap": "Draws a map of the world you can open in a web browser.",
+    "tide": "Tide+: fishing with rods, tackle, rigs, a journal and hundreds of fish.",
+}
+
+
 def _read_mod(jar: Path) -> dict:
     info: dict = {"file": jar.name}
     try:
@@ -714,6 +731,9 @@ def _read_mod(jar: Path) -> dict:
     except Exception as e:
         info["error"] = str(e)
     info.setdefault("name", jar.stem)
+    if not info.get("description"):
+        key = str(info.get("id") or "").lower()
+        info["description"] = KNOWN_MODS.get(key) or next((d for k, d in KNOWN_MODS.items() if jar.stem.lower().startswith(k + "-")), None)
     return info
 
 

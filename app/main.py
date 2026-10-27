@@ -465,8 +465,40 @@ async def public_site():
             servers.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "online": len(summ["online"]),
                             "max": summ["max_players"], "version": summ.get("version"), "has_icon": summ["has_icon"]})
         _site_cache = (time.monotonic(), servers)
-    return JSONResponse({**cfg, "servers": servers, "status_page": _status_cfg()["enabled"], "build": _asset_stamp()},
+    return JSONResponse({**cfg, "logo": site.logo_url(), "servers": servers, "status_page": _status_cfg()["enabled"], "build": _asset_stamp()},
                         headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/public/logo")
+async def public_logo():
+    lg = site.logo()
+    if not lg:
+        raise HTTPException(404)
+    return FileResponse(lg["file"], media_type=lg["mime"], headers={"Cache-Control": "public, max-age=31536000, immutable",
+                                                                   "X-Content-Type-Options": "nosniff"})
+
+
+@app.post("/api/settings/site/logo")
+async def put_logo(request: Request):
+    """The site's logo: the picture is the request body (PNG, JPEG, WebP or GIF, under 1 MB)."""
+    user = auth.require_admin(request)
+    if int(request.headers.get("content-length") or 0) > site.LOGO_MAX:
+        raise HTTPException(413, "Use a picture under 1 MB")
+    data = await request.body()
+    try:
+        url = await asyncio.to_thread(site.save_logo, data)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    auth.audit(user, None, "site_logo", f"{len(data)} bytes")
+    return {"logo": url}
+
+
+@app.delete("/api/settings/site/logo")
+async def delete_logo(request: Request):
+    user = auth.require_admin(request)
+    url = await asyncio.to_thread(site.remove_logo)
+    auth.audit(user, None, "site_logo", "back to Solstone's")
+    return {"logo": url}
 
 
 @app.put("/api/settings/site")
@@ -524,7 +556,7 @@ async def public_post(slug: str):
 async def all_posts(request: Request):
     """Admin: every post, drafts included, with their text, for the Website page."""
     auth.require_admin(request)
-    return {"posts": site.posts(drafts=True, limit=200), "site": site.config(), "categories": site.CATEGORIES}
+    return {"posts": site.posts(drafts=True, limit=200), "site": site.config(), "logo": site.logo_url(), "categories": site.CATEGORIES}
 
 
 @app.post("/api/posts")
@@ -2304,4 +2336,4 @@ def _page(name: str) -> str:
     html = (STATIC / name).read_text(encoding="utf-8")
     for n in ASSET_NAMES:
         html = html.replace(f"/static/{n}\"", f"/static/{n}?v={stamp}\"")
-    return html.replace("{{SITE_NAME}}", _html_escape(site.config()["name"]))
+    return html.replace("{{SITE_NAME}}", _html_escape(site.config()["name"])).replace("{{SITE_LOGO}}", _html_escape(site.logo_url()))
