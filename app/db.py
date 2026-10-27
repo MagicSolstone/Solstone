@@ -113,6 +113,20 @@ CREATE TABLE IF NOT EXISTS adventures_hidden (
     hidden_by TEXT,
     hidden_ts REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS posts (
+    id INTEGER PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    category TEXT NOT NULL,
+    published INTEGER NOT NULL DEFAULT 1,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    author TEXT,
+    created_ts REAL NOT NULL,
+    updated_ts REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_posts_list ON posts(category, published, pinned, created_ts);
+
 CREATE TABLE IF NOT EXISTS log_state (
     server_id TEXT PRIMARY KEY,
     inode INTEGER,

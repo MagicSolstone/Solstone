@@ -19,7 +19,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, modpack, races, fireworks, fwshow, guard, music, notify, recap, selfcheck, skins, tide, upcoming, worldmap
+from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, modpack, races, fireworks, fwshow, guard, music, notify, recap, selfcheck, site, skins, tide, upcoming, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -372,6 +372,88 @@ async def public_board(sid: str):
     if board.get("world") and board["world"].get("as_of"):
         board = {**board, "world": {**board["world"], "age": round(max(0.0, time.time() - board["world"]["as_of"]), 1)}}
     return JSONResponse(board, headers={"Cache-Control": "no-store"})
+
+
+# ---- the public website: site details (how to join) and posts (news, guides, FAQ)
+@app.get("/api/public/site")
+async def public_site():
+    cfg = site.config()
+    servers = []
+    if cfg["home_live"]:
+        await S.registry.refresh()
+        for srv in _public_servers_list():
+            try:
+                summ = await S.server_summary(srv)
+            except Exception as e:
+                log.warning("home list failed for %s: %s", srv.id, e)
+                continue
+            servers.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "online": len(summ["online"]),
+                            "max": summ["max_players"], "version": summ.get("version"), "has_icon": summ["has_icon"]})
+    return JSONResponse({**cfg, "servers": servers, "status_page": _status_cfg()["enabled"], "build": _asset_stamp()},
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.put("/api/settings/site")
+async def put_site(request: Request):
+    user = auth.require_admin(request)
+    cfg = site.save_config(await _body(request))
+    auth.audit(user, None, "site_settings", cfg["name"])
+    return cfg
+
+
+@app.get("/api/public/posts")
+async def public_posts(category: str = "", limit: int = 20):
+    if category and category not in site.CATEGORIES:
+        raise HTTPException(400, "Unknown category")
+    return JSONResponse(site.posts(category or None, limit=limit), headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/public/posts/{slug}")
+async def public_post(slug: str):
+    p = site.post(slug)
+    if not p:
+        raise HTTPException(404, "No such post")
+    return JSONResponse(p, headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/posts")
+async def all_posts(request: Request):
+    """Admin: every post, drafts included, with their text, for the Website page."""
+    auth.require_admin(request)
+    return {"posts": site.posts(drafts=True, limit=200), "site": site.config(), "categories": site.CATEGORIES}
+
+
+@app.post("/api/posts")
+async def new_post(request: Request):
+    user = auth.require_admin(request)
+    try:
+        p = site.save(await _body(request), user.shown)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    auth.audit(user, None, "post_new", p["title"])
+    return p
+
+
+@app.put("/api/posts/{pid}")
+async def edit_post(pid: int, request: Request):
+    user = auth.require_admin(request)
+    try:
+        p = site.save(await _body(request), user.shown, pid)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    except LookupError as e:
+        raise HTTPException(404, str(e)) from e
+    auth.audit(user, None, "post_edit", p["title"])
+    return p
+
+
+@app.delete("/api/posts/{pid}")
+async def remove_post(pid: int, request: Request):
+    user = auth.require_admin(request)
+    if not site.delete(pid):
+        raise HTTPException(404, "No such post")
+    auth.audit(user, None, "post_delete", str(pid))
+    return {"ok": True}
 
 
 # ---- TV mode: the status page cycling through slides on a wall screen

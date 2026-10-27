@@ -19,7 +19,7 @@ from .rcon import RconError
 log = logging.getLogger("solstone.board")
 
 STYLES = ("info", "party", "heads")
-WHERE = ("status", "app", "login")
+WHERE = ("home", "status", "app", "login")
 DEFAULTS = {"items": [], "birthdays": [], "bedtime": {"show": True, "minutes": 30}, "birthday_soon": 7}
 _DT = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")
 _NAME = re.compile(r"^[A-Za-z0-9_]{1,16}$")
