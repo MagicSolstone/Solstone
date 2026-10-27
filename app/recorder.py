@@ -101,7 +101,17 @@ class Recorder:
                        asyncio.create_task(self._loop(self.recaps, 3600)),
                        asyncio.create_task(self._loop(self.race_tick, 1)),
                        asyncio.create_task(self._loop(self.fish_poll, 3)),
-                       asyncio.create_task(self._loop(self.track, adventures.TRACK_INTERVAL))]
+                       asyncio.create_task(self._loop(self.track, adventures.TRACK_INTERVAL)),
+                       asyncio.create_task(self._loop(self.warm_skins, 6 * 3600))]
+
+    async def warm_skins(self) -> None:
+        """Every known player's skin on disk, so heads show right away (one at a time, gently, for Mojang's sake)."""
+        await S.registry.refresh()
+        for srv in list(S.registry.servers.values()):
+            for uuid in list(S.known_players(srv)):
+                if not skins.has(uuid):
+                    await skins.warm(uuid)
+                    await asyncio.sleep(1.5)
 
     async def stop(self) -> None:
         for t in self._tasks:
@@ -260,9 +270,10 @@ class Recorder:
         online = {n: name_to_uuid.get(n.lower()) for n in names} if running else {}
         joined, left = db.update_sessions(srv.id, online, now)
         self._online[srv.id] = list(online)
-        for n in joined:                                # a new skin is picked up when they sign in
-            if online.get(n):
+        for n in joined:                                # a new skin is picked up when they sign in, fetched now
+            if online.get(n):                           # so pages have it ready instead of waiting on Mojang
                 skins.stale(online[n])
+                asyncio.get_running_loop().create_task(skins.warm(online[n]))
         if online and srv.is_java:
             try:
                 await asyncio.to_thread(adventures.progress, srv, online)

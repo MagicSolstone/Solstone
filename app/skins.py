@@ -89,13 +89,47 @@ async def _fetch(uuid: str) -> tuple[bytes, bool] | None:
         return r.content, slim
 
 
-async def skin(uuid: str) -> bytes | None:
-    """The player's current skin PNG, or None if Mojang has none for this UUID."""
+_refreshing: set[str] = set()
+
+
+async def _refresh(uuid: str) -> None:
+    try:
+        await skin(uuid, refresh=True)
+    finally:
+        _refreshing.discard(uuid)
+
+
+def has(uuid: str) -> bool:
+    u = clean_uuid(uuid)
+    return bool(u) and (_dir / f"{u}.png").is_file()
+
+
+async def warm(uuid: str) -> None:
+    """Fetch a player's skin now (they just joined), so it's ready before anyone opens a page."""
+    try:
+        await skin(uuid, refresh=True)
+    except Exception as e:
+        log.debug("warming skin for %s failed: %s", uuid, e)
+
+
+async def skin(uuid: str, refresh: bool = False) -> bytes | None:
+    """The player's current skin PNG, or None if Mojang has none for this UUID. refresh: ask Mojang even if
+    there's a copy (a stale copy is otherwise returned at once and refreshed in the background)."""
     uuid = clean_uuid(uuid)
     if not uuid:
         return None
     path = _dir / f"{uuid}.png"
     if path.is_file() and time.time() - path.stat().st_mtime < FRESH:
+        return path.read_bytes()
+    if path.is_file() and not refresh:
+        # Have one, just not checked lately: hand it out now and check Mojang in the background, so a page
+        # never waits on Mojang (and shows a placeholder head) for a skin Solstone already has.
+        if uuid not in _refreshing:
+            _refreshing.add(uuid)
+            try:
+                asyncio.get_running_loop().create_task(_refresh(uuid))
+            except RuntimeError:
+                _refreshing.discard(uuid)
         return path.read_bytes()
     if time.monotonic() - _misses.get(uuid, -1e9) < MISS_TTL:
         return path.read_bytes() if path.is_file() else None

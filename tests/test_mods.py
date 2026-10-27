@@ -1,4 +1,5 @@
 """Modded content: items stored by mods, RPG attribute stats, and mod advancements."""
+import asyncio
 import json
 import zipfile
 
@@ -100,9 +101,13 @@ def test_skins_from_mojang(client, anon, monkeypatch):
     assert "no-cache" in r.headers["cache-control"]
     assert client.get(f"/api/skins/{u}.png", headers={"If-None-Match": tag}).status_code == 304
     png = b"\x89PNG new skin"
-    skins.stale(u)                                   # what a join does
+    skins.stale(u)                                   # what a join does: mark it old...
+    asyncio.run(skins.warm(u))                       # ...and fetch it straight away
     r = client.get(f"/api/skins/{u}.png", headers={"If-None-Match": tag})
     assert r.status_code == 200 and r.content == png and len(calls) == 3
+    # An old copy is handed out at once (no waiting on Mojang); the check happens in the background.
+    skins.stale(u)
+    assert client.get(f"/api/skins/{u}.png").content == png
 
 
 def test_body_render_endpoint(client, monkeypatch):

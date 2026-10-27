@@ -103,7 +103,9 @@ function faceHtml(p, size, cls = "") {
   const initial = esc((p.name || "?")[0].toUpperCase());
   if (!p.uuid && p.name && knownUuids[String(p.name).toLowerCase()]) p = { ...p, uuid: knownUuids[String(p.name).toLowerCase()] };
   const main = skinSource(p);
-  return `<span class="face ${cls}" style="--s:${size}px;--skin:${main ? `url('${main}')` : "none"};--skin2:url('${backupSkin(p)}')" aria-hidden="true"><span class="face-init">${initial}</span></span>`;
+  // Solstone's own copy when it has a UUID (no backup underneath: a by-name lookup often shows Steve first and
+  // then flips to the real skin); the by-name service only for someone Solstone doesn't know.
+  return `<span class="face ${cls}" style="--s:${size}px;--skin:${main ? `url('${main}')` : `url('${backupSkin(p)}')`};--skin2:none" aria-hidden="true"><span class="face-init">${initial}</span></span>`;
 }
 
 // ================================================================ the top bar
