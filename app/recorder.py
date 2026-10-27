@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, music, notify, races, recap, skins, tide
+from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, notify, races, recap, skins, tide
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -99,7 +99,6 @@ class Recorder:
                        asyncio.create_task(self._loop(self.prune, 6 * 3600)),
                        asyncio.create_task(self._loop(self.guard, GUARD_INTERVAL)),
                        asyncio.create_task(self._loop(self.recaps, 3600)),
-                       asyncio.create_task(self._loop(self.music_scan, 6 * 3600)),
                        asyncio.create_task(self._loop(self.race_tick, 1)),
                        asyncio.create_task(self._loop(self.fish_poll, 3)),
                        asyncio.create_task(self._loop(self.track, adventures.TRACK_INTERVAL))]
@@ -154,11 +153,6 @@ class Recorder:
         """Catches from the Solstone Fishing pack (only where it's loaded and someone's on)."""
         await S.registry.refresh()
         await fishing.poll([s for s in S.registry.servers.values() if not s.settings.get("hidden")])
-
-    async def music_scan(self) -> None:
-        """Keep the external music library's index up to date (new albums, changed tags)."""
-        if music.external_root():
-            await asyncio.to_thread(music.scan)
 
     async def recaps(self) -> None:
         """Summarise finished days, and once per server read its old logs for the days before Solstone."""

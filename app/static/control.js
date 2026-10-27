@@ -379,7 +379,7 @@ async function viewAdmin() {
         <p class="muted small" style="margin-top:8px">Anyone with the address can see this page. Hidden servers are never shown.</p>
       </div></section>
     <section class="section"><div class="section-head"><h2>Fireworks</h2></div>
-      <div class="panel"><p>Fireworks settings, game events, the holiday calendar and music now have their own page. <a href="#/fireworks/settings">Open firework settings</a></p></div></section>
+      <div class="panel"><p>Fireworks settings, game events, and the holiday calendar have their own page. <a href="#/fireworks/settings">Open firework settings</a></p></div></section>
     <section class="section"><div class="section-head"><h2>Admin activity</h2><span class="muted">Commands, changes and sign-in failures across all servers</span></div>
       <div class="panel">${auditHtml(audit, true)}</div></section>`);
 

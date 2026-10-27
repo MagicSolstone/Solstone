@@ -41,7 +41,7 @@ function showLogin(message = "") {
   clearTimers?.();
   me.user = null;
   document.body.classList.add("logged-out");
-  if (appSky.scene) { appSky.scene.stop(); appSky.bar?.remove(); FWMusic.stop(); appSky.scene = appSky.bar = null; }
+  if (appSky.scene) { appSky.scene.stop(); appSky.bar?.remove(); appSky.scene = appSky.bar = null; }
   appSky.board?.remove(); appSky.board = null;
   const root = $("#login-root");
   root.hidden = false;
@@ -138,7 +138,6 @@ async function signedIn(user) {
   const root = $("#login-root"); root.hidden = true; root.innerHTML = "";
   if (!appSky.board) appSky.board = startBoard($("#app-board"), { where: "app", sid: () => curSid || "", scene: () => appSky.scene, dismiss: true, max: innerWidth < 700 ? 1 : 2 });
   $("#account-name").textContent = user.shown || user.username;
-  $("#btn-music").hidden = user.music === false;
   $("#account-role").textContent = (ROLE_NAMES.find(([v]) => v === user.role) || [, "Signed in"])[1] + (user.player ? ` · ${user.player.name}` : "");
   fetch("/api/public/status").then((r) => r.json()).then((d) => { $("#btn-status").hidden = !d.enabled; appBuild = d.build; }).catch(() => {});
   // Left open for a while? Say when Solstone has been updated (a reload loads it).
@@ -1350,7 +1349,6 @@ async function route() {
     if (parts[0] === "announcements") { await viewAnnouncements(); return; }
     if (parts[0] === "website") { await viewWebsite(); return; }
     if (parts[0] === "coming-up") { await viewUpcoming(); return; }
-    if (parts[0] === "music") { await viewMusic(parts[1], parts[2]); return; }
     if (parts[0] === "fireworks" && parts[1] === "settings") { await viewFireworkSettings(); return; }
     if (parts[0] === "fireworks") { await viewFireworkEditor(parts[1]); return; }
     if (parts[0] === "s" && parts[1]) {

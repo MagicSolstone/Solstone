@@ -543,40 +543,6 @@ function tvSideFeedHtml(b) {
       <time data-ago="${e.ts}"></time></li>`;
   }).join("")}</ul></section>`;
 }
-function renderTvMusic() {
-  const el = $("#tv-side-music");
-  if (!el) return;
-  const t = FWMusic.current;
-  if (!FW.music || !FWMusic.tracks.length || !t) { setHtml(el, ""); return; }
-  const next = FWMusic.tracks.length > 1 ? FWMusic.tracks[(FWMusic.idx + 1) % FWMusic.tracks.length] : null;
-  setHtml(el, `<section class="tv-side-box glass tv-music ${FWMusic.playing ? "playing" : ""}">
-    <div class="tv-np"><span class="tv-np-art"><img src="${FWMusic.artUrl(t)}" alt="" data-fail="remove"></span>
-      <div><small>${FWMusic.playing ? "♪ Now playing" : FWMusic.waiting ? "Click to carry on" : "Paused"}</small><b>${esc(t.title)}</b>${t.artist ? `<span>${esc(t.artist)}</span>` : ""}</div></div>
-    <div class="tv-np-bar"><i id="tv-np-fill"></i></div>
-    <div class="tv-np-times"><span id="tv-np-t">0:00</span><span>${FWMusic.duration ? fmtClockSecs(FWMusic.duration) : ""}</span></div>
-    ${next && !FWMusic.shuffle ? `<p class="tv-np-next">Up next: <b>${esc(next.title)}</b>${next.artist ? ` · ${esc(next.artist)}` : ""}</p>` : FWMusic.shuffle ? `<p class="tv-np-next">🔀 Shuffling ${esc(FWMusic.source?.name || "")}</p>` : ""}
-  </section>`);
-  if (!npClock.at) tvMusicTime(); else tvMusicPaint();        // a redraw mustn't pull the bar back to the last update
-}
-const fmtClockSecs = (t) => { t = Math.max(0, Math.floor(t || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
-// The song's progress moves every quarter second, between the player's own updates (which can be seconds apart
-// when the music is playing somewhere else), so the bar glides instead of jumping.
-const npClock = { t: 0, at: 0 };
-function tvMusicTime() {
-  npClock.t = FWMusic.time || 0; npClock.at = performance.now();
-  tvMusicPaint();
-}
-function tvMusicPaint() {
-  const f = $("#tv-np-fill"), tt = $("#tv-np-t");
-  if (!f) return;
-  const d = FWMusic.duration;
-  const t = Math.min(d || Infinity, npClock.t + (FWMusic.playing ? (performance.now() - npClock.at) / 1000 : 0));
-  f.style.width = `${d ? Math.min(100, (t / d) * 100) : 0}%`;
-  if (tt) tt.textContent = fmtClockSecs(t);
-}
-setInterval(() => { if (st.board && FWMusic.playing) tvMusicPaint(); }, 250);
-FWMusic.on((what) => { if (!st.tv) return; if (what === "time") tvMusicTime(); else renderTvMusic(); });
-
 function renderTv(b) {
   const main = $("#sp-main");
   if (main.dataset.sid !== b.id || main.dataset.mode !== "tv") {
@@ -584,7 +550,7 @@ function renderTv(b) {
     main.innerHTML = `<div class="tv-wrap"><div class="tv-main"><div class="tv-stage">${TV_SLIDES.map(([k, title]) => `<section class="tv-slide" data-slide="${k}" aria-hidden="true">
         <h2 class="tv-title">${esc(title)}<span class="tv-sub" data-sub="${k}"></span></h2><div class="tv-scroll"><div class="tv-inner" id="tv-${k}"></div></div></section>`).join("")}</div>
       <nav class="tv-dots" id="tv-dots" aria-label="Screens"></nav></div>
-      <aside class="tv-side" aria-label="Now playing and recent events"><div id="tv-side-music"></div><div id="tv-side-feed"></div></aside></div>`;
+      <aside class="tv-side" aria-label="Recent events"><div id="tv-side-feed"></div></aside></div>`;
     st.map = null; tv.idx = -1; tv.rot = -1; tv.shown = null; tv.loops = 0;
   }
   setHtml($("#tv-now"), heroHtml(b) + playersHtml(b));
@@ -599,7 +565,6 @@ function renderTv(b) {
   setHtml($("#tv-news"), tvNewsHtml());
   setHtml($("#tv-side-feed"), tvSideFeedHtml(b));
   document.querySelectorAll(".tv-events [data-ago]").forEach((el) => { el.textContent = fmtAgo(Number(el.dataset.ago)); });
-  renderTvMusic();
   const sub = $('[data-sub="now"]');
   if (sub) sub.textContent = ` on ${b.name}`;
   if (tv.idx < 0) {

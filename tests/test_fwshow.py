@@ -1,4 +1,4 @@
-"""Game-event fireworks, the holiday calendar and the music playlist."""
+"""Game-event fireworks and the holiday calendar."""
 from datetime import date, datetime
 
 
@@ -57,30 +57,6 @@ def test_event_feed_and_settings(client, viewer, anon):
     assert len(items) == 1 and items[0]["show"]["design"]["name"] == "Tyler's"       # signature, even though not in the show
     client.put("/api/fireworks/show", json={"events": {"death": {"on": True}, "level": {"every": 10}}, "signatures": {}})
     client.delete(f"/api/fireworks/{d['id']}")
-
-
-def test_music_playlist(client, viewer, anon):
-    from app import main
-    assert viewer.post("/api/music?filename=a.mp3", content=b"ID3abc", headers={"Content-Type": "audio/mpeg"}).status_code == 403
-    assert client.post("/api/music?filename=a.txt", content=b"hello", headers={"Content-Type": "text/plain"}).status_code == 415
-    t1 = client.post("/api/music?filename=Song%20One.mp3", content=b"ID3" + b"x" * 5000, headers={"Content-Type": "audio/mpeg"}).json()
-    t2 = client.post("/api/music?filename=two.ogg&title=Second", content=b"OggS" + b"y" * 100, headers={"Content-Type": "application/octet-stream"}).json()
-    assert t1["title"] == "Song One" and t1["ext"] == "mp3" and t2["title"] == "Second" and t2["ext"] == "ogg"
-    radio = viewer.get("/api/public/music").json()
-    assert [t["id"] for t in radio["tracks"]] == [t1["id"], t2["id"]] and radio["radio"]["name"] == "Solstone radio"
-    r = viewer.get(f"/api/public/music/{t1['id']}")
-    assert r.status_code == 200 and r.content.startswith(b"ID3") and r.headers["content-type"] == "audio/mpeg"
-    assert "content-encoding" not in r.headers
-    assert anon.get("/api/public/music").status_code == 404                           # not public by default
-    out = client.put("/api/music", json={"order": [t2["id"], t1["id"]], "titles": {t1["id"]: "Renamed"}, "public": True}).json()
-    assert [t["title"] for t in out["tracks"]] == ["Second", "Renamed"] and out["public"] is True
-    client.put("/api/settings/status", json={"enabled": True}); main._board_cache.clear()
-    assert anon.get("/api/public/music").status_code == 200 and anon.get("/api/public/fireworks").json()["music"] is True
-    client.put("/api/settings/status", json={"enabled": False})
-    client.put("/api/music", json={"public": False})
-    assert client.delete(f"/api/music/{t1['id']}").json() == {"ok": True}
-    assert client.delete(f"/api/music/{t2['id']}").status_code == 200
-    assert client.get("/api/public/music").json()["tracks"] == []
 
 
 def test_frequencies_for_kinds_people_and_designs(client, viewer, anon):

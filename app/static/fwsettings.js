@@ -1,9 +1,9 @@
 /* Solstone — Firework settings (admins): what the show launches, fireworks for things
    happening in the game, each player's join firework, the calendar of holidays and
-   scheduled shows, and the music playlist. Loaded after app.js, control.js and editor.js. */
+   and scheduled shows. Loaded after app.js, control.js and editor.js. */
 "use strict";
 
-const FWS_TABS = [["show", "The show"], ["shows", "Shows"], ["events", "Game events"], ["join", "Join fireworks"], ["calendar", "Calendar"], ["music", "Music"]];
+const FWS_TABS = [["show", "The show"], ["shows", "Shows"], ["events", "Game events"], ["join", "Join fireworks"], ["calendar", "Calendar"]];
 const FWS_EVENTS = [
   ["join", "Someone joins", "Their join firework if they have one (Join fireworks tab), otherwise what you pick."],
   ["advancement", "Advancement", "Any normal advancement."],
@@ -79,7 +79,6 @@ function renderFws() {
   else if (fws.tab === "events") renderEvents(el);
   else if (fws.tab === "join") renderJoin(el);
   else if (fws.tab === "calendar") renderCalendar(el);
-  else renderMusic(el);
 }
 
 // ---------------------------------------------------------------- fireworks people made
@@ -321,10 +320,6 @@ function wireCalEdit(el, i) {
   });
 }
 
-// ---------------------------------------------------------------- music
-function renderMusic(el) {
-  el.innerHTML = `<section class="panel"><p>Music has its own page now: the library, playlists, the radio (including holiday playlists on their dates), uploads, your own music folder, and blocking. <a href="#/music/library">Open Music → Library</a></p></section>`;
-}
 
 // ---------------------------------------------------------------- the sky
 function renderSky(el) {

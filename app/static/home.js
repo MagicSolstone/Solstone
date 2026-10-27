@@ -247,7 +247,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#hp-name").textContent = $("#hp-foot-name").textContent = hp.site.name;
   $("#hp-status-link").hidden = !hp.site.status_page;
   const sky = $("#home-sky");
-  if (sky && typeof startSkyScene === "function") hp.scene = startSkyScene(sky, { auto: false, dim: () => 0.35 });
+  if (sky && typeof startSkyScene === "function") {
+    hp.scene = startSkyScene(sky, { auto: false, sound: (t, i) => FWAudio.play(t, i), dim: () => (document.body.classList.contains("ui-hidden") ? 0 : 0.35) });
+    // Fireworks are there for whoever wants them: off until a visitor turns the show on (it's remembered).
+    if (typeof startShowBar === "function") hp.bar = startShowBar(hp.scene, { key: "solstone-sky-home", defaultOn: false, hide: true });
+  }
   if (typeof startBoard === "function") startBoard($("#hp-board"), { where: "home", sid: () => "", scene: () => hp.scene, max: innerWidth < 700 ? 1 : 3 });
   route();
 });

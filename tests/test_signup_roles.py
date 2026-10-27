@@ -117,16 +117,3 @@ def test_every_api_route_is_judged_for_players():
     paths = {getattr(r, "path", "") for r in main.app.routes}
     assert set(main.PLAYER_ROUTES) <= paths
 
-
-def test_music_is_off_for_players_until_allowed(client, player, viewer):
-    assert player.get("/api/auth/me").json()["user"]["music"] is False
-    assert player.get("/api/music/library").status_code == 403
-    assert player.get("/api/public/music").status_code == 404
-    assert viewer.get("/api/music/library").status_code == 200          # trusted can always listen
-    client.put("/api/music/settings", json={"players": True})
-    try:
-        assert player.get("/api/auth/me").json()["user"]["music"] is True
-        assert player.get("/api/music/library").status_code == 200
-        assert player.post("/api/music/playlists", json={"name": "x"}).status_code == 403   # listening only
-    finally:
-        client.put("/api/music/settings", json={"players": False})

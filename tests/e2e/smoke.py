@@ -132,7 +132,7 @@ def main() -> int:
                 "control": f"#/s/{sid}/control", "check": f"#/s/{sid}/check", "chat": f"#/s/{sid}/chat", "challenges": f"#/s/{sid}/challenges", "races": f"#/s/{sid}/challenges/races", "games": f"#/s/{sid}/challenges/games", "performance": f"#/s/{sid}/performance",
                 "leaderboards": f"#/s/{sid}/leaderboards", "fishing": f"#/s/{sid}/fishing", "fishing-player": f"#/s/{sid}/fishing/Tyler", "mods": f"#/s/{sid}/mods", "adventures": f"#/s/{sid}/adventures", "coming-up": "#/coming-up",
                 "fireworks-editor": "#/fireworks", "fireworks-settings": "#/fireworks/settings",
-                "music": "#/music", "announcements": "#/announcements", "admin": "#/admin", "website": "#/website",
+                "announcements": "#/announcements", "admin": "#/admin", "website": "#/website",
             }
             pg.goto(f"{base}/app"); pg.wait_for_timeout(1200)
             for name, hash_ in routes.items():
@@ -154,11 +154,16 @@ def main() -> int:
                 pg.click(".fws-show-edit [data-cancel]"); pg.wait_for_timeout(300)
             check(pg, "fireworks-shows")
 
-            # the music bar's popovers and the give-items dialog
+            # the fireworks launch list, and the give-items dialog
             pg.goto(f"{base}/app#/"); pg.wait_for_timeout(1000)
-            for sel in (".mbar [data-mb='list']", ".mbar [data-sky='volume']"):
-                if pg.locator(sel).count() and pg.locator(sel).first.is_visible():
-                    pg.click(sel); pg.wait_for_timeout(250); pg.mouse.click(5, 5)
+            pg.click(".fwbar [data-sky='pick']"); pg.wait_for_timeout(300)
+            if pg.locator(".fw-pick .fwp-grid button").count() < 10:
+                problems.append("fireworks: the launch list is missing its fireworks")
+            pg.locator(".fw-pick .fwp-grid button").nth(2).click(); pg.wait_for_timeout(200)
+            check(pg, "firework-launch-list")
+            pg.mouse.click(5, 5); pg.wait_for_timeout(200)
+            if pg.locator(".fw-pick:not([hidden])").count():
+                problems.append("fireworks: the launch list didn't close")
             pg.goto(f"{base}/app#/s/{sid}/control"); pg.wait_for_timeout(1000)
             pg.evaluate(f"openGiveItem({sid!r}, {pname!r})"); pg.wait_for_timeout(500)
             if not pg.locator(".gv-modal").count():

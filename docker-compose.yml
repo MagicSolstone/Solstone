@@ -21,18 +21,12 @@ services:
       # TRUST_PROXY_HEADERS: "true"     # ONLY behind Cloudflare Tunnel or a reverse proxy you control
       # PUBLIC_URL: https://playsolstone.com   # the address people use; links Solstone hands out (the modpack) use it
       # NTFY_URL: https://ntfy.sh/your-secret-topic   # or set notifications up in the UI
-      # MUSIC_LIBRARY_DIR: /music       # with the music folder mounted below
     volumes:
       # Crafty's servers folder, read-only. With the Unraid Crafty template
       # this is usually /mnt/user/appdata/crafty-4/servers
       - /mnt/user/appdata/crafty-4/servers:/servers:ro
       # Optional: Crafty's backups folder, read-only, for backup status
       - /mnt/user/appdata/crafty-4/backups:/backups:ro
-      # Optional: a music library to share in Solstone's Music page, e.g. Jellyfin's.
-      # The library is read-only; only its Solstone folder can be written (uploads).
-      # Also set MUSIC_LIBRARY_DIR: /music above.
-      # - /mnt/user/media/music:/music:ro
-      # - /mnt/user/media/music/Solstone:/music/Solstone
       # Solstone settings + downloaded item icons
       - /mnt/user/appdata/solstone:/data
     healthcheck:

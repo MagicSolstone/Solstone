@@ -27,7 +27,6 @@ function applyFireworkSettings(c) {
   FW.custom = Array.isArray(c.custom) ? c.custom : [];
   FW.theme = c.theme || null;
   FW.finales = Array.isArray(c.finales) ? c.finales : [];
-  FW.music = !!c.music;
   FW.base_shows = c.base_shows || null;
   FW.sky = c.sky || { mode: "game", daytime: "smoke" };
 }
