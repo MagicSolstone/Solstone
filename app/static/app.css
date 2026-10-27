@@ -35,7 +35,8 @@
   --font-body: "Atkinson Hyperlegible", system-ui, sans-serif;
   --radius-s: 4px;
   --radius-m: 8px;
-  --rail: 232px;
+  --page: 1200px;                    /* the width of every page, home, status and signed in */
+  --gutter: clamp(16px, 3vw, 32px);
   color-scheme: dark;
 }
 
@@ -65,19 +66,22 @@ p { margin: 0; }
 .num { font-family: var(--font-body); font-weight: 700; font-variant-numeric: tabular-nums; }
 
 /* ------------------------------------------------------------ shell */
-.shell {
-  display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); min-height: 100vh; position: relative; z-index: 1;
-}
+/* One width for every page's top bar and content: the home page, the status page and the signed-in pages. */
+.shell { min-height: 100vh; position: relative; z-index: 1; display: flex; flex-direction: column; }
+.app-top { width: 100%; max-width: var(--page); margin: 0 auto; padding: 18px var(--gutter) 0; position: relative; z-index: 30; }
+.nav-drop { position: relative; display: inline-flex; align-items: center; }
+.nav-drop-btn { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 6px 6px; border-radius: var(--radius-m); font-size: .8rem; }
+.nav-drop-btn:hover, .nav-drop-btn[aria-expanded="true"] { color: var(--bone); background: rgba(255,255,255,.06); }
+.drop-panel { position: absolute; top: calc(100% + 6px); left: 0; z-index: 50; min-width: 260px; max-height: 70vh; overflow-y: auto; padding: 6px; border-radius: 14px;
+  background-color: rgba(16, 20, 32, .94); display: flex; flex-direction: column; gap: 2px; }
+.drop-panel[hidden] { display: none; }
+.app-top .account { margin-left: auto; width: auto; }
+.account-menu a { display: block; padding: 8px 10px; border-radius: 6px; text-decoration: none; color: var(--bone); }
+.account-menu a:hover { background: var(--tuff-2); }
+.account-menu hr { border: 0; border-top: 1px solid var(--basalt); margin: 4px 0; }
+body.ui-hidden .app-top { display: none; }
 #app-sky { position: fixed; inset: 0; width: 100vw; height: 100vh; image-rendering: pixelated; pointer-events: none; z-index: 0; opacity: .9; }
 body.logged-out #app-sky { display: none; }
-.rail {
-  background: linear-gradient(180deg, rgba(20, 25, 40, .62), rgba(14, 18, 30, .7));
-  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
-  border-right: 1px solid var(--glass-edge);
-  padding: 18px 12px;
-  position: sticky; top: 0; height: 100vh; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 18px;
-}
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; padding: 0 6px; }
 .brand img { image-rendering: pixelated; border-radius: 3px; }
 .brand span { font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; }
@@ -97,11 +101,9 @@ body.logged-out #app-sky { display: none; }
 .status-dot.on { background: var(--copper); }
 .status-dot.crash { background: var(--redstone); }
 
-.rail-foot { margin-top: auto; padding: 0 4px; }
-.rail-title, .rail-menu-btn { display: none; }
 .channel { font-size: .75rem; font-weight: 700; color: #151a2a; background: var(--gold); padding: 2px 8px; border-radius: 999px; }
 
-main { padding: 28px clamp(16px, 4vw, 48px) 64px; max-width: 1280px; width: 100%; min-width: 0; outline: none; }
+main { padding: 34px var(--gutter) 64px; max-width: var(--page); width: 100%; margin: 0 auto; min-width: 0; outline: none; }
 main:focus, main:focus-visible { outline: none; }
 
 /* ------------------------------------------------------------ server header */
@@ -420,11 +422,6 @@ table.data tr:hover td { background: var(--line); }
 .skeleton { color: var(--faint); padding: 40px 0; }
 
 /* ------------------------------------------------------------ rail footer */
-.rail-foot { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
-.rail-btn { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 8px; border-radius: var(--radius-m); font-weight: 700; font-size: .9rem; width: 100%; text-align: left; }
-.rail-btn:hover { background: var(--tuff); color: var(--bone); }
-a.rail-btn { text-decoration: none; display: block; }
-a.rail-btn[hidden] { display: none; }
 
 /* ------------------------------------------------------------ charts */
 .chart { width: 100%; min-height: 60px; }
@@ -559,6 +556,7 @@ body.logged-out .shell { display: none; }
 .login-error { color: #ffb3a8; min-height: 1.2em; font-size: .9rem; }
 .admin-only { display: none !important; }
 body.is-admin .admin-only { display: block !important; }
+body.is-admin hr.admin-only { display: block !important; }
 .account { position: relative; width: 100%; }
 .account-menu { position: fixed; min-width: 200px; background: rgba(16, 20, 32, .86); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--basalt); border-radius: var(--radius-m); padding: 6px; z-index: 200; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
 body.logged-out .account-menu { display: none; }
@@ -643,24 +641,6 @@ body.logged-out .account-menu { display: none; }
 
 /* ------------------------------------------------------------ responsive */
 @media (max-width: 900px) {
-  .shell { grid-template-columns: minmax(0, 1fr); background: none; }
-  /* a bar across the top: logo, where you are, and ☰ for the servers and pages */
-  .rail { min-width: 0; position: sticky; top: 0; z-index: 30; height: auto; flex-direction: row; align-items: center; padding: 8px 12px; gap: 12px; overflow: visible; }
-  .brand span { display: none; }
-  .rail-title { display: block; flex: 1; min-width: 0; font-family: var(--font-display); font-size: 1.15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rail-menu-btn { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 10px; border: 1px solid var(--glass-edge);
-    background: rgba(255,255,255,.06); color: var(--bone); font-size: 1.3rem; cursor: pointer; flex: none; }
-  .rail-servers, .rail-foot { display: none; }
-  body.menu-open { overflow: hidden; }
-  body.menu-open .rail { position: fixed; inset: 0; z-index: 60; flex-direction: column; align-items: stretch; overflow-y: auto; padding: 12px 16px 24px;
-    background: linear-gradient(180deg, rgba(20, 25, 40, .97), rgba(14, 18, 30, .98)); }
-  body.menu-open .rail > .brand, body.menu-open .rail-title { display: none; }
-  body.menu-open .rail-menu-btn { position: absolute; top: 12px; right: 16px; }
-  body.menu-open .rail-servers { display: flex; flex-direction: column; margin-top: 52px; }
-  body.menu-open .rail-item { grid-template-columns: 36px 1fr; padding: 10px; }
-  body.menu-open .rail-foot { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
-  body.menu-open .rail-foot .rail-btn { padding: 12px 10px; font-size: 1.05rem; }
-  body.menu-open .rail-btn span { display: inline; }
   .world-top { grid-template-columns: 1fr; }
   .two-col { grid-template-columns: 1fr; }
   .overview { grid-template-columns: 1fr; }
@@ -1017,12 +997,6 @@ body.ui-hidden.pointer-idle, body.ui-hidden.pointer-idle * { cursor: none; }
 
 /* ------------------------------------------------------------ announcement banners */
 .main-col { min-width: 0; display: flex; flex-direction: column; }
-/* The website's pages, always one click away from inside the app. */
-.app-site { display: flex; gap: 4px; flex-wrap: wrap; padding: 14px clamp(16px, 4vw, 48px) 0; max-width: 1280px; }
-.app-site a { text-decoration: none; padding: 5px 11px; border-radius: var(--radius-m); color: var(--muted); font-weight: 700; font-size: .9rem; }
-.app-site a:hover { color: var(--bone); background: rgba(255,255,255,.06); }
-body.ui-hidden .app-site { display: none; }
-@media (max-width: 900px) { .app-site { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-top: 8px; } .app-site a { white-space: nowrap; } }
 #app-board { padding: 16px clamp(16px, 4vw, 48px) 0; max-width: 1280px; width: 100%; }
 #app-board + main { padding-top: 18px; }
 .board-stack { display: grid; gap: 8px; }
@@ -1167,7 +1141,7 @@ body.tv-idle.tv, body.tv-idle.tv * { cursor: none; }
 body:not(.tv) .tv-slide { position: static; display: none; opacity: 1; transform: none; pointer-events: auto; transition: none; }
 body:not(.tv) .tv-slide.on { display: flex; }
 body:not(.tv) .tv-scroll { overflow: visible; }
-body:not(.tv) .tv-dots { order: -1; justify-content: flex-start; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 6px 18px;
+body:not(.tv) .tv-dots { order: -1; justify-content: flex-start; flex-wrap: wrap; gap: 4px 18px;   /* every screen's name in view, on a second line if need be */
   padding: 0 0 12px; margin-bottom: 4px; }
 body:not(.tv) .tv-dots button { white-space: nowrap; font-size: 1rem; }
 body:not(.tv) .tv-dots i { display: none; }
@@ -1681,7 +1655,7 @@ body.on-editor:not(.ui-hidden) .fwbar .fwb-launch, body.on-editor:not(.ui-hidden
 
 /* ---------------------------------------------------------------- public home page and posts */
 .home-page #home-sky { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; }
-.hp { position: relative; z-index: 1; max-width: 1080px; margin: 0 auto; padding: 18px clamp(16px, 3vw, 32px) 40px; display: flex; flex-direction: column; gap: 22px; min-height: 100%; }
+.hp { position: relative; z-index: 1; max-width: var(--page); margin: 0 auto; padding: 18px var(--gutter) 40px; display: flex; flex-direction: column; gap: 22px; min-height: 100%; }
 .hp-top { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
 .hp-top .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-family: var(--font-display); font-size: 1.35rem; }
 .hp-nav { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; }
@@ -1745,7 +1719,7 @@ body.on-editor:not(.ui-hidden) .fwbar .fwb-launch, body.on-editor:not(.ui-hidden
 
 /* The status page wears the website's top bar, in the same place as on the home page,
    so it reads as one more page of the site. TV mode hides it for the wall screen. */
-body.status-page:not(.tv) .sp { max-width: 1080px; padding: 18px clamp(16px, 3vw, 32px) 40px; }
+body.status-page:not(.tv) .sp { max-width: var(--page); padding: 18px var(--gutter) 40px; }
 .sp-site { margin-bottom: 16px; }
 body.tv .sp-site { display: none; }
 .sp-tv { display: inline-flex; align-items: center; gap: 6px; }

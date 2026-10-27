@@ -140,7 +140,7 @@ async function signedIn(user) {
   if (!appSky.board) appSky.board = startBoard($("#app-board"), { where: "app", sid: () => curSid || "", scene: () => appSky.scene, dismiss: true, max: innerWidth < 700 ? 1 : 2 });
   $("#account-name").textContent = user.shown || user.username;
   $("#account-role").textContent = (ROLE_NAMES.find(([v]) => v === user.role) || [, "Signed in"])[1] + (user.player ? ` · ${user.player.name}` : "");
-  fetch("/api/public/status").then((r) => r.json()).then((d) => { $("#btn-status").hidden = !d.enabled; $("#app-live").hidden = !d.enabled; appBuild = d.build; }).catch(() => {});
+  fetch("/api/public/status").then((r) => r.json()).then((d) => { $("#app-live").hidden = !d.enabled; appBuild = d.build; }).catch(() => {});
   // Left open for a while? Say when Solstone has been updated (a reload loads it).
   clearInterval(state.buildCheck);
   state.buildCheck = setInterval(async () => {
@@ -150,33 +150,38 @@ async function signedIn(user) {
   route();
 }
 
-// Phones: the rail is a bar at the top (logo, where you are, ☰); ☰ opens the servers and pages as a full menu.
+// The top bar: the Servers ▾ list, and which page you're on.
 function wireMobileMenu() {
-  const btn = $("#btn-menu");
+  const btn = $("#btn-servers"), panel = $("#rail-servers");
   if (!btn || btn._wired) return;
   btn._wired = true;
-  const set = (open) => { document.body.classList.toggle("menu-open", open); btn.setAttribute("aria-expanded", String(open)); btn.textContent = open ? "✕" : "☰"; };
-  btn.addEventListener("click", () => set(!document.body.classList.contains("menu-open")));
-  $(".rail").addEventListener("click", (e) => { if (e.target.closest("a[href]") && document.body.classList.contains("menu-open")) set(false); });
-  addEventListener("hashchange", () => set(false));
-  addEventListener("keydown", (e) => { if (e.key === "Escape" && document.body.classList.contains("menu-open")) set(false); });
+  const set = (open) => { panel.hidden = !open; btn.setAttribute("aria-expanded", String(open)); };
+  btn.addEventListener("click", (e) => { e.stopPropagation(); set(panel.hidden); });
+  document.addEventListener("click", (e) => { if (!panel.hidden && !panel.contains(e.target)) set(false); });
+  addEventListener("keydown", (e) => { if (e.key === "Escape") set(false); });
+  addEventListener("hashchange", () => { set(false); markNav(); });
+  markNav();
+}
+function markNav() {
+  const h = location.hash || "#/";
+  const on = h === "#/" || h.startsWith("#/s/") ? "nav-servers" : h.startsWith("#/coming-up") ? "btn-upcoming" : h.startsWith("#/fireworks") ? "btn-fwe" : "";
+  ["nav-servers", "btn-upcoming", "btn-fwe"].forEach((id) => $(`#${id}`)?.toggleAttribute("aria-current", id === on));
 }
 
 function wireAccountMenu() {
   const btn = $("#btn-account"), menu = $("#account-menu");
-  // The sidebar scrolls, which clips anything that pops out of it, so the menu lives on
-  // <body> and is positioned next to the button whenever it opens.
+  // The menu lives on <body> and is placed under the button whenever it opens.
   document.body.append(menu);
   const place = () => {
     const r = btn.getBoundingClientRect(), mh = menu.offsetHeight, mw = menu.offsetWidth;
     const below = innerHeight - r.bottom, above = r.top;
-    menu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - mw - 8))}px`;
+    menu.style.left = `${Math.max(8, Math.min(r.right - mw, innerWidth - mw - 8))}px`;
     menu.style.top = below >= mh + 12 || below >= above ? `${r.bottom + 6}px` : `${Math.max(8, r.top - mh - 6)}px`;
   };
   const close = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
   const open = () => { menu.hidden = false; place(); btn.setAttribute("aria-expanded", "true"); menu.querySelector("button")?.focus(); };
   btn.addEventListener("click", (e) => { e.stopPropagation(); menu.hidden ? open() : close(); });
-  document.addEventListener("click", (e) => { if (!menu.contains(e.target)) close(); });
+  document.addEventListener("click", (e) => { if (!menu.contains(e.target) || e.target.closest("a[href]")) close(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !menu.hidden) { close(); btn.focus(); } });
   addEventListener("resize", close);
   addEventListener("scroll", close, { passive: true });

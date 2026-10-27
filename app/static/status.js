@@ -701,6 +701,7 @@ async function keepAwake() {
 document.addEventListener("visibilitychange", () => { if (!document.hidden && (!wakeLock || wakeLock.released)) keepAwake(); });
 
 document.addEventListener("DOMContentLoaded", async () => {
+  if (typeof showSignedIn === "function") showSignedIn();
   const sky = $("#status-sky");
   if (sky) {
     st.scene = startSkyScene(sky, { auto: false, sound: (t, i) => FWAudio.play(t, i), dim: () => (document.body.classList.contains("ui-hidden") ? 0 : 0.35) });

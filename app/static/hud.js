@@ -105,3 +105,14 @@ function faceHtml(p, size, cls = "") {
   const main = skinSource(p);
   return `<span class="face ${cls}" style="--s:${size}px;--skin:${main ? `url('${main}')` : "none"};--skin2:url('${backupSkin(p)}')" aria-hidden="true"><span class="face-init">${initial}</span></span>`;
 }
+
+// The website's pages (home, status) when someone is signed in: the same links as inside the app, and their name
+// where "Sign in" was, so the website and the servers feel like one site.
+function showSignedIn() {
+  fetch("/api/auth/me", { credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null)).then((d) => {
+    if (!d?.user) return;
+    document.querySelectorAll("[data-signed-in]").forEach((el) => { el.hidden = false; });
+    const b = document.getElementById("hp-signin");
+    if (b) { b.textContent = `👤 ${d.user.shown || d.user.username}`; b.title = "Your servers"; b.href = "/app#/"; }
+  }).catch(() => {});
+}

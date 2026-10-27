@@ -270,10 +270,13 @@ def main() -> int:
             check(pl, "player-account-own-page")
             # signed in, the website offers the way back to the servers, and the app links back to the website
             pl.goto(f"{base}/"); pl.wait_for_timeout(1200)
-            if not pl.locator("#hp-servers-link").is_visible():
+            if not pl.locator(".hp-nav [data-signed-in][href='/app#/']").is_visible() or "Sign in" in (pl.locator("#hp-signin").text_content() or ""):
                 problems.append("home: no Servers link when signed in")
+            pl.goto(f"{base}/status"); pl.wait_for_timeout(1200)
+            if "Sign in" in (pl.locator("#hp-signin").text_content() or ""):
+                problems.append("status: shows Sign in to someone signed in")
             pl.goto(f"{base}/app#/s/{sid}"); pl.wait_for_timeout(1200)
-            if not pl.locator(".app-site a[href='/']").is_visible():
+            if not pl.locator(".app-top .hp-nav a[href='/']").is_visible():
                 problems.append("app: no link back to the website")
             for name, url in (("status", "/status"), ("status-tv", f"/status/{sid}?tv=1")):
                 anon.goto(f"{base}{url}"); anon.wait_for_timeout(2000)
@@ -288,8 +291,21 @@ def main() -> int:
                 if anon.locator(".tv-slide.on").count() != 1:
                     problems.append("status: picking a screen didn't show it")
                 check(anon, "status-tab")
+                feed = anon.locator(".tv-dots [data-tv='feed']")
+                if feed.count():
+                    feed.click(); anon.wait_for_timeout(500)
+                    check(anon, "status-activity")
+                    clipped = anon.evaluate("""() => { const s = document.querySelector('.tv-slide.on'); if (!s) return 'no slide';
+                        for (let el = s; el && el !== document.body; el = el.parentElement) {
+                          const cs = getComputedStyle(el); if (cs.overflowY !== 'visible' && el.scrollHeight > el.clientHeight + 2) return el.className; }
+                        return ''; }""")
+                    if clipped:
+                        problems.append(f"status: Recent activity is cut off by {clipped}")
             anon.set_viewport_size({"width": 390, "height": 800}); anon.goto(f"{base}/status/{sid}"); anon.wait_for_timeout(1500)
             check(anon, "m-status")
+            off = anon.evaluate("() => [...document.querySelectorAll('.tv-dots [data-tv]')].filter(b => b.getBoundingClientRect().right > innerWidth).length")
+            if off:
+                problems.append(f"phone status: {off} screen tabs run off the side")
 
             # phone width
             m = page(390, 800)
@@ -298,13 +314,13 @@ def main() -> int:
                 check(m, name)
             m.goto(f"{base}/app#/s/{sid}/fishing"); m.wait_for_timeout(1000)
             check(m, "m-fishing")
-            m.click("#btn-menu"); m.wait_for_timeout(300)
-            if not m.locator(".rail-foot").is_visible():
-                problems.append("phone: the menu didn't open")
+            m.click("#btn-servers"); m.wait_for_timeout(300)
+            if not m.locator("#rail-servers .rail-item").first.is_visible():
+                problems.append("phone: the server list didn't open")
             check(m, "m-menu")
-            m.locator(".rail-foot a[href='#/coming-up']").click(); m.wait_for_timeout(800)
-            if m.locator("body.menu-open").count():
-                problems.append("phone: the menu stayed open after picking a page")
+            m.locator("#rail-servers .rail-item").first.click(); m.wait_for_timeout(800)
+            if m.locator("#rail-servers:not([hidden])").count():
+                problems.append("phone: the server list stayed open after picking a server")
             browser.close()
     finally:
         app.terminate()
