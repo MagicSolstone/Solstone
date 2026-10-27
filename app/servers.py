@@ -270,8 +270,21 @@ registry = Registry()
 
 
 # ---------------------------------------------------------------- status
+_online_cache: dict[str, tuple[float, tuple[list[str], str]]] = {}
+
+
 async def online_players(srv: Server) -> tuple[list[str], str]:
-    """Return (names, source). Prefers RCON `list`, falls back to Crafty."""
+    """Return (names, source). Prefers RCON `list`, falls back to Crafty. Kept for a couple of seconds, so a
+    page open on many screens at once asks the game once, not once per screen."""
+    hit = _online_cache.get(srv.id)
+    if hit and time.monotonic() - hit[0] < 2.0:
+        return list(hit[1][0]), hit[1][1]
+    out = await _online_players(srv)
+    _online_cache[srv.id] = (time.monotonic(), out)
+    return list(out[0]), out[1]
+
+
+async def _online_players(srv: Server) -> tuple[list[str], str]:
     stats = await _crafty_stats(srv)
     if srv.crafty and stats is not None and not stats.get("running"):
         return [], "stopped"
