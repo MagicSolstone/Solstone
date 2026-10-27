@@ -140,6 +140,17 @@ def main() -> int:
                 pg.goto(f"{base}/app{hash_}"); pg.wait_for_timeout(1300)
                 check(pg, name)
 
+            # editing a saved picture firework with another tab of the controls open (the painter isn't on screen)
+            pic = pg.request.post(f"{base}/api/fireworks", data={"name": "Smoke picture", "pattern": "picture", "colors": ["#ff0000", "#00ff00"],
+                                                                 "picture": ["..00..", ".0110.", "..00.."]}, headers=H).json()
+            pg.goto(f"{base}/app#/fireworks"); pg.wait_for_timeout(1000)
+            for tab in ("colours", "sound", "look"):
+                pg.evaluate(f"ed.tab = '{tab}'")
+                pg.goto(f"{base}/app#/fireworks/{pic['id']}"); pg.wait_for_timeout(900)
+                if pg.locator("text=Something went wrong").count():
+                    problems.append(f"firework editor: editing a picture firework broke with the {tab} tab open")
+                pg.goto(f"{base}/app#/fireworks"); pg.wait_for_timeout(600)
+
             # fireworks settings: every tab, then edit a show (copy a step)
             pg.goto(f"{base}/app#/fireworks/settings"); pg.wait_for_timeout(1200)
             for tab in pg.locator(".fws-tabs [data-tab]").all():

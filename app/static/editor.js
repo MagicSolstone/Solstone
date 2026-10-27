@@ -474,6 +474,7 @@ function wirePainter() {
   ed.grids[ed.frame] ||= fwePicture();
   refreshCells();
   const g = $("#fwe-grid");
+  if (!g) return;                    // the painter is on its own tab; another tab is showing
   const paintAt = (cell) => {
     if (!cell?.dataset?.cell) return;
     const i = +cell.dataset.cell, y = Math.floor(i / FWE_GRID), x = i % FWE_GRID;
