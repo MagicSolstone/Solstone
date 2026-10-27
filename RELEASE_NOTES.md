@@ -1,3 +1,7 @@
+# Solstone 1.8.1
+
+- **Ask to join** is easy to find: with it turned on, a big **🙋 Ask to join** button sits in the home page's *Join the server* box, right under the addresses and port, and takes people straight to the form.
+
 # Solstone 1.8.0
 
 ## Letting people in

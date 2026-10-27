@@ -1823,3 +1823,5 @@ a.glance-me:hover { border-color: var(--gold); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } .ask-badge { animation: none; } }
 @media (max-width: 640px) { .ask-badge { bottom: 76px; } }
+.hp-ask-cta { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 14px 0 4px; padding-top: 14px; border-top: 1px solid var(--line); }
+.hp-ask-btn { font-size: 1.05rem; padding: 10px 18px; }

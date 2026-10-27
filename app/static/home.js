@@ -77,6 +77,8 @@ function joinCard(site) {
     <div class="hp-join-rows">${rows.map(([ed, addr, extra]) => `<div class="hp-join-row">
       <span class="hp-ed">${esc(ed)}</span><code class="hp-addr">${esc(addr)}</code>${extra ? `<span class="muted">${esc(extra)}</span>` : ""}
       <button class="btn sm" type="button" data-copy="${esc(addr)}">Copy</button></div>`).join("")}</div>
+    ${site.join_requests ? `<div class="hp-ask-cta"><a class="btn primary hp-ask-btn" href="/guides/join#ask">🙋 Ask to join</a>
+      <span class="muted">New here? The server only lets in people on its list. Ask, and an admin will add you.</span></div>` : ""}
     <p class="muted"><a href="/guides/join">Step-by-step guide</a>${site.signup ? ' · <a href="/guides/account">Make an account on this website</a>' : ""}${site.discord ? ` · Questions? <a href="${esc(site.discord)}" target="_blank" rel="noopener">Join us on Discord</a>` : ""}</p></section>`;
 }
 

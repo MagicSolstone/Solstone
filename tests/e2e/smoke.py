@@ -276,7 +276,14 @@ def main() -> int:
                 problems.append("join guide: the addresses or the site name are missing")
             # asking to join from the guide
             pg.request.put(f"{base}/api/settings/site", data={"join_requests": True}, headers=H)
-            anon.goto(f"{base}/guides/join#ask"); anon.reload(); anon.wait_for_timeout(1200)
+            anon.goto(f"{base}/"); anon.reload(); anon.wait_for_timeout(1200)
+            if not anon.locator(".hp-join .hp-ask-btn").count():
+                problems.append("home: no Ask to join button by the addresses")
+            else:
+                check(anon, "site-home-ask-button")
+                anon.click(".hp-join .hp-ask-btn"); anon.wait_for_timeout(1200)
+                if not anon.url.endswith("/guides/join#ask"):
+                    problems.append("home: the Ask to join button didn't lead to the form")
             if not anon.locator("#ask-form").count() or not anon.locator('.hp-body a[href="#ask"]').count():
                 problems.append("join guide: no Ask to join form (or link to it) with it turned on")
             else:
