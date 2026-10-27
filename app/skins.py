@@ -62,12 +62,15 @@ async def _skin_url(c: httpx.AsyncClient, uuid: str) -> tuple[str | None, bool]:
     if xuid is not None:
         r = await c.get(GEYSER_SKIN_URL.format(xuid=xuid))
         if r.status_code != 200:
+            log.info("GeyserMC has no skin for Bedrock player %s (HTTP %s)", xuid, r.status_code)
             return None, False
         data = r.json() or {}
-        if not data.get("texture_id") or data.get("is_steve"):
-            return None, False   # not seen by Geyser yet, or wearing a default skin
+        if not data.get("texture_id"):
+            log.info("GeyserMC hasn't got a skin for Bedrock player %s yet (it uploads one when they join)", xuid)
+            return None, False
+        # "is_steve" is the arm model (classic wide arms), not "wearing the default skin"
         url, slim = _texture(data.get("value"))
-        return url or f"https://textures.minecraft.net/texture/{data['texture_id']}", slim
+        return url or f"https://textures.minecraft.net/texture/{data['texture_id']}", slim or data.get("is_steve") is False
     r = await c.get(PROFILE_URL.format(uuid=uuid))
     if r.status_code != 200:
         return None, False       # 204 = no such Mojang profile (offline-mode UUID)
@@ -76,7 +79,7 @@ async def _skin_url(c: httpx.AsyncClient, uuid: str) -> tuple[str | None, bool]:
 
 
 async def _fetch(uuid: str) -> tuple[bytes, bool] | None:
-    async with httpx.AsyncClient(timeout=6, follow_redirects=False) as c:
+    async with httpx.AsyncClient(timeout=6, follow_redirects=False, headers={"User-Agent": "Solstone (Minecraft server dashboard)"}) as c:
         url, slim = await _skin_url(c, uuid)
         if not url or urlparse(url).hostname != "textures.minecraft.net":
             return None
@@ -102,7 +105,7 @@ async def skin(uuid: str) -> bytes | None:
         try:
             data = await _fetch(uuid)
         except Exception as e:
-            log.debug("skin fetch failed for %s: %s", uuid, e)
+            log.info("skin fetch failed for %s: %s", uuid, e)
             data = None
         if data:
             data, slim = data

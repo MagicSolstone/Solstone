@@ -64,7 +64,7 @@ def test_bedrock_skin_comes_from_geyser(monkeypatch):
     png = _skin()
     value = base64.b64encode(_json.dumps({"textures": {"SKIN": {"url": "http://textures.minecraft.net/texture/abc",
                                                                    "metadata": {"model": "slim"}}}}).encode()).decode()
-    seen = []
+    seen, classic = [], [False]
 
     class R:
         def __init__(self, code, body=None, content=b""):
@@ -86,7 +86,7 @@ def test_bedrock_skin_comes_from_geyser(monkeypatch):
         async def get(self, url):
             seen.append(url)
             if "api.geysermc.org" in url:
-                return R(200, {"texture_id": "abc", "value": value, "is_steve": False})
+                return R(200, {"texture_id": "abc", "value": value, "is_steve": classic[0]})
             if url == "https://textures.minecraft.net/texture/abc":
                 return R(200, content=png)
             return R(404)
@@ -96,3 +96,7 @@ def test_bedrock_skin_comes_from_geyser(monkeypatch):
     assert data == png and slim
     assert seen[0] == "https://api.geysermc.org/v2/skin/" + str(0x000901F2A3B4C5D6)
     assert not any("sessionserver" in u for u in seen)     # Bedrock players never ask Mojang
+    # "is_steve" is the classic arm model, not the default skin: those skins come through too
+    classic[0], value = True, None
+    data, slim = asyncio.run(skins._fetch("00000000000000000009" + "01f2a3b4c5d6"))
+    assert data == png and not slim
