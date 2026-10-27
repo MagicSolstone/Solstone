@@ -35,6 +35,7 @@ COOKIE = "solstone_session"
 SESSION_DAYS = int(os.getenv("SESSION_DAYS", "30"))
 TRUST_PROXY = os.getenv("TRUST_PROXY_HEADERS", "").lower() in ("1", "true", "yes")
 MAX_FAILS = int(os.getenv("LOGIN_MAX_ATTEMPTS", "8"))
+USER_MAX_FAILS = 50          # one account from everywhere: high enough that a stranger can't lock someone out
 FAIL_WINDOW = 15 * 60
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{2,32}$")
 MIN_PASSWORD = 8
@@ -259,18 +260,28 @@ def is_https(request: Request) -> bool:
     return TRUST_PROXY and request.headers.get("x-forwarded-proto", "").lower() == "https"
 
 
-def _limited(key: str) -> bool:
+def _limited(key: str, limit: int = MAX_FAILS) -> bool:
     now = time.time()
     hits = [t for t in _fails.get(key, []) if now - t < FAIL_WINDOW]
-    _fails[key] = hits
-    return len(hits) >= MAX_FAILS
+    if hits:
+        _fails[key] = hits
+    else:
+        _fails.pop(key, None)
+    if len(_fails) > 5000:                     # old entries from many addresses: drop the stale ones
+        for k in [k for k, v in _fails.items() if not v or now - v[-1] > FAIL_WINDOW]:
+            _fails.pop(k, None)
+    return len(hits) >= limit
 
 
 def login(request: Request, username: str, password: str) -> tuple[User, str]:
     _init()
     ip = client_ip(request)
-    keys = (f"ip:{ip}", f"user:{(username or '').lower()}")
-    if any(_limited(k) for k in keys):
+    name = (username or "").lower()
+    # Per address, per account from that address, and a high cap per account from everywhere: wrong passwords
+    # from someone else's machine never lock you out, and nobody gets unlimited guesses at one account.
+    keys = (f"ip:{ip}", f"user:{name}@{ip}", f"user:{name}")
+    limits = (MAX_FAILS, MAX_FAILS, USER_MAX_FAILS)
+    if any(_limited(k, n) for k, n in zip(keys, limits, strict=True)):
         raise HTTPException(429, "Too many failed sign-ins. Wait 15 minutes and try again")
     rows = db.q("SELECT * FROM users WHERE username=? COLLATE NOCASE", (username or "",))
     ok = verify_password(password or "", rows[0]["password_hash"] if rows else _DUMMY_HASH) and bool(rows)

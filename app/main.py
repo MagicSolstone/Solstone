@@ -112,6 +112,19 @@ async def _note_viewer(request: Request) -> None:
 app.router.dependencies.append(Depends(_note_viewer))
 
 
+_proxy_warned = False
+
+
+def _warn_proxy() -> None:
+    """Once: requests come through a proxy or tunnel but its headers aren't trusted, so every visitor looks
+    like the proxy (one wrong-password limit for everyone, and the sign-in cookie isn't marked secure)."""
+    global _proxy_warned
+    _proxy_warned = True
+    log.warning("Requests arrive through a proxy (X-Forwarded-For / CF-Connecting-IP) but TRUST_PROXY_HEADERS is off: "
+                "every visitor shares one address for the sign-in limit, and the cookie isn't marked Secure. "
+                "Set TRUST_PROXY_HEADERS=true if Solstone is only reachable through that proxy.")
+
+
 @app.middleware("http")
 async def require_login(request: Request, call_next):
     """Every /api route needs a signed-in user except health and login. Changes also need
@@ -123,7 +136,11 @@ async def require_login(request: Request, call_next):
         request.state.user = await asyncio.to_thread(auth.user_from_request, request)
         if request.state.user is None and path not in PUBLIC_API and not path.startswith("/api/public/"):
             return JSONResponse({"detail": "Sign in to continue"}, status_code=401)
+    if not auth.TRUST_PROXY and not _proxy_warned and (request.headers.get("x-forwarded-for") or request.headers.get("cf-connecting-ip")):
+        _warn_proxy()
     response = await call_next(request)
+    if auth.is_https(request):
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "same-origin")
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
@@ -375,11 +392,17 @@ async def public_board(sid: str):
 
 
 # ---- the public website: site details (how to join) and posts (news, guides, FAQ)
+_site_cache: tuple[float, list] | None = None
+
+
 @app.get("/api/public/site")
 async def public_site():
+    global _site_cache
     cfg = site.config()
     servers = []
-    if cfg["home_live"]:
+    if cfg["home_live"] and _site_cache and time.monotonic() - _site_cache[0] < 15:
+        servers = _site_cache[1]          # every visitor's page asks; the servers are only checked every 15 s
+    elif cfg["home_live"]:
         await S.registry.refresh()
         for srv in _public_servers_list():
             try:
@@ -389,6 +412,7 @@ async def public_site():
                 continue
             servers.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "online": len(summ["online"]),
                             "max": summ["max_players"], "version": summ.get("version"), "has_icon": summ["has_icon"]})
+        _site_cache = (time.monotonic(), servers)
     return JSONResponse({**cfg, "servers": servers, "status_page": _status_cfg()["enabled"], "build": _asset_stamp()},
                         headers={"Cache-Control": "no-cache"})
 
@@ -1664,7 +1688,9 @@ async def pack_file(token: str, path: str, request: Request):
     found = modpack.by_token(token)
     if not found:
         raise HTTPException(404, "No such pack")
-    srv = await _server(found[0])
+    srv = await S.registry.get(found[0])          # the pack's secret link is the permission (a private server's pack still installs)
+    if not srv:
+        raise HTTPException(404, "No such pack")
     if path.startswith("jar/"):
         jar = await asyncio.to_thread(modpack.server_jar, srv, token, path[4:])
         if not jar:
