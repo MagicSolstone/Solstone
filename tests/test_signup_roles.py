@@ -111,7 +111,7 @@ def test_player_sees_only_their_corner(player, viewer, sid, tyler):
     assert player.get(f"/api/servers/{sid}/players/{other}/history").status_code == 404
     act = player.get(f"/api/servers/{sid}/activity").json()          # which days, never sessions or lengths
     assert act["sessions"] == [] and act["durations"] is False
-    for path in ("chat", "events", "timeline", "adventures", "world", "backups"):
+    for path in ("chat", "events", "timeline", "world", "backups"):
         assert player.get(f"/api/servers/{sid}/{path}").status_code == 403, path
     assert player.post(f"/api/servers/{sid}/chat", json={"text": "hi"}).status_code == 403
     assert player.get("/api/players/all").status_code == 403
@@ -221,3 +221,70 @@ def test_where_everyone_is_only_on_your_own_servers(client, player, sid):
         client.put("/api/settings/players", json={"see_map": False})
         client.put("/api/settings/status", json={"enabled": False, "show_positions": False})
         main._board_cache.clear()
+
+
+def test_a_login_with_a_java_and_a_bedrock_player(client, player, sid, tyler, game):
+    """Two Minecraft players, one login: both pages are theirs; another one is linked with a code from the game."""
+    other_name, other = helpers.PLAYERS[1]
+    assert player.get(f"/api/servers/{sid}/players/{other}").status_code == 404
+    me = player.get("/api/auth/me").json()
+    uid = (me.get("user") or me)["id"]
+    known = client.get("/api/users/players").json()
+    assert any(p["name"] == "Tyler" and p["linked_to"] == "pl_tyler" for p in known)
+    assert player.get("/api/users/players").status_code == 403
+    u = client.patch(f"/api/users/{uid}", json={"add_player": other_name}).json()
+    assert [p["name"] for p in u["players"]] == ["Tyler", other_name] and u["player"]["name"] == "Tyler"
+    assert player.get(f"/api/servers/{sid}/players/{other}").status_code == 200         # both are theirs now
+    u = client.patch(f"/api/users/{uid}", json={"remove_player": u["players"][1]["uuid"]}).json()
+    assert [p["name"] for p in u["players"]] == ["Tyler"]
+    # a player can't drop their only one
+    assert player.delete(f"/api/auth/players/{u['players'][0]['uuid']}").status_code == 400
+    # linking one themselves: a code in the game, for that player only (Tyler is online in the fake game)
+    other_u = client.post("/api/users", json={"username": "pl_other", "password": "player-pass-1", "role": "player"}).json()
+    try:
+        from fastapi.testclient import TestClient
+        c = TestClient(main.app, headers={"X-Solstone": "1"})
+        assert c.post("/api/auth/login", json={"username": "pl_other", "password": "player-pass-1"}).status_code == 200
+        c.post("/api/auth/players/start", json={"player": "Tyler"})
+        assert "another login" in game[-1]                                                # Tyler is pl_tyler's
+        client.patch(f"/api/users/{uid}", json={"player": ""})                            # unlink Tyler from pl_tyler
+        signup._sent.clear()
+        c.post("/api/auth/players/start", json={"player": "tyler"})
+        code = re.search(r"\b(\d{6})\b", game[-1]).group(1)
+        assert c.post("/api/auth/players/finish", json={"player": "Tyler", "code": "000000"}).status_code == 400
+        r = c.post("/api/auth/players/finish", json={"player": "Tyler", "code": code})
+        assert r.status_code == 200 and [p["name"] for p in r.json()["user"]["players"]] == ["Tyler"]
+        assert c.get(f"/api/servers/{sid}/players/{tyler}").status_code == 200
+    finally:
+        client.delete(f"/api/users/{other_u['id']}")
+
+
+def test_players_see_their_own_adventures(player, client, sid):
+    """Only the sessions they were in; their own trail and lines, others' public lines, never others' chat."""
+    import time
+
+    from app import db
+    t0 = time.time() - 4 * 3600
+    db.x("INSERT INTO sessions(server_id, player, start_ts, last_seen_ts, end_ts) VALUES (?, 'Tyler', ?, ?, ?)", (sid, t0, t0 + 1800, t0 + 1800))
+    db.x("INSERT INTO sessions(server_id, player, start_ts, last_seen_ts, end_ts) VALUES (?, 'Gimli_Jr', ?, ?, ?)", (sid, t0 + 60, t0 + 1700, t0 + 1700))
+    db.x("INSERT INTO sessions(server_id, player, start_ts, last_seen_ts, end_ts) VALUES (?, 'Gimli_Jr', ?, ?, ?)", (sid, t0 + 7200, t0 + 9000, t0 + 9000))
+    for who, x in (("Tyler", 1), ("Gimli_Jr", 2)):
+        db.x("INSERT INTO positions(server_id, ts, player, dim, x, y, z) VALUES (?,?,?,?,?,?,?)", (sid, t0 + 100, who, "minecraft:overworld", x, 64, x))
+    db.add_event(sid, t0 + 200, "chat", "secret plans", "Gimli_Jr")
+    db.add_event(sid, t0 + 210, "advancement", "Gimli_Jr has made the advancement [Stone Age]", "Gimli_Jr")
+    db.add_event(sid, t0 + 220, "progress", "Gimli_Jr mined 3 diamond ore", "Gimli_Jr")
+    db.add_event(sid, t0 + 230, "progress", "Tyler chopped 5 logs", "Tyler")
+    try:
+        mine = [s for s in player.get(f"/api/servers/{sid}/adventures").json()["sessions"] if t0 - 1 <= s["start"] <= t0 + 9001]
+        assert [s["start"] for s in mine] == [t0]                                      # not Gimli's later one
+        tl = player.get(f"/api/servers/{sid}/adventures/timeline", params={"start": t0, "end": t0 + 1800}).json()
+        msgs = [e["message"] for e in tl["events"]]
+        assert "Tyler chopped 5 logs" in msgs and any("Stone Age" in m for m in msgs)
+        assert "secret plans" not in msgs and "Gimli_Jr mined 3 diamond ore" not in msgs
+        assert set(tl["trails"]) == {"Tyler"}                                          # players can't see the map
+        assert player.get(f"/api/servers/{sid}/adventures/timeline", params={"start": t0 + 7200, "end": t0 + 9000}).status_code == 404
+        assert set(client.get(f"/api/servers/{sid}/adventures/timeline", params={"start": t0, "end": t0 + 1800}).json()["trails"]) == {"Tyler", "Gimli_Jr"}
+    finally:
+        db.x("DELETE FROM sessions WHERE server_id=? AND start_ts >= ? AND start_ts <= ?", (sid, t0 - 1, t0 + 7201))
+        db.x("DELETE FROM positions WHERE server_id=? AND ts = ?", (sid, t0 + 100))
+        db.x("DELETE FROM events WHERE server_id=? AND ts BETWEEN ? AND ?", (sid, t0 + 199, t0 + 231))

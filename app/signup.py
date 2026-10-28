@@ -140,3 +140,56 @@ def finish(typed: str, code: str, username: str, password: str, real_name: str =
     if birthday:
         board.add_birthday(entry["name"], birthday.get("month"), birthday.get("day"))
     return auth.get_user(user.id)
+
+
+# ---------------------------------------------------------------- linking another Minecraft account to a login
+# The same proof as signing up: a code sent in the game chat to that player only. For someone with a Java and a
+# Bedrock account (two names), so both show as theirs.
+_link_codes: dict[str, dict] = {}       # player uuid -> {hash, name, uid, expires, tries}
+
+
+async def start_link(request: Request, user: auth.User, typed: str, servers: list[S.Server]) -> str:
+    typed = (typed or "").strip()
+    if not NAME_RE.match(typed):
+        raise HTTPException(400, "Type the Minecraft name as it shows in the game (Bedrock names start with a dot)")
+    if _hit(f"ip:{auth.client_ip(request)}", PER_ADDRESS) or _hit(f"u:{user.id}", PER_PLAYER * 2):
+        raise HTTPException(429, "Too many tries. Wait an hour and try again")
+    found = await _find_online(servers, typed)
+    if not found:
+        return SENT_TEXT
+    srv, uuid, name = found
+    if _hit(f"p:{uuid}", PER_PLAYER):
+        return SENT_TEXT
+    owner = auth.user_for_player(S.norm_uuid(uuid))
+    if owner and owner.lower() == user.username.lower():
+        msg = component([("[Website] ", "gold"), ("This player is already linked to your login.", "yellow")])
+    elif owner:
+        msg = component([("[Website] ", "gold"), ("This player belongs to another login. Ask an admin if that's wrong.", "yellow")])
+    else:
+        code = f"{secrets.randbelow(10**6):06d}"
+        _link_codes[uuid] = {"hash": _hash(code), "name": name, "uid": user.id, "expires": time.time() + CODE_TTL, "tries": 0}
+        msg = component([("[Website] ", "gold"), ("Your code to link this player to the login ", "yellow"), (user.username, "white"),
+                         (" is ", "yellow"), (code, "green"), (". Don't share it. It works for 10 minutes.", "yellow")])
+    try:
+        await srv.rcon(f"tellraw {name} {msg}")
+    except Exception:
+        _link_codes.pop(uuid, None)
+    return SENT_TEXT
+
+
+def finish_link(user: auth.User, typed: str, code: str) -> auth.User:
+    want = _names((typed or "").strip())
+    uuid = next((u for u, c in _link_codes.items() if c["name"].lower() in want and c["uid"] == user.id), None)
+    entry = _link_codes.get(uuid) if uuid else None
+    if not entry or entry["expires"] < time.time():
+        if uuid:
+            _link_codes.pop(uuid, None)
+        raise HTTPException(400, "That code has run out. Ask for a new one")
+    entry["tries"] += 1
+    if not hmac.compare_digest(entry["hash"], _hash(re.sub(r"\D", "", code or ""))):
+        if entry["tries"] >= CODE_TRIES:
+            _link_codes.pop(uuid, None)
+            raise HTTPException(400, "Wrong code too many times. Ask for a new one")
+        raise HTTPException(400, "That code isn't right")
+    _link_codes.pop(uuid, None)
+    return auth.add_player(user.id, (S.norm_uuid(uuid), entry["name"]))

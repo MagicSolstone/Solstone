@@ -1,3 +1,24 @@
+# Solstone 1.8.7
+
+## Accounts
+- **More than one Minecraft player per login:** someone with a Java name and a Bedrock name (*.Name*) can have both. Both players' pages are theirs, and every server either one is on the whitelist of shows in their account.
+  - **Players link their other one themselves:** account menu → **🎮 My Minecraft players** → type the name while playing as them, and a code appears in their game chat, the same way as making an account. They can unlink one too, but a Player login always keeps at least one.
+  - **Admins** (Manage → Users → the player button) see who's linked, can unlink each, and can add one by typing or by clicking a name: everyone on a whitelist or who has played, not linked to anyone yet, shows as a button.
+
+## Leaderboards
+- **🥇 Most medals** at the top: 1st, 2nd and 3rd places across every leaderboard (equal scores share a place), the top five shown and *Everyone* folded away below. Nobody gets a medal for *Most deaths*.
+- **Grouped by kind:** Adventure, Fighting, Mining and making, Getting around, Fishing, Farm and village, with buttons to jump to each. Boards nobody has scored on yet still stay hidden.
+
+## Adventures
+- **Players can see the adventures they were in** (Play → Adventures): their own trail and lines, plus what's public anyway (joins, deaths, advancements, contests, fish). Never anyone else's chat, and others' trails only when *Players can see the map* is on. They can watch, not save, hide or delete.
+- **More of what happened** in the feed: chopped logs, harvested crops, placed blocks, opened chests, traded with villagers, bred animals, enchanted items, slept, how far they travelled, and more ores (coal, copper, lapis, redstone, quartz).
+
+## Live on the home page
+- **What they've been up to:** each player's card says what they've been doing lately, from their statistics: ⛏️ Mining, 🪓 Chopping trees, 🧱 Building, 🎣 Fishing, ⚔️ Fighting mobs, 🌾 Farming, 💰 Trading or 🧭 Exploring. The game saves statistics every few minutes, so it follows a few minutes behind.
+
+## Smaller things
+- The World tab's own map is called **Top-down map** (it said *Solstone map*).
+
 # Solstone 1.8.6
 
 - **📊 Go to live stats:** each server's card on the home page links to its live section with *Go to live stats →* (it said *See who's on, live*).

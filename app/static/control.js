@@ -367,7 +367,7 @@ const CLEAR_KINDS = [
   ["play", "Play history", "Who played when (days played, last seen, play time), where they went, and Adventures. Their first-time welcome message comes again."],
   ["performance", "Performance graphs", "CPU, memory, players and how smoothly it ran."],
   ["fishing", "Fishing journal", "Every fish caught, and the records."],
-  ["map", "Map pictures", "The Solstone map of the world. It's drawn again from the new world as people look at it."],
+  ["map", "Map pictures", "The top-down map of the world. It's drawn again from the new world as people look at it."],
 ];
 
 // ================================================================ Users & activity
@@ -388,7 +388,7 @@ async function viewAdmin(section = "users") {
       <div class="table-wrap"><table class="data users-table"><thead><tr><th>Username</th><th>Level</th><th>Minecraft player</th><th>Servers</th><th>Last signed in</th><th></th></tr></thead><tbody>
       ${users.map((u) => `<tr data-uid="${u.id}"><td><b>${esc(u.username)}</b>${u.display_name ? ` <span class="muted">shown as ${esc(u.display_name)}</span>` : ""}${u.real_name ? `<br><small class="muted" title="Their real name: only admins see it">👤 ${esc(u.real_name)}</small>` : ""}${u.id === me.user.id ? ' <span class="muted">(you)</span>' : ""}</td>
         <td><select class="input sm" data-role ${u.id === me.user.id ? "disabled" : ""} aria-label="Level for ${esc(u.username)}">${roleOpts(u.role)}</select></td>
-        <td><button class="btn sm" type="button" data-link title="Link this account to someone who plays">${u.player_name ? esc(u.player_name) : "Link…"}</button></td>
+        <td><button class="btn sm" type="button" data-link title="Link this account to the people they play as (Java and Bedrock)">${(u.players || []).length ? esc(u.players.map((p) => p.name).join(", ")) : "Link…"}</button></td>
         <td>${u.role === "admin" ? '<span class="muted">All</span>' : `<button class="btn sm" type="button" data-srv title="Which servers they see">${u.servers ? esc(u.servers.length === 1 ? srvName(u.servers[0]) : `${u.servers.length} servers`) : "All"}</button>`}</td>
         <td>${esc(fmtWhen(u.last_login))}</td>
         <td class="row-actions"><button class="btn sm" data-reset>Set password</button>${u.id === me.user.id ? "" : `<button class="btn sm danger" data-del>Remove</button>`}</td></tr>`).join("")}
@@ -496,15 +496,39 @@ async function viewAdmin(section = "users") {
     try { await post("/api/settings/site", { signup: e.target.checked }, "PUT"); showToast(e.target.checked ? "Players can make their own account" : "Sign-up turned off", 2500); }
     catch (err) { showError(esc(err.message), 5000); }
   });
-  $$("[data-link]").forEach((b) => b.addEventListener("click", () => {
-    const tr = b.closest("tr"), name = tr.querySelector("b").textContent;
-    openModal(`<h2>${esc(name)}: player and name</h2><form id="link-form">
-      <label>Minecraft name <small>Someone who has joined one of the servers. Leave it empty to unlink. A Player account sees its own page.</small><input class="input" name="player" value="${esc(b.textContent === "Link…" ? "" : b.textContent)}" autocapitalize="off"></label>
-      <label>Real name <small>Optional. Only admins see it.</small><input class="input" name="real_name" maxlength="40" value="${esc(users.find((x) => String(x.id) === tr.dataset.uid)?.real_name || "")}"></label>
-      <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Save</button></div></form>`, (m) => {
+  $$("[data-link]").forEach((b) => b.addEventListener("click", async () => {
+    const tr = b.closest("tr"), uid = tr.dataset.uid, name = tr.querySelector("b").textContent;
+    let u = users.find((x) => String(x.id) === uid) || {};
+    const known = await api("/api/users/players").catch(() => []);
+    const linked = () => (u.players || []).length
+      ? `<ul class="my-players">${u.players.map((p) => `<li><b>${esc(p.name)}</b>${p.name.startsWith(".") ? ' <span class="chip">Bedrock</span>' : ""}<button class="btn sm" type="button" data-unlink="${esc(p.uuid)}">Unlink</button></li>`).join("")}</ul>`
+      : `<p class="muted small">Not linked to anyone who plays yet.</p>`;
+    const pills = () => `<div class="chips link-pills">${known.filter((p) => !p.linked_to).map((p) => `<button type="button" class="chip-btn" data-pick="${esc(p.name)}">${esc(p.name)}</button>`).join("") || '<span class="muted small">Everyone who has played is linked already.</span>'}</div>`;
+    openModal(`<h2>${esc(name)}: players and name</h2>
+      <div id="link-list">${linked()}</div>
+      <form id="link-add" class="btn-row"><input class="input sm" name="player" placeholder="Minecraft name" autocapitalize="off" list="link-known" required>
+        <datalist id="link-known">${known.map((p) => `<option value="${esc(p.name)}">`).join("")}</datalist><button class="btn sm primary" type="submit">Link</button></form>
+      <p class="muted small">Not linked yet, on a whitelist or have played:</p><div id="link-pills">${pills()}</div>
+      <form id="link-form"><label>Real name <small>Optional. Only admins see it.</small><input class="input" name="real_name" maxlength="40" value="${esc(u.real_name || "")}"></label>
+      <div class="actions"><button type="button" class="btn" data-close-modal>Close</button><button class="btn primary" type="submit">Save name</button></div></form>`, (m) => {
+      const change = async (body) => {
+        try {
+          u = await post(`/api/users/${uid}`, body, "PATCH");
+          const k = known.find((p) => body.add_player && p.name.toLowerCase() === body.add_player.toLowerCase()); if (k) k.linked_to = u.username;
+          if (body.remove_player) known.forEach((p) => { if (p.uuid === body.remove_player) p.linked_to = null; });
+          $("#link-list", m).innerHTML = linked(); $("#link-pills", m).innerHTML = pills();
+          tr.querySelector("[data-link]").textContent = (u.players || []).length ? u.players.map((p) => p.name).join(", ") : "Link…";
+        } catch (err) { showError(esc(err.message), 5000); }
+      };
+      m.addEventListener("click", (e) => {
+        const pick = e.target.closest("[data-pick]"), un = e.target.closest("[data-unlink]");
+        if (pick) change({ add_player: pick.dataset.pick });
+        if (un) change({ remove_player: un.dataset.unlink });
+      });
+      $("#link-add", m).addEventListener("submit", (e) => { e.preventDefault(); change({ add_player: e.target.player.value }); e.target.reset(); });
       $("#link-form", m).addEventListener("submit", async (e) => {
         e.preventDefault();
-        try { await post(`/api/users/${tr.dataset.uid}`, { player: new FormData(e.target).get("player"), real_name: new FormData(e.target).get("real_name") || "" }, "PATCH"); closeModal(); showToast("Saved", 2000); viewAdmin(section); }
+        try { await post(`/api/users/${uid}`, { real_name: new FormData(e.target).get("real_name") || "" }, "PATCH"); closeModal(); showToast("Saved", 2000); viewAdmin(section); }
         catch (err) { showError(esc(err.message), 5000); }
       });
     });

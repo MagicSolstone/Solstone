@@ -1892,3 +1892,22 @@ a.glance-me:hover { border-color: var(--gold); }
 .clear-form label.check { align-items: flex-start; }
 .sb-list { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
 .sb-list li { display: flex; gap: 12px; align-items: center; }
+.my-players { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.my-players li { display: flex; align-items: center; gap: 8px; }
+.my-players li .btn { margin-left: auto; }
+.mp-form { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.mp-form h3 { margin: 0; }
+.link-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; max-height: 160px; overflow: auto; }
+#link-add { margin: 6px 0 10px; }
+.sp-doing { font-size: .82rem; color: var(--muted); margin-left: 8px; white-space: nowrap; }
+/* Leaderboards: groups and the medal table */
+.board-group { margin: 18px 0 8px; }
+.board-group > h2 { margin: 0 0 10px; font-size: 1.15rem; }
+.board-jump { margin: 8px 0 4px; display: flex; flex-wrap: wrap; gap: 6px; }
+.board-jump .chip { text-decoration: none; }
+.medal-table { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; max-width: 640px; }
+.medal-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.medal-list li { display: flex; align-items: center; gap: 8px; }
+.medal-list .rank { width: 1.4em; text-align: right; color: var(--muted); font-weight: 700; }
+.medal-list .medals { margin-left: auto; display: inline-flex; gap: 10px; font-weight: 700; }
+.medal-table details { margin-top: 8px; }

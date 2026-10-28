@@ -34,9 +34,9 @@ const SITE_LOGO = document.querySelector('link[rel="icon"]')?.getAttribute("href
 const isAdmin = () => me.user?.role === "admin";
 // Players (often signed up from the game) see the servers, who's on, leaderboards and their own page.
 const isPlayer = () => me.user?.role === "player";
-const isMine = (uuid) => !isPlayer() || (!!uuid && !!me.user?.player && String(uuid).replace(/-/g, "") === me.user.player.uuid.replace(/-/g, ""));
+const isMine = (uuid) => !isPlayer() || (!!uuid && (me.user?.players || []).some((p) => String(uuid).replace(/-/g, "") === p.uuid.replace(/-/g, "")));
 const ROLE_NAMES = [["player", "Player"], ["trusted", "Trusted"], ["admin", "Admin"]];
-const PLAYER_HIDDEN = new Set(["world", "chat", "adventures", "control", "check", "challenges"]);
+const PLAYER_HIDDEN = new Set(["world", "chat", "control", "check", "challenges"]);
 
 function showLogin(message = "") {
   clearTimers?.();
@@ -146,8 +146,7 @@ async function signedIn(user) {
   const root = $("#login-root"); root.hidden = true; root.innerHTML = "";
   if (!appSky.board) appSky.board = startBoard($("#app-board"), { where: "app", sid: () => curSid || "", scene: () => appSky.scene, dismiss: true, max: innerWidth < 700 ? 1 : 2 });
   $("#account-name").textContent = user.shown || user.username;
-  $("#btn-account").title = [user.real_name, user.player?.name && `In the game: ${user.player.name}`].filter(Boolean).join(" · ");
-  $("#account-role").textContent = (ROLE_NAMES.find(([v]) => v === user.role) || [, "Signed in"])[1] + (user.player ? ` · ${user.player.name}` : "");
+  showAccountPlayers(user);
   fetch("/api/public/status").then((r) => r.json()).then((d) => { appBuild = d.build; }).catch(() => {});
   // Left open for a while? Say when Solstone has been updated (a reload loads it).
   clearInterval(state.buildCheck);
@@ -182,6 +181,54 @@ function wireAccountMenu() {
   $("#btn-logout").addEventListener("click", async () => { close(); await post("/api/auth/logout").catch(() => {}); location.href = "/"; });   // signed out: back to the home page
   $("#btn-password").addEventListener("click", () => { close(); openPasswordChange(); });
   $("#btn-display-name").addEventListener("click", () => { close(); openDisplayName(); });
+  $("#btn-my-players").addEventListener("click", () => { close(); openMyPlayers(); });
+}
+
+function showAccountPlayers(user) {
+  const names = (user.players || []).map((p) => p.name).join(", ");
+  $("#btn-account").title = [user.real_name, names && `In the game: ${names}`].filter(Boolean).join(" · ");
+  $("#account-role").textContent = (ROLE_NAMES.find(([v]) => v === user.role) || [, "Signed in"])[1] + (names ? ` · ${names}` : "");
+}
+
+// Your Minecraft players: a Java one and a Bedrock one can both be yours. Linking one sends a code to that player in
+// the game (only whoever is playing as them sees it), the same way as making an account.
+function openMyPlayers() {
+  const list = () => (me.user.players || []).length
+    ? `<ul class="my-players">${me.user.players.map((p) => `<li>${faceHtml({ name: p.name, uuid: p.uuid }, 24)} <b>${esc(p.name)}</b>${p.name.startsWith(".") ? ' <span class="chip">Bedrock</span>' : ' <span class="chip">Java</span>'}
+        ${isPlayer() && me.user.players.length <= 1 ? "" : `<button class="btn sm" type="button" data-unlink="${esc(p.uuid)}">Unlink</button>`}</li>`).join("")}</ul>`
+    : `<p class="muted">No Minecraft player linked yet.</p>`;
+  openModal(`<h2>My Minecraft players</h2>
+    <div id="mp-list">${list()}</div>
+    <form id="mp-form" class="mp-form"><h3>Link another</h3>
+      <p class="muted small">Play on Java and Bedrock with different names? Link both, so your page and the servers you're on include each. Be in the game as that player, type the name here (Bedrock names start with a dot), and a code appears in your game chat.</p>
+      <label>Name in the game<input class="input" name="player" maxlength="18" autocapitalize="off" required></label>
+      <label id="mp-code-row" hidden>Code from the game chat<input class="input" name="code" inputmode="numeric" maxlength="7" autocomplete="one-time-code"></label>
+      <p class="muted small" id="mp-msg" role="status"></p>
+      <div class="actions"><button type="button" class="btn" data-close-modal>Close</button><button class="btn primary" type="submit" id="mp-go">Send me a code</button></div></form>`, (m) => {
+    let sent = false;
+    $("#mp-list", m).addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-unlink]");
+      if (!b) return;
+      try { const r = await api(`/api/auth/players/${encodeURIComponent(b.dataset.unlink)}`, { method: "DELETE" }); me.user = r.user; showAccountPlayers(me.user); $("#mp-list", m).innerHTML = list(); }
+      catch (err) { showError(esc(err.message), 5000); }
+    });
+    $("#mp-form", m).addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      try {
+        if (!sent) {
+          const r = await post("/api/auth/players/start", { player: f.get("player") });
+          sent = true; $("#mp-code-row", m).hidden = false; $("#mp-go", m).textContent = "Link"; $("#mp-msg", m).textContent = r.message;
+          e.target.code.required = true; e.target.code.focus();
+        } else {
+          const r = await post("/api/auth/players/finish", { player: f.get("player"), code: f.get("code") });
+          me.user = r.user; showAccountPlayers(me.user); $("#mp-list", m).innerHTML = list();
+          e.target.reset(); sent = false; $("#mp-code-row", m).hidden = true; $("#mp-go", m).textContent = "Send me a code"; $("#mp-msg", m).textContent = "";
+          showToast("Linked", 2500); loadServers();
+        }
+      } catch (err) { showError(esc(err.message), 5000); }
+    });
+  });
 }
 
 // The name other people see in chat and the activity feed; the login name stays the same.
@@ -716,7 +763,7 @@ function serverHeader(s, tab) {
     ["overview", "Overview", [["overview", "Overview", base]]],
     ...(java ? [...(isPlayer() && !s.player_map ? [] : [["world", "World", [["world", "World", `${base}/world`]]]]),
       ["leaderboards", "Leaderboards", [["leaderboards", "Leaderboards", `${base}/leaderboards`]]],
-      ["play", "Play", [...(s.fishing ? [["fishing", "Fishing", `${base}/fishing`]] : []), ...(isPlayer() ? [] : [["adventures", "Adventures", `${base}/adventures`]]),
+      ["play", "Play", [...(s.fishing ? [["fishing", "Fishing", `${base}/fishing`]] : []), ["adventures", "Adventures", `${base}/adventures`],
         ...(isAdmin() ? [["challenges", "Challenges", `${base}/challenges`]] : [])]]] : []),
     ["server", "Server", [["performance", "Performance", `${base}/performance`], ...(java ? [["mods", "Mods", `${base}/mods`], ...(isPlayer() ? [] : [["chat", "Chat", `${base}/chat`]])] : []),
       ...(isAdmin() ? [["control", "Control", `${base}/control`]] : []), ...(isAdmin() && java ? [["check", "Check", `${base}/check`]] : [])]],
@@ -1124,16 +1171,34 @@ function treeOrder(list) {
 async function viewLeaderboards(sid) {
   const s = await serverFrame(sid, "leaderboards");
   const data = await api(`/api/servers/${sid}/leaderboard`);
-  const boards = (data.boards || []).map(({ key: k, title, kind }) => {
-    const rows = data.players.filter((r) => r[k] > 0).sort((a, b) => b[k] - a[k]).slice(0, 8);
+  // Boards nobody has scored on yet are left out. Medals: 1st, 2nd and 3rd on each board (equal scores share a place).
+  const medals = {};
+  const boardHtml = ({ key: k, title, kind, medals: counts }) => {
+    const rows = data.players.filter((r) => r[k] > 0).sort((a, b) => b[k] - a[k]);
     if (!rows.length) return "";
-    const max = rows[0][k];
-    return `<div class="board"><h3>${esc(title)}</h3><ol>${rows.map((r, i) => `<li>
+    if (counts !== false) {
+      const values = [...new Set(rows.map((r) => r[k]))];
+      rows.forEach((r) => { const place = values.indexOf(r[k]); if (place < 3) { const m = (medals[r.uuid] ||= { r, n: [0, 0, 0] }); m.n[place] += 1; } });
+    }
+    const top = rows.slice(0, 8), max = top[0][k];
+    return `<div class="board"><h3>${esc(title)}</h3><ol>${top.map((r, i) => `<li>
       <span class="rank">${i + 1}</span>${miniHead(r)}<a href="#/s/${encodeURIComponent(sid)}/p/${r.uuid}">${esc(r.name)}</a><span class="val">${esc(fmtStat(kind, r[k]))}</span>
       <span></span><span></span><div class="bar-bg"><span style="width:${(r[k] / max) * 100}%"></span></div></li>`).join("")}</ol></div>`;
-  }).join("");
-  setView(serverHeader(s, "leaderboards") + (boards ? `<div class="boards">${boards}</div>` : `<div class="empty"><h3>No scores yet</h3><p>Leaderboards appear once players have some statistics.</p></div>`));
+  };
+  const groups = (data.groups || ["More"]).map((g) => {
+    const html = (data.boards || []).filter((b) => (b.group || "More") === g).map(boardHtml).join("");
+    return html ? `<section class="board-group" id="lb-${esc(g.replace(/\W+/g, "-").toLowerCase())}"><h2>${esc(g)}</h2><div class="boards">${html}</div></section>` : "";
+  }).filter(Boolean);
+  const ranked = Object.values(medals).sort((a, b) => b.n[0] - a.n[0] || b.n[1] - a.n[1] || b.n[2] - a.n[2] || a.r.name.localeCompare(b.r.name));
+  const medalRow = (m, i) => `<li><span class="rank">${i + 1}</span>${miniHead(m.r)}<a href="#/s/${encodeURIComponent(sid)}/p/${m.r.uuid}">${esc(m.r.name)}</a>
+      <span class="medals">${m.n[0] ? `<span title="1st places">🥇 ${m.n[0]}</span>` : ""}${m.n[1] ? `<span title="2nd places">🥈 ${m.n[1]}</span>` : ""}${m.n[2] ? `<span title="3rd places">🥉 ${m.n[2]}</span>` : ""}</span></li>`;
+  const medalHtml = ranked.length > 1 ? `<section class="board-group medal-table"><h2>Most medals</h2><p class="muted small">1st, 2nd and 3rd places across every leaderboard below.</p>
+      <ol class="medal-list">${ranked.slice(0, 5).map(medalRow).join("")}</ol>
+      ${ranked.length > 5 ? `<details><summary>Everyone (${ranked.length})</summary><ol class="medal-list" start="6">${ranked.slice(5).map((m, i) => medalRow(m, i + 5)).join("")}</ol></details>` : ""}</section>` : "";
+  const jump = groups.length > 1 ? `<nav class="chips board-jump" aria-label="Jump to">${(data.groups || []).filter((g) => groups.some((h) => h.includes(`<h2>${esc(g)}</h2>`))).map((g) => `<a class="chip" href="#" data-jump="lb-${esc(g.replace(/\W+/g, "-").toLowerCase())}">${esc(g)}</a>`).join("")}</nav>` : "";
+  setView(serverHeader(s, "leaderboards") + (groups.length ? `${medalHtml}${jump}${groups.join("")}` : `<div class="empty"><h3>No scores yet</h3><p>Leaderboards appear once players have some statistics.</p></div>`));
   wireHeader(s);
+  $$("[data-jump]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); document.getElementById(a.dataset.jump)?.scrollIntoView({ behavior: "smooth" }); }));
 }
 
 // ---------------------------------------------------------------- world
@@ -1180,13 +1245,13 @@ async function viewWorld(sid) {
     ? isHomeNetwork(s.map_url) && !isHomeNetwork(location.href)
       ? `<div class="empty"><p>This map is at a home-network address (<code>${esc(s.map_url)}</code>), so it only opens on the same Wi-Fi as the server. <a href="${esc(s.map_url)}" target="_blank" rel="noopener">Open it</a></p>${isAdmin() ? `<p class="muted small">To show it to everyone, give it a public address (a Cloudflare tunnel to it, for example) in this server's ⚙ settings.</p>` : ""}</div>`
       : `<iframe class="map-frame" src="${esc(s.map_url)}" title="World map" loading="lazy"></iframe><p class="muted" style="margin-top:8px;font-size:.9rem"><a href="${esc(s.map_url)}" target="_blank" rel="noopener">Open the map full screen</a></p>`
-    : isPlayer() ? "" : `<div class="empty"><h3>Add a 3D web map too</h3><p>Install the <b>BlueMap</b> or <b>squaremap</b> Fabric mod on this server, then paste its web address (for example <code>http://your-server:8100</code>) in server settings. It shows here beside Solstone's map.</p><p style="margin-top:12px"><button class="btn primary" id="btn-map">Add map address</button></p></div>`;
+    : isPlayer() ? "" : `<div class="empty"><h3>Add a 3D web map too</h3><p>Install the <b>BlueMap</b> or <b>squaremap</b> Fabric mod on this server, then paste its web address (for example <code>http://your-server:8100</code>) in server settings. It shows here beside the top-down map.</p><p style="margin-top:12px"><button class="btn primary" id="btn-map">Add map address</button></p></div>`;
   const DIM_ORDER = ["minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"];
   const mapDims = w.dimensions.filter((d) => d.chunks > 0).map((d) => d.id)
     .sort((a, b) => ((DIM_ORDER.indexOf(a) + 1 || 9) - (DIM_ORDER.indexOf(b) + 1 || 9)));
   let pick = "own";
   try { if (localStorage.getItem("solstone-world-map") === "web" && s.map_url) pick = "web"; } catch { /* private window */ }
-  const map = `<div class="world-map-pick">${isPlayer() && !s.map_url ? "" : `<span class="seg" role="group" aria-label="Which map"><button type="button" data-wm="own" aria-pressed="${pick === "own"}">🗺️ Solstone map</button><button type="button" data-wm="web" aria-pressed="${pick === "web"}">${s.map_url ? "🧊 Web map" : "＋ Web map"}</button></span>`}
+  const map = `<div class="world-map-pick">${isPlayer() && !s.map_url ? "" : `<span class="seg" role="group" aria-label="Which map"><button type="button" data-wm="own" aria-pressed="${pick === "own"}">🗺️ Top-down map</button><button type="button" data-wm="web" aria-pressed="${pick === "web"}">${s.map_url ? "🧊 Web map" : "＋ Web map"}</button></span>`}
       ${mapDims.length > 1 ? `<select class="input sm" id="wm-dim" aria-label="Dimension">${mapDims.map((d) => `<option value="${esc(d)}">${esc(dimName(d))}</option>`).join("")}</select>` : ""}</div>
     <div id="wm-own" class="world-own-map" ${pick === "own" ? "" : "hidden"}></div><div id="wm-web" ${pick === "web" ? "" : "hidden"}>${pick === "web" ? webMap() : ""}</div>`;
   setView(serverHeader(s, "world") + `

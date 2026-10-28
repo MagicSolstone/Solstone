@@ -149,6 +149,18 @@ def main() -> int:
                 pg.goto(f"{base}/app{hash_}"); pg.wait_for_timeout(1300)
                 check(pg, name)
 
+            pg.goto(f"{base}/app#/s/{sid}/leaderboards"); pg.wait_for_timeout(1500)
+            if not pg.locator(".board-group h2").count():
+                problems.append("leaderboards: no headings for the kinds of board")
+            pg.click("#btn-account"); pg.click("#btn-my-players"); pg.wait_for_timeout(500)
+            if not pg.locator("#mp-form").count():
+                problems.append("account menu: My Minecraft players doesn't open")
+            check(pg, "my-players"); pg.keyboard.press("Escape"); pg.wait_for_timeout(300)
+            pg.goto(f"{base}/app#/manage/users"); pg.wait_for_timeout(1200)
+            pg.locator("[data-link]").first.click(); pg.wait_for_timeout(1200)
+            if not pg.locator("#link-pills [data-pick], #link-pills .muted").count():
+                problems.append("users: the link dialog doesn't offer players to pick")
+            check(pg, "users-link-players"); pg.keyboard.press("Escape"); pg.wait_for_timeout(300)
             pg.goto(f"{base}/app#/manage/servers"); pg.wait_for_timeout(1200)
             if not pg.locator("#clear-form [name=what]").count():
                 problems.append("manage: no Clear saved history")

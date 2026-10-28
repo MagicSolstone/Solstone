@@ -33,7 +33,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.8.6"
+VERSION = "1.8.7"
 
 
 @asynccontextmanager
@@ -97,7 +97,7 @@ def _allowed(srv: S.Server) -> bool:
     u = _viewer.get()
     if u is None or u.may_see(srv.id):
         return True
-    return bool(u.player_uuid) and srv.is_java and S.whitelisted(srv, u.player_uuid, u.player_name)
+    return srv.is_java and any(S.whitelisted(srv, p["uuid"], p["name"]) for p in u.players)
 
 
 def _visible(srv: S.Server) -> bool:
@@ -116,6 +116,8 @@ PLAYER_ROUTES: dict[str, set[str]] = {
     "/api/servers/{sid}/players/{uuid}": {"GET"},       # their own page only
     "/api/servers/{sid}/players/{uuid}/history": {"GET"},
     "/api/servers/{sid}/leaderboard": {"GET"},
+    "/api/servers/{sid}/adventures": {"GET"},             # only the sessions they played in (see adventures_list)
+    "/api/servers/{sid}/adventures/timeline": {"GET"},    # their own trail; others' only with the map on for players
     "/api/servers/{sid}/icon.png": {"GET"},
     "/api/servers/{sid}/metrics": {"GET"},
     "/api/servers/{sid}/mods": {"GET"},
@@ -199,7 +201,7 @@ def _recap_without_durations(data: dict) -> dict:
 def _own(uuid: str) -> bool:
     """For a player account: is this their own Minecraft player? (Everyone else may see anyone.)"""
     u = _viewer.get()
-    return u is None or not u.is_player or (u.player_uuid is not None and S.norm_uuid(uuid) == u.player_uuid)
+    return u is None or not u.is_player or S.norm_uuid(uuid) in {S.norm_uuid(x) for x in u.player_uuids}
 
 
 _SUMMARY_FOR_PLAYERS = ("id", "name", "running", "crashed", "started", "cpu", "mem", "mem_percent", "world_size", "version", "motd",
@@ -437,7 +439,8 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
             d = live
             if d is None and p.get("uuid"):
                 d, _m = S.player_file_data(srv, p["uuid"])
-            row: dict = {"name": p["name"], "uuid": p.get("uuid"), "live": live is not None}   # never how long they've played
+            row: dict = {"name": p["name"], "uuid": p.get("uuid"), "live": live is not None,   # never how long they've played
+                         "doing": adventures.lately(srv.id, p["name"])}                    # "⛏️ Mining", from their statistics
             if d:
                 row.update(health=d["health"], max_health=d["max_health"], absorption=d.get("absorption", 0),
                            food=d["food"], xp_level=d["xp_level"], xp_progress=d["xp_progress"],
@@ -1498,6 +1501,38 @@ def _me(u: auth.User) -> dict:
     return u.public()
 
 
+@app.post("/api/auth/players/start")
+async def link_start(request: Request):
+    """Link another of your Minecraft accounts: a code is sent to that player in the game, if they're on now."""
+    user = auth.require_user(request)
+    body = await _body(request)
+    await S.registry.refresh()
+    servers = [s for s in S.registry.servers.values() if s.is_java and (not _private(s) or user.is_admin)]
+    return {"message": await signup.start_link(request, user, str(body.get("player") or ""), servers)}
+
+
+@app.post("/api/auth/players/finish")
+async def link_finish(request: Request):
+    user = auth.require_user(request)
+    body = await _body(request)
+    u = await asyncio.to_thread(signup.finish_link, user, str(body.get("player") or ""), str(body.get("code") or ""))
+    auth.audit(user, None, "link_player", ", ".join(p["name"] for p in u.players))
+    return {"user": u.public()}
+
+
+@app.delete("/api/auth/players/{uuid}")
+async def link_remove(uuid: str, request: Request):
+    """Unlink one of your own Minecraft accounts (a Player login keeps at least one: it's how it sees anything)."""
+    user = auth.require_user(request)
+    if S.norm_uuid(uuid) not in {S.norm_uuid(x) for x in user.player_uuids}:
+        raise HTTPException(404, "That player isn't linked to your login")
+    if user.is_player and len(user.players) <= 1:
+        raise HTTPException(400, "Your login needs at least one Minecraft player. Ask an admin to change it")
+    u = auth.remove_player(user.id, next(x for x in user.player_uuids if S.norm_uuid(x) == S.norm_uuid(uuid)))
+    auth.audit(user, None, "unlink_player", uuid)
+    return {"user": u.public()}
+
+
 @app.post("/api/auth/profile")
 async def change_profile(request: Request):
     """Your display name (shown in chat and the activity feed instead of your login)."""
@@ -1538,6 +1573,50 @@ async def add_user(request: Request):
     return u.public()
 
 
+async def _known_player(typed: str) -> tuple[str, str] | None:
+    """(uuid, exact name) for someone who has joined a server, or is on a whitelist (Java names; Floodgate's dot optional)."""
+    name = typed.strip().lower()
+    if not name:
+        return None
+    want = {name, "." + name.lstrip("."), name.lstrip(".")}
+    await S.registry.refresh()
+    for srv in S.registry.servers.values():
+        for uu, p in S.known_players(srv).items():
+            if p["name"].lower() in want:
+                return S.norm_uuid(uu), p["name"]
+    for srv in S.registry.servers.values():
+        try:
+            rows = json.loads((srv.dir / "whitelist.json").read_text()) or []
+        except (OSError, ValueError):
+            continue
+        for r in rows:
+            if str(r.get("name", "")).lower() in want and r.get("uuid"):
+                return S.norm_uuid(str(r["uuid"])), str(r["name"])
+    return None
+
+
+@app.get("/api/users/players")
+async def players_to_link(request: Request):
+    """Admins: everyone who has joined a server or is on a whitelist, and the login they're linked to, for linking."""
+    auth.require_admin(request)
+    await S.registry.refresh()
+    seen: dict[str, dict] = {}
+    for srv in S.registry.servers.values():
+        for uu, p in S.known_players(srv).items():
+            seen.setdefault(S.norm_uuid(uu), {"uuid": S.norm_uuid(uu), "name": p["name"]})
+        try:
+            rows = json.loads((srv.dir / "whitelist.json").read_text()) or []
+        except (OSError, ValueError):
+            rows = []
+        for r in rows:
+            if r.get("uuid") and r.get("name"):
+                seen.setdefault(S.norm_uuid(str(r["uuid"])), {"uuid": S.norm_uuid(str(r["uuid"])), "name": str(r["name"])})
+    for p in seen.values():
+        p["linked_to"] = auth.user_for_player(p["uuid"])
+        p["bedrock"] = mcname.is_bedrock(p["name"])
+    return sorted(seen.values(), key=lambda p: p["name"].lower())
+
+
 @app.patch("/api/users/{uid}")
 async def edit_user(uid: int, request: Request):
     admin = auth.require_admin(request)
@@ -1553,6 +1632,13 @@ async def edit_user(uid: int, request: Request):
             if not found:
                 raise HTTPException(400, "No player by that name has joined any server")
         u = auth.link_player(uid, found)
+    if body.get("add_player"):              # one more Minecraft account (a Java and a Bedrock one, say)
+        found = await _known_player(str(body["add_player"]))
+        if not found:
+            raise HTTPException(400, "No player by that name has joined a server or is on a whitelist")
+        u = auth.add_player(uid, found)
+    if body.get("remove_player"):
+        u = auth.remove_player(uid, str(body["remove_player"]))
     if "servers" in body:                   # the servers this login sees: a list of ids, or null for all of them
         v = body.get("servers")
         u = auth.set_servers(uid, [str(x) for x in v] if isinstance(v, list) else None)
@@ -2342,16 +2428,31 @@ async def fishing_tackle(sid: str, request: Request):
 # ---- Adventures: replays of play sessions
 @app.get("/api/servers/{sid}/adventures")
 async def adventures_list(sid: str, request: Request, days: int = 30):
-    auth.require_user(request)
+    user = auth.require_user(request)
     srv = await _server(sid)
-    return {"sessions": await asyncio.to_thread(adventures.sessions, srv.id, max(1, min(365, days)))}
+    sessions = await asyncio.to_thread(adventures.sessions, srv.id, max(1, min(365, days)))
+    if user.is_player:                         # a player sees the adventures they were in
+        mine = {p["name"].lower() for p in user.players}
+        sessions = [s for s in sessions if mine & {n.lower() for n in s["players"]} and not s["hidden"]]
+    return {"sessions": sessions}
 
 
 @app.get("/api/servers/{sid}/adventures/timeline")
 async def adventures_timeline(sid: str, request: Request, start: float, end: float):
-    auth.require_user(request)
+    user = auth.require_user(request)
     srv = await _server(sid)
-    return await asyncio.to_thread(adventures.timeline, srv.id, start, end)
+    data = await asyncio.to_thread(adventures.timeline, srv.id, start, end)
+    if user.is_player:
+        mine = {p["name"].lower() for p in user.players}
+        if not mine & {n.lower() for n in await asyncio.to_thread(adventures._players_between, srv.id, data["start"], data["end"])}:
+            raise HTTPException(404, "Not one of your adventures")
+        # their own trail and lines; everyone else's only what's public anyway (joins, deaths, advancements,
+        # contests, fish), and where they went only when players can see the map. Never anyone else's chat.
+        public = {"join", "leave", "death", "advancement", "challenge", "race", "fish", "bigfish", "game"}
+        data["events"] = [e for e in data["events"] if (e["player"] or "").lower() in mine or e["type"] in public]
+        if not _players_see_map():
+            data["trails"] = {n: t for n, t in data["trails"].items() if n.lower() in mine}
+    return data
 
 
 @app.post("/api/servers/{sid}/adventures")

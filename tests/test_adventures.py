@@ -90,3 +90,19 @@ def test_hide_and_erase(client, viewer, sid):
     finally:
         db.x("DELETE FROM sessions WHERE server_id=?", (sid,))
         db.x("DELETE FROM adventures_hidden WHERE server_id=?", (sid,))
+
+
+def test_more_of_what_happened_and_what_they_are_up_to():
+    from app import adventures as A
+    before = {"minecraft:mined": {"minecraft:oak_log": 2}, "minecraft:used": {}, "minecraft:custom": {"minecraft:walk_one_cm": 0}}
+    after = {"minecraft:mined": {"minecraft:oak_log": 14, "minecraft:diamond_ore": 2, "minecraft:wheat": 5},
+             "minecraft:used": {"minecraft:oak_planks": 30, "minecraft:diamond_pickaxe": 40},
+             "minecraft:custom": {"minecraft:walk_one_cm": 120000, "minecraft:open_chest": 3, "minecraft:traded_with_villager": 2}}
+    line = A.progress_line(before, after)
+    for bit in ("mined 2 diamond ore", "chopped 12 logs", "harvested 5 crops", "placed 30 blocks", "opened 3 chests",
+                "traded with villagers 2×", "travelled 1.2 km"):
+        assert bit in line, bit
+    assert A.doing(before, after) == "🧱 Building"                       # 30 blocks placed beats 12 logs (24) and the rest
+    assert A.doing(before, before) is None
+    fishing = {"minecraft:custom": {"minecraft:fish_caught": 3}}
+    assert A.doing({}, fishing) == "🎣 Fishing"

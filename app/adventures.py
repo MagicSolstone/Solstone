@@ -32,7 +32,42 @@ _ORES = {"minecraft:diamond_ore": "diamond ore", "minecraft:deepslate_diamond_or
          "minecraft:ancient_debris": "ancient debris", "minecraft:emerald_ore": "emerald ore",
          "minecraft:deepslate_emerald_ore": "emerald ore", "minecraft:gold_ore": "gold ore",
          "minecraft:deepslate_gold_ore": "gold ore", "minecraft:nether_gold_ore": "nether gold ore",
-         "minecraft:iron_ore": "iron ore", "minecraft:deepslate_iron_ore": "iron ore"}
+         "minecraft:iron_ore": "iron ore", "minecraft:deepslate_iron_ore": "iron ore",
+         "minecraft:lapis_ore": "lapis ore", "minecraft:deepslate_lapis_ore": "lapis ore",
+         "minecraft:redstone_ore": "redstone ore", "minecraft:deepslate_redstone_ore": "redstone ore",
+         "minecraft:copper_ore": "copper ore", "minecraft:deepslate_copper_ore": "copper ore",
+         "minecraft:coal_ore": "coal ore", "minecraft:deepslate_coal_ore": "coal ore", "minecraft:nether_quartz_ore": "quartz ore"}
+_CROPS = {"minecraft:wheat", "minecraft:carrots", "minecraft:potatoes", "minecraft:beetroots", "minecraft:melon",
+          "minecraft:pumpkin", "minecraft:sugar_cane", "minecraft:sweet_berry_bush", "minecraft:cocoa", "minecraft:nether_wart",
+          "minecraft:bamboo", "minecraft:cactus"}
+_CHESTS = ("minecraft:open_chest", "minecraft:open_barrel", "minecraft:open_shulker_box", "minecraft:open_enderchest")
+_TRAVEL = ("minecraft:walk_one_cm", "minecraft:sprint_one_cm", "minecraft:swim_one_cm", "minecraft:walk_on_water_one_cm",
+           "minecraft:walk_under_water_one_cm", "minecraft:crouch_one_cm", "minecraft:boat_one_cm", "minecraft:horse_one_cm",
+           "minecraft:minecart_one_cm", "minecraft:aviate_one_cm", "minecraft:pig_one_cm", "minecraft:strider_one_cm",
+           "minecraft:climb_one_cm", "minecraft:fly_one_cm", "minecraft:happy_ghast_one_cm", "minecraft:nautilus_one_cm")
+# what a placed block looks like in "used" (tools, food and the like count there too)
+_BUILD_WORDS = ("planks", "_log", "_wood", "stone", "brick", "glass", "wool", "slab", "stairs", "_wall", "fence", "door",
+                "dirt", "sand", "gravel", "concrete", "terracotta", "_block", "torch", "lantern", "deepslate", "andesite",
+                "diorite", "granite", "tuff", "calcite", "quartz", "prismarine", "carpet", "_bed", "chest", "furnace",
+                "crafting_table", "ladder", "rail", "button", "pressure_plate", "sign", "copper", "mud", "clay", "snow",
+                "leaves", "hay", "bookshelf", "scaffolding", "path", "farmland", "moss", "sapling", "flower", "tulip")
+
+
+def _delta(before: dict, after: dict, group: str) -> dict[str, int]:
+    b, a = before.get(group) or {}, after.get(group) or {}
+    return {k: a[k] - b.get(k, 0) for k in a if a[k] > b.get(k, 0)}
+
+
+def _is_log(key: str) -> bool:
+    return key.endswith(("_log", "_stem", "_wood", "_hyphae")) and "stripped" not in key
+
+
+def _placed(used: dict[str, int]) -> int:
+    return sum(n for k, n in used.items() if any(w in k for w in _BUILD_WORDS))
+
+
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}{'' if n == 1 or word.endswith('s') else 's'}"
 
 
 # ------------------------------------------------------------------ recording
@@ -93,7 +128,29 @@ def progress_line(before: dict, after: dict) -> str | None:
             ores[label] = ores.get(label, 0) + d
     if ores:
         parts.append("mined " + ", ".join(f"{n} {o}" for o, n in sorted(ores.items(), key=lambda i: -i[1])))
+    mined = _delta(before, after, "minecraft:mined")
+    logs = sum(n for k, n in mined.items() if _is_log(k))
+    if logs >= 3:
+        parts.append(f"chopped {_plural(logs, 'log')}")
+    crops = sum(n for k, n in mined.items() if k in _CROPS)
+    if crops >= 3:
+        parts.append(f"harvested {crops} crops")
+    placed = _placed(_delta(before, after, "minecraft:used"))
+    if placed >= 10:
+        parts.append(f"placed {_plural(placed, 'block')}")
     cb, ca = before.get("minecraft:custom") or {}, after.get("minecraft:custom") or {}
+    gained = lambda k: ca.get(k, 0) - cb.get(k, 0)  # noqa: E731
+    chests = sum(gained(k) for k in _CHESTS)
+    if chests > 0:
+        parts.append(f"opened {_plural(chests, 'chest')}")
+    for key, say in (("minecraft:traded_with_villager", "traded with villagers {n}×"), ("minecraft:animals_bred", "bred {n} animals"),
+                     ("minecraft:enchant_item", "enchanted {n} item{s}"), ("minecraft:sleep_in_bed", "slept in a bed")):
+        n = gained(key)
+        if n > 0:
+            parts.append(say.format(n=n, s="" if n == 1 else "s"))
+    travelled = sum(gained(k) for k in _TRAVEL) / 100
+    if travelled >= 500:
+        parts.append(f"travelled {travelled / 1000:.1f} km" if travelled >= 1000 else f"travelled {travelled:.0f} blocks")
     taken = (ca.get("minecraft:damage_taken", 0) - cb.get("minecraft:damage_taken", 0)) / 20   # tenths of a heart -> hearts
     if taken >= 5:
         parts.append(f"took {taken:.0f} ❤ of damage")
@@ -101,6 +158,37 @@ def progress_line(before: dict, after: dict) -> str | None:
     if eaten > 0:
         parts.append(f"ate {eaten} slice{'s' if eaten > 1 else ''} of cake")
     return " · ".join(parts) or None
+
+
+# ------------------------------------------------------------------ what each player has been up to lately
+DOING_FOR = 12 * 60           # a label stays this long after the save that showed it
+_doing: dict[tuple[str, str], tuple[float, str]] = {}
+
+
+def doing(before: dict, after: dict) -> str | None:
+    """One word or two for what a player did between two saves of their statistics, the busiest thing first."""
+    mined = _delta(before, after, "minecraft:mined")
+    cb, ca = before.get("minecraft:custom") or {}, after.get("minecraft:custom") or {}
+    gained = lambda k: ca.get(k, 0) - cb.get(k, 0)  # noqa: E731
+    logs = sum(n for k, n in mined.items() if _is_log(k))
+    crops = sum(n for k, n in mined.items() if k in _CROPS)
+    scores = {
+        "🎣 Fishing": gained("minecraft:fish_caught") * 8,
+        "⚔️ Fighting mobs": sum(_delta(before, after, "minecraft:killed").values()) * 4,
+        "🪓 Chopping trees": logs * 2,
+        "🌾 Farming": crops * 2,
+        "⛏️ Mining": sum(mined.values()) - logs - crops,
+        "🧱 Building": _placed(_delta(before, after, "minecraft:used")),
+        "💰 Trading": gained("minecraft:traded_with_villager") * 6,
+        "🧭 Exploring": sum(gained(k) for k in _TRAVEL) / 100 / 40,         # 40 blocks travelled ≈ one thing done
+    }
+    label, score = max(scores.items(), key=lambda i: i[1])
+    return label if score >= 8 else None
+
+
+def lately(server_id: str, name: str) -> str | None:
+    hit = _doing.get((server_id, name.lower()))
+    return hit[1] if hit and time.time() - hit[0] < DOING_FOR else None
 
 
 def progress(srv, online: dict[str, str | None]) -> int:
@@ -116,6 +204,9 @@ def progress(srv, online: dict[str, str | None]) -> int:
         _stats[(srv.id, name)] = st
         if prev is None or prev == st:
             continue
+        label = doing(prev, st)
+        if label:
+            _doing[(srv.id, name.lower())] = (time.time(), label)
         line = progress_line(prev, st)
         if line:
             db.add_event(srv.id, time.time(), "progress", f"{name} {line}", name, uuid)

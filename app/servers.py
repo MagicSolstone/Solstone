@@ -1045,6 +1045,18 @@ LEADERBOARDS = [
 ]
 
 
+# which heading each board sits under on the Leaderboards page, in this order
+LEADERBOARD_GROUPS = {
+    "Adventure": ("xp_level", "advancements", "time_since_death", "raids_won", "deaths"),
+    "Fighting": ("mob_kills", "creepers_defeated", "damage_dealt"),
+    "Mining and making": ("blocks_mined", "diamonds_mined", "items_crafted", "chests_opened"),
+    "Getting around": ("distance_cm", "flown_cm", "swum_cm", "jumps"),
+    "Fishing": ("fish_caught", "fishing_level", "heaviest_fish"),
+    "Farm and village": ("animals_bred", "traded", "sleep", "cake_eaten"),
+}
+NO_MEDALS = {"deaths"}           # nobody earns a medal for dying the most
+
+
 def leaderboard_stats(stats: dict) -> dict:
     """headline_stats plus the extra numbers only the leaderboards use."""
     custom = stats.get("minecraft:custom") or {}
@@ -1072,4 +1084,7 @@ async def leaderboard(srv: Server) -> dict:
         h["advancements"] = sum(1 for k, a in adv.items() if a["done"] and "/recipes/" not in k and ":recipes/" not in k)
         h.update(_tide().leaderboard_values(srv, uuid))
         rows.append({"uuid": uuid, "name": p["name"], **{k: h.get(k, 0) for k, _t, _f in LEADERBOARDS}})
-    return {"boards": [{"key": k, "title": t, "kind": f} for k, t, f in LEADERBOARDS], "players": rows}
+    group = {k: g for g, keys in LEADERBOARD_GROUPS.items() for k in keys}
+    return {"boards": [{"key": k, "title": t, "kind": f, "group": group.get(k, "More"), "medals": k not in NO_MEDALS}
+                       for k, t, f in LEADERBOARDS],
+            "groups": [*LEADERBOARD_GROUPS, "More"], "players": rows}

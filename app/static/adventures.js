@@ -34,7 +34,7 @@ async function viewAdventures(sid, which) {
         <span class="muted small">${saved ? `${esc(advDay(x.start))} · ` : ""}${esc(advClock(x.start))}–${esc(advClock(x.end))} · ${esc(advLength(x.end - x.start))}</span></span>
       <span class="rp-faces">${x.players.slice(0, 8).map((n) => faceHtml({ name: n }, 22)).join("")}${x.players.length > 8 ? `<small>+${x.players.length - 8}</small>` : ""}</span>
       ${saved ? '<span class="rp-saved" title="Saved">★</span>' : ""}</a>
-      ${saved ? "" : `<button type="button" class="icon-btn rp-hide" data-hide="${x.start}:${x.end}:${x.hidden ? 0 : 1}" title="${x.hidden ? "Show it in the list again" : "Hide from the list"}" aria-label="${x.hidden ? "Show again" : "Hide"}">${x.hidden ? "↩" : "✕"}</button>`}</li>`;
+      ${saved || isPlayer() ? "" : `<button type="button" class="icon-btn rp-hide" data-hide="${x.start}:${x.end}:${x.hidden ? 0 : 1}" title="${x.hidden ? "Show it in the list again" : "Hide from the list"}" aria-label="${x.hidden ? "Show again" : "Hide"}">${x.hidden ? "↩" : "✕"}</button>`}</li>`;
   };
   const draw = () => {
     const nHidden = d.sessions.filter((x) => x.hidden).length;
@@ -109,14 +109,14 @@ async function viewAdventure(sid, key) {
         <aside class="rp-feed panel" id="rp-feed" aria-label="What happened">${d.events.map((e, i) => `<button type="button" class="rp-ev" data-i="${i}">
             <span class="rp-ev-t">${esc(advClock(e.ts))}</span><span>${ADV_ICONS[e.type] || "•"}</span><span>${e.type === "chat" || e.type === "webchat" ? `<b>${esc(e.player || "")}</b>: ` : ""}${esc(e.message)}</span></button>`).join("") || '<p class="muted small">Nothing in the feed for this stretch.</p>'}</aside>
       </div>
-      <form class="panel rp-save" id="rp-save">
+      ${isPlayer() ? (saved?.note ? `<section class="panel"><h3>${esc(saved.title)}</h3><p>${esc(saved.note)}</p></section>` : "") : `<form class="panel rp-save" id="rp-save">
         <h3>${saved ? "This adventure" : "Save this adventure"}</h3>
         <label>Title<input class="input" name="title" maxlength="80" required value="${esc(saved?.title || "")}" placeholder="The day we found the stronghold"></label>
         <label>Note<textarea class="input" name="note" rows="3" maxlength="2000" placeholder="What happened, who was there, what to remember">${esc(saved?.note || "")}</textarea></label>
         <div class="btn-row"><button class="btn primary" type="submit">${saved ? "Save changes" : "Save adventure"}</button>
           ${saved ? `<button type="button" class="btn danger" id="rp-del">Delete</button>` : ""}
           ${isAdmin() ? `<button type="button" class="btn danger" id="rp-erase" title="Admins: delete this session's trail and statistics lines for good">Delete the trail</button>` : ""}</div>
-      </form>
+      </form>`}
     </section>`);
   wireHeader(s);
 
@@ -197,7 +197,7 @@ async function viewAdventure(sid, key) {
     if (now) { if (now[1] !== st.dim) setDim(now[1]); map.view.cx = now[2]; map.view.cz = now[4]; }
     show();
   });
-  $("#rp-save").addEventListener("submit", async (e) => {
+  $("#rp-save")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
     try {

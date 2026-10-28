@@ -253,7 +253,7 @@ function playerCardHtml(p) {
     <div class="sp-body"><img src="${bodyUrl(p)}" alt="" data-fail="face" data-face="${esc(faceHtml(p, 88))}"></div>
     <div class="sp-info">
       <h2>${esc(p.name)}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}</h2>
-      <div class="sp-meta"><span class="live-tag"><span class="status-dot on"></span>${since}</span></div>
+      <div class="sp-meta"><span class="live-tag"><span class="status-dot on"></span>${since}</span>${p.doing ? `<span class="sp-doing" title="What they've been up to lately">${esc(p.doing)}</span>` : ""}</div>
       ${vitals}
       <div class="chips">${chips}</div>
       ${gear}${effects}

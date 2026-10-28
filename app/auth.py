@@ -24,7 +24,7 @@ import re
 import secrets
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from fastapi import HTTPException, Request
 
@@ -71,6 +71,13 @@ CREATE TABLE IF NOT EXISTS audit (
     result TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_audit ON audit(ts);
+-- the Minecraft accounts a login belongs to (a Java one and a Bedrock one, say); users.player_uuid is the first
+CREATE TABLE IF NOT EXISTS user_players (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    uuid TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    added_ts REAL NOT NULL
+);
 """
 
 _ready = False
@@ -96,6 +103,8 @@ def _init() -> None:
             db.conn().execute("ALTER TABLE users ADD COLUMN real_name TEXT")
         db.conn().execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_player ON users(player_uuid) WHERE player_uuid IS NOT NULL")
         db.conn().execute("UPDATE users SET role='trusted' WHERE role='viewer'")   # the old name
+        db.conn().execute("INSERT OR IGNORE INTO user_players(user_id, uuid, name, added_ts) "        # from one linked player each
+                          "SELECT id, player_uuid, player_name, created_ts FROM users WHERE player_uuid IS NOT NULL")
         _ready = True
 
 
@@ -129,6 +138,11 @@ class User:
     player_name: str | None = None
     servers: list[str] | None = None    # the only servers this login sees (None: all of them; admins always see all)
     real_name: str | None = None        # who they really are, so admins know; never shown to other players
+    players: list[dict] = field(default_factory=list)   # every Minecraft account of theirs: [{"uuid", "name"}]
+
+    @property
+    def player_uuids(self) -> set[str]:
+        return {p["uuid"] for p in self.players}
 
     def may_see(self, server_id: str) -> bool:
         return self.is_admin or self.servers is None or server_id in self.servers
@@ -150,6 +164,7 @@ class User:
     def public(self) -> dict:
         return {"id": self.id, "username": self.username, "role": self.role, "display_name": self.display_name, "shown": self.shown,
                 "player": {"uuid": self.player_uuid, "name": self.player_name} if self.player_uuid else None,
+                "players": self.players,
                 "servers": self.servers, "real_name": self.real_name}
 
 
@@ -158,7 +173,14 @@ def _row_user(r) -> User:
     g = lambda k: r[k] if k in keys else None  # noqa: E731
     return User(id=r["id"], username=r["username"], role=r["role"], display_name=g("display_name"),
                 player_uuid=g("player_uuid"), player_name=g("player_name"), servers=_servers_of(g("servers")),
-                real_name=g("real_name"))
+                real_name=g("real_name"), players=_players_of(r["id"]))
+
+
+def _players_of(uid: int) -> list[dict]:
+    try:
+        return [{"uuid": p["uuid"], "name": p["name"]} for p in db.q("SELECT uuid, name FROM user_players WHERE user_id=? ORDER BY added_ts, rowid", (uid,))]
+    except Exception:                       # before _init has made the table
+        return []
 
 
 def _servers_of(raw) -> list[str] | None:
@@ -234,31 +256,62 @@ def create_user(username: str, password: str, role: str, check: bool = True,
         validate_new(username, password, role)
     if db.q("SELECT 1 FROM users WHERE username=? COLLATE NOCASE", (username,)):
         raise HTTPException(409, f"There's already a user called {username}")
-    if player and db.q("SELECT 1 FROM users WHERE player_uuid=?", (player[0],)):
+    if player and user_for_player(player[0]):
         raise HTTPException(409, f"{player[1]} already has an account")
-    uid = db.x("INSERT INTO users(username, password_hash, role, created_ts, player_uuid, player_name, servers) VALUES (?,?,?,?,?,?,?)",
-               (username, hash_password(password), role, time.time(), player[0] if player else None, player[1] if player else None,
-                json.dumps(servers) if servers is not None else None))
+    uid = db.x("INSERT INTO users(username, password_hash, role, created_ts, servers) VALUES (?,?,?,?,?)",
+               (username, hash_password(password), role, time.time(), json.dumps(servers) if servers is not None else None))
+    if player:
+        add_player(uid, player)
     return get_user(uid)
 
 
 def user_for_player(uuid: str) -> str | None:
     """The login already linked to this Minecraft player, if any."""
     _init()
-    rows = db.q("SELECT username FROM users WHERE player_uuid=?", (uuid,))
+    rows = db.q("SELECT u.username FROM user_players p JOIN users u ON u.id = p.user_id WHERE p.uuid=?", (uuid,))
     return rows[0]["username"] if rows else None
 
 
-def link_player(uid: int, player: tuple[str, str] | None) -> User:
-    """An admin links (or unlinks, with None) an account to a Minecraft player."""
+def _sync_first(uid: int) -> None:
+    """users.player_uuid/player_name follow the first linked account (older code and the unique index use them)."""
+    first = db.q("SELECT uuid, name FROM user_players WHERE user_id=? ORDER BY added_ts, rowid LIMIT 1", (uid,))
+    db.x("UPDATE users SET player_uuid=?, player_name=? WHERE id=?", (first[0]["uuid"], first[0]["name"], uid) if first else (None, None, uid))
+
+
+def add_player(uid: int, player: tuple[str, str]) -> User:
+    """Link one more Minecraft account (Java or Bedrock) to a login."""
     _init()
-    if player and db.q("SELECT 1 FROM users WHERE player_uuid=? AND id<>?", (player[0], uid)):
+    other = db.q("SELECT user_id FROM user_players WHERE uuid=?", (player[0],))
+    if other and other[0]["user_id"] != uid:
         raise HTTPException(409, f"{player[1]} is already linked to another account")
-    db.x("UPDATE users SET player_uuid=?, player_name=? WHERE id=?", (player[0] if player else None, player[1] if player else None, uid))
+    if other:
+        db.x("UPDATE user_players SET name=? WHERE uuid=?", (player[1], player[0]))
+    else:
+        db.x("INSERT INTO user_players(user_id, uuid, name, added_ts) VALUES (?,?,?,?)", (uid, player[0], player[1], time.time()))
+    _sync_first(uid)
     u = get_user(uid)
     if not u:
         raise HTTPException(404, "User not found")
     return u
+
+
+def remove_player(uid: int, uuid: str) -> User:
+    _init()
+    db.x("DELETE FROM user_players WHERE user_id=? AND uuid=?", (uid, uuid))
+    _sync_first(uid)
+    u = get_user(uid)
+    if not u:
+        raise HTTPException(404, "User not found")
+    return u
+
+
+def link_player(uid: int, player: tuple[str, str] | None) -> User:
+    """Link a login to just this Minecraft player (None unlinks every one)."""
+    _init()
+    if player and (owner := user_for_player(player[0])) and owner.lower() != (get_user(uid) or User(0, "", "")).username.lower():
+        raise HTTPException(409, f"{player[1]} is already linked to another account")
+    db.x("DELETE FROM user_players WHERE user_id=?", (uid,))
+    return add_player(uid, player) if player else remove_player(uid, "")
 
 
 def set_servers(uid: int, servers: list[str] | None) -> User:
@@ -275,6 +328,7 @@ def list_users() -> list[dict]:
     _init()
     return [{"id": r["id"], "username": r["username"], "display_name": r["display_name"], "role": r["role"], "created": r["created_ts"],
              "last_login": r["last_login_ts"], "player_name": r["player_name"], "real_name": r["real_name"],
+             "players": _players_of(r["id"]),
              "servers": _servers_of(r["servers"])} for r in db.q("SELECT * FROM users ORDER BY username COLLATE NOCASE")]
 
 
@@ -308,6 +362,7 @@ def delete_user(uid: int) -> None:
     if u.role == "admin" and count_admins() <= 1:
         raise HTTPException(400, "Solstone needs at least one admin")
     db.x("DELETE FROM sessions_auth WHERE user_id=?", (uid,))
+    db.x("DELETE FROM user_players WHERE user_id=?", (uid,))
     db.x("DELETE FROM users WHERE id=?", (uid,))
 
 
