@@ -1702,7 +1702,8 @@ body.on-editor:not(.ui-hidden) .fwbar .fwb-launch, body.on-editor:not(.ui-hidden
 .hp-faq details { border-radius: var(--radius-m); padding: 12px 16px; }
 .hp-faq summary { cursor: pointer; font-weight: 700; }
 .hp-faq .hp-body { margin-top: 10px; }
-.hp-article { display: flex; flex-direction: column; gap: 10px; max-width: 780px; }
+.hp-article { display: flex; flex-direction: column; gap: 10px; }           /* as wide as the other panels */
+.hp-article .hp-body, .hp-about .hp-body { max-width: none; }
 .hp-body { display: flex; flex-direction: column; gap: 10px; line-height: 1.6; max-width: 70ch; }
 .hp-body h2, .hp-body h3, .hp-body h4 { margin-top: 8px; }
 .hp-body ul, .hp-body ol { margin: 0; padding-left: 1.4em; }

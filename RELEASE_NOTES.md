@@ -1,5 +1,6 @@
 # Solstone 1.8.9
 
+- **Posts use the full width:** news posts, guides and the rules page now stretch across like the other panels (they were held to a narrow column).
 - **Enter starts a new line in posts:** one line break in the text is now a new line in the post (it used to run on into the same line), and a blank line still starts a new paragraph. The editor's live view, Preview and the published post all show it the same way.
 
 # Solstone 1.8.8
