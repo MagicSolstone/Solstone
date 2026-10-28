@@ -33,6 +33,15 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
+def appear(pg, selector: str, n: int = 1, ms: int = 15000) -> bool:
+    """Wait until at least n of these are on the page (a slow test machine can take a while), without failing here."""
+    try:
+        pg.wait_for_function("([s, n]) => document.querySelectorAll(s).length >= n", arg=[selector, n], timeout=ms)
+        return True
+    except Exception:
+        return False
+
+
 def start_app(root: Path, port: int) -> subprocess.Popen:
     env = {**os.environ,
            "SERVERS_DIR": str(root / "servers"), "DATA_DIR": str(root / "data"), "BACKUPS_DIR": str(root / "backups"),
@@ -492,7 +501,8 @@ def main() -> int:
             if not pl.locator(".app-top .hp-nav a[href='/']").is_visible():
                 problems.append("app: no link back to the website")
             # live on the home page, signed out: the old status page's screens, as tabs
-            anon.goto(f"{base}/#live"); anon.wait_for_timeout(2500)
+            anon.goto(f"{base}/#live"); anon.wait_for_timeout(1000)
+            appear(anon, "#live .tv-dots [data-tv]", 2)
             check(anon, "site-home-live")
             if not anon.locator("#live:not([hidden])").count():
                 problems.append("home: the live section isn't shown")
@@ -532,7 +542,8 @@ def main() -> int:
                                 for n, h, f, lv in (("Tyler", 20, 18, 31), ("Gimli_Jr", 13, 20, 12), (".Steve_K", 7.5, 9, 4), ("MomCrafts", 20, 20, 50))]
                 route.fulfill(json=b)
             anon.route(f"**/api/public/status/{sid}", busy)
-            anon.set_viewport_size({"width": 1280, "height": 800}); anon.goto(f"{base}/#live"); anon.reload(); anon.wait_for_timeout(2500)
+            anon.set_viewport_size({"width": 1280, "height": 800}); anon.goto(f"{base}/#live"); anon.reload(); anon.wait_for_timeout(1000)
+            appear(anon, "#live .sp-player", 4)
             anon.locator("#live .sp-players").scroll_into_view_if_needed() if anon.locator("#live .sp-players").count() else None
             check(anon, "live-busy")
             if anon.locator("#live .sp-player").count() != 4 or "❤️" not in (anon.locator("#live .sp-player").first.text_content() or ""):
