@@ -1890,3 +1890,5 @@ a.glance-me:hover { border-color: var(--gold); }
 .hp-pack ol { margin: 6px 0; padding-left: 20px; display: grid; gap: 4px; }
 .clear-form { display: grid; gap: 10px; }
 .clear-form label.check { align-items: flex-start; }
+.sb-list { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.sb-list li { display: flex; gap: 12px; align-items: center; }

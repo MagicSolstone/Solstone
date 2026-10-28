@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, races, fireworks, fwshow, guard, notify, recap, selfcheck, signup, site, skins, tide, upcoming, welcome, worldmap
+from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, races, fireworks, fwshow, guard, notify, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -1868,6 +1868,34 @@ async def put_settings(sid: str, request: Request):
     safe = {k: v for k, v in saved.items() if k != "rcon_password"}
     safe["rcon_password_set"] = "rcon_password" in saved
     return safe
+
+
+@app.get("/api/solstone-backups")
+async def list_self_backups(request: Request):
+    auth.require_admin(request)
+    return {"folder": str(selfbackup.folder()), "keep": selfbackup.KEEP, "every_hours": selfbackup.EVERY_HOURS,
+            "backups": selfbackup.backups()}
+
+
+@app.post("/api/solstone-backups")
+async def make_self_backup(request: Request):
+    user = auth.require_admin(request)
+    try:
+        b = await asyncio.to_thread(selfbackup.make)
+    except OSError as e:
+        raise HTTPException(500, f"Couldn't write the backup: {e}") from e
+    auth.audit(user, None, "solstone_backup", b["name"])
+    return b
+
+
+@app.get("/api/solstone-backups/{name}")
+async def download_self_backup(name: str, request: Request):
+    """A backup holds every account (passwords hashed) and the RCON passwords: admins only."""
+    auth.require_admin(request)
+    p = selfbackup.path_of(name)
+    if not p:
+        raise HTTPException(404, "No such backup")
+    return FileResponse(p, media_type="application/zip", filename=p.name)
 
 
 @app.post("/api/servers/{sid}/clear")

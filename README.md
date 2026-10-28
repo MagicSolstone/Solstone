@@ -127,6 +127,9 @@ Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web ma
 | `DATA_DIR` | `/data` | Settings, history database and cached assets |
 | `BACKUPS_DIR` | `/backups` | Where Crafty's backups folder is mounted (optional, read-only) |
 | `BACKUP_STALE_HOURS` | `48` | A backup older than this shows a warning and can send a notification |
+| `SOLSTONE_BACKUP_DIR` | `/data/backups` | Where Solstone's own daily backups go (its database, settings and the website's pictures). Point an off-site backup tool at it, or mount a share here |
+| `SOLSTONE_BACKUP_KEEP` | `14` | How many of Solstone's own backups to keep |
+| `SOLSTONE_BACKUP_HOURS` | `24` | How often Solstone backs itself up |
 | `PUID` / `PGID` | `1000` | Host user/group that owns `/data` |
 | `ONLY_SERVERS` | – | Only these servers (Crafty names, Crafty ids or folder names, comma-separated). For running two Solstones against one Crafty, see below |
 

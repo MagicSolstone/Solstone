@@ -414,6 +414,8 @@ async function viewAdmin(section = "users") {
         <button class="btn" id="ann-backfill" type="button" style="margin-top:8px">Read old logs again</button></div></section>
     <section class="section"><div class="section-head"><h2>Each server</h2></div>
       <div class="panel"><p>A server's own settings (its name, Private, the web map, bedtime) are on its page: open it from <b>Servers</b> and press ⚙.</p></div></section>
+    <section class="section"><div class="section-head"><h2>Solstone's own backups</h2><span class="muted">Accounts, settings, posts and history</span></div>
+      <div class="panel" id="self-backups" style="max-width:720px"><p class="muted">Loading…</p></div></section>
     <section class="section"><div class="section-head"><h2>Clear saved history</h2><span class="muted">For a new world, or a fresh start</span></div>
       <form class="panel clear-form" id="clear-form" style="max-width:720px">
         <p class="muted small">Only what Solstone kept. The game server isn't touched: the world, everyone's items, the whitelist and the server's own log files all stay.</p>
@@ -429,6 +431,25 @@ async function viewAdmin(section = "users") {
     $$("[data-sp]").forEach((i) => { body[i.dataset.sp] = i.checked; });
     try { await post("/api/settings/status", body, "PUT"); showToast(body.enabled ? 'Saved. <a href="/#live" target="_blank" rel="noopener">See it on the home page</a>' : "Live info is off the home page", 3500); }
     catch (err) { showError(esc(err.message), 5000); }
+  });
+  const selfBackups = async () => {
+    const box = $("#self-backups");
+    if (!box) return;
+    const d = await api("/api/solstone-backups").catch(() => null);
+    if (!d) { box.innerHTML = `<p class="muted">Couldn't load the backups.</p>`; return; }
+    const size = (n) => n > 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+    box.innerHTML = `<p class="muted small">One a day (every ${d.every_hours} h), the newest ${d.keep} kept, in <code>${esc(d.folder)}</code>. Point your off-site backup (Duplicacy, Kopia, rclone…) at that folder. The world itself is in Crafty's backups. A backup holds every account and the RCON passwords, so keep copies somewhere private and encrypted. To restore: stop Solstone, unzip one into its data folder, start it again.</p>
+      ${d.backups.length ? `<ul class="sb-list">${d.backups.slice(0, 5).map((b) => `<li><span>${esc(fmtAgo(b.ts))}</span><span class="muted small">${esc(size(b.size))}</span><a class="btn sm" href="/api/solstone-backups/${encodeURIComponent(b.name)}" download>Download</a></li>`).join("")}</ul>`
+        : `<p><b>No backups yet.</b> The first one is made within the hour.</p>`}
+      <button class="btn sm" type="button" data-backup-now>Back up now</button>`;
+  };
+  selfBackups();
+  $("#self-backups")?.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-backup-now]");
+    if (!b) return;
+    b.disabled = true; b.textContent = "Backing up…";
+    try { await post("/api/solstone-backups"); showToast("Backed up", 2000); } catch (err) { showError(esc(err.message), 6000); }
+    selfBackups();
   });
   $("#clear-form")?.addEventListener("click", (e) => {
     if (!e.target.closest("[data-new-world]")) return;

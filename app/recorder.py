@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, notify, races, recap, skins, tide, welcome
+from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, notify, races, recap, selfbackup, skins, tide, welcome
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -102,7 +102,18 @@ class Recorder:
                        asyncio.create_task(self._loop(self.race_tick, 1)),
                        asyncio.create_task(self._loop(self.fish_poll, 3)),
                        asyncio.create_task(self._loop(self.track, adventures.TRACK_INTERVAL)),
-                       asyncio.create_task(self._loop(self.warm_skins, 6 * 3600))]
+                       asyncio.create_task(self._loop(self.warm_skins, 6 * 3600)),
+                       asyncio.create_task(self._loop(self.self_backup, 3600))]
+
+    async def self_backup(self) -> None:
+        """Solstone's own backup, once a day (selfbackup.py). A failure is a notification, not a silent gap."""
+        if not selfbackup.due():
+            return
+        try:
+            await asyncio.to_thread(selfbackup.make)
+        except Exception as e:
+            log.exception("Solstone's own backup failed")
+            maybe_notify("backup", "Solstone", f"Solstone's own backup failed: {e}")
 
     async def warm_skins(self) -> None:
         """Every known player's skin on disk, so heads show right away (one at a time, gently, for Mojang's sake)."""
