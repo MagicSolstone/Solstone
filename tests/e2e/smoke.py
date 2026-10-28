@@ -276,12 +276,22 @@ def main() -> int:
                 problems.append("join guide: the addresses or the site name are missing")
             # asking to join from the guide
             pg.request.put(f"{base}/api/settings/site", data={"join_requests": True}, headers=H)
-            pg.request.put(f"{base}/api/servers/{sid}/settings", data={"join_address": "mods.example.net:25566", "join_note": "Needs the modpack"}, headers=H)
+            pg.request.put(f"{base}/api/servers/{sid}/settings", data={"join_address": "mods.example.net:25566", "join_note": "Needs the modpack", "join_mods": True}, headers=H)
+            def running(route):                  # the server as if it were up (there's no game here)
+                d = json.loads(route.fetch().text())
+                for x in d.get("servers", []):
+                    x.update({"running": True, "online": 3, "max": 10, "tps": 19.9, "started": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 3 * 3600 - 600))})
+                route.fulfill(json=d)
+            anon.route("**/api/public/site", running)
             anon.goto(f"{base}/"); anon.reload(); anon.wait_for_timeout(1200)
+            anon.locator(".hp-mods summary").first.click() if anon.locator(".hp-mods summary").count() else None
+            if "Online" not in (anon.locator(".hp-join").text_content() or ""):
+                problems.append("home: the join box doesn't say the server is online")
             if "mods.example.net:25566" not in (anon.locator(".hp-join .hp-join-server").text_content() if anon.locator(".hp-join .hp-join-server").count() else ""):
                 problems.append("home: a second server's own join address isn't shown")
             check(anon, "site-home-two-servers")
-            pg.request.put(f"{base}/api/servers/{sid}/settings", data={"join_address": "", "join_note": ""}, headers=H)
+            anon.unroute("**/api/public/site")
+            pg.request.put(f"{base}/api/servers/{sid}/settings", data={"join_address": "", "join_note": "", "join_mods": False}, headers=H)
             anon.reload(); anon.wait_for_timeout(1000)
             if not anon.locator(".hp-join .hp-ask-btn").count():
                 problems.append("home: no Ask to join button by the addresses")

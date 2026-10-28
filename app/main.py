@@ -557,12 +557,13 @@ async def public_site():
                 log.warning("home list failed for %s: %s", srv.id, e)
                 continue
             servers.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "online": len(summ["online"]),
-                            "max": summ["max_players"], "version": summ.get("version"), "has_icon": summ["has_icon"]})
+                            "max": summ["max_players"], "version": summ.get("version"), "has_icon": summ["has_icon"],
+                            "started": summ.get("started") if summ["running"] else None, "tps": (summ.get("perf") or {}).get("tps")})
         _site_cache = (time.monotonic(), servers)
     # servers with their own join details (a second server, Java only with mods, say): each gets its own lines
     joins = [{"id": s.id, "name": s.display_name, "java": s.settings.get("join_address") or "",
               "bedrock": s.settings.get("join_bedrock_address") or "", "bedrock_port": s.settings.get("join_bedrock_port") or 19132,
-              "note": s.settings.get("join_note") or ""}
+              "note": s.settings.get("join_note") or "", "mods": _mods_for_players(s) if s.settings.get("join_mods") else None}
              for s in _public_servers_list() if s.settings.get("join_address") or s.settings.get("join_bedrock_address")]
     asks = [{"id": s.id, "name": s.display_name} for s in _public_servers_list() if s.is_java] if cfg["join_requests"] else []
     return JSONResponse({**cfg, "logo": site.logo_url(), "servers": servers, "joins": joins, "ask_servers": asks,
@@ -632,6 +633,26 @@ async def put_site(request: Request):
     cfg = site.save_config(await _body(request))
     auth.audit(user, None, "site_settings", cfg["name"])
     return cfg
+
+
+def _mods_for_players(srv: S.Server) -> dict | None:
+    """What a player's own Minecraft needs to join a modded server: the family modpack's list when it's on (what the
+    admin picked), otherwise the server's mods that aren't marked server-only. With the loader and Minecraft version."""
+    if not srv.is_java:
+        return None
+    try:
+        pack = modpack.get(srv.id)
+        if pack.get("enabled"):
+            mods = [{"name": m["name"], "version": m.get("version") or ""} for m in modpack.server_mods(srv) if m["included"]]
+            mods += [{"name": e["title"], "version": e.get("version") or "", "kind": e.get("kind", "mod"),
+                      "link": f"https://modrinth.com/{e.get('kind', 'mod')}/{e['slug']}"} for e in pack["extra"]]
+        else:
+            mods = [{"name": m.get("name") or m.get("id") or m["file"], "version": m.get("version") or ""}
+                    for m in S.mods(srv) if m.get("environment") != "server"]
+    except Exception as e:
+        log.debug("mod list for %s failed: %s", srv.id, e)
+        return None
+    return {"loader": S.detect_loader(srv), "mc": srv.mc_version, "modpack": bool(pack.get("enabled")), "list": mods[:150]}
 
 
 # ---- asking to join, from the join guide: a notification for the admins with the exact name to let in
@@ -1769,6 +1790,8 @@ async def put_settings(sid: str, request: Request):
             body["bedtime"] = guard.validate_bedtime(body["bedtime"] or {})
         except (ValueError, TypeError) as e:
             raise HTTPException(400, "Bedtime needs times like 21:00") from e
+    if "join_mods" in body:
+        body["join_mods"] = True if body["join_mods"] else ""
     for k, n in (("join_address", 80), ("join_bedrock_address", 80), ("join_note", 160)):
         if k in body:
             body[k] = " ".join(str(body[k] or "").split())[:n]

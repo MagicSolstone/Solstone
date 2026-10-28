@@ -1388,7 +1388,8 @@ async function openSettings(s) {
         <label>Java address <small>With :port if it isn't 25565</small><input class="input" name="join_address" maxlength="80" value="${esc(cur.join_address || "")}" placeholder="mods.example.net:25566"></label>
         <div class="row2"><label>Bedrock address <small>Empty: Java only</small><input class="input" name="join_bedrock_address" maxlength="80" value="${esc(cur.join_bedrock_address || "")}"></label>
           <label>Bedrock port<input class="input" name="join_bedrock_port" inputmode="numeric" value="${esc(cur.join_bedrock_port || "")}" placeholder="19132"></label></div>
-        <label>A note <small>For example: Needs the modpack. Ask an admin to set it up in Prism.</small><input class="input" name="join_note" maxlength="160" value="${esc(cur.join_note || "")}"></label></fieldset>
+        <label>A note <small>For example: Needs the modpack. Ask an admin to set it up in Prism.</small><input class="input" name="join_note" maxlength="160" value="${esc(cur.join_note || "")}"></label>
+        <label class="check"><input type="checkbox" name="join_mods" ${cur.join_mods ? "checked" : ""}> List the mods players need <small>From the mods folder (the family modpack's list, if it's on), with the loader and Minecraft version</small></label></fieldset>
       <label>RCON host <small>Used for live inventories. Leave blank to use ${esc(s.rcon?.host || "the Crafty host")}.</small><input class="input" name="rcon_host" value="${esc(cur.rcon_host || "")}"></label>
       <label>RCON port <small>Leave blank to use rcon.port from server.properties</small><input class="input" name="rcon_port" inputmode="numeric" value="${esc(cur.rcon_port || "")}"></label>
       <label>RCON password <small>${cur.rcon_password_set ? "Saved. Type a new one to replace it." : "Leave blank to use rcon.password from server.properties"}</small><input class="input" type="password" name="rcon_password" autocomplete="off"></label>
@@ -1401,7 +1402,7 @@ async function openSettings(s) {
       const f = new FormData(e.target);
       const body = { display_name: f.get("display_name"), map_url: f.get("map_url"), rcon_host: f.get("rcon_host"),
         rcon_port: f.get("rcon_port") ? Number(f.get("rcon_port")) : "", hidden: f.get("hidden") ? true : "", private: f.get("private") ? true : "",
-        join_address: f.get("join_address"), join_bedrock_address: f.get("join_bedrock_address"), join_bedrock_port: f.get("join_bedrock_port") || "", join_note: f.get("join_note") };
+        join_address: f.get("join_address"), join_bedrock_address: f.get("join_bedrock_address"), join_bedrock_port: f.get("join_bedrock_port") || "", join_note: f.get("join_note"), join_mods: !!f.get("join_mods") };
       if (f.get("rcon_password")) body.rcon_password = f.get("rcon_password");
       try {
         await post(`/api/servers/${encodeURIComponent(s.id)}/settings`, body, "PUT");

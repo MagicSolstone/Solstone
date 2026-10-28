@@ -1,5 +1,11 @@
 # Solstone 1.8.1
 
+- **On the whitelist means it's in their account:** a player's account now sees every server they're on the whitelist of, however they were added (Control, the game's console, Crafty), not just the one they signed up from. No need to sign up again with a code on each server. Private servers are never included.
+- **Ask to join for the servers you want:** with more than one server, the form asks which (one or more). Each shows only in that server's Control, and the player's page and badge say which they're in on so far (*In on Family Realm. Waiting on Mods*).
+- **"You're in" however you let them in:** adding someone from the game's console or Crafty counts too. Their page notices within a minute.
+- **The join box says how each server is doing:** *Online · 3 / 10 playing · up 3 h · running smoothly (19.9 TPS)*, or *Offline right now* (with *Show the public servers' status* on in Site details).
+- **The mods to install for a modded server:** tick *List the mods players need* in the server's ⚙ How to join this server, and its box shows them (folded away until opened), with the loader and Minecraft version. With the family modpack on, it's the modpack's list, links included.
+
 - **Letting someone in that the game doesn't know:** Java names are checked with Mojang (and Bedrock gamertags with Xbox) before they're added, which can take a few seconds. Solstone now waits for that instead of giving up with a 502, and when the name doesn't exist it says so (*"Fake_Kid wasn't added. The game said: That player does not exist"*). Their request stays in *Asked to join* until they've really been added.
 - **More than one server to join:** a server's ⚙ settings have **How to join this server**: its own Java address (with :port), a Bedrock address and port if Bedrock players can join it, and a note such as *Needs the modpack*. The home page's box becomes **Join the servers**, with the main one from Site details first and then each of those, marked *Java only* where it is.
 

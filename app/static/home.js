@@ -68,6 +68,26 @@ function markdown(src) {
 const dateText = (ts) => new Date(ts * 1000).toLocaleDateString([], { year: "numeric", month: "long", day: "numeric" });
 const CAT_LABEL = { news: "News", guide: "Guide", faq: "FAQ" };
 
+// The mods a player's own Minecraft needs for a modded server, folded away until wanted.
+function modsHtml(m) {
+  if (!m || !m.list?.length) return "";
+  const head = `${m.list.length} ${m.list.length === 1 ? "mod" : "mods"} for ${esc([m.loader, m.mc && `Minecraft ${m.mc}`].filter(Boolean).join(" · "))}`;
+  return `<details class="hp-mods"><summary>🧩 ${head}</summary>
+    ${m.modpack ? `<p class="muted small">Ask an admin for the family modpack: it installs all of these for you in Prism, and keeps them up to date.</p>` : ""}
+    <ul>${m.list.map((x) => `<li>${x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.name)}</a>` : esc(x.name)}${x.version ? ` <span class="muted small">${esc(x.version)}</span>` : ""}${x.kind && x.kind !== "mod" ? ` <span class="chip">${esc(x.kind === "resourcepack" ? "Resource pack" : x.kind === "shader" ? "Shader" : x.kind)}</span>` : ""}</li>`).join("")}</ul></details>`;
+}
+
+// A server's state in a few words, beside where to join it: online or not, how many on, up how long, how smooth.
+function statusLine(s) {
+  if (!s) return "";
+  if (!s.running) return `<p class="hp-join-state"><span class="hp-dot"></span>Offline right now</p>`;
+  const since = s.started ? new Date(String(s.started).replace(" ", "T")).getTime() : NaN;
+  const up = Number.isFinite(since) ? (() => { const m = Math.max(0, Math.floor((Date.now() - since) / 60000)), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60);
+    return d ? `${d} d ${h} h` : h ? `${h} h ${m % 60} min` : `${m} min`; })() : "";
+  const tps = s.tps == null ? "" : s.tps >= 19.5 ? "running smoothly" : s.tps >= 15 ? "a little laggy" : "very laggy";
+  return `<p class="hp-join-state"><span class="hp-dot on"></span><b>Online</b> · ${s.online} / ${s.max ?? "?"} playing${up ? ` · up ${up}` : ""}${tps ? ` · ${tps}${s.tps != null ? ` (${Number(s.tps).toFixed(1)} TPS)` : ""}` : ""}</p>`;
+}
+
 function joinCard(site) {
   const rowsHtml = (rows) => `<div class="hp-join-rows">${rows.map(([ed, addr, extra]) => `<div class="hp-join-row">
       <span class="hp-ed">${esc(ed)}</span><code class="hp-addr">${esc(addr)}</code>${extra ? `<span class="muted">${esc(extra)}</span>` : ""}
@@ -80,12 +100,16 @@ function joinCard(site) {
     const r = [];
     if (j.java) r.push(["Java Edition", j.java, ""]);
     if (j.bedrock) r.push(["Bedrock Edition", j.bedrock, `Port ${j.bedrock_port}`]);
+    const st = statusLine((site.servers || []).find((x) => x.id === j.id));
     return `<div class="hp-join-server"><h3>${esc(j.name)}${j.java && !j.bedrock ? ' <span class="chip">Java only</span>' : !j.java && j.bedrock ? ' <span class="chip">Bedrock only</span>' : ""}</h3>
-      ${rowsHtml(r)}${j.note ? `<p class="hp-join-note">${esc(j.note)}</p>` : ""}</div>`;
+      ${st}${rowsHtml(r)}${j.note ? `<p class="hp-join-note">${esc(j.note)}</p>` : ""}${modsHtml(j.mods)}</div>`;
   });
   if (!rows.length && !others.length) return "";
+  // The main addresses (Site details) belong to the one public server without its own join details, if there's one.
+  const own = new Set((site.joins || []).map((j) => j.id)), rest = (site.servers || []).filter((x) => !own.has(x.id));
+  const main = rest.length === 1 ? rest[0] : null;
   return `<section class="hp-join glass"><h2>Join the server${others.length + (rows.length ? 1 : 0) > 1 ? "s" : ""}</h2>
-    ${rows.length ? rowsHtml(rows) : ""}${others.join("")}
+    ${rows.length ? `${others.length && main ? `<h3 class="hp-join-main">${esc(main.name)}</h3>` : ""}${statusLine(main)}${rowsHtml(rows)}` : ""}${others.join("")}
     ${site.join_requests ? `<div class="hp-ask-cta"><a class="btn primary hp-ask-btn" href="/guides/join#ask">🙋 Ask to join</a>
       <span class="muted">New here? The server only lets in people on its list. Ask, and an admin will add you.</span></div>` : ""}
     <p class="muted"><a href="/guides/join">Step-by-step guide</a>${site.signup ? ' · <a href="/guides/account">Make an account on this website</a>' : ""}${site.discord ? ` · Questions? <a href="${esc(site.discord)}" target="_blank" rel="noopener">Join us on Discord</a>` : ""}</p></section>`;

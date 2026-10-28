@@ -151,3 +151,37 @@ def test_a_second_server_with_its_own_way_in(client, anon, sid):
         assert not [x for x in anon.get("/api/public/site").json()["joins"] if x["id"] == sid]     # private: never public
     finally:
         client.put(f"/api/servers/{sid}/settings", json={"join_address": "", "join_note": "", "private": ""})
+
+
+def test_join_box_mods_and_status(client, anon, sid):
+    try:
+        client.put(f"/api/servers/{sid}/settings", json={"join_address": "mods.example.net", "join_mods": True})
+        s = anon.get("/api/public/site").json()
+        j = next(x for x in s["joins"] if x["id"] == sid)
+        assert j["mods"] is not None and "loader" in j["mods"] and isinstance(j["mods"]["list"], list)
+        client.put(f"/api/servers/{sid}/settings", json={"join_mods": False})
+        assert next(x for x in anon.get("/api/public/site").json()["joins"] if x["id"] == sid)["mods"] is None
+        if s["servers"]:
+            assert {"started", "tps", "running", "online", "max"} <= set(s["servers"][0])
+    finally:
+        client.put(f"/api/servers/{sid}/settings", json={"join_address": "", "join_mods": False})
+
+
+def test_asking_for_some_servers(client, anon, monkeypatch, sid):
+    from app import main, notify, signup
+
+    async def fake_send(*a, **k):
+        return []
+    monkeypatch.setattr(notify, "send", fake_send)
+    signup._sent.clear()
+    client.put("/api/settings/site", json={"join_requests": True})
+    try:
+        assert anon.get("/api/public/site").json()["ask_servers"][0]["id"] == sid
+        r = anon.post("/api/public/join-request", json={"player": "Picky_Kid", "servers": [sid, "not-a-server"]}).json()
+        assert next(x for x in main.site.join_requests() if x["player"] == "Picky_Kid")["servers"] == [sid]
+        assert [x["player"] for x in client.get(f"/api/servers/{sid}/control").json()["asked"]].count("Picky_Kid") == 1
+        assert r["token"]
+    finally:
+        client.put("/api/settings/site", json={"join_requests": False})
+        main.settings_store.save_section("join_requests", [])
+        signup._sent.clear()
