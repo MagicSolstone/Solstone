@@ -705,7 +705,8 @@ async def join_request(request: Request):
     site.add_join_request(player, name, note, hashlib.sha256(token.encode()).hexdigest(), picked)
     where = ", ".join(public[x].display_name for x in picked)
     msg = f"{player} would like to join {where}" + (f" ({name})" if name else "") + (f": {note}" if note else "")
-    await notify.send("Asking to join", msg + "\nLet them in from Control → Whitelist.", "wave")
+    await notify.send("Asking to join", msg + "\nTap to let them in (Manage → Whitelist).", "wave",
+                      click=f"{_public_base(request)}/app#/manage/whitelist")
     return {"ok": True, "token": token, "player": player,
             "message": "Thanks! The admins have your request. This page shows here when you've been let in."}
 
@@ -1868,6 +1869,33 @@ def _turned_away(srv: S.Server, days: int = 14) -> list[dict]:
         if n and n.lower() not in seen and n.lower() not in listed and n.lower().lstrip(".") not in listed:
             seen[n.lower()] = {"name": n, "ts": e["ts"], "bedrock": mcname.is_bedrock(n)}
     return list(seen.values())
+
+
+@app.get("/api/whitelist")
+async def whitelist_overview(request: Request):
+    """Manage → Whitelist: everyone who asked to join (with each server they asked for, in or not yet), everyone the
+    whitelist turned away lately, and each server's list, all in one place."""
+    auth.require_admin(request)
+    await S.registry.refresh()
+    servers = [s for s in S.registry.servers.values() if s.is_java and not s.settings.get("hidden")]
+    by_id = {s.id: s for s in servers}
+    out_servers = [{"id": s.id, "name": s.display_name, "private": _private(s), "enabled": s.props.get("white-list", "false") == "true",
+                    "whitelist": control.whitelist_names(s)} for s in servers]
+    reqs = []
+    for r in site.join_requests()[::-1]:
+        want = [x for x in (r.get("servers") or list(by_id)) if x in by_id]
+        each = [{"id": x, "name": by_id[x].display_name,
+                 "in": x in (r.get("done") or []) or S.whitelisted(by_id[x], None, r["player"])} for x in want]
+        if each and all(e["in"] for e in each):
+            continue                                  # done everywhere: their own page says so
+        reqs.append({**{k: r.get(k) for k in ("player", "name", "note", "ts")}, "bedrock": mcname.is_bedrock(r["player"]), "servers": each})
+    blocked: dict[str, dict] = {}
+    for s in servers:
+        for b in _turned_away(s):
+            e = blocked.setdefault(b["name"].lower(), {"name": b["name"], "bedrock": b["bedrock"], "ts": b["ts"], "servers": []})
+            e["ts"] = max(e["ts"], b["ts"])
+            e["servers"].append({"id": s.id, "name": s.display_name})
+    return {"servers": out_servers, "requests": reqs, "blocked": sorted(blocked.values(), key=lambda b: -b["ts"])}
 
 
 @app.get("/api/servers/{sid}/events")

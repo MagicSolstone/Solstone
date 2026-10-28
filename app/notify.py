@@ -144,7 +144,8 @@ def _in_quiet_hours(c: dict) -> bool:
     return (s <= now < e) if s <= e else (now >= s or now < e)
 
 
-async def send(title: str, message: str, tag: str = "video_game", force: bool = False, sid: str | None = None) -> list[str]:
+async def send(title: str, message: str, tag: str = "video_game", force: bool = False, sid: str | None = None,
+               click: str | None = None) -> list[str]:
     """Send to every configured channel. Returns error strings (empty = all good). sid: the server it's about,
     for that server's own quiet hours (or none at all, if it's switched off)."""
     c = get_config()
@@ -156,12 +157,14 @@ async def send(title: str, message: str, tag: str = "video_game", force: bool = 
         jobs = []
         if c["ntfy_url"]:
             headers = {"Title": title.encode("utf-8"), "Tags": tag}
+            if click:                                      # tapping the notification opens this page
+                headers["Click"] = click
             if c["ntfy_token"]:
                 headers["Authorization"] = f"Bearer {c['ntfy_token']}"
             jobs.append(("ntfy", client.post(c["ntfy_url"], content=message.encode("utf-8"), headers=headers)))
         if c["discord_webhook"]:
             jobs.append(("Discord", client.post(c["discord_webhook"], json={"username": "Solstone",
-                                                                             "content": f"**{title}**\n{message}"})))
+                                                                             "content": f"**{title}**\n{message}" + (f"\n{click}" if click else "")})))
         if not jobs:
             return ["No notification channel is set up"]
         results = await asyncio.gather(*(j for _, j in jobs), return_exceptions=True)
@@ -181,8 +184,10 @@ def maybe_notify(etype: str, server_name: str, message: str, sid: str | None = N
     rules = for_server(c, sid)
     if rules is None or etype not in rules["events"] or not (c["ntfy_url"] or c["discord_webhook"]):
         return
+    from .config import config
+    click = f"{config.public_url}/app#/manage/whitelist" if etype == "blocked" and config.public_url else None
     try:
-        asyncio.get_running_loop().create_task(send(server_name, message, TAGS.get(etype, "video_game"), sid=sid))
+        asyncio.get_running_loop().create_task(send(server_name, message, TAGS.get(etype, "video_game"), sid=sid, click=click))
     except RuntimeError:
         pass
 

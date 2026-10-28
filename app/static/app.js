@@ -1426,6 +1426,7 @@ async function route() {
       const tab = parts[1] || "announcements";
       if (tab === "announcements") await viewAnnouncements();
       else if (tab === "website") await viewWebsite();
+      else if (tab === "whitelist") await viewWhitelist();
       else await viewAdmin(tab);
       return;
     }

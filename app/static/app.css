@@ -1860,3 +1860,14 @@ a.glance-me:hover { border-color: var(--gold); }
 .ws-color input[type=color] { width: 34px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
 .ws-site .ws-join-head label.ws-color, .ws-site .ws-join-head label.check { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; margin: 0; }
 .ws-site .ws-join-head label.ws-color { margin-left: auto; }
+
+/* Manage → Whitelist */
+.wl-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.wl-req { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; }
+.wl-who { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wl-who .ta-name { font-size: 1rem; font-weight: 700; }
+.wl-servers { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wl-in { font-size: .9rem; color: var(--ok, #7bd88f); padding: 4px 8px; border: 1px solid var(--line); border-radius: 999px; }
+.wl-add { flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+.wl-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.wl-grid h3 { margin: 0 0 4px; }

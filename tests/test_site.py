@@ -70,8 +70,8 @@ def test_ask_to_join(client, anon, monkeypatch):
     from app import main, notify, signup
     sent = []
 
-    async def fake_send(title, message, tag="video_game", force=False, sid=None):
-        sent.append((title, message))
+    async def fake_send(title, message, tag="video_game", force=False, sid=None, click=None):
+        sent.append((title, message, click))
         return []
     monkeypatch.setattr(notify, "send", fake_send)
     signup._sent.clear()
@@ -81,6 +81,7 @@ def test_ask_to_join(client, anon, monkeypatch):
         r = anon.post("/api/public/join-request", json={"player": "NewKid", "name": "Sam", "note": "Tyler's cousin"})
         assert r.status_code == 200
         assert sent and "NewKid" in sent[-1][1] and "Sam" in sent[-1][1] and "Tyler's cousin" in sent[-1][1]
+        assert sent[-1][2].endswith("/app#/manage/whitelist")                                   # tap → straight there
         assert anon.post("/api/public/join-request", json={"player": "Cool Kid 7", "edition": "bedrock"}).status_code == 200
         assert any(r["player"] == ".Cool_Kid_7" for r in main.site.join_requests())       # their name on the server
         assert anon.post("/api/public/join-request", json={"player": "Has Space"}).status_code == 400   # Java names have none
@@ -222,3 +223,28 @@ def test_main_server_first_with_its_colour(client, anon, sid):
     finally:
         client.put(f"/api/servers/{sid}/settings", json={"join_address": "", "join_color": ""})
         client.put("/api/settings/site", json={"main_server": "", "join_requests": False})
+
+
+def test_whitelist_page_across_servers(client, anon, viewer, monkeypatch, sid):
+    from app import main, notify, signup
+
+    async def fake_send(*a, **k):
+        return []
+    monkeypatch.setattr(notify, "send", fake_send)
+    signup._sent.clear()
+    client.put("/api/settings/site", json={"join_requests": True})
+    try:
+        anon.post("/api/public/join-request", json={"player": "Both_Kid", "servers": [sid]})
+        assert anon.get("/api/whitelist").status_code in (401, 403)
+        assert viewer.get("/api/whitelist").status_code == 403                  # admins only
+        d = client.get("/api/whitelist").json()
+        assert any(s["id"] == sid for s in d["servers"]) and all("whitelist" in s for s in d["servers"])
+        r = next(x for x in d["requests"] if x["player"] == "Both_Kid")
+        assert [(x["id"], x["in"]) for x in r["servers"]] == [(sid, False)]
+        main.site.mark_let_in("Both_Kid", sid)
+        assert not any(x["player"] == "Both_Kid" for x in client.get("/api/whitelist").json()["requests"])   # done everywhere
+    finally:
+        client.put("/api/settings/site", json={"join_requests": False})
+        main.settings_store.save_section("join_requests", [])
+        main.settings_store.save_section("join_let_in", [])
+        signup._sent.clear()

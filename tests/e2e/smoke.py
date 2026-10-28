@@ -142,7 +142,7 @@ def main() -> int:
                 "leaderboards": f"#/s/{sid}/leaderboards", "fishing": f"#/s/{sid}/fishing", "fishing-player": f"#/s/{sid}/fishing/Tyler", "mods": f"#/s/{sid}/mods", "adventures": f"#/s/{sid}/adventures", "events": "#/events",
                 "fireworks-editor": "#/fireworks", "fireworks-settings": "#/fireworks/show",
                 "announcements": "#/manage/announcements", "admin": "#/manage/users", "manage-servers": "#/manage/servers",
-                "manage-activity": "#/manage/activity", "website": "#/manage/website",
+                "manage-activity": "#/manage/activity", "manage-whitelist": "#/manage/whitelist", "website": "#/manage/website",
             }
             pg.goto(f"{base}/app"); pg.wait_for_timeout(1200)
             for name, hash_ in routes.items():
@@ -316,6 +316,13 @@ def main() -> int:
                     problems.append("control: someone who asked to join isn't listed")
                 pg.locator(".turned-away.asked").scroll_into_view_if_needed() if pg.locator(".turned-away.asked").count() else None
                 check(pg, "control-asked")
+                pg.goto(f"{base}/app#/manage/whitelist"); pg.wait_for_timeout(1500)
+                if not pg.locator('.wl-req [data-let="Smoke_Kid"]').count():
+                    problems.append("whitelist page: someone who asked to join has no Let in button")
+                if not pg.locator(".wl-grid .panel").count():
+                    problems.append("whitelist page: no list for each server")
+                check(pg, "manage-whitelist-asked")
+                pg.goto(f"{base}/app#/s/{sid}/control"); pg.wait_for_timeout(1500)
                 anon.goto(f"{base}/"); anon.wait_for_timeout(1200)
                 if "waiting" not in (anon.locator("#ask-status").get_attribute("class") or ""):
                     problems.append("home: someone who asked doesn't see their request waiting")

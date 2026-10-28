@@ -566,3 +566,72 @@ function wireFireworksSettings(el, fw) {
     }
   });
 }
+
+// ================================================================ Manage → Whitelist
+// Everyone who asked to join (each server they asked for, in or not), everyone the whitelist turned away, and each
+// server's list, across all servers. Letting someone in runs the game's own whitelist command on that server.
+async function viewWhitelist() {
+  if (!isAdmin()) { location.replace("#/"); return; }
+  curSid = null;
+  document.title = `Whitelist · ${SITE_NAME}`;
+  fillServersMenu(state.servers, null);
+  const d = await api("/api/whitelist");
+  const ago = (ts) => esc(fmtAgo(ts));
+  const pill = (sid, name, inOk, player) => inOk
+    ? `<span class="wl-in">✅ ${esc(name)}</span>`
+    : `<button class="btn sm primary" type="button" data-let="${esc(player)}" data-sid="${esc(sid)}">Let in on ${esc(name)}</button>`;
+  const reqHtml = d.requests.length ? d.requests.map((r) => {
+    const waiting = r.servers.filter((x) => !x.in);
+    return `<li class="wl-req"><div class="wl-who"><code class="ta-name">${esc(r.player)}</code>${r.bedrock ? ' <span class="chip">Bedrock</span>' : ""}
+        ${r.name ? `<span>${esc(r.name)}</span>` : ""}<span class="muted small">${ago(r.ts)}</span>
+        <button class="btn sm" type="button" data-copy-name="${esc(r.player)}">Copy</button></div>
+      ${r.note ? `<p class="ta-note">“${esc(r.note)}”</p>` : ""}
+      <div class="wl-servers">${r.servers.map((x) => pill(x.id, x.name, x.in, r.player)).join("")}
+        ${waiting.length > 1 ? `<button class="btn sm" type="button" data-let-all="${esc(r.player)}" data-sids="${esc(waiting.map((x) => x.id).join(","))}">Let in on all ${waiting.length}</button>` : ""}</div></li>`;
+  }).join("") : "";
+  const blockedHtml = d.blocked.length ? d.blocked.map((b) => `<li class="wl-req"><div class="wl-who"><code class="ta-name">${esc(b.name)}</code>${b.bedrock ? ' <span class="chip">Bedrock</span>' : ""}
+      <span class="muted small">turned away ${ago(b.ts)}</span><button class="btn sm" type="button" data-copy-name="${esc(b.name)}">Copy</button></div>
+      <div class="wl-servers">${b.servers.map((x) => pill(x.id, x.name, false, b.name)).join("")}</div></li>`).join("") : "";
+  setView(`<div class="fwe-head"><h1>Whitelist</h1>
+      <p class="muted">Who's asked to join, who the whitelist turned away, and who's on each server's list. A player's account gets every server they're on the whitelist of.</p></div>
+    <section class="section"><div class="section-head"><h2>Asked to join</h2><span class="muted">${d.requests.length || "Nobody"} waiting</span></div>
+      ${reqHtml ? `<ul class="wl-list">${reqHtml}</ul>` : `<div class="panel"><p class="muted">No requests waiting. With <i>Ask to join</i> on (Website → Join and account guides), they show here, and you get a notification.</p></div>`}</section>
+    ${blockedHtml ? `<section class="section"><div class="section-head"><h2>Tried to join</h2><span class="muted">Turned away in the last two weeks</span></div><ul class="wl-list">${blockedHtml}</ul></section>` : ""}
+    <section class="section"><div class="section-head"><h2>Each server's list</h2></div>
+      <form class="panel btn-row wl-add" id="wl-add"><input class="input sm" name="name" placeholder="Name (.Name for Bedrock)" pattern="\\.?[A-Za-z0-9_]{1,16}" required>
+        ${d.servers.map((s, i) => `<label class="check"><input type="checkbox" name="sid" value="${esc(s.id)}" ${i === 0 ? "checked" : ""}> ${esc(s.name)}</label>`).join("")}
+        <button class="btn sm primary" type="submit">Add</button></form>
+      <div class="wl-grid">${d.servers.map((s) => `<div class="panel"><h3>${esc(s.name)}${s.private ? ' <span class="chip">Private</span>' : ""}</h3>
+        <p class="muted small">The whitelist is <b>${s.enabled ? "on" : "off"}</b>${s.enabled ? "" : ": anyone with the address can join"}.</p>
+        <div class="chips">${s.whitelist.length ? s.whitelist.map((n) => `<span class="chip">${esc(n)}<button class="chip-x" type="button" data-unlist="${esc(n)}" data-sid="${esc(s.id)}" aria-label="Remove ${esc(n)}">×</button></span>`).join("") : '<span class="muted">Nobody yet</span>'}</div></div>`).join("")}</div></section>`);
+  const letIn = async (name, sid) => {
+    try { await post(`/api/servers/${encodeURIComponent(sid)}/control/player/${encodeURIComponent(name)}/whitelist_add`, {}); return true; }
+    catch (err) { showError(`${esc(d.servers.find((x) => x.id === sid)?.name || sid)}: ${esc(err.message)}`, 7000); return false; }
+  };
+  view().addEventListener("click", async (e) => {
+    const copy = e.target.closest("[data-copy-name]"), one = e.target.closest("[data-let]"), all = e.target.closest("[data-let-all]"), un = e.target.closest("[data-unlist]");
+    if (copy) { navigator.clipboard?.writeText(copy.dataset.copyName).then(() => showToast("Copied", 1500), () => showToast(esc(copy.dataset.copyName), 4000)); return; }
+    if (one) { one.disabled = true; if (await letIn(one.dataset.let, one.dataset.sid)) { showToast(`${esc(one.dataset.let)} can join now`, 2500); viewWhitelist(); } else one.disabled = false; return; }
+    if (all) {
+      all.disabled = true;
+      let ok = 0;
+      for (const sid of all.dataset.sids.split(",")) ok += await letIn(all.dataset.letAll, sid) ? 1 : 0;
+      if (ok) showToast(`${esc(all.dataset.letAll)} let in on ${ok} server${ok === 1 ? "" : "s"}`, 3000);
+      viewWhitelist(); return;
+    }
+    if (un && await confirmBox(`Take ${un.dataset.unlist} off the whitelist?`, "They won't be able to join that server.", "Remove")) {
+      try { await post(`/api/servers/${encodeURIComponent(un.dataset.sid)}/control/player/${encodeURIComponent(un.dataset.unlist)}/whitelist_remove`, {}); showToast("Removed", 2000); }
+      catch (err) { showError(esc(err.message), 6000); }
+      viewWhitelist();
+    }
+  });
+  $("#wl-add").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target), name = f.get("name"), sids = f.getAll("sid");
+    if (!sids.length) { showError("Pick at least one server", 3000); return; }
+    let ok = 0;
+    for (const sid of sids) ok += await letIn(name, sid) ? 1 : 0;
+    if (ok) showToast(`${esc(name)} added to ${ok} server${ok === 1 ? "" : "s"}`, 3000);
+    viewWhitelist();
+  });
+}

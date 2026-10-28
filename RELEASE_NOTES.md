@@ -1,5 +1,8 @@
 # Solstone 1.8.2
 
+- **✅ Manage → Whitelist, all servers on one page:** everyone who asked to join, with a **Let in on …** button for each server they asked for (✅ once they're in) and **Let in on all**; everyone the whitelist turned away lately, by server; and each server's whitelist, with × to take someone off and a box to add a name to one or more servers at once.
+- **Tap the notification, land on the whitelist:** the *Asking to join* and *Turned away* notifications (ntfy, and a link in Discord) open Manage → Whitelist. For the turned-away one, set the public address (`PUBLIC_URL`).
+
 - **No more "access other devices on your local network" prompt:** a web map (BlueMap) set to a home-network address (like `http://192.168.1.10:8100`) was loaded by the home page and the World tab even when its screen wasn't open, and a public website reaching into your home network is what that prompt asks about. Now the map's frame is only made when you open it, and from outside your home a home-network map shows a note (with a link) instead of trying. To show it to everyone, give the map a public address (a Cloudflare tunnel to it, for example).
 - **Where everyone is only on your own servers:** a Player who can see the map, but whose login doesn't have a server, no longer gets that server's *Where everyone is* screen (or anyone's position on it) on the home page.
 
