@@ -18,7 +18,7 @@ DEFAULTS = {"name": "Solstone", "tagline": "", "java_address": "", "bedrock_addr
             "discord": "", "about": "", "home_live": True, "signup": False,
             # the two built-in guides, in the admin's own words (empty: Solstone's wording); {java_address} and the
             # like are filled in from the details above, so the guides stay right when an address or port changes
-            "guide_join": "", "guide_account": "",
+            "guide_join": "", "guide_account": "", "guide_rules": "",
             "join_requests": False,       # an "Ask to join" form on the join guide, sent to the admins' notifications
             "main_server": ""}            # shown first everywhere (home page, Ask to join), starred; its addresses feed the join guide
 GUIDE_MAX = 8000
@@ -128,7 +128,7 @@ def clean_config(body: dict) -> dict:
             out[k] = _line(body[k], 80 if k != "tagline" else 160)
     if "about" in body:
         out["about"] = str(body["about"] or "")[:4000]
-    for k in ("guide_join", "guide_account"):
+    for k in ("guide_join", "guide_account", "guide_rules"):
         if k in body:
             out[k] = str(body[k] or "").replace("\r", "")[:GUIDE_MAX].strip()
     if "discord" in body:

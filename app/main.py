@@ -19,7 +19,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, races, fireworks, fwshow, guard, notify, recap, selfcheck, signup, site, skins, tide, upcoming, worldmap
+from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, races, fireworks, fwshow, guard, notify, recap, selfcheck, signup, site, skins, tide, upcoming, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -31,7 +31,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.8.2"
+VERSION = "1.8.3"
 
 
 @asynccontextmanager
@@ -686,6 +686,8 @@ async def join_request(request: Request):
     player = " ".join(str(body.get("player") or "").split())
     name = " ".join(str(body.get("name") or "").split())[:40]
     note = str(body.get("note") or "").strip()[:300]
+    if not body.get("rules"):
+        raise HTTPException(400, "Read the rules, then tick the box to say you will follow them")
     if not _ASK_NAME.match(player):
         raise HTTPException(400, "Type your Minecraft name (or Xbox gamertag) as it shows in the game")
     if body.get("edition") == "bedrock":         # their name on the server: Floodgate's dot, spaces as underscores
@@ -1818,6 +1820,11 @@ async def put_settings(sid: str, request: Request):
     for k, n in (("join_address", 80), ("join_bedrock_address", 80), ("join_note", 300)):
         if k in body:
             body[k] = " ".join(str(body[k] or "").split())[:n]
+    if "welcome" in body:                    # the message when someone joins (welcome.py)
+        body["welcome"] = welcome.clean(body["welcome"])
+        settings_store.save_section("welcome_site", _public_base(request))      # for {rules} and {site} in the game
+    if "welcome_when" in body:
+        body["welcome_when"] = body["welcome_when"] if body["welcome_when"] in welcome.WHEN else "off"
     if "join_bedrock_port" in body:
         try:
             body["join_bedrock_port"] = max(1, min(65535, int(body["join_bedrock_port"]))) if body["join_bedrock_port"] not in ("", None) else ""
@@ -1829,6 +1836,23 @@ async def put_settings(sid: str, request: Request):
     safe = {k: v for k, v in saved.items() if k != "rcon_password"}
     safe["rcon_password_set"] = "rcon_password" in saved
     return safe
+
+
+@app.post("/api/servers/{sid}/welcome/try")
+async def try_welcome(sid: str, request: Request):
+    """Send a welcome message (as typed, saved or not) to one player who's on now, to see how it looks."""
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    body = await _body(request)
+    player, text = str(body.get("player") or ""), welcome.clean(body.get("text") or "")
+    if not text:
+        raise HTTPException(400, "Type a message first")
+    if not mcname.is_name(player) or player.lower() not in {n.lower() for n in (await S.online_players(srv))[0]}:
+        raise HTTPException(400, "Pick someone who's on the server now")
+    for cmd in welcome.commands(player, welcome.fill(text, player, srv.display_name)):
+        await control.run(srv, cmd)
+    auth.audit(user, srv.id, "welcome", f"tried on {player}")
+    return {"ok": True}
 
 
 @app.get("/api/servers/{sid}/settings")

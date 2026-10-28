@@ -307,6 +307,7 @@ def main() -> int:
                 problems.append("join guide: no Ask to join form (or link to it) with it turned on")
             else:
                 anon.fill("#ask-form [name=player]", "Smoke_Kid"); anon.fill("#ask-form [name=note]", "Tyler's friend")
+                anon.check("#ask-form [name=rules]")
                 anon.click("#ask-form button[type=submit]"); anon.wait_for_timeout(800)
                 if not anon.locator(".hp-ask-done").count():
                     problems.append("join guide: asking to join didn't go through")
@@ -378,6 +379,26 @@ def main() -> int:
             if "Hello from Smoke SMP, port 19132." not in (anon.locator(".hp-body").text_content() or ""):
                 problems.append("account guide: the admin's own wording wasn't used or filled in")
             pg.request.put(f"{base}/api/settings/site", data={"guide_account": ""}, headers=H)
+            # the rules page, and a welcome message in the game
+            anon.goto(f"{base}/guides/rules"); anon.wait_for_timeout(900)
+            if "Leave other people's things alone" not in (anon.locator(".hp-body").text_content() or ""):
+                problems.append("rules: the rules page doesn't show Solstone's rules")
+            check(anon, "site-rules")
+            pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(1000)
+            pg.click('.fws-tabs [data-tab="welcome"]'); pg.wait_for_timeout(1200)
+            wel = pg.locator(".ws-wel").first
+            if not wel.count():
+                problems.append("website: no welcome message for a server")
+            else:
+                wel.locator("[data-start]").click(); pg.wait_for_timeout(200)
+                wel.locator('.wel-col[data-code="&c"]').click(); pg.keyboard.type("red bit"); pg.wait_for_timeout(200)
+                if "color:#ff5555" not in (wel.locator(".wel-preview").inner_html() or "") or "Steve" not in (wel.locator(".wel-preview").text_content() or ""):
+                    problems.append("website: the welcome preview doesn't show colours or fill in {player}")
+                wel.locator("button[type=submit]").click(); pg.wait_for_timeout(600)
+                saved = pg.request.get(f"{base}/api/servers/{sid}/settings", headers=H).json()
+                if saved.get("welcome_when") != "first" or "&cred bit" not in (saved.get("welcome") or ""):
+                    problems.append("website: the welcome message didn't save")
+                check(pg, "website-welcome")
             # sign-up from the sign-in page, and what a player account sees
             pg.request.put(f"{base}/api/settings/site", data={"signup": True}, headers=H)
             anon.goto(f"{base}/app"); anon.wait_for_timeout(1500)

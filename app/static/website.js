@@ -18,7 +18,8 @@ async function viewWebsite() {
     <nav class="fwe-tabs fws-tabs" role="tablist" aria-label="Website">
       <button type="button" role="tab" data-tab="posts" aria-selected="${ws.tab === "posts"}">Posts</button>
       <button type="button" role="tab" data-tab="site" aria-selected="${ws.tab === "site"}">Site details</button>
-      <button type="button" role="tab" data-tab="guides" aria-selected="${ws.tab === "guides"}">Join and account guides</button></nav>
+      <button type="button" role="tab" data-tab="guides" aria-selected="${ws.tab === "guides"}">Rules and guides</button>
+      <button type="button" role="tab" data-tab="welcome" aria-selected="${ws.tab === "welcome"}">Welcome in the game</button></nav>
     <div id="ws-body"></div>`);
   $$(".fws-tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
     ws.tab = b.dataset.tab; ws.editing = null;
@@ -30,7 +31,7 @@ async function viewWebsite() {
 function renderWebsite() {
   const el = $("#ws-body");
   if (!el) return;
-  if (ws.tab === "site") wsSite(el); else if (ws.tab === "guides") wsGuides(el); else wsPosts(el);
+  if (ws.tab === "site") wsSite(el); else if (ws.tab === "guides") wsGuides(el); else if (ws.tab === "welcome") wsWelcome(el); else wsPosts(el);
 }
 
 // ---------------------------------------------------------------- posts
@@ -190,7 +191,7 @@ function wsSite(el) {
   });
 }
 
-// ---------------------------------------------------------------- the two built-in guides, in your own words
+// ---------------------------------------------------------------- the built-in guides and the rules, in your own words
 function wsGuides(el) {
   const s = ws.data.site;
   const box = (key) => `<section class="panel ws-guide" data-guide="${key}"><div class="section-head"><h2>${esc(GUIDES[key].title)}</h2>
@@ -203,7 +204,7 @@ function wsGuides(el) {
     <section class="panel"><label class="switch-row"><span><b>An “Ask to join” form on the join guide</b><br><small class="muted">Anyone can send their name in the game (and, if they like, their first name and a note). You get a notification, and they show in a server's Control → Whitelist, ready to let in. ${ws.data.notify_ready === false ? "<b>Set up notifications first (Manage → Notifications)</b>, or the messages only show in Control." : ""}</small></span>
       <input type="checkbox" role="switch" name="join_requests" ${s.join_requests ? "checked" : ""}></label></section>
     <p class="muted small">Same formatting as posts. These fill themselves in from Site details: ${GUIDE_PLACEHOLDERS.map(([k, l]) => `<code>{${k}}</code> ${esc(l.toLowerCase())}`).join(", ")}.</p>
-    ${box("join")}${box("account")}
+    ${box("rules")}${box("join")}${box("account")}
     <div class="actions"><button class="btn primary" type="submit">Save guides</button></div></form>`;
   $$(".ws-guide").forEach((sec) => {
     const key = sec.dataset.guide, ta = $("[data-guide-text]", sec);
@@ -217,4 +218,90 @@ function wsGuides(el) {
     try { ws.data.site = await post("/api/settings/site", body, "PUT"); showToast("Guides saved", 2000); renderWebsite(); }
     catch (err) { showError(esc(err.message), 5000); }
   });
+}
+
+// ---------------------------------------------------------------- a welcome message in the game's chat when someone joins
+// Each server's own message (welcome.py sends it): & colour codes, {player} and the like, and web addresses
+// that can be clicked on Java. The preview below shows it as the game will.
+const WELCOME_COLOURS = [["0", "#000000", "Black"], ["1", "#0000aa", "Dark blue"], ["2", "#00aa00", "Dark green"], ["3", "#00aaaa", "Dark aqua"],
+  ["4", "#aa0000", "Dark red"], ["5", "#aa00aa", "Purple"], ["6", "#ffaa00", "Gold"], ["7", "#aaaaaa", "Grey"], ["8", "#555555", "Dark grey"],
+  ["9", "#5555ff", "Blue"], ["a", "#55ff55", "Green"], ["b", "#55ffff", "Aqua"], ["c", "#ff5555", "Red"], ["d", "#ff55ff", "Pink"],
+  ["e", "#ffff55", "Yellow"], ["f", "#ffffff", "White"]];
+const WELCOME_STYLES = [["l", "B", "Bold"], ["o", "I", "Italic"], ["n", "U", "Underline"], ["r", "↺", "Back to plain"]];
+const WELCOME_FIELDS = [["player", "Their name"], ["server", "The server's name"], ["rules", "The rules page"], ["site", "The website"]];
+const WELCOME_START = "&6&lWelcome to {server}, {player}!&r\n&7Please read the rules: &b{rules}\n&aHave fun, and be kind!";
+
+function welcomePreview(text, sid) {
+  const srv = (state.servers || []).find((x) => x.id === sid);
+  const base = location.origin;
+  const vals = { player: "Steve", server: srv?.name || "the server", site: base, rules: `${base}/guides/rules` };
+  const filled = text.replace(/\{(\w+)\}/g, (m, k) => (k.toLowerCase() in vals ? vals[k.toLowerCase()] : m));
+  const colour = Object.fromEntries(WELCOME_COLOURS.map(([c, hex]) => [c, hex]));
+  return filled.split("\n").map((line) => {
+    let st = {}, out = "";
+    const span = (t, extra = "") => {
+      if (!t) return;
+      const css = [st.c ? `color:${st.c}` : "", st.l ? "font-weight:700" : "", st.o ? "font-style:italic" : "",
+        st.n || extra ? "text-decoration:underline" : "", st.m ? "text-decoration:line-through" : ""].filter(Boolean).join(";");
+      out += `<span style="${css}${extra && !st.c ? ";color:#55ffff" : ""}">${esc(t)}</span>`;
+    };
+    const re = /&([0-9a-fklmnor])|(https?:\/\/[^\s<>"']+)/gi;
+    let pos = 0, m;
+    while ((m = re.exec(line))) {
+      span(line.slice(pos, m.index));
+      pos = re.lastIndex;
+      if (m[2]) { span(m[2], "link"); continue; }
+      const c = m[1].toLowerCase();
+      if (c === "r") st = {}; else if (colour[c]) st = { c: colour[c] }; else st = { ...st, [c]: true };
+    }
+    span(line.slice(pos));
+    return `<div>${out || "&nbsp;"}</div>`;
+  }).join("");
+}
+
+async function wsWelcome(el) {
+  const servers = (state.servers || []).filter((x) => x.type !== "bedrock");
+  if (!servers.length) { el.innerHTML = `<p class="muted">No Java servers yet.</p>`; return; }
+  el.innerHTML = `<div class="ws-welcome">
+    <p class="muted">A message in the game's chat, just for the player who joined: on their first time, or every time. Only they see it. Web addresses can be clicked on Java; Bedrock players see them written out.</p>
+    ${servers.map((x) => `<form class="panel ws-wel" data-sid="${esc(x.id)}"><div class="section-head"><h2>${esc(x.name)}</h2>
+        <select class="input sm" name="when"><option value="off">Off</option><option value="first">First time they join</option><option value="every">Every time they join</option></select></div>
+      <div class="wel-tools" role="toolbar" aria-label="Colours and styles">
+        ${WELCOME_COLOURS.map(([c, hex, l]) => `<button type="button" class="wel-col" data-code="&${c}" style="background:${hex}" title="${l}" aria-label="${l}"></button>`).join("")}
+        ${WELCOME_STYLES.map(([c, t, l]) => `<button type="button" class="btn sm wel-sty" data-code="&${c}" title="${l}" aria-label="${l}">${t}</button>`).join("")}</div>
+      <div class="wel-tools">${WELCOME_FIELDS.map(([k, l]) => `<button type="button" class="btn sm" data-code="{${k}}" title="${l}">{${k}}</button>`).join("")}</div>
+      <textarea class="input ws-text" name="text" rows="5" maxlength="800" placeholder="Welcome to the server, {player}!"></textarea>
+      <div class="wel-preview" aria-label="How it looks in the game"></div>
+      <p class="muted small">Up to 8 lines. Colours carry on until the next one, or <code>&amp;r</code>.</p>
+      <div class="btn-row"><button class="btn sm primary" type="submit">Save</button>
+        <button class="btn sm" type="button" data-start>Start from an example</button>
+        <span class="wel-try"><select class="input sm" name="try"></select><button class="btn sm" type="button" data-try>Send it to them now</button></span></div></form>`).join("")}</div>`;
+  for (const form of $$(".ws-wel", el)) {
+    const sid = form.dataset.sid, ta = form.text, pv = $(".wel-preview", form);
+    const cur = await api(`/api/servers/${encodeURIComponent(sid)}/settings`).catch(() => ({}));
+    form.when.value = cur.welcome_when || "off"; ta.value = cur.welcome || "";
+    const online = (state.servers.find((x) => x.id === sid)?.online) || [];
+    form.try.innerHTML = Array.isArray(online) && online.length ? online.map((n) => `<option>${esc(n)}</option>`).join("") : `<option value="">Nobody's on now</option>`;
+    const show = () => { pv.innerHTML = welcomePreview(ta.value, sid) || ""; pv.hidden = !ta.value.trim(); };
+    show();
+    ta.addEventListener("input", show);
+    form.addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-code]");
+      if (b) {
+        const a = ta.selectionStart ?? ta.value.length, z = ta.selectionEnd ?? a;
+        ta.setRangeText(b.dataset.code, a, z, "end"); ta.focus(); show(); return;
+      }
+      if (e.target.closest("[data-start]")) { if (!ta.value.trim() || confirm("Replace what's there with the example?")) { ta.value = WELCOME_START; if (form.when.value === "off") form.when.value = "first"; show(); } return; }
+      if (e.target.closest("[data-try]")) {
+        if (!form.try.value) { showError("Nobody's on that server right now", 3000); return; }
+        try { await post(`/api/servers/${encodeURIComponent(sid)}/welcome/try`, { player: form.try.value, text: ta.value }); showToast(`Sent to ${esc(form.try.value)}`, 2500); }
+        catch (err) { showError(esc(err.message), 6000); }
+      }
+    });
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try { await post(`/api/servers/${encodeURIComponent(sid)}/settings`, { welcome: ta.value, welcome_when: form.when.value }, "PUT"); showToast("Saved", 2000); }
+      catch (err) { showError(esc(err.message), 5000); }
+    });
+  }
 }

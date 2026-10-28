@@ -1,3 +1,9 @@
+# Solstone 1.8.3
+
+- **📜 Server rules:** a Rules page on the website (*Server rules*, under Help, and linked from the join guide), with family-friendly rules to start from: be kind, leave other people's builds and chests alone, no TNT or lava near anyone's builds, play fair, stay safe. Rewrite them in your own words in Website → **Rules and guides** (`{rules}` links to them from the other guides).
+- **Read the rules before asking to join:** the Ask to join form has a box to tick, *I've read the rules and I'll follow them*, with a link to them. It can't be sent without it.
+- **👋 A welcome message in the game:** Website → **Welcome in the game** has one message for each server, sent in chat only to the player who joined, on their first time or every time. Colour and style it with the buttons (the game's own `&` codes, like `&6` gold and `&l` bold), add `{player}`, `{server}`, `{rules}` or `{site}`, and web addresses become links Java players can click (Bedrock players see them written out). Up to 8 lines. The preview shows it as the game will, and **Send it to them now** tries it on someone who's on.
+
 # Solstone 1.8.2
 
 - **✅ Manage → Whitelist, all servers on one page:** everyone who asked to join, with a **Let in on …** button for each server they asked for (✅ once they're in) and **Let in on all**; everyone the whitelist turned away lately, by server; and each server's whitelist, with × to take someone off and a box to add a name to one or more servers at once.

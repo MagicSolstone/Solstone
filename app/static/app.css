@@ -1871,3 +1871,15 @@ a.glance-me:hover { border-color: var(--gold); }
 .wl-add { flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
 .wl-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
 .wl-grid h3 { margin: 0 0 4px; }
+
+/* Website → Welcome in the game */
+.ws-welcome { display: grid; gap: 14px; }
+.ws-wel { display: grid; gap: 10px; }
+.wel-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.wel-col { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; padding: 0; }
+.wel-col:hover, .wel-col:focus-visible { outline: 2px solid var(--accent, #ffd166); outline-offset: 1px; }
+.wel-sty { min-width: 32px; font-weight: 700; }
+.wel-preview { background: rgba(0, 0, 0, .72); color: #fff; font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; font-size: .92rem;
+  padding: 10px 12px; border-radius: 8px; line-height: 1.5; text-shadow: 2px 2px 0 rgba(0, 0, 0, .45); overflow-wrap: anywhere; }
+.wel-try { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.hp-ask-rules { margin: 4px 0 8px; }

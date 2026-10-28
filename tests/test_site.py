@@ -75,19 +75,19 @@ def test_ask_to_join(client, anon, monkeypatch):
         return []
     monkeypatch.setattr(notify, "send", fake_send)
     signup._sent.clear()
-    assert anon.post("/api/public/join-request", json={"player": "NewKid"}).status_code == 404       # off to start
+    assert anon.post("/api/public/join-request", json={"rules": True, "player": "NewKid"}).status_code == 404       # off to start
     client.put("/api/settings/site", json={"join_requests": True})
     try:
-        r = anon.post("/api/public/join-request", json={"player": "NewKid", "name": "Sam", "note": "Tyler's cousin"})
+        r = anon.post("/api/public/join-request", json={"rules": True, "player": "NewKid", "name": "Sam", "note": "Tyler's cousin"})
         assert r.status_code == 200
         assert sent and "NewKid" in sent[-1][1] and "Sam" in sent[-1][1] and "Tyler's cousin" in sent[-1][1]
         assert sent[-1][2].endswith("/app#/manage/whitelist")                                   # tap → straight there
-        assert anon.post("/api/public/join-request", json={"player": "Cool Kid 7", "edition": "bedrock"}).status_code == 200
+        assert anon.post("/api/public/join-request", json={"rules": True, "player": "Cool Kid 7", "edition": "bedrock"}).status_code == 200
         assert any(r["player"] == ".Cool_Kid_7" for r in main.site.join_requests())       # their name on the server
-        assert anon.post("/api/public/join-request", json={"player": "Has Space"}).status_code == 400   # Java names have none
-        assert anon.post("/api/public/join-request", json={"player": "x<script>"}).status_code == 400
-        assert anon.post("/api/public/join-request", json={"player": "Third"}).status_code == 200
-        assert anon.post("/api/public/join-request", json={"player": "Fourth"}).status_code == 429      # a few an hour
+        assert anon.post("/api/public/join-request", json={"rules": True, "player": "Has Space"}).status_code == 400   # Java names have none
+        assert anon.post("/api/public/join-request", json={"rules": True, "player": "x<script>"}).status_code == 400
+        assert anon.post("/api/public/join-request", json={"rules": True, "player": "Third"}).status_code == 200
+        assert anon.post("/api/public/join-request", json={"rules": True, "player": "Fourth"}).status_code == 429      # a few an hour
     finally:
         client.put("/api/settings/site", json={"join_requests": False})
         main.settings_store.save_section("join_requests", [])
@@ -103,7 +103,7 @@ def test_asking_shows_only_you_when_youre_in(client, anon, monkeypatch, sid):
     signup._sent.clear()
     client.put("/api/settings/site", json={"join_requests": True})
     try:
-        r = anon.post("/api/public/join-request", json={"player": "Ticket_Kid"}).json()
+        r = anon.post("/api/public/join-request", json={"rules": True, "player": "Ticket_Kid"}).json()
         st = lambda t: anon.post("/api/public/join-request/status", json={"token": t}).json()   # noqa: E731
         w = st(r["token"])
         assert w["state"] == "waiting" and w["player"] == "Ticket_Kid" and [s["in"] for s in w["servers"]] == [False]
@@ -178,7 +178,7 @@ def test_asking_for_some_servers(client, anon, monkeypatch, sid):
     client.put("/api/settings/site", json={"join_requests": True})
     try:
         assert anon.get("/api/public/site").json()["ask_servers"][0]["id"] == sid
-        r = anon.post("/api/public/join-request", json={"player": "Picky_Kid", "servers": [sid, "not-a-server"]}).json()
+        r = anon.post("/api/public/join-request", json={"rules": True, "player": "Picky_Kid", "servers": [sid, "not-a-server"]}).json()
         assert next(x for x in main.site.join_requests() if x["player"] == "Picky_Kid")["servers"] == [sid]
         assert [x["player"] for x in client.get(f"/api/servers/{sid}/control").json()["asked"]].count("Picky_Kid") == 1
         assert r["token"]
@@ -234,7 +234,7 @@ def test_whitelist_page_across_servers(client, anon, viewer, monkeypatch, sid):
     signup._sent.clear()
     client.put("/api/settings/site", json={"join_requests": True})
     try:
-        anon.post("/api/public/join-request", json={"player": "Both_Kid", "servers": [sid]})
+        anon.post("/api/public/join-request", json={"rules": True, "player": "Both_Kid", "servers": [sid]})
         assert anon.get("/api/whitelist").status_code in (401, 403)
         assert viewer.get("/api/whitelist").status_code == 403                  # admins only
         d = client.get("/api/whitelist").json()

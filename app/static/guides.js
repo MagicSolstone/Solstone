@@ -1,10 +1,11 @@
-/* Solstone — the two built-in guides: how to join the server, and making an account on the website. Admins can
-   rewrite either one (Website → Guides); {java_address} and the other {placeholders} are filled in from Site details,
+/* Solstone — the built-in guides: how to join the server, making an account on the website, and the rules. Admins can
+   rewrite each one (Website → Guides); {java_address} and the other {placeholders} are filled in from Site details,
    so the guides stay right when an address or a port changes. Shared by the home page and the Website editor. */
 "use strict";
 
 const GUIDE_PLACEHOLDERS = [["name", "The site's name"], ["java_address", "Java address"], ["bedrock_address", "Bedrock address"],
-  ["bedrock_port", "Bedrock port"], ["discord", "Discord invite link"], ["ask", "A link to the Ask to join form"]];
+  ["bedrock_port", "Bedrock port"], ["discord", "Discord invite link"], ["ask", "A link to the Ask to join form"],
+  ["rules", "A link to the rules"]];
 
 const GUIDES = {
   join: {
@@ -18,7 +19,7 @@ const GUIDES = {
       return `${s.name} is a Minecraft server you can join from Java Edition or Bedrock Edition. Everyone plays together in the same world.
 
 ## First: get on the list
-The server only lets in people on its list (the whitelist). ${ask}. On Bedrock that's your Xbox gamertag.
+The server only lets in people on its list (the whitelist). Read [the rules](/guides/rules) first. ${ask}. On Bedrock that's your Xbox gamertag.
 
 ## Java Edition (Windows, Mac, Linux)
 1. Open Minecraft: Java Edition and choose **Multiplayer**.
@@ -59,6 +60,33 @@ Good to know on Bedrock:
 - Forgot your password? Ask an admin to set a new one.
 - Never share your code or password. Admins will never ask for them.` : `Accounts on this website are made by an admin. Ask one for a login${s.discord ? ` on [Discord](${s.discord})` : ""}.`,
   },
+  rules: {
+    title: "Server rules",
+    excerpt: "Be kind, leave other people's builds alone, and play fair.",
+    body: (s) => `Everyone on ${s.name} plays in the same world, so these rules keep it fun for all of us.
+
+## Be kind
+- Be nice in chat. No mean words, no bullying, no spamming.
+- Help new players. Everyone was new once.
+
+## Leave other people's things alone
+- Don't break, change or take anything you didn't build, unless the owner says it's OK.
+- Don't open other people's chests without asking.
+- No TNT, lava or fire near anyone else's builds.
+- Build a little way away from other people, unless you're building together.
+
+## Play fair
+- No hacks, cheats, x-ray or mods that give you an advantage.
+- No attacking other players unless you've both agreed to a game.
+- Don't trap or trick people.
+
+## Stay safe
+- Never share your password, your address or other private things.
+- If something's wrong, or someone makes you feel bad, tell an admin or a grown-up.
+
+## If a rule gets broken
+Admins can usually see who changed what, and put it back. Breaking the rules can mean a warning, or losing your place on the server.`,
+  },
 };
 
 // The guide's text: the admin's own wording with the placeholders filled in, or Solstone's.
@@ -66,12 +94,12 @@ function guideText(key, site) {
   const own = site[`guide_${key}`];
   if (!own) return GUIDES[key].body(site);
   const vals = { name: site.name, java_address: site.java_address || "", bedrock_address: site.bedrock_address || site.java_address || "",
-    bedrock_port: site.bedrock_port, discord: site.discord || "", ask: "[Ask to join](#ask)" };
+    bedrock_port: site.bedrock_port, discord: site.discord || "", ask: "[Ask to join](#ask)", rules: "[the rules](/guides/rules)" };
   return own.replace(/\{(\w+)\}/g, (m, k) => (k in vals ? String(vals[k]) : m));
 }
 // Solstone's wording with {placeholders} left in: where an admin starts from when rewriting a guide.
 function guideTemplate(key, site) {
   const ph = Object.fromEntries(GUIDE_PLACEHOLDERS.map(([k]) => [k, `{${k}}`]));
   return GUIDES[key].body({ ...site, ...ph, bedrock_port: "{bedrock_port}", join_requests: site.join_requests })
-    .replace("[Ask to join](#ask) form", "{ask} form");
+    .replace("[Ask to join](#ask) form", "{ask} form").replace("[the rules](/guides/rules)", "{rules}");
 }

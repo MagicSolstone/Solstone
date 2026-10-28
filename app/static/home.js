@@ -271,6 +271,7 @@ function askFormHtml() {
       <label>Your name in the game <small>Exactly as it shows. On Bedrock that's your Xbox gamertag.</small><input class="input" name="player" required maxlength="20" autocapitalize="off"></label>
       <label>Your first name <small>Optional, so the admins know who you are</small><input class="input" name="name" maxlength="40"></label>
       <label>A note <small>Optional: who you know here, for example</small><textarea class="input" name="note" rows="3" maxlength="300"></textarea></label>
+      <label class="check hp-ask-rules"><input type="checkbox" name="rules" required> I've read <a href="/guides/rules" target="_blank" rel="noopener">the rules</a> and I'll follow them</label>
       <p class="login-error" role="alert"></p>
       <button class="btn primary" type="submit">Send</button></form></section>`;
 }
@@ -280,7 +281,7 @@ document.addEventListener("submit", async (e) => {
   const f = new FormData(e.target), err = $(".login-error", e.target);
   try {
     const r = await fetch("/api/public/join-request", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-Solstone": "1" },
-      body: JSON.stringify({ edition: f.get("edition"), player: f.get("player"), name: f.get("name"), note: f.get("note"), servers: f.getAll("servers") }) });
+      body: JSON.stringify({ edition: f.get("edition"), player: f.get("player"), name: f.get("name"), note: f.get("note"), servers: f.getAll("servers"), rules: !!f.get("rules") }) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || "That didn't send. Try again in a moment.");
     try { localStorage.setItem("solstone-ask", JSON.stringify({ token: d.token, player: d.player, at: Date.now() })); } catch { /* private window */ }
