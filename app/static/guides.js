@@ -4,7 +4,7 @@
 "use strict";
 
 const GUIDE_PLACEHOLDERS = [["name", "The site's name"], ["java_address", "Java address"], ["bedrock_address", "Bedrock address"],
-  ["bedrock_port", "Bedrock port"], ["discord", "Discord invite link"], ["ask", "A link to the Ask to join form"],
+  ["bedrock_port", "Bedrock port"], ["java_version", "The server's Minecraft version"], ["discord", "Discord invite link"], ["ask", "A link to the Ask to join form"],
   ["rules", "A link to the rules"]];
 
 const GUIDES = {
@@ -22,6 +22,7 @@ const GUIDES = {
 The server only lets in people on its list (the whitelist). Read [the rules](/guides/rules) first. ${ask}. On Bedrock that's your Xbox gamertag.
 
 ## Java Edition (Windows, Mac, Linux)
+You need Minecraft **${s.java_version || "the version shown on the home page"}**. If the launcher plays a newer one, pick this version in its **Installations** tab.
 1. Open Minecraft: Java Edition and choose **Multiplayer**.
 2. Choose **Add Server**. Give it any name, and type **${java}** as the Server Address.
 3. Choose **Done**, then pick the server and **Join Server**.
@@ -33,13 +34,14 @@ The server only lets in people on its list (the whitelist). Read [the rules](/gu
 4. Choose **Save**, then join it. You sign in with your Microsoft (Xbox) account as usual.
 
 Good to know on Bedrock:
+- Keep Minecraft up to date: the server follows the newest Bedrock version, so an up-to-date game always works.
 - Your name on the server starts with a dot, like *.Steve*. That's how the server tells Bedrock players apart, and it's the name to use on this website.
 - Xbox, PlayStation and Switch don't have **Add Server** for outside servers. A common way round it is *BedrockConnect*: search for it to find the steps for your console. Or join from a phone, tablet or Windows PC instead.
 
 ## It won't let me in
 - **"You are not white-listed"**: you're not on the list yet. ${ask}.
 - **Can't connect / timed out**: check the address${s.bedrock_address ? " and port" : ""} for typos, and that the server is running${s.live ? " ([see it live](/#live))" : ""}.
-- **Outdated client or server**: update Minecraft to the newest version.`;
+- **Outdated client or server**: on Java, play Minecraft ${s.java_version || "the version shown on the home page"} (not newer, not older). On Bedrock, update Minecraft.`;
     },
   },
   account: {
@@ -94,12 +96,12 @@ function guideText(key, site) {
   const own = site[`guide_${key}`];
   if (!own) return GUIDES[key].body(site);
   const vals = { name: site.name, java_address: site.java_address || "", bedrock_address: site.bedrock_address || site.java_address || "",
-    bedrock_port: site.bedrock_port, discord: site.discord || "", ask: "[Ask to join](#ask)", rules: "[the rules](/guides/rules)" };
+    bedrock_port: site.bedrock_port, java_version: site.java_version || "the version shown on the home page", discord: site.discord || "", ask: "[Ask to join](#ask)", rules: "[the rules](/guides/rules)" };
   return own.replace(/\{(\w+)\}/g, (m, k) => (k in vals ? String(vals[k]) : m));
 }
 // Solstone's wording with {placeholders} left in: where an admin starts from when rewriting a guide.
 function guideTemplate(key, site) {
   const ph = Object.fromEntries(GUIDE_PLACEHOLDERS.map(([k]) => [k, `{${k}}`]));
-  return GUIDES[key].body({ ...site, ...ph, bedrock_port: "{bedrock_port}", join_requests: site.join_requests })
+  return GUIDES[key].body({ ...site, ...ph, bedrock_port: "{bedrock_port}", java_version: "{java_version}", join_requests: site.join_requests })
     .replace("[Ask to join](#ask) form", "{ask} form").replace("[the rules](/guides/rules)", "{rules}");
 }

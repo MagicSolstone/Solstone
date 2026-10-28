@@ -583,10 +583,13 @@ async def public_site():
         joins.append({"id": srv.id, "name": srv.display_name, "java": java, "bedrock": bed, "bedrock_port": port or 19132,
                       "note": st.get("join_note") or "", "mods": _mods_for_players(srv) if st.get("join_mods") or modpack.get(srv.id)["public_download"] else None,
                       "status": status.get(srv.id), "main": srv.id == cfg.get("main_server"),
-                      "color": st.get("join_color") or ""})
+                      "color": st.get("join_color") or "",
+                      "version": srv.mc_version if srv.is_java else None})   # from the world's save: right even while it's off
     if joins and not (cfg["java_address"] or cfg["bedrock_address"]):     # the join guide's {java_address} and the like:
         cfg = {**cfg, "java_address": joins[0]["java"], "bedrock_address": joins[0]["bedrock"],  # the first server's
                "bedrock_port": joins[0]["bedrock_port"]}
+    # the join guide's {java_version}: the main (first) server's Minecraft version, when it's known
+    cfg = {**cfg, "java_version": next((j["version"] for j in joins if j["java"] and j["version"]), "")}
     asks = [{"id": s.id, "name": s.display_name, "main": s.id == cfg.get("main_server")} for s in ordered if s.is_java] if cfg["join_requests"] else []
     return JSONResponse({**cfg, "logo": site.logo_url(), "servers": servers, "joins": joins, "ask_servers": asks,
                          "live": _status_cfg()["enabled"], "build": _asset_stamp()},

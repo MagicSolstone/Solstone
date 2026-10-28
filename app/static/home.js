@@ -63,8 +63,8 @@ function joinCard(site) {
   // One card per server: what it is, how it's doing, and how to get on it.
   const cards = (site.joins || []).map((j) => {
     const r = [];
-    if (j.java) r.push(["Java", j.java, ""]);
-    if (j.bedrock) r.push(["Bedrock", j.bedrock, `Port ${j.bedrock_port}`]);
+    if (j.java) r.push(["Java", j.java, j.version ? `Minecraft ${j.version}` : ""]);
+    if (j.bedrock) r.push(["Bedrock", j.bedrock, `Port ${j.bedrock_port} · newest version`]);
     const kind = j.java && j.bedrock ? "Java and Bedrock" : j.java ? "Java only" : "Bedrock only";
     const icon = site.live && j.status?.has_icon ? `<img class="px" src="/api/public/icon/${encodeURIComponent(j.id)}.png" alt="" width="40" height="40">` : "";
     return `<article class="hp-join-card ${j.main ? "main" : ""}" ${j.color ? `style="--accent:${esc(j.color)}"` : ""}>

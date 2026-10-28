@@ -470,6 +470,9 @@ def main() -> int:
             if "Leave other people's things alone" not in (anon.locator(".hp-body").text_content() or ""):
                 problems.append("rules: the rules page doesn't show Solstone's rules")
             check(anon, "site-rules")
+            anon.goto(f"{base}/guides/join"); anon.wait_for_timeout(900)
+            if "You need Minecraft" not in (anon.locator(".hp-body").text_content() or ""):
+                problems.append("join guide: it doesn't say which Minecraft version to play")
             pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(1000)
             pg.click('.fws-tabs [data-tab="welcome"]'); pg.wait_for_timeout(1200)
             wel = pg.locator(".ws-wel").first

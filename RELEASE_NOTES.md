@@ -1,5 +1,6 @@
 # Solstone 1.8.9
 
+- **Which Minecraft version to play:** each server's card on the home page says it beside the Java address (*Minecraft 26.3*), and Bedrock says *newest version*. It's read from the world's own save, so it follows the server when it updates, and shows even while the server is off. The join guide says it too (*You need Minecraft 26.3*), with `{java_version}` for guides in your own words. When the version isn't known yet, the guide says *the version shown on the home page* instead.
 - **Posts use the full width:** news posts, guides and the rules page now stretch across like the other panels (they were held to a narrow column).
 - **Enter starts a new line in posts:** one line break in the text is now a new line in the post (it used to run on into the same line), and a blank line still starts a new paragraph. The editor's live view, Preview and the published post all show it the same way.
 

@@ -281,3 +281,13 @@ def test_colours_and_sizes_stay_out_of_excerpts(client, anon):
         assert card["excerpt"].startswith("Big news and more here") and "{" not in card["excerpt"]
     finally:
         client.delete(f"/api/posts/{p['id']}")
+
+
+def test_join_cards_say_the_minecraft_version(client, anon, sid):
+    try:
+        client.put(f"/api/servers/{sid}/settings", json={"join_address": "play.example.net"})
+        s = anon.get("/api/public/site").json()
+        card = next(j for j in s["joins"] if j["id"] == sid)
+        assert card["version"] and s["java_version"] == card["version"]           # from the world's save
+    finally:
+        client.put(f"/api/servers/{sid}/settings", json={"join_address": ""})
