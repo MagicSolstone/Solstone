@@ -233,6 +233,18 @@ def main() -> int:
                     problems.append(f"firework editor: editing a picture firework broke with the {tab} tab open")
                 pg.goto(f"{base}/app#/fireworks"); pg.wait_for_timeout(600)
 
+            # a banner on an app page lines up with the page (it sat at the left edge on wide screens)
+            pg.request.put(f"{base}/api/board", data={"items": [{"text": "Smoke banner", "emoji": "🎬"}]}, headers=H)
+            pg.set_viewport_size({"width": 1920, "height": 900})
+            pg.goto(f"{base}/app#/events"); pg.reload()         # the banners load with the page
+            if appear(pg, "#app-board .bn"):
+                bn, mn = pg.locator("#app-board .bn").first.bounding_box(), pg.locator("main#view h1").first.bounding_box()
+                if abs(bn["x"] - mn["x"]) > 2:
+                    problems.append(f"banners: an app page's banner starts at {bn['x']:.0f}px, the page at {mn['x']:.0f}px")
+            else:
+                problems.append("banners: an announcement doesn't show on the app's pages")
+            pg.request.put(f"{base}/api/board", data={"items": []}, headers=H)
+            pg.set_viewport_size({"width": 1280, "height": 860})
             # Manage → Notifications is a page (not a popup), Manage → Holidays switches days on and off
             pg.goto(f"{base}/app#/manage/notifications"); pg.wait_for_timeout(1200)
             if not pg.locator("#notify-form").count() or pg.locator("#modal-root .modal").count():

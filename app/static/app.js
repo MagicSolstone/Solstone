@@ -140,7 +140,7 @@ async function signedIn(user) {
     // A bright in-game day is dimmed behind the panels (but not when the page is hidden to watch).
     appSky.scene = startSkyScene($("#app-sky"), { auto: false, sound: (t, i) => FWAudio.play(t, i),
       dim: () => (document.body.classList.contains("ui-hidden") ? 0 : 0.5) });
-    appSky.bar = startShowBar(appSky.scene, { key: "solstone-sky-app", defaultOn: false, hide: true, skyServer: () => curSid || "",
+    appSky.bar = startShowBar(appSky.scene, { key: "solstone-sky-app", defaultOn: true, hide: true, skyServer: () => curSid || "",
       onEvent: (item) => { if (item.text) showToast(`🎆 ${esc(item.text)}${item.server && item.server !== "Test" ? ` <span class="muted">· ${esc(item.server)}</span>` : ""}`, 4000); } });
   }
   const root = $("#login-root"); root.hidden = true; root.innerHTML = "";

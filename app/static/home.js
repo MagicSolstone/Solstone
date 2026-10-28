@@ -349,8 +349,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   const sky = $("#home-sky");
   if (sky && typeof startSkyScene === "function") {
     hp.scene = startSkyScene(sky, { auto: false, sound: (t, i) => FWAudio.play(t, i), dim: () => (document.body.classList.contains("ui-hidden") ? 0 : 0.35) });
-    // Fireworks are there for whoever wants them: off until a visitor turns the show on (it's remembered).
-    if (typeof startShowBar === "function") hp.bar = startShowBar(hp.scene, { key: "solstone-sky-home", defaultOn: false, hide: true });
+    // The show runs behind the page from the start, without sound (sound stays off until someone turns it on);
+    // a visitor who switches the show off is remembered, and "reduce motion" keeps it off.
+    if (typeof startShowBar === "function") hp.bar = startShowBar(hp.scene, { key: "solstone-sky-home", defaultOn: true, hide: true });
   }
   if (typeof startBoard === "function") startBoard($("#hp-board"), { where: "home", sid: () => "", scene: () => hp.scene, max: innerWidth < 700 ? 1 : 3 });
   route();

@@ -1,3 +1,9 @@
+# Solstone 1.9.3
+
+- **The firework show is on to start:** every page has the show going in the background straight away, with **sound still off** until someone turns it on. Anyone who switches the show off keeps it off (their browser remembers), and browsers set to reduce motion start with it off.
+- **Banners line up with the page:** announcements and other banners on the Events, Servers and Manage pages sat off to one side on wide screens. They now line up with the page like on the home page.
+- Website → Site details: the Cloudflare steps for the *website is down* page match Cloudflare's screens (*Start with Hello World*, a **Route** rather than a custom domain).
+
 # Solstone 1.9.2
 
 - **Contact email:** Website → Site details → **Contact email** (like contact@yourdomain). Where players and parents can reach you: account problems, questions, something stolen or broken. It shows at the bottom of every page (*Contact*) and in a **Contact** section on the Help page. `{contact}` puts it in any post (the toolbar's **Fill-in…** has it), and in the welcome message in the game. Without one, `{contact}` points to Discord, or says *an admin*.
