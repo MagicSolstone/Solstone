@@ -531,8 +531,9 @@ def _without_whereabouts(board: dict) -> dict:
 @app.get("/api/public/status/{sid}")
 async def public_board(sid: str, request: Request):
     cfg = _require_status()
-    board = await _board(await _public_server(sid), cfg)
-    if not _may_see_map(request.state.user):
+    srv = await _public_server(sid)
+    board = await _board(srv, cfg)
+    if not (_may_see_map(request.state.user) and _allowed(srv)):    # and only on servers their login may see
         board = _without_whereabouts(board)
     if board.get("world") and board["world"].get("as_of"):
         board = {**board, "world": {**board["world"], "age": round(max(0.0, time.time() - board["world"]["as_of"]), 1)}}

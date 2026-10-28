@@ -1,5 +1,8 @@
 # Solstone 1.8.2
 
+- **No more "access other devices on your local network" prompt:** a web map (BlueMap) set to a home-network address (like `http://192.168.1.10:8100`) was loaded by the home page and the World tab even when its screen wasn't open, and a public website reaching into your home network is what that prompt asks about. Now the map's frame is only made when you open it, and from outside your home a home-network map shows a note (with a link) instead of trying. To show it to everyone, give the map a public address (a Cloudflare tunnel to it, for example).
+- **Where everyone is only on your own servers:** a Player who can see the map, but whose login doesn't have a server, no longer gets that server's *Where everyone is* screen (or anyone's position on it) on the home page.
+
 - **How to join is set in one place:** Website → Site details → *How to join each server* is now just your servers, one block each (Java, Bedrock and port, a note, the mods). The separate "main address" is gone: if you had one, it moves into the first server the next time you open Site details and press Save. The fields are no longer in each server's ⚙ settings either.
 - **⭐ Main server:** pick one in Site details. It's always first: its card on the home page (starred, with a gold border), its tab in the live section, and first (and ticked) in Ask to join. The join guide uses its addresses.
 - **A border colour for each server's card** (or none), and **About this server**: a few lines on its card about what it is and who it's for.

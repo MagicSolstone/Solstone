@@ -201,3 +201,23 @@ def test_on_the_whitelist_means_its_in_their_account(client, player, sid, tyler)
         else:
             wl.write_text(old)
         client.patch(f"/api/users/{me['id']}", json={"servers": None})
+
+
+def test_where_everyone_is_only_on_your_own_servers(client, player, sid):
+    """Players can see the map, but not on a server their login doesn't have."""
+    from app import main
+    me = player.get("/api/auth/me").json()["user"]
+    client.put("/api/settings/players", json={"see_map": True})
+    client.put("/api/settings/status", json={"enabled": True, "show_positions": True})
+    main._board_cache.clear()
+    try:
+        b = player.get(f"/api/public/status/{sid}").json()
+        assert b["spawn"] is not None or any("position" in p for p in b["players"] + b["recently"])
+        client.patch(f"/api/users/{me['id']}", json={"servers": ["somewhere-else"]})
+        b = player.get(f"/api/public/status/{sid}").json()
+        assert b["spawn"] is None and not any("position" in p for p in b["players"] + b["recently"])
+    finally:
+        client.patch(f"/api/users/{me['id']}", json={"servers": None})
+        client.put("/api/settings/players", json={"see_map": False})
+        client.put("/api/settings/status", json={"enabled": False, "show_positions": False})
+        main._board_cache.clear()

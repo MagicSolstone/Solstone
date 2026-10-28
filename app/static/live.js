@@ -600,7 +600,9 @@ function renderTv(b) {
   setHtml($("#tv-map"), hasPos ? `<div class="sp-map tv-map" id="sp-map"></div><span class="muted" id="sp-map-dim"></span>` : "");
   if (hasPos && tv.shown === "map") mountMap($("#sp-map"), b, st.map);
   setHtml($("#tv-live"), liveHtml(b, true));
-  setHtml($("#tv-web"), b.web_map ? `<p class="muted"><a href="${esc(b.web_map)}" target="_blank" rel="noopener">Open the map full screen</a></p><iframe class="sp-webmap" src="${esc(b.web_map)}" title="World map" loading="lazy"></iframe>` : "");
+  // The web map's frame is only put in while its screen is showing: a frame loads even when hidden, and a map at a
+  // home-network address makes the browser ask every visitor for access to their local network.
+  setHtml($("#tv-web"), webMapHtml(b, tv.shown === "web"));
   setHtml($("#tv-leaders"), tvLeadersHtml());
   setHtml($("#tv-recap"), tvRecapHtml());
   setHtml($("#tv-feed"), b.recent.length ? `<div class="glass tv-feed">${feedHtml(b)}</div>` : "");
@@ -642,8 +644,16 @@ function tvShow(key) {
     el.classList.toggle("on", on); el.setAttribute("aria-hidden", String(!on));
   });
   if (tv.shown === "map" && hasMap(b)) { st.map = null; mountMap($("#sp-map"), b, null); }
+  setHtml($("#tv-web"), webMapHtml(b, tv.shown === "web"));
   requestAnimationFrame(alignSide);
   tvDots(b);
+}
+function webMapHtml(b, open) {
+  if (!b.web_map) return "";
+  const link = `<p class="muted"><a href="${esc(b.web_map)}" target="_blank" rel="noopener">Open the map full screen</a></p>`;
+  if (isHomeNetwork(b.web_map) && !isHomeNetwork(location.href))
+    return `${link}<p class="muted">This map is at a home-network address, so it only opens on the same Wi-Fi as the server.</p>`;
+  return open ? `${link}<iframe class="sp-webmap" src="${esc(b.web_map)}" title="World map" loading="lazy"></iframe>` : link;
 }
 setInterval(() => {
   document.querySelectorAll(".live-cd[data-cd]").forEach((el) => { const left = Number(el.dataset.cd) - Date.now() / 1000; el.textContent = left > 0 ? fmtCountdown(left) : "Time's up"; });

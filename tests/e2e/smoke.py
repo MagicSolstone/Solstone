@@ -462,6 +462,15 @@ def main() -> int:
             if anon.locator("#live .sp-player").count() != 4 or "❤️" not in (anon.locator("#live .sp-player").first.text_content() or ""):
                 problems.append("live: the players' compact cards aren't shown")
             anon.unroute(f"**/api/public/status/{sid}")
+            # a web map at a home address: no frame for it until its screen is opened (a hidden frame still loads, and
+            # makes the browser ask every visitor for access to their local network)
+            pg.request.put(f"{base}/api/servers/{sid}/settings", data={"map_url": "http://192.168.1.10:8100"}, headers=H)
+            pg.request.put(f"{base}/api/settings/status", data={"enabled": True, "show_positions": True, "show_web_map": True}, headers=H)
+            pg.goto(f"{base}/#live"); pg.reload(); pg.wait_for_timeout(2500)
+            if pg.locator("iframe").count():
+                problems.append("live: the web map's frame loads before its screen is opened")
+            pg.request.put(f"{base}/api/servers/{sid}/settings", data={"map_url": ""}, headers=H)
+            pg.request.put(f"{base}/api/settings/status", data={"enabled": True, "show_positions": True, "show_web_map": False}, headers=H)
             # signed in, the map is there: drag to move around, then Reset view
             pg.goto(f"{base}/#live"); pg.wait_for_timeout(2500)
             mp = pg.locator("#live .tv-dots [data-tv='map']")
