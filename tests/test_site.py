@@ -199,3 +199,12 @@ def test_one_join_card_per_server(client, anon, sid):
     finally:
         client.put(f"/api/servers/{sid}/settings", json={"join_address": ""})
         client.put("/api/settings/site", json={"java_address": "", "bedrock_address": ""})
+
+
+def test_the_join_guide_uses_the_first_servers_addresses(client, anon, sid):
+    try:
+        client.put(f"/api/servers/{sid}/settings", json={"join_address": "play.family.net", "join_bedrock_address": "play.family.net", "join_bedrock_port": 19133})
+        s = anon.get("/api/public/site").json()
+        assert s["java_address"] == "play.family.net" and s["bedrock_port"] == 19133
+    finally:
+        client.put(f"/api/servers/{sid}/settings", json={"join_address": "", "join_bedrock_address": "", "join_bedrock_port": ""})

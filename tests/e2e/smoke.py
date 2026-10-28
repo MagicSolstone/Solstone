@@ -345,6 +345,11 @@ def main() -> int:
                 pg.click('.fws-tabs [data-tab="site"]'); pg.wait_for_timeout(800)
                 if not pg.locator(".ws-join").count():
                     problems.append("website: no join details for each server in Site details")
+                pg.wait_for_timeout(500)
+                if pg.locator('#ws-site [name="java_address"]').count():
+                    problems.append("website: the old main address fields are still there")
+                if pg.locator('.ws-join [data-j="join_address"]').first.input_value() != "play.example.net":
+                    problems.append("website: the old main address didn't move to the first server")
                 pg.locator(".ws-joins").scroll_into_view_if_needed() if pg.locator(".ws-joins").count() else None
                 check(pg, "website-joins")
                 pg.click('.fws-tabs [data-tab="guides"]'); pg.wait_for_timeout(400)

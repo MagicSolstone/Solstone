@@ -1,3 +1,8 @@
+# Solstone 1.8.2
+
+- **How to join is set in one place:** Website → Site details → *How to join each server* is now just your servers, one block each (Java, Bedrock and port, a note, the mods). The separate "main address" is gone: if you had one, it moves into the first server the next time you open Site details and press Save. The fields are no longer in each server's ⚙ settings either.
+- The join guide's `{java_address}`, `{bedrock_address}` and `{bedrock_port}` come from the first server.
+
 # Solstone 1.8.1
 
 - **On the whitelist means it's in their account:** a player's account now sees every server they're on the whitelist of, however they were added (Control, the game's console, Crafty), not just the one they signed up from. No need to sign up again with a code on each server. Private servers are never included.

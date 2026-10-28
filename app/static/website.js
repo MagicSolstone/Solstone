@@ -122,12 +122,9 @@ function wsSite(el) {
     <label>Site name<input class="input" name="name" maxlength="80" value="${esc(s.name)}"></label>
     <label>Tagline <small>One line under the name</small><input class="input" name="tagline" maxlength="160" value="${esc(s.tagline)}" placeholder="A family Minecraft server"></label>
     <fieldset class="ws-joins"><legend>How to join each server <small class="muted">One card per server on the home page, with how it's doing</small></legend>
-      <div class="ws-row ws-main"><label>Main address: Java<input class="input" name="java_address" maxlength="80" value="${esc(s.java_address)}" placeholder="play.example.net"></label>
-        <label>Bedrock<input class="input" name="bedrock_address" maxlength="80" value="${esc(s.bedrock_address)}" placeholder="play.example.net"></label>
-        <label>Bedrock port<input class="input" name="bedrock_port" inputmode="numeric" value="${esc(s.bedrock_port)}"></label></div>
-      <p class="muted small">The main address is used by the join guide, and by the first server below that's left empty. Give any other server its own. Empty Bedrock: Java only. Private servers never show.</p>
+      <p class="muted small">Each server gets its own card. Leave Bedrock empty for Java only, or Java empty for Bedrock only; a server with neither isn't shown. Private servers never show. The join guide uses the first server's addresses.</p>
       ${(state.servers || []).filter((x) => !x.private).map((x, i) => `<div class="ws-join" data-sid="${esc(x.id)}"><b>${esc(x.name)}</b>
-        <div class="ws-row"><label>Java<input class="input" data-j="join_address" maxlength="80" placeholder="${i === 0 ? "(the main address)" : "mods.example.net:25566"}"></label>
+        <div class="ws-row"><label>Java<input class="input" data-j="join_address" maxlength="80" placeholder="${i === 0 ? "play.example.net" : "mods.example.net:25566"}"></label>
           <label>Bedrock<input class="input" data-j="join_bedrock_address" maxlength="80"></label>
           <label>Port<input class="input" data-j="join_bedrock_port" inputmode="numeric" placeholder="19132"></label></div>
         <label>Note <small>Optional, for example: Needs the modpack</small><input class="input" data-j="join_note" maxlength="160"></label>
@@ -142,6 +139,12 @@ function wsSite(el) {
   $$(".ws-join").forEach(async (row) => {
     const cur = await api(`/api/servers/${encodeURIComponent(row.dataset.sid)}/settings`).catch(() => ({}));
     $$("[data-j]", row).forEach((i) => { if (i.type === "checkbox") i.checked = !!cur[i.dataset.j]; else i.value = cur[i.dataset.j] ?? ""; });
+    // From before each server had its own: the old main address belongs to the first server, so it moves there.
+    if (row === $(".ws-join") && !cur.join_address && !cur.join_bedrock_address && (s.java_address || s.bedrock_address)) {
+      $('[data-j="join_address"]', row).value = s.java_address || "";
+      $('[data-j="join_bedrock_address"]', row).value = s.bedrock_address || "";
+      $('[data-j="join_bedrock_port"]', row).value = s.bedrock_address ? s.bedrock_port || "" : "";
+    }
   });
   $("#ws-logo-file").addEventListener("change", async (e) => {
     const f = e.target.files[0];
@@ -160,15 +163,16 @@ function wsSite(el) {
   $("#ws-site").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
-    const body = Object.fromEntries(["name", "tagline", "java_address", "bedrock_address", "bedrock_port", "discord", "about"].map((k) => [k, f.get(k)]));
+    const body = Object.fromEntries(["name", "tagline", "discord", "about"].map((k) => [k, f.get(k)]));
+    body.java_address = ""; body.bedrock_address = "";           // now kept with each server, below
     body.home_live = !!f.get("home_live");
     try {
-      ws.data.site = await post("/api/settings/site", body, "PUT");
-      for (const row of $$(".ws-join")) {               // each server's own way in, kept in its settings
-        const v = {};
+      for (const row of $$(".ws-join")) {               // each server's own way in, kept in its settings (first, so
+        const v = {};                                   // the old main address is only cleared once it's moved)
         $$("[data-j]", row).forEach((i) => { v[i.dataset.j] = i.type === "checkbox" ? i.checked : i.value; });
         await post(`/api/servers/${encodeURIComponent(row.dataset.sid)}/settings`, v, "PUT");
       }
+      ws.data.site = await post("/api/settings/site", body, "PUT");
       showToast("Saved", 2000); renderWebsite();
     }
     catch (err) { showError(esc(err.message), 5000); }

@@ -31,7 +31,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.8.1"
+VERSION = "1.8.2"
 
 
 @asynccontextmanager
@@ -575,6 +575,9 @@ async def public_site():
         joins.append({"id": srv.id, "name": srv.display_name, "java": java, "bedrock": bed, "bedrock_port": port or 19132,
                       "note": st.get("join_note") or "", "mods": _mods_for_players(srv) if st.get("join_mods") else None,
                       "status": status.get(srv.id)})
+    if joins and not (cfg["java_address"] or cfg["bedrock_address"]):     # the join guide's {java_address} and the like:
+        cfg = {**cfg, "java_address": joins[0]["java"], "bedrock_address": joins[0]["bedrock"],  # the first server's
+               "bedrock_port": joins[0]["bedrock_port"]}
     asks = [{"id": s.id, "name": s.display_name} for s in _public_servers_list() if s.is_java] if cfg["join_requests"] else []
     return JSONResponse({**cfg, "logo": site.logo_url(), "servers": servers, "joins": joins, "ask_servers": asks,
                          "live": _status_cfg()["enabled"], "build": _asset_stamp()},
