@@ -57,13 +57,37 @@ def test_site_logo(client, anon, viewer):
     assert anon.get("/api/public/logo").status_code == 404
 
 
-def test_guides_in_your_own_words(client, anon):
+def test_guides_in_your_own_words_become_posts(client, anon):
+    """Guides rewritten in the old Rules and guides tab move into Posts (once), as the post standing in for that guide."""
+    from app import main
     try:
         client.put("/api/settings/site", json={"guide_join": "Join at **{java_address}** port {bedrock_port}. {ask}", "guide_account": ""})
+        main.site._moved = False
         s = anon.get("/api/public/site").json()
-        assert s["guide_join"].startswith("Join at **{java_address}**") and s["guide_account"] == ""   # filled in on the page
+        assert s["guide_join"] == "" and "join" in s["guide_posts"]
+        p = anon.get(f"/api/public/posts/{s['guide_posts']['join']}").json()
+        assert p["role"] == "join" and p["category"] == "guide" and p["body"].startswith("Join at **{java_address}**")   # filled in on the page
+        assert anon.get("/api/public/site").json()["guide_posts"]["join"] == p["slug"]                                # only once
     finally:
         client.put("/api/settings/site", json={"guide_join": "", "guide_account": ""})
+        for x in client.get("/api/posts").json()["posts"]:
+            if x.get("role"):
+                client.delete(f"/api/posts/{x['id']}")
+
+
+def test_one_post_per_guide(client, anon):
+    a = client.post("/api/posts", json={"title": "Our rules", "category": "guide", "body": "Be kind.", "role": "rules"}).json()
+    b = client.post("/api/posts", json={"title": "New rules", "category": "guide", "body": "Be kinder.", "role": "rules"}).json()
+    try:
+        assert anon.get("/api/public/site").json()["guide_posts"]["rules"] == b["slug"]
+        assert next(x for x in client.get("/api/posts").json()["posts"] if x["id"] == a["id"])["role"] is None   # taken over
+        client.put(f"/api/posts/{b['id']}", json={"title": "New rules", "category": "guide", "body": "Be kinder.", "published": False, "role": "rules"})
+        assert "rules" not in anon.get("/api/public/site").json()["guide_posts"]        # a draft doesn't stand in
+        client.put(f"/api/posts/{b['id']}", json={"title": "New rules", "category": "guide", "body": "Be kinder."})       # role kept
+        assert next(x for x in client.get("/api/posts").json()["posts"] if x["id"] == b["id"])["role"] == "rules"
+    finally:
+        client.delete(f"/api/posts/{a['id']}")
+        client.delete(f"/api/posts/{b['id']}")
 
 
 def test_ask_to_join(client, anon, monkeypatch):

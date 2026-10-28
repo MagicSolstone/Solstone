@@ -12,13 +12,14 @@ async function viewWebsite() {
   document.title = `Website · ${SITE_NAME}`;
   fillServersMenu(state.servers, null);
   ws.data = await api("/api/posts");
+  ws.pub = await api("/api/public/site").catch(() => ({}));       // what {java_address} and the like fill in to
   ws.editing = null;
+  if (ws.tab === "guides") ws.tab = "posts";                         // the old tab: guides are posts now
   setView(`<div class="fwe-head"><h1>Website</h1>
       <p class="muted">The public home page at <a href="/" target="_blank" rel="noopener">/</a>: how to join, News, and Help (guides and questions). Anyone can read it without signing in; private servers never show there.</p></div>
     <nav class="fwe-tabs fws-tabs" role="tablist" aria-label="Website">
       <button type="button" role="tab" data-tab="posts" aria-selected="${ws.tab === "posts"}">Posts</button>
       <button type="button" role="tab" data-tab="site" aria-selected="${ws.tab === "site"}">Site details</button>
-      <button type="button" role="tab" data-tab="guides" aria-selected="${ws.tab === "guides"}">Rules and guides</button>
       <button type="button" role="tab" data-tab="welcome" aria-selected="${ws.tab === "welcome"}">Welcome in the game</button></nav>
     <div id="ws-body"></div>`);
   $$(".fws-tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
@@ -31,20 +32,27 @@ async function viewWebsite() {
 function renderWebsite() {
   const el = $("#ws-body");
   if (!el) return;
-  if (ws.tab === "site") wsSite(el); else if (ws.tab === "guides") wsGuides(el); else if (ws.tab === "welcome") wsWelcome(el); else wsPosts(el);
+  if (ws.tab === "site") wsSite(el); else if (ws.tab === "welcome") wsWelcome(el); else wsPosts(el);
 }
 
 // ---------------------------------------------------------------- posts
 const wsDate = (ts) => new Date(ts * 1000).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
 
+// What a post can stand in for: the built-in pages the site links to (site.ROLES).
+const WS_ROLES = { join: "The join guide (Ask to join goes under it)", account: "The guide to making an account", rules: "The server rules" };
+
 const wsSaveLabel = (saved, published) => (published ? (saved ? "Save" : "Publish") : "Save draft");
 
 function wsEditHtml(p) {
   return `<form class="ws-edit panel" id="ws-edit">
+    ${p.id ? "" : `<label class="ws-template">Start from <small>Solstone's wording, ready to make your own</small><select class="input" data-template>
+      <option value="">A blank post</option>${Object.entries(GUIDES).map(([k, g]) => `<option value="${k}">${esc(g.title)}</option>`).join("")}</select></label>`}
     <label>Title<input class="input" name="title" maxlength="120" required value="${esc(p.title || "")}"></label>
     <div class="ws-row"><label>Kind<select class="input" name="category">${WS_CATS.map(([k, l]) => `<option value="${k}" ${p.category === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       <label class="check"><input type="checkbox" name="published" ${p.published !== false ? "checked" : ""}> Published <small>Off keeps it a draft only admins see</small></label>
-      <label class="check"><input type="checkbox" name="pinned" ${p.pinned ? "checked" : ""}> Pinned <small>Stays at the top</small></label></div>
+      <label class="check"><input type="checkbox" name="pinned" ${p.pinned ? "checked" : ""}> Pinned <small>Stays at the top</small></label>
+      <label>Use as <small>Where the home page, Ask to join and the welcome message link to</small><select class="input" name="role">
+        <option value="">Just a post</option>${Object.entries(WS_ROLES).map(([k, l]) => `<option value="${k}" ${p.role === k ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
     <div class="ws-fmt" role="toolbar" aria-label="Formatting">
       <button type="button" class="btn sm" data-wrap="**" title="Bold"><b>B</b></button>
       <button type="button" class="btn sm" data-wrap="*" title="Italic"><i>I</i></button>
@@ -55,13 +63,14 @@ function wsEditHtml(p) {
       <button type="button" class="btn sm" data-prefix="1. " title="A numbered list">1. List</button>
       <button type="button" class="btn sm" data-prefix="&gt; " title="A quote">❝ Quote</button>
       <button type="button" class="btn sm" data-rule title="A line across">― Line</button>
+      <select class="input sm" data-fill aria-label="Fill-in"><option value="">Fill-in…</option>${GUIDE_PLACEHOLDERS.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select>
       <button type="button" class="btn sm" data-link>🔗 Link</button>
       <label class="btn sm ws-file">🖼 Picture<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-pic hidden></label></div>
     <div class="ws-compose">
       <label class="ws-compose-text">Text <small>Select some text, then pick a button. Or type the marks yourself: **bold**, # Heading, {red}colour{/red}.</small>
         <textarea class="input ws-text" name="body" rows="16" maxlength="20000" required>${esc(p.body || "")}</textarea></label>
       <div class="ws-compose-view"><span class="ws-compose-label">How it looks</span><div class="hp-body ws-live" aria-live="off"></div></div></div>
-    <small class="muted">Enter starts a new line; a blank line starts a new paragraph. The first picture also shows on the post's card. Pictures under 4 MB each.</small>
+    <small class="muted">Enter starts a new line; a blank line starts a new paragraph. Fill-ins like <code>{java_address}</code> become the main server's details (the first card on the home page), so they stay right when they change. The first picture also shows on the post's card. Pictures under 4 MB each.</small>
     <div class="actions"><button type="button" class="btn" data-preview title="See it as visitors will, before anyone else can">👁 Preview</button>
       <button type="button" class="btn" data-cancel>Cancel</button><button class="btn primary" type="submit" data-save>${wsSaveLabel(p.id, p.published !== false)}</button></div>
   </form>`;
@@ -70,7 +79,7 @@ function wsEditHtml(p) {
 function wsPosts(el) {
   const posts = ws.data.posts;
   const rows = posts.map((p) => ws.editing === p.id ? wsEditHtml(p) : `<div class="ws-post" data-id="${p.id}">
-      <div><b>${esc(p.title)}</b>${p.pinned ? " 📌" : ""}<div class="muted">${esc(WS_CATS.find(([k]) => k === p.category)?.[1] || "")} · ${esc(wsDate(p.created))}${p.published ? "" : " · <b>Draft</b>"}</div></div>
+      <div><b>${esc(p.title)}</b>${p.pinned ? " 📌" : ""}${p.role ? ` <span class="chip">${esc(WS_ROLES[p.role]?.replace(/ \(.*\)$/, "") || p.role)}</span>` : ""}<div class="muted">${esc(WS_CATS.find(([k]) => k === p.category)?.[1] || "")} · ${esc(wsDate(p.created))}${p.published ? "" : " · <b>Draft</b>"}</div></div>
       <span class="btn-row">${p.published ? `<a class="btn sm" href="/post/${encodeURIComponent(p.slug)}" target="_blank" rel="noopener">View</a>` : ""}
         <button class="btn sm" type="button" data-edit>Edit</button><button class="btn sm danger" type="button" data-del>Delete</button></span></div>`).join("");
   el.innerHTML = `<section class="panel"><div class="ws-list">${rows || `<p class="muted">No posts yet. News is for updates and events. On the Help page, guides are for how-tos (the rules, starting out) and questions are for quick answers.</p>`}</div>
@@ -96,7 +105,7 @@ function wsPosts(el) {
     const f = new FormData(form);
     try {
       localStorage.setItem("solstone-post-preview", JSON.stringify({ title: f.get("title") || "Untitled", category: f.get("category"),
-        body: f.get("body") || "", author: me.user?.shown || "", created: Date.now() / 1000 }));
+        body: f.get("body") || "", author: me.user?.shown || "", created: Date.now() / 1000, role: f.get("role") || null }));
     } catch { showError("This browser won't keep the preview (a private window?)", 5000); return; }
     window.open("/post/__preview__", "solstone-preview");
   });
@@ -114,7 +123,7 @@ function wsPosts(el) {
   // The live view beside the text: the same formatting the site uses, as you type.
   const live = form.querySelector(".ws-live");
   let pending = 0;
-  const redraw = () => { cancelAnimationFrame(pending); pending = requestAnimationFrame(() => { live.innerHTML = markdown(ta.value) || '<p class="muted">Start typing…</p>'; }); };
+  const redraw = () => { cancelAnimationFrame(pending); pending = requestAnimationFrame(() => { live.innerHTML = markdown(fillPostVars(ta.value, ws.pub || {}, form.role.value === "join")) || '<p class="muted">Start typing…</p>'; }); };
   ta.addEventListener("input", redraw);
   redraw();
   const changed = () => { ta.focus(); redraw(); };
@@ -145,6 +154,18 @@ function wsPosts(el) {
     e.target.value = "";
   }));
   form.querySelector("[data-rule]").addEventListener("click", () => insert("---", true));
+  form.querySelector("[data-fill]").addEventListener("change", (e) => { if (e.target.value) insert(`{${e.target.value}}`, false); e.target.value = ""; });
+  form.role.addEventListener("change", redraw);
+  // A template: Solstone's wording for one of the built-in guides, with the fill-ins in place, to make your own.
+  form.querySelector("[data-template]")?.addEventListener("change", (e) => {
+    const k = e.target.value;
+    if (!k) return;
+    if (ta.value.trim() && !confirm("Replace the text with Solstone's wording?")) { e.target.value = ""; return; }
+    ta.value = guideTemplate(k, { ...(ws.pub || {}), ...ws.data.site });
+    if (!form.title.value.trim()) form.title.value = GUIDES[k].title;
+    form.category.value = "guide"; form.role.value = k;
+    redraw();
+  });
   form.querySelector("[data-pic]").addEventListener("change", async (e) => {
     const f = e.target.files[0];
     if (!f) return;
@@ -164,7 +185,7 @@ function wsPosts(el) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(form);
-    const body = { title: f.get("title"), category: f.get("category"), body: f.get("body"), published: !!f.get("published"), pinned: !!f.get("pinned") };
+    const body = { title: f.get("title"), category: f.get("category"), body: f.get("body"), published: !!f.get("published"), pinned: !!f.get("pinned"), role: f.get("role") || "" };
     try {
       if (ws.editing === "new") await post("/api/posts", body); else await post(`/api/posts/${ws.editing}`, body, "PUT");
       showToast(body.published ? "Saved — it's on the website" : "Saved as a draft", 2500);
@@ -198,6 +219,7 @@ function wsSite(el) {
     </fieldset>
     <label>Discord invite <small>A discord.gg or discord.com link</small><input class="input" name="discord" maxlength="200" value="${esc(s.discord)}" placeholder="https://discord.gg/..."></label>
     <label>About <small>Shown at the bottom of the home page. Same formatting as posts.</small><textarea class="input" name="about" rows="6" maxlength="4000">${esc(s.about)}</textarea></label>
+    <label class="check"><input type="checkbox" name="join_requests" ${s.join_requests ? "checked" : ""}> An <b>Ask to join</b> form on the join guide <small>People send their name in the game (and, if they like, a first name and a note). You get a notification, and they show in Manage → Whitelist.${ws.data.notify_ready === false ? " Set up notifications first (Manage → Notifications)." : ""}</small></label>
     <label class="check"><input type="checkbox" name="home_live" ${s.home_live ? "checked" : ""}> Show the public servers' status on the home page <small>Running or not and how many are on. Private servers are never shown.</small></label>
     <div class="actions"><a class="btn" href="/" target="_blank" rel="noopener">Open the home page</a><button class="btn primary" type="submit">Save</button></div>
   </form>`;
@@ -241,6 +263,7 @@ function wsSite(el) {
     body.main_server = f.get("main_server") || "";
     body.home_live = !!f.get("home_live");
     body.home_title = !!f.get("home_title");
+    body.join_requests = !!f.get("join_requests");
     try {
       for (const row of $$(".ws-join")) {               // each server's own way in, kept in its settings (first, so
         const v = {};                                   // the old main address is only cleared once it's moved)
@@ -250,35 +273,6 @@ function wsSite(el) {
       ws.data.site = await post("/api/settings/site", body, "PUT");
       showToast("Saved", 2000); renderWebsite();
     }
-    catch (err) { showError(esc(err.message), 5000); }
-  });
-}
-
-// ---------------------------------------------------------------- the built-in guides and the rules, in your own words
-function wsGuides(el) {
-  const s = ws.data.site;
-  const box = (key) => `<section class="panel ws-guide" data-guide="${key}"><div class="section-head"><h2>${esc(GUIDES[key].title)}</h2>
-      <a class="muted small" href="/guides/${key}" target="_blank" rel="noopener">Open it</a></div>
-    <p class="muted small">${s[`guide_${key}`] ? "Your own wording." : "Solstone's wording, which follows Site details by itself. Start from it to make it your own."}</p>
-    <textarea class="input ws-text" rows="16" maxlength="8000" data-guide-text placeholder="Empty: Solstone's wording">${esc(s[`guide_${key}`] || "")}</textarea>
-    <div class="btn-row"><button type="button" class="btn sm" data-start>Start from Solstone's wording</button>
-      <button type="button" class="btn sm" data-clear>Back to Solstone's wording</button></div></section>`;
-  el.innerHTML = `<form id="ws-guides" class="ws-guides">
-    <section class="panel"><label class="switch-row"><span><b>An “Ask to join” form on the join guide</b><br><small class="muted">Anyone can send their name in the game (and, if they like, their first name and a note). You get a notification, and they show in a server's Control → Whitelist, ready to let in. ${ws.data.notify_ready === false ? "<b>Set up notifications first (Manage → Notifications)</b>, or the messages only show in Control." : ""}</small></span>
-      <input type="checkbox" role="switch" name="join_requests" ${s.join_requests ? "checked" : ""}></label></section>
-    <p class="muted small">Same formatting as posts. These fill themselves in from Site details: ${GUIDE_PLACEHOLDERS.map(([k, l]) => `<code>{${k}}</code> ${esc(l.toLowerCase())}`).join(", ")}.</p>
-    ${box("join")}${box("account")}${box("rules")}
-    <div class="actions"><button class="btn primary" type="submit">Save guides</button></div></form>`;
-  $$(".ws-guide").forEach((sec) => {
-    const key = sec.dataset.guide, ta = $("[data-guide-text]", sec);
-    $("[data-start]", sec).addEventListener("click", () => { if (!ta.value.trim() || confirm("Replace what's there with Solstone's wording?")) ta.value = guideTemplate(key, { ...s, join_requests: $('[name="join_requests"]').checked }); });
-    $("[data-clear]", sec).addEventListener("click", () => { ta.value = ""; });
-  });
-  $("#ws-guides").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const body = { join_requests: e.target.join_requests.checked };
-    $$(".ws-guide").forEach((sec) => { body[`guide_${sec.dataset.guide}`] = $("[data-guide-text]", sec).value; });
-    try { ws.data.site = await post("/api/settings/site", body, "PUT"); showToast("Guides saved", 2000); renderWebsite(); }
     catch (err) { showError(esc(err.message), 5000); }
   });
 }

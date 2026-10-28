@@ -115,7 +115,8 @@ Two HTML pages load a list of scripts (in order, see the bottom of each HTML fil
 | Add a leaderboard | `LEADERBOARDS` and `LEADERBOARD_GROUPS` in `servers.py` (and where the number comes from in `leaderboard_stats`) |
 | Add a "what happened" line to Adventures | `progress_line()` in `adventures.py`; "lately" labels: `doing()` |
 | Add a notification event | `EVENT_TYPES` in `notify.py`, then `maybe_notify("type", ...)` where it happens |
-| Change the built-in guides or rules | `guides.js` (or just rewrite them in Website → Rules and guides) |
+| Change the built-in guides or rules | In the app: Website → Posts → a new post started from a template, with *Use as* set. Solstone's own wording (the templates, and what shows when no post stands in): `guides.js` |
+| Add a fill-in like `{java_address}` | `fillPostVars()` and `GUIDE_PLACEHOLDERS` in `guides.js`; the value comes from `/api/public/site` (`public_site` in `main.py`) |
 | Change the welcome message colours/codes | `welcome.py` |
 | Add a game | Look at `spleef.py` (the newest, self-contained one) and how `games.py` calls it |
 | Keep something for longer / shorter | Environment variables in `config.py` and the README table |

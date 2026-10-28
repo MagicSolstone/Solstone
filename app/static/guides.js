@@ -91,13 +91,21 @@ Admins can usually see who changed what, and put it back. Breaking the rules can
   },
 };
 
-// The guide's text: the admin's own wording with the placeholders filled in, or Solstone's.
+// {java_address} and the other fill-ins, in any post or guide: the main server's details from Site details (the
+// first card on the home page), so the text stays right when an address, a port or the version changes.
+// onJoinPage: {ask} jumps to the form further down that page; anywhere else it links to it.
+function fillPostVars(text, site, onJoinPage = false) {
+  const vals = { name: site.name, java_address: site.java_address || "", bedrock_address: site.bedrock_address || site.java_address || "",
+    bedrock_port: site.bedrock_port, java_version: site.java_version || "the version shown on the home page", discord: site.discord || "",
+    ask: onJoinPage ? "[Ask to join](#ask)" : "[Ask to join](/guides/join#ask)", rules: "[the rules](/guides/rules)" };
+  return String(text || "").replace(/\{(\w+)\}/g, (m, k) => (k in vals ? String(vals[k]) : m));
+}
+
+// The guide's text: the admin's own wording (from before guides moved to Posts) with the fill-ins done, or Solstone's.
 function guideText(key, site) {
   const own = site[`guide_${key}`];
   if (!own) return GUIDES[key].body(site);
-  const vals = { name: site.name, java_address: site.java_address || "", bedrock_address: site.bedrock_address || site.java_address || "",
-    bedrock_port: site.bedrock_port, java_version: site.java_version || "the version shown on the home page", discord: site.discord || "", ask: "[Ask to join](#ask)", rules: "[the rules](/guides/rules)" };
-  return own.replace(/\{(\w+)\}/g, (m, k) => (k in vals ? String(vals[k]) : m));
+  return fillPostVars(own, site, key === "join");
 }
 // Solstone's wording with {placeholders} left in: where an admin starts from when rewriting a guide.
 function guideTemplate(key, site) {

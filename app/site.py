@@ -14,6 +14,9 @@ from . import db, settings_store
 from .config import config as app_config
 
 CATEGORIES = ("news", "guide", "faq")
+# A post can stand in for one of the built-in pages: /guides/join, /guides/account and /guides/rules show it (the
+# home page, the Ask to join form and the in-game welcome message link there). Without one, Solstone's own wording.
+ROLES = {"join": "How to join the server", "account": "Making an account on this website", "rules": "Server rules"}
 DEFAULTS = {"name": "Solstone", "tagline": "", "java_address": "", "bedrock_address": "", "bedrock_port": 19132,
             "discord": "", "about": "", "home_live": True, "signup": False,
             "home_title": False,          # the name and tagline big at the top of the home page (the bar already has them)
@@ -235,7 +238,7 @@ def save_config(body: dict) -> dict:
 def _row(r, full: bool = True) -> dict:
     out = {"id": r["id"], "slug": r["slug"], "title": r["title"], "category": r["category"],
            "published": bool(r["published"]), "pinned": bool(r["pinned"]), "author": r["author"],
-           "created": r["created_ts"], "updated": r["updated_ts"]}
+           "created": r["created_ts"], "updated": r["updated_ts"], "role": r["role"] if "role" in r.keys() else None}
     if full:
         out["body"] = r["body"]
     else:
@@ -287,15 +290,49 @@ def save(body: dict, author: str, pid: int | None = None) -> dict:
         raise ValueError("A post needs some text")
     now = time.time()
     published, pinned = int(bool(body.get("published", True))), int(bool(body.get("pinned", False)))
+    role = body.get("role") if body.get("role") in ROLES else None
     if pid is None:
-        pid = db.x("INSERT INTO posts(slug, title, body, category, published, pinned, author, created_ts, updated_ts) "
-                   "VALUES (?,?,?,?,?,?,?,?,?)", (_slug_for(title), title, text, category, published, pinned, author, now, now))
+        pid = db.x("INSERT INTO posts(slug, title, body, category, published, pinned, author, created_ts, updated_ts, role) "
+                   "VALUES (?,?,?,?,?,?,?,?,?,?)", (_slug_for(title), title, text, category, published, pinned, author, now, now, role))
     else:
-        if not db.q("SELECT id FROM posts WHERE id=?", (pid,)):
+        old = db.q("SELECT role FROM posts WHERE id=?", (pid,))
+        if not old:
             raise LookupError("No such post")
-        db.x("UPDATE posts SET slug=?, title=?, body=?, category=?, published=?, pinned=?, updated_ts=? WHERE id=?",
-             (_slug_for(title, pid), title, text, category, published, pinned, now, pid))
+        if "role" not in body:
+            role = old[0]["role"]
+        db.x("UPDATE posts SET slug=?, title=?, body=?, category=?, published=?, pinned=?, updated_ts=?, role=? WHERE id=?",
+             (_slug_for(title, pid), title, text, category, published, pinned, now, role, pid))
+    if role:                                    # one post per role: this one takes it over
+        db.x("UPDATE posts SET role=NULL WHERE role=? AND id<>?", (role, pid))
     return _row(db.q("SELECT * FROM posts WHERE id=?", (pid,))[0])
+
+
+def guide_posts() -> dict[str, str]:
+    """{role: slug} for the published posts standing in for the built-in guides."""
+    return {r["role"]: r["slug"] for r in db.q("SELECT role, slug FROM posts WHERE role IS NOT NULL AND published=1")}
+
+
+_moved = False
+
+
+def move_guides_to_posts() -> None:
+    """Guides rewritten in the old Website → Rules and guides tab become posts (once): editing is all in Posts now."""
+    global _moved
+    if _moved:
+        return
+    _moved = True
+    cfg = settings_store.load().get("site") or {}
+    changed = False
+    for key, title in ROLES.items():
+        text = str(cfg.get(f"guide_{key}") or "").strip()
+        if not text:
+            continue
+        if not db.q("SELECT 1 FROM posts WHERE role=?", (key,)):
+            save({"title": title, "body": text, "category": "guide", "published": True, "role": key}, "Solstone")
+        cfg[f"guide_{key}"] = ""
+        changed = True
+    if changed:
+        settings_store.save_section("site", cfg)
 
 
 def delete(pid: int) -> bool:

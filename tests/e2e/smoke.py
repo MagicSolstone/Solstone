@@ -452,19 +452,24 @@ def main() -> int:
                 if anon.locator(".hp-hero").count():
                     problems.append("home: the big name shows with Show the name big off")
                 check(anon, "site-home-main-server")
-                pg.click('.fws-tabs [data-tab="guides"]'); pg.wait_for_timeout(400)
-                pg.click('.ws-guide[data-guide="join"] [data-start]'); pg.wait_for_timeout(200)
-                if (pg.locator('.ws-guide[data-guide="join"] textarea').bounding_box() or {}).get("width", 0) < 600:
-                    problems.append("website: the guide text boxes are narrow")
-                if "{java_address}" not in pg.locator('.ws-guide[data-guide="join"] textarea').input_value():
-                    problems.append("website: Start from Solstone's wording didn't put the placeholders in")
-                check(pg, "website-guides")
-            # the guides in your own words
-            pg.request.put(f"{base}/api/settings/site", data={"guide_account": "Hello from **{name}**, port {bedrock_port}."}, headers=H)
-            anon.goto(f"{base}/guides/account"); anon.wait_for_timeout(900)
+            # a guide from a template, standing in for the built-in join guide, with its fill-ins done on the page
+            pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(1200)
+            pg.click('.fws-tabs [data-tab="posts"]'); pg.wait_for_timeout(400)
+            pg.click("#ws-new"); pg.wait_for_timeout(300)
+            pg.select_option("#ws-edit [data-template]", "join"); pg.wait_for_timeout(300)
+            if "{java_address}" not in pg.locator("#ws-edit [name=body]").input_value() or pg.locator("#ws-edit [name=role]").input_value() != "join":
+                problems.append("post editor: the join guide template didn't fill in (with its fill-ins) or set Use as")
+            if "{java_address}" in (pg.locator(".ws-live").text_content() or ""):
+                problems.append("post editor: the live view shows {java_address} instead of the address")
+            check(pg, "post-template")
+            pg.fill("#ws-edit [name=body]", "Hello from **{name}**, port {bedrock_port}. {ask}")
+            pg.click("#ws-edit [data-save]"); pg.wait_for_timeout(1200)
+            anon.goto(f"{base}/guides/join"); anon.wait_for_timeout(1200)
             if "Hello from Smoke SMP, port 19132." not in (anon.locator(".hp-body").text_content() or ""):
-                problems.append("account guide: the admin's own wording wasn't used or filled in")
-            pg.request.put(f"{base}/api/settings/site", data={"guide_account": ""}, headers=H)
+                problems.append("join guide: the post standing in for it wasn't shown, or its fill-ins weren't done")
+            for x in pg.request.get(f"{base}/api/posts", headers=H).json()["posts"]:
+                if x.get("role") == "join":
+                    pg.request.delete(f"{base}/api/posts/{x['id']}", headers=H)
             # the rules page, and a welcome message in the game
             anon.goto(f"{base}/guides/rules"); anon.wait_for_timeout(900)
             if "Leave other people's things alone" not in (anon.locator(".hp-body").text_content() or ""):

@@ -97,7 +97,7 @@ function postCards(posts, empty) {
   return `<div class="hp-posts">${posts.map((p) => `<a class="hp-post glass ${p.image ? "has-pic" : ""}" href="${p.builtin ? `/guides/${p.slug}` : `/post/${encodeURIComponent(p.slug)}`}">
     ${p.image ? `<img class="hp-post-pic" src="${esc(p.image)}" alt="" loading="lazy">` : ""}
     <span class="hp-post-meta">${p.builtin ? "Guide · Start here" : `${esc(CAT_LABEL[p.category] || "")}${p.pinned ? " · 📌" : ""} · ${esc(dateText(p.created))}`}</span>
-    <h3>${esc(p.title)}</h3><p class="muted">${esc(p.excerpt || "")}</p></a>`).join("")}</div>`;
+    <h3>${esc(p.title)}</h3><p class="muted">${esc(fillPostVars(p.excerpt || "", hp.site))}</p></a>`).join("")}</div>`;
 }
 
 function faqList(posts) {
@@ -117,8 +117,10 @@ function liveSection() {
 // Their wording is in guides.js (admins can rewrite them in Website → Guides).
 const BUILTIN = GUIDES;
 
+// Solstone's own guides, except where a post stands in for one (it's listed with the other posts instead).
 function builtinCards() {
-  return Object.entries(BUILTIN).map(([k, g]) => ({ slug: k, title: g.title, excerpt: g.excerpt, builtin: true }));
+  return Object.entries(BUILTIN).filter(([k]) => !hp.site.guide_posts?.[k])
+    .map(([k, g]) => ({ slug: k, title: g.title, excerpt: g.excerpt, builtin: true }));
 }
 
 // ------------------------------------------------------------------ pages
@@ -152,9 +154,11 @@ async function article(slug) {
   try { p = await getJSON(`/api/public/posts/${encodeURIComponent(slug)}`); } catch { return `<section><h1>Not found</h1><p class="muted">That post isn't here any more. <a href="/">Back home</a></p></section>`; }
   const back = { news: ["/news", "News"], guide: ["/help", "Help"], faq: ["/help", "Help"] }[p.category] || ["/", "Home"];
   document.title = `${p.title} · ${hp.site.name}`;
+  const join = p.role === "join";            // the join guide: the Ask to join form goes under it
   return `<article class="hp-article glass"><a class="back" href="${back[0]}">← ${esc(back[1])}</a>
     <h1>${esc(p.title)}</h1><p class="hp-post-meta">${esc(dateText(p.created))}${p.author ? ` · ${esc(p.author)}` : ""}</p>
-    <div class="hp-body">${markdown(p.body)}</div></article>`;
+    <div class="hp-body">${markdown(fillPostVars(p.body, hp.site, join))}</div></article>
+    ${join && hp.site.join_requests ? askFormHtml() : ""}`;
 }
 
 // A post being written (Website → Posts → 👁 Preview): from this browser's storage, shown as visitors will see it.
@@ -166,10 +170,12 @@ function previewArticle() {
   return `<p class="hp-preview-note glass">👁 <b>Preview.</b> Only you can see this. Nobody else sees the post until it's published and saved. Press Preview again after changes, or reload this tab.</p>
     <article class="hp-article glass"><a class="back" href="${p.category === "news" ? "/news" : "/help"}">← ${p.category === "news" ? "News" : "Help"}</a>
     <h1>${esc(p.title)}</h1><p class="hp-post-meta">${esc(dateText(p.created))}${p.author ? ` · ${esc(p.author)}` : ""}</p>
-    <div class="hp-body">${markdown(p.body)}</div></article>`;
+    <div class="hp-body">${markdown(fillPostVars(p.body, hp.site, p.role === "join"))}</div></article>`;
 }
 
-function builtinArticle(key) {
+async function builtinArticle(key) {
+  const slug = hp.site.guide_posts?.[key];
+  if (slug) return article(slug);             // a post stands in for this guide
   const g = BUILTIN[key];
   document.title = `${g.title} · ${hp.site.name}`;
   return `<article class="hp-article glass"><a class="back" href="/help">← Help</a>
@@ -284,7 +290,7 @@ async function route() {
     if (path === "/") html = await home();
     else if (path.startsWith("/post/")) { nav = ""; html = await article(decodeURIComponent(path.slice(6))); }
     else if (path === "/guides" || path === "/faq") { history.replaceState(null, "", path === "/faq" ? "/help#faq" : "/help"); route(); return; }   // the old pages
-    else if (path.startsWith("/guides/") && BUILTIN[path.slice(8)]) { nav = "help"; html = builtinArticle(path.slice(8)); }
+    else if (path.startsWith("/guides/") && BUILTIN[path.slice(8)]) { nav = "help"; html = await builtinArticle(path.slice(8)); }
     else if (SECTIONS[path.slice(1)]) { nav = path.slice(1); html = await section(nav); }
     else { nav = ""; html = `<section><h1>Not found</h1><p class="muted"><a href="/">Back home</a></p></section>`; }
   } catch {
@@ -328,7 +334,7 @@ document.addEventListener("toggle", async (e) => {
   const box = e.target.querySelector?.("[data-faq]");
   if (!e.target.open || !box || box.dataset.loaded) return;
   box.dataset.loaded = "1";
-  try { box.innerHTML = markdown((await getJSON(`/api/public/posts/${encodeURIComponent(box.dataset.faq)}`)).body); }
+  try { box.innerHTML = markdown(fillPostVars((await getJSON(`/api/public/posts/${encodeURIComponent(box.dataset.faq)}`)).body, hp.site)); }
   catch { box.innerHTML = `<p class="muted">Couldn't load the answer.</p>`; }
 }, true);
 

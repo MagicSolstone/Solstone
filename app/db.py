@@ -166,6 +166,9 @@ def conn() -> sqlite3.Connection:
                 _conn.execute("DELETE FROM events WHERE id NOT IN (SELECT MIN(id) FROM events "
                               "GROUP BY server_id, ts, type, COALESCE(player, ''), message)")
                 _conn.executescript(SCHEMA)
+            # Added later: a post can be the join guide, the account guide or the rules (site.ROLES)
+            if "role" not in {c[1] for c in _conn.execute("PRAGMA table_info(posts)")}:
+                _conn.execute("ALTER TABLE posts ADD COLUMN role TEXT")
             # Early builds stored Crafty's byte counts as megabytes; convert them.
             _conn.execute("UPDATE metrics SET mem_mb = ROUND(mem_mb / 1048576.0, 1) WHERE mem_mb > 100000")
         return _conn

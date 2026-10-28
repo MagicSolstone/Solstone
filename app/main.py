@@ -33,7 +33,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.8.9"
+VERSION = "1.9.0"
 
 
 @asynccontextmanager
@@ -550,6 +550,7 @@ _site_cache: tuple[float, list] | None = None
 @app.get("/api/public/site")
 async def public_site():
     global _site_cache
+    site.move_guides_to_posts()
     cfg = site.config()
     servers = []
     if cfg["home_live"] and _site_cache and time.monotonic() - _site_cache[0] < 15:
@@ -592,6 +593,7 @@ async def public_site():
     cfg = {**cfg, "java_version": next((j["version"] for j in joins if j["java"] and j["version"]), "")}
     asks = [{"id": s.id, "name": s.display_name, "main": s.id == cfg.get("main_server")} for s in ordered if s.is_java] if cfg["join_requests"] else []
     return JSONResponse({**cfg, "logo": site.logo_url(), "servers": servers, "joins": joins, "ask_servers": asks,
+                         "guide_posts": site.guide_posts(), "roles": site.ROLES,
                          "live": _status_cfg()["enabled"], "build": _asset_stamp()},
                         headers={"Cache-Control": "no-cache"})
 
@@ -794,8 +796,9 @@ async def public_post(slug: str):
 async def all_posts(request: Request):
     """Admin: every post, drafts included, with their text, for the Website page."""
     auth.require_admin(request)
+    site.move_guides_to_posts()
     nc = notify.get_config()
-    return {"posts": site.posts(drafts=True, limit=200), "site": site.config(), "logo": site.logo_url(), "categories": site.CATEGORIES,
+    return {"posts": site.posts(drafts=True, limit=200), "site": site.config(), "logo": site.logo_url(), "categories": site.CATEGORIES, "roles": site.ROLES,
             "notify_ready": bool(nc["ntfy_url"] or nc["discord_webhook"])}
 
 

@@ -1,3 +1,12 @@
+# Solstone 1.9.0
+
+## Guides and rules are posts now
+- **Start a post from a template:** a new post in Website → Posts can start from **How to join the server**, **Making an account on this website** or **Server rules**: Solstone's wording, ready to make your own with the formatting toolbar and the live view. Pin it, unpublish it or preview it like any post.
+- **Use as:** a post can be *the join guide*, *the guide to making an account* or *the server rules*. Everything that links there uses it: the home page's *Step-by-step guide*, the Ask to join form (and its rules box), and `{rules}` in the welcome message in the game. The join guide gets the Ask to join form under it. Only one post can be each; a draft doesn't stand in. Without one, Solstone's own wording shows, as before.
+- **Fill-ins in every post:** `{java_address}`, `{bedrock_address}`, `{bedrock_port}`, `{java_version}`, `{name}`, `{discord}`, `{ask}` and `{rules}` work in all posts (the toolbar's **Fill-in…** puts one in). They're filled in from the main server's details, the first card on the home page, so posts stay right when an address, port or version changes. The live view and Preview show them filled in.
+- **Guides you'd already rewritten move over by themselves:** each becomes a published post standing in for that guide, the first time the site is opened after the update.
+- The **Rules and guides** tab is gone. Its *Ask to join* switch is in **Site details** now.
+
 # Solstone 1.8.9
 
 - **Which Minecraft version to play:** each server's card on the home page says it beside the Java address (*Minecraft 26.3*), and Bedrock says *newest version*. It's read from the world's own save, so it follows the server when it updates, and shows even while the server is off. The join guide says it too (*You need Minecraft 26.3*), with `{java_version}` for guides in your own words. When the version isn't known yet, the guide says *the version shown on the home page* instead.
