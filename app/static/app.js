@@ -1549,6 +1549,8 @@ async function route() {
       if (tab === "announcements") await viewAnnouncements();
       else if (tab === "website") await viewWebsite();
       else if (tab === "whitelist") await viewWhitelist();
+      else if (tab === "notifications") await viewNotifications();
+      else if (tab === "holidays") await viewHolidays();
       else await viewAdmin(tab);
       return;
     }
@@ -1588,7 +1590,6 @@ addEventListener("hashchange", async () => {
   if ((curSid || "") !== boardSid) { boardSid = curSid || ""; appSky.board?.refresh(); }   // bedtime banners follow the server in view
 });
 document.addEventListener("DOMContentLoaded", async () => {
-  $("#btn-notify")?.addEventListener("click", openNotifications);
   wireAccountMenu(); wireMobileMenu();
   const ch = $("#build-channel");
   if (ch && BUILD_CHANNEL === "beta") { ch.textContent = "Beta build"; ch.hidden = false; }

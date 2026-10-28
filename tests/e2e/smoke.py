@@ -155,6 +155,7 @@ def main() -> int:
                 "fireworks-editor": "#/fireworks", "fireworks-settings": "#/fireworks/show",
                 "announcements": "#/manage/announcements", "admin": "#/manage/users", "manage-servers": "#/manage/servers",
                 "manage-activity": "#/manage/activity", "manage-whitelist": "#/manage/whitelist", "website": "#/manage/website",
+                "manage-holidays": "#/manage/holidays", "manage-notifications": "#/manage/notifications",
             }
             pg.goto(f"{base}/app"); pg.wait_for_timeout(1200)
             for name, hash_ in routes.items():
@@ -228,6 +229,23 @@ def main() -> int:
                 if pg.locator("text=Something went wrong").count():
                     problems.append(f"firework editor: editing a picture firework broke with the {tab} tab open")
                 pg.goto(f"{base}/app#/fireworks"); pg.wait_for_timeout(600)
+
+            # Manage → Notifications is a page (not a popup), Manage → Holidays switches days on and off
+            pg.goto(f"{base}/app#/manage/notifications"); pg.wait_for_timeout(1200)
+            if not pg.locator("#notify-form").count() or pg.locator("#modal-root .modal").count():
+                problems.append("manage: Notifications isn't shown as a page")
+            pg.goto(f"{base}/app#/manage/holidays"); pg.wait_for_timeout(1200)
+            if pg.locator(".fws-cal-row").count() < 5:
+                problems.append("manage: Holidays doesn't list the holidays")
+            else:
+                row = pg.locator('.fws-cal-row:has-text("Thanksgiving")')
+                row.locator("[data-en]").uncheck(); pg.wait_for_timeout(800)
+                if not pg.locator('.fws-cal-row.off:has-text("Thanksgiving")').count():
+                    problems.append("manage: switching Thanksgiving off didn't stick")
+                pg.locator('.fws-cal-row:has-text("Thanksgiving") [data-en]').check(); pg.wait_for_timeout(800)
+                pg.locator('.fws-cal-row:has-text("Halloween") [data-edit]').click(); pg.wait_for_timeout(300)
+                if not pg.locator(".fws-cal-edit").count():
+                    problems.append("manage: a holiday doesn't open for editing")
 
             # fireworks settings: every tab, then edit a show (copy a step)
             pg.goto(f"{base}/app#/fireworks/settings"); pg.wait_for_timeout(1200)

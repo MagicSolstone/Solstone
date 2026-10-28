@@ -493,16 +493,21 @@ async function renderPlayerHistory(el, sid, p) {
 }
 
 // ================================================================ notification settings
-async function openNotifications() {
+async function viewNotifications() {
+  if (!isAdmin()) { location.replace("#/"); return; }
+  curSid = null;
+  document.title = `Notifications · ${SITE_NAME}`;
+  fillServersMenu(state.servers, null);
   const [c, everyone] = await Promise.all([api("/api/settings/notifications").catch(() => null), api("/api/players/all").catch(() => [])]);
-  if (!c) return showError("Couldn't load notification settings", 4000);
+  if (!c) { setView('<div class="panel"><p>Couldn\'t load the notification settings.</p></div>'); return; }
   const labels = { join: "Someone joins", leave: "Someone leaves", death: "Someone dies", advancement: "Advancements",
     server: "Server starts, stops or crashes", backup: "Backups are overdue", blocked: "Someone the whitelist turned away (with their exact name, to let them in from Control)",
     updates: "New builds of the server's mods (Geyser and Floodgate first: Bedrock players need them up to date)" };
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const hourLabel = (h) => new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: "numeric" });
-  openModal(`<h2>Notifications</h2>
-    <form id="notify-form">
+  setView(`<div class="fwe-head"><h1>Notifications</h1>
+      <p class="muted">Get a message on your phone (ntfy) or in Discord when things happen on the servers.</p></div>
+    <form id="notify-form" class="panel notify-page">
       <label>ntfy topic URL <small>For example https://ntfy.sh/your-secret-topic or your own ntfy server</small><input class="input" name="ntfy_url" value="${esc(c.ntfy_url || "")}" placeholder="https://ntfy.sh/solstone-abc123"></label>
       <label>ntfy access token <small>${c.ntfy_token_set ? "Saved. Type a new one to replace it." : "Only needed if your topic is protected"}</small><input class="input" type="password" name="ntfy_token" autocomplete="off"></label>
       <label>Discord webhook URL <small>${c.discord_webhook_set ? "Saved. Paste a new one to replace it." : "Server Settings → Integrations → Webhooks in Discord"}</small><input class="input" type="password" name="discord_webhook" autocomplete="off"></label>
@@ -543,8 +548,10 @@ async function openNotifications() {
         <label>Until<input class="input" type="time" name="quiet_end" value="${esc(c.quiet_end || "07:00")}"></label>
       </div>
       <div class="actions"><button type="button" class="btn" id="btn-test">Send test</button><span style="flex:1"></span>
-        <button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Save notifications</button></div>
-    </form>`, (m) => {
+        <button class="btn primary" type="submit">Save notifications</button></div>
+    </form>`);
+  {
+    const m = view();
     const form = $("#notify-form", m);
     const quiet = () => { const on = form.quiet_enabled.checked; $$("#quiet-times input", form).forEach((i) => { i.disabled = !on; }); $("#quiet-times", form).classList.toggle("off", !on); };
     form.quiet_enabled.addEventListener("change", quiet); quiet();
@@ -568,7 +575,7 @@ async function openNotifications() {
     const adminFetch = (url, opts) => api(url, opts);
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      try { await adminFetch("/api/settings/notifications", { method: "PUT", body: JSON.stringify(body()) }); closeModal(); showToast("Notifications saved", 2500); }
+      try { await adminFetch("/api/settings/notifications", { method: "PUT", body: JSON.stringify(body()) }); showToast("Notifications saved", 2500); }
       catch (err) { showError(`Couldn't save notifications: ${esc(err.message)}`, 5000); }
     });
     $("#btn-digest", m).addEventListener("click", async () => {
@@ -584,5 +591,5 @@ async function openNotifications() {
         showToast(r.ok ? "Test notification sent" : `Test failed: ${esc(r.errors.join("; "))}`, 6000);
       } catch (err) { showToast(`Test failed: ${esc(err.message)}`, 6000); }
     });
-  });
+  }
 }

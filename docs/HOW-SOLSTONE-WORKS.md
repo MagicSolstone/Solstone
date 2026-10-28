@@ -58,7 +58,7 @@ Every file starts with a docstring saying what it's for. The main ones:
 | Adventures (trails, "what happened", "lately") | `adventures.py` |
 | Contests, races, games | `challenges.py`, `races.py`, `games.py`, `spleef.py`, `gather.py`, `hotzone.py`; on-screen bits: `hud.py`, `bossbar.py` |
 | Fishing | `tide.py` (the Tide+ mod), `fishing.py` + `fishpack.py` (the data pack) |
-| Fireworks | `fireworks.py` (designs), `fwshow.py` (the show, events, calendar) |
+| Fireworks, holidays | `fireworks.py` (designs), `fwshow.py` (the show, events, the holiday calendar edited in Manage → Holidays) |
 | Modpack (packwiz and .mrpack) | `modpack.py` |
 | Skins | `skins.py` |
 | Backups: Crafty's status / Solstone's own | `backups.py` / `selfbackup.py` |
@@ -72,7 +72,7 @@ Two HTML pages load a list of scripts (in order, see the bottom of each HTML fil
 | Page | Scripts |
 |---|---|
 | **`home.html`**: the public site at `/` (home, news, help, guides, live) | `home.js` (pages, posts, ask to join), `live.js` (the live section), `guides.js` (built-in guides), shared ones below |
-| **`index.html`**: the app at `/app` (signed in) | `app.js` (router, server pages, players, world, leaderboards, mods), `control.js` (Control tab, Manage → Users / Servers / Whitelist), `history.js` (performance, activity, notifications), `play.js` (chat, contests, races, games, fishing), `adventures.js`, `editor.js` + `fwsettings.js` (fireworks), `announce.js` (announcements), `website.js` (Manage → Website), `login.js` (sign-in) |
+| **`index.html`**: the app at `/app` (signed in) | `app.js` (router, server pages, players, world, leaderboards, mods), `control.js` (Control tab, Manage → Users / Servers / Whitelist), `history.js` (performance, activity, Manage → Notifications), `play.js` (chat, contests, races, games, fishing), `adventures.js`, `editor.js` + `fwsettings.js` (fireworks, Manage → Holidays), `announce.js` (announcements), `website.js` (Manage → Website), `login.js` (sign-in) |
 | Shared by both | `hud.js` (top bar, menus, escaping), `sky.js` (the animated sky and fireworks), `showbar.js` (the Launch/Show control), `board.js` (banners), `recap.js` |
 
 - **Routing in the app** is the `#/...` part of the address. `route()` near the bottom of `app.js` maps it to a

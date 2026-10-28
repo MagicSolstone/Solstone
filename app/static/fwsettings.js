@@ -3,7 +3,7 @@
    and scheduled shows. Loaded after app.js, control.js and editor.js. */
 "use strict";
 
-const FWS_TABS = [["show", "The show"], ["shows", "Shows"], ["events", "Game events"], ["join", "Join fireworks"], ["calendar", "Calendar"]];
+const FWS_TABS = [["show", "The show"], ["shows", "Shows"], ["events", "Game events"], ["join", "Join fireworks"]];
 const FWS_EVENTS = [
   ["join", "Someone joins", "Their join firework if they have one (Join fireworks tab), otherwise what you pick."],
   ["advancement", "Advancement", "Any normal advancement."],
@@ -42,7 +42,8 @@ async function viewFireworkSettings() {
   fws.data = data; fws.fw = fw; fws.designs = designs;
   setView(`<div class="fwe-head"><h1>Fireworks</h1>
       ${fireworksTabs("show")}
-      <p class="muted" id="fws-today"></p></div>
+      <p class="muted" id="fws-today"></p>
+      <p class="muted small">Holidays, their colours and their shows: <a href="#/manage/holidays">Manage → Holidays</a></p></div>
     <nav class="fwe-tabs fws-tabs" role="tablist" aria-label="Show settings">${FWS_TABS.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${fws.tab === k}">${l}</button>`).join("")}</nav>
     <div id="fws-body"></div>`);
   $$(".fws-tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
@@ -52,6 +53,7 @@ async function viewFireworkSettings() {
   renderFws();
 }
 function renderToday() {
+  if (!$("#fws-today")) return;                     // Manage → Holidays has no "today" line
   const t = fws.data.today, bits = [];
   if (t.theme) bits.push(`Today: <b>${esc(t.theme.emoji)} ${esc(t.theme.name)}</b>`);
   const next = t.finales.find((f) => f.end * 1000 > Date.now());
@@ -78,7 +80,6 @@ function renderFws() {
   } else if (fws.tab === "shows") renderShows(el);
   else if (fws.tab === "events") renderEvents(el);
   else if (fws.tab === "join") renderJoin(el);
-  else if (fws.tab === "calendar") renderCalendar(el);
 }
 
 // ---------------------------------------------------------------- fireworks people made
@@ -181,7 +182,21 @@ function renderJoin(el) {
   }));
 }
 
-// ---------------------------------------------------------------- calendar
+// ---------------------------------------------------------------- calendar (Manage → Holidays)
+// Holidays and special days: the ones switched on show on the Events page, put their message on every page
+// that day and give the fireworks their colours. Kept in the fireworks settings (fw_calendar), edited here.
+async function viewHolidays() {
+  if (!isAdmin()) { location.replace("#/"); return; }
+  curSid = null;
+  document.title = `Holidays · ${SITE_NAME}`;
+  fillServersMenu(state.servers, null);
+  const [data, designs] = await Promise.all([api("/api/fireworks/show"), api("/api/fireworks").catch(() => [])]);
+  fws.data = data; fws.designs = designs; fws.editing = null;
+  setView(`<div class="fwe-head"><h1>Holidays</h1>
+      <p class="muted">Holidays and special days. The ones switched <b>On</b> show on the <a href="#/events">Events</a> page, put their message on every page that day and colour the fireworks. Switch off the ones you don't celebrate, or add your own.</p></div>
+    <div id="hol-body"></div>`);
+  renderCalendar($("#hol-body"));
+}
 // A small note when a day shares dates (or a show's start time) with another one; it's
 // allowed, this just says which one wins.
 const fwsDay = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString([], { day: "numeric", month: "short" }); };
@@ -198,7 +213,7 @@ function fwsOverlapNote(id) {
 
 function renderCalendar(el) {
   const cal = fws.data.calendar;
-  el.innerHTML = `<section class="panel"><p class="muted" style="margin-bottom:12px">On these days the fireworks take on the day's colours and favourite kinds, and a message shows on every page. A <b>scheduled show</b> fills the sky at a set time on every open page; the New Year one counts down from 10.</p>
+  el.innerHTML = `<section class="panel"><p class="muted" style="margin-bottom:12px">On these days the fireworks take on the day's colours and favourite kinds. A <b>scheduled show</b> fills the sky at a set time on every open page (and is listed on Events too); the New Year one counts down from 10.</p>
     <div class="fws-cal">${cal.map((e, i) => fws.editing === i ? calEditHtml(e, i) : `<div class="fws-cal-row ${e.enabled ? "" : "off"}" data-i="${i}">
       <span class="fws-emoji">${esc(e.emoji)}</span>
       <div><b>${esc(e.name)}</b><div class="muted small">${esc(fwsDateText(e))}${e.finale.on ? ` · show at ${esc(fwsTime(e.finale.time))} for ${e.finale.minutes} min${e.finale.countdown ? " with a countdown" : ""}` : ""}</div>
@@ -290,7 +305,7 @@ function wireCalEdit(el, i) {
   form.querySelector("[data-addcc]")?.addEventListener("click", () => { draft.colors.push(pick2(FW_COLORS)); redraw(); });
   form.querySelector("[data-cancel]").addEventListener("click", async () => { fws.editing = null; fws.data = await api("/api/fireworks/show"); renderCalendar(el); });
   form.querySelector("[data-del]").addEventListener("click", async () => {
-    if (!(await confirmBox(`Delete ${draft.name}?`, "It won't change the fireworks on that day any more.", "Delete"))) return;
+    if (!(await confirmBox(`Delete ${draft.name}?`, "It won't show on Events or change the fireworks any more.", "Delete"))) return;
     const next = fweCopy(fws.data.calendar); next.splice(i, 1);
     fws.editing = null; await fwsSave({ calendar: next }, "Deleted"); renderCalendar(el);
   });

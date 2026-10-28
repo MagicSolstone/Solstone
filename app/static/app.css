@@ -86,8 +86,6 @@ p { margin: 0; }
 body.ui-hidden .app-top { display: none; }
 .manage-nav { width: calc(100% - 2 * var(--gutter)); max-width: calc(var(--page) - 2 * var(--gutter)); margin: 22px auto -10px; flex-wrap: wrap; }
 .manage-nav[hidden] { display: none; }
-.manage-nav .manage-notify { border: 0; background: none; color: var(--muted); cursor: pointer; font-weight: 700; font-size: .95rem; padding: 10px 14px 9px; }
-.manage-nav .manage-notify:hover { color: var(--bone); }
 body.ui-hidden .manage-nav { display: none; }
 #app-sky { position: fixed; inset: 0; width: 100vw; height: 100vh; image-rendering: pixelated; pointer-events: none; z-index: 0; opacity: .9; }
 body.logged-out #app-sky { display: none; }
@@ -422,9 +420,9 @@ table.data tr:hover td { background: var(--line); }
 .modal-backdrop { position: fixed; inset: 0; background: rgba(6,8,16,.55); display: grid; place-items: center; z-index: 50; padding: 16px; }
 .modal { background: linear-gradient(160deg, rgba(48, 56, 80, .78), rgba(26, 31, 48, .86)); border: 1px solid var(--glass-edge); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border-radius: 10px; padding: 22px; width: min(520px, 100%); max-height: 90vh; overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
 .modal h2 { margin-bottom: 14px; }
-.modal label { display: grid; gap: 4px; margin-bottom: 14px; font-weight: 700; font-size: .92rem; }
-.modal label small { font-weight: 400; color: var(--muted); }
-.modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.modal label, .notify-page label { display: grid; gap: 4px; margin-bottom: 14px; font-weight: 700; font-size: .92rem; }
+.modal label small, .notify-page label small { font-weight: 400; color: var(--muted); }
+.modal .actions, .notify-page .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; align-items: center; }
 .btn { border: 0; border-radius: var(--radius-m); padding: 9px 16px; font-weight: 700; cursor: pointer; background: var(--tuff-2); text-decoration: none; }
 .btn.primary { background: var(--lapis); color: #fff; }
 .btn:hover { filter: brightness(1.1); }

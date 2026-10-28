@@ -1,3 +1,8 @@
+# Solstone 1.9.1
+
+- **Manage → Holidays:** every holiday and special day in one list (New Year, Valentine's, St. Patrick's, Easter, 4th of July, Halloween, Thanksgiving, Christmas, the Friday night show and your own dates). Switch off the ones you don't celebrate and they're gone from the Events page, the message on every page and the fireworks. **Edit** changes a day's name, date, message, colours and show; **+ Add a date** adds your own. (It used to be the Calendar tab in the fireworks settings; that page links here now.)
+- **Manage → Notifications is a page:** it opens like the other Manage tabs instead of in a pop-up, with the same settings.
+
 # Solstone 1.9.0
 
 ## Mod updates
