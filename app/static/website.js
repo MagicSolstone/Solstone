@@ -61,7 +61,7 @@ function wsEditHtml(p) {
       <label class="ws-compose-text">Text <small>Select some text, then pick a button. Or type the marks yourself: **bold**, # Heading, {red}colour{/red}.</small>
         <textarea class="input ws-text" name="body" rows="16" maxlength="20000" required>${esc(p.body || "")}</textarea></label>
       <div class="ws-compose-view"><span class="ws-compose-label">How it looks</span><div class="hp-body ws-live" aria-live="off"></div></div></div>
-    <small class="muted">A blank line starts a new paragraph. The first picture also shows on the post's card. Pictures under 4 MB each.</small>
+    <small class="muted">Enter starts a new line; a blank line starts a new paragraph. The first picture also shows on the post's card. Pictures under 4 MB each.</small>
     <div class="actions"><button type="button" class="btn" data-preview title="See it as visitors will, before anyone else can">👁 Preview</button>
       <button type="button" class="btn" data-cancel>Cancel</button><button class="btn primary" type="submit" data-save>${wsSaveLabel(p.id, p.published !== false)}</button></div>
   </form>`;

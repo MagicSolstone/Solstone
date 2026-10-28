@@ -186,6 +186,9 @@ def main() -> int:
             if "Secret draft" not in (prev.locator(".hp-article").text_content() or "") or not prev.locator(".hp-body strong, .hp-body b").count():
                 problems.append("post editor: Preview doesn't show the post as it'll look")
             check(prev, "post-preview"); prev.close()
+            pg.fill("#ws-edit [name=body]", "Line one\nLine two\n\nNew paragraph"); pg.wait_for_timeout(300)
+            if pg.locator(".ws-live p").count() != 2 or pg.locator(".ws-live p br").count() != 1:
+                problems.append("post editor: one Enter isn't a new line, or a blank line isn't a new paragraph")
             pg.click("#ws-edit [data-cancel]"); pg.wait_for_timeout(300)
             pg.goto(f"{base}/app#/s/{sid}/leaderboards"); pg.wait_for_timeout(1500)
             if not pg.locator(".board-group h2").count():

@@ -2,6 +2,7 @@
    Shared by the public site (home.js) and the post editor's live preview (website.js), so the preview is exactly
    what visitors see. The text is escaped first and only then formatted, so it can never carry HTML of its own.
 
+   One line break is a new line; a blank line is a new paragraph.
    # Heading · ## Subheading · ### Small heading · **bold** · *italic* · - list · 1. list · > quote · --- line
    [a link](https://…) · ![a picture](/api/public/images/…) · {red}coloured{/red} · {big}bigger{/big} · {small}smaller{/small} */
 "use strict";
@@ -33,7 +34,7 @@ function markdown(src) {
   const out = [];
   let list = null, para = [];
   const flush = () => {
-    if (para.length) { out.push(`<p>${inline(para.join(" "))}</p>`); para = []; }
+    if (para.length) { out.push(`<p>${inline(para.join("<br>"))}</p>`); para = []; }
     if (list) { out.push(`</${list}>`); list = null; }
   };
   for (const raw of lines) {
@@ -45,7 +46,7 @@ function markdown(src) {
     if ((m = line.match(/^&gt;\s?(.*)$/))) { flush(); out.push(`<blockquote>${inline(m[1])}</blockquote>`); continue; }
     if ((m = line.match(/^\s*[-*]\s+(.*)$/)) || (m = line.match(/^\s*\d+[.)]\s+(.*)$/))) {
       const kind = /^\s*\d/.test(line) ? "ol" : "ul";
-      if (para.length) { out.push(`<p>${inline(para.join(" "))}</p>`); para = []; }
+      if (para.length) { out.push(`<p>${inline(para.join("<br>"))}</p>`); para = []; }
       if (list !== kind) { if (list) out.push(`</${list}>`); out.push(`<${kind}>`); list = kind; }
       out.push(`<li>${inline(m[1])}</li>`);
       continue;
