@@ -382,3 +382,20 @@ def test_turned_away_by_the_whitelist(client, viewer, sid):
         assert [e for e in client.get(f"/api/servers/{sid}/events").json() if e["type"] == "blocked"]
     finally:
         db.x("DELETE FROM events WHERE type='blocked'")
+
+
+def test_letting_in_a_name_the_game_doesnt_know(client, sid, rcon):
+    from app import site
+    site.add_join_request("Fake_Kid_123", "", "", "")
+    rcon["replies"]["whitelist add Fake_Kid_123"] = "That player does not exist"
+    try:
+        r = client.post(f"/api/servers/{sid}/control/player/Fake_Kid_123/whitelist_add", json={})
+        assert r.status_code == 400 and "does not exist" in r.json()["detail"]
+        assert any(x["player"] == "Fake_Kid_123" for x in site.join_requests())      # still waiting: not let in
+        rcon["replies"]["whitelist add Real_Kid"] = "Added Real_Kid to the whitelist"
+        site.add_join_request("Real_Kid", "", "", "")
+        assert client.post(f"/api/servers/{sid}/control/player/Real_Kid/whitelist_add", json={}).status_code == 200
+        assert not any(x["player"] == "Real_Kid" for x in site.join_requests())
+    finally:
+        site.settings_store.save_section("join_requests", [])
+        site.settings_store.save_section("join_let_in", [])

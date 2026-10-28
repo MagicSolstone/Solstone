@@ -276,7 +276,13 @@ def main() -> int:
                 problems.append("join guide: the addresses or the site name are missing")
             # asking to join from the guide
             pg.request.put(f"{base}/api/settings/site", data={"join_requests": True}, headers=H)
+            pg.request.put(f"{base}/api/servers/{sid}/settings", data={"join_address": "mods.example.net:25566", "join_note": "Needs the modpack"}, headers=H)
             anon.goto(f"{base}/"); anon.reload(); anon.wait_for_timeout(1200)
+            if "mods.example.net:25566" not in (anon.locator(".hp-join .hp-join-server").text_content() if anon.locator(".hp-join .hp-join-server").count() else ""):
+                problems.append("home: a second server's own join address isn't shown")
+            check(anon, "site-home-two-servers")
+            pg.request.put(f"{base}/api/servers/{sid}/settings", data={"join_address": "", "join_note": ""}, headers=H)
+            anon.reload(); anon.wait_for_timeout(1000)
             if not anon.locator(".hp-join .hp-ask-btn").count():
                 problems.append("home: no Ask to join button by the addresses")
             else:
@@ -303,8 +309,15 @@ def main() -> int:
                 if "Request sent" not in (anon.locator("#ask-badge").text_content() if anon.locator("#ask-badge").count() else ""):
                     problems.append("home: no Request sent badge while waiting")
                 check(anon, "site-home-waiting")
+                # no game here to run the command: Let them in says so, and the request stays waiting
                 pg.locator('.turned-away.asked [data-allow="Smoke_Kid"]').click(); pg.wait_for_timeout(300)
-                pg.click("#cf-yes"); pg.wait_for_timeout(1200)
+                pg.click("#cf-yes"); pg.wait_for_timeout(1500)
+                anon.reload(); anon.wait_for_timeout(1200)
+                if "waiting" not in (anon.locator("#ask-status").get_attribute("class") or ""):
+                    problems.append("home: a request that couldn't be let in shows as let in")
+                # let in from the game instead (their name on the whitelist): the page notices
+                wl = root / "servers" / sid / "whitelist.json"
+                wl.write_text(json.dumps([{"uuid": "00000000-0000-0000-0000-000000000001", "name": "Smoke_Kid"}]))
                 anon.reload(); anon.wait_for_timeout(1500)
                 if "in" not in (anon.locator("#ask-status").get_attribute("class") or "").split():
                     problems.append("home: someone let in doesn't see that they're in")
@@ -314,6 +327,7 @@ def main() -> int:
                 if anon.locator("#ask-badge").count():
                     problems.append("home: closing the badge didn't close it")
                 check(anon, "site-home-youre-in")
+                wl.unlink()
                 pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(1000)
                 pg.click('.fws-tabs [data-tab="guides"]'); pg.wait_for_timeout(400)
                 pg.click('.ws-guide[data-guide="join"] [data-start]'); pg.wait_for_timeout(200)

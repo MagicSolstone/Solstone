@@ -43,7 +43,8 @@ GAME_RULES = [
     ("immediate_respawn", "Respawn instantly", "bool", ("doImmediateRespawn", "minecraft:immediate_respawn", "immediate_respawn")),
     ("sleep_percent", "Players needed to sleep (%)", "int", ("playersSleepingPercentage", "minecraft:players_sleeping_percentage", "players_sleeping_percentage")),
 ]
-_ERROR_HINTS = ("unknown", "incorrect", "expected", "<--[here]", "invalid", "error", "no such")
+_ERROR_HINTS = ("unknown", "incorrect", "expected", "<--[here]", "invalid", "error", "no such", "does not exist", "doesn't exist",
+                "could not find", "couldn't find", "not found", "unable to")
 _rule_names: dict[str, dict[str, str]] = {}  # server id -> rule key -> name the server accepts
 
 
@@ -82,8 +83,9 @@ def _is_error(reply: str | None) -> bool:
     return any(h in low for h in _ERROR_HINTS)
 
 
-async def run(srv: S.Server, command: str) -> dict:
-    """Run one command. RCON when available (returns output); otherwise Crafty's console input."""
+async def run(srv: S.Server, command: str, wait: float | None = None) -> dict:
+    """Run one command. RCON when available (returns output); otherwise Crafty's console input.
+    wait: longer for the game to answer (commands that look a name up online first)."""
     command = command.strip().lstrip("/")
     if not command or "\n" in command or "\r" in command:
         raise HTTPException(400, "Enter a single command")
@@ -91,11 +93,14 @@ async def run(srv: S.Server, command: str) -> dict:
         raise HTTPException(400, "That command is too long")
     if srv.rcon_conf():
         try:
-            out = await srv.rcon(command)
+            out = await (srv.rcon(command, wait) if wait else srv.rcon(command))
             return {"command": command, "output": out or "", "via": "rcon", "ok": not _is_error(out)}
         except RconError as e:
+            if wait:                          # it may still be happening: don't send it again through Crafty
+                raise HTTPException(504, "The game took too long to answer. It may still be looking the name up: "
+                                         "wait a moment, then check the whitelist.") from e
             if not srv.crafty:
-                raise HTTPException(502, str(e)) from e
+                raise HTTPException(502, f"The game didn't answer: {e}") from e
     if srv.crafty and crafty.enabled:
         try:
             await crafty.stdin(srv.id, command)
@@ -221,14 +226,20 @@ async def player_action(srv: S.Server, player: str, action: str, body: dict, sen
         reason = clean_text(body.get("reason") or "Kicked by an admin", 120)
         return await run_all(srv, [f"kick {p} {reason}"])
     if action in ("whitelist_add", "whitelist_remove"):
-        if action == "whitelist_add":
+        # The game looks the name up first (Mojang for Java, Xbox through Floodgate for Bedrock), which can take
+        # a few seconds, and a made-up name doesn't exist there. Bedrock players go on Floodgate's own list, by gamertag.
+        verb = "add" if action == "whitelist_add" else "remove"
+        cmd = f"fwhitelist {verb} {p[1:]}" if mcname.is_bedrock(p) else f"whitelist {verb} {p}"
+        res = await run(srv, cmd, wait=30)
+        if res["ok"] is False and verb == "add":
+            reply = res["output"].strip()
+            raise HTTPException(400, f"{p} wasn't added. The game said: {reply}" if reply else f"{p} wasn't added")
+        if verb == "add":
             from . import site                # let in: their request to join (if they asked) is done with
             site.drop_join_request(p)
-        if mcname.is_bedrock(p):          # Bedrock players are let in by Floodgate's own list, by gamertag (no dot)
-            return await run_all(srv, [f"fwhitelist {'add' if action == 'whitelist_add' else 'remove'} {p[1:]}"])
-        return await run_all(srv, [f"whitelist {'add' if action == 'whitelist_add' else 'remove'} {p}"])
+        return [res]
     if action in ("op", "deop"):
-        return await run_all(srv, [f"{action} {p}"])
+        return [await run(srv, f"{action} {p}", wait=30)]
     raise HTTPException(400, "Unknown player action")
 
 

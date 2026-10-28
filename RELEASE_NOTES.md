@@ -1,5 +1,8 @@
 # Solstone 1.8.1
 
+- **Letting someone in that the game doesn't know:** Java names are checked with Mojang (and Bedrock gamertags with Xbox) before they're added, which can take a few seconds. Solstone now waits for that instead of giving up with a 502, and when the name doesn't exist it says so (*"Fake_Kid wasn't added. The game said: That player does not exist"*). Their request stays in *Asked to join* until they've really been added.
+- **More than one server to join:** a server's ⚙ settings have **How to join this server**: its own Java address (with :port), a Bedrock address and port if Bedrock players can join it, and a note such as *Needs the modpack*. The home page's box becomes **Join the servers**, with the main one from Site details first and then each of those, marked *Java only* where it is.
+
 - **Ask to join** is easy to find: with it turned on, a big **🙋 Ask to join** button sits in the home page's *Join the server* box, right under the addresses and port, and takes people straight to the form.
 
 # Solstone 1.8.0

@@ -65,12 +65,13 @@ class Rcon:
             if got_id == rid and ptype == 2:  # AUTH_RESPONSE
                 return
 
-    async def command(self, cmd: str) -> str:
+    async def command(self, cmd: str, wait: float | None = None) -> str:
+        """wait: how long to give the game to answer (some commands look a name up online first)."""
         async with self._lock:
             if self._writer is None or self._writer.is_closing():
                 await self.connect()
             try:
-                return await asyncio.wait_for(self._command(cmd), self.timeout * 2)
+                return await asyncio.wait_for(self._command(cmd), wait or self.timeout * 2)
             except (OSError, asyncio.IncompleteReadError, asyncio.TimeoutError) as e:
                 await self.close()
                 raise RconError(f"RCON command failed: {e}") from e

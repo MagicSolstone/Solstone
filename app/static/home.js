@@ -69,14 +69,23 @@ const dateText = (ts) => new Date(ts * 1000).toLocaleDateString([], { year: "num
 const CAT_LABEL = { news: "News", guide: "Guide", faq: "FAQ" };
 
 function joinCard(site) {
+  const rowsHtml = (rows) => `<div class="hp-join-rows">${rows.map(([ed, addr, extra]) => `<div class="hp-join-row">
+      <span class="hp-ed">${esc(ed)}</span><code class="hp-addr">${esc(addr)}</code>${extra ? `<span class="muted">${esc(extra)}</span>` : ""}
+      <button class="btn sm" type="button" data-copy="${esc(addr)}">Copy</button></div>`).join("")}</div>`;
   const rows = [];
   if (site.java_address) rows.push(["Java Edition", site.java_address, ""]);
   if (site.bedrock_address) rows.push(["Bedrock Edition", site.bedrock_address, `Port ${site.bedrock_port}`]);
-  if (!rows.length) return "";
-  return `<section class="hp-join glass"><h2>Join the server</h2>
-    <div class="hp-join-rows">${rows.map(([ed, addr, extra]) => `<div class="hp-join-row">
-      <span class="hp-ed">${esc(ed)}</span><code class="hp-addr">${esc(addr)}</code>${extra ? `<span class="muted">${esc(extra)}</span>` : ""}
-      <button class="btn sm" type="button" data-copy="${esc(addr)}">Copy</button></div>`).join("")}</div>
+  // Servers with their own way in (a modded one that's Java only, say), each with its own lines and note.
+  const others = (site.joins || []).map((j) => {
+    const r = [];
+    if (j.java) r.push(["Java Edition", j.java, ""]);
+    if (j.bedrock) r.push(["Bedrock Edition", j.bedrock, `Port ${j.bedrock_port}`]);
+    return `<div class="hp-join-server"><h3>${esc(j.name)}${j.java && !j.bedrock ? ' <span class="chip">Java only</span>' : !j.java && j.bedrock ? ' <span class="chip">Bedrock only</span>' : ""}</h3>
+      ${rowsHtml(r)}${j.note ? `<p class="hp-join-note">${esc(j.note)}</p>` : ""}</div>`;
+  });
+  if (!rows.length && !others.length) return "";
+  return `<section class="hp-join glass"><h2>Join the server${others.length + (rows.length ? 1 : 0) > 1 ? "s" : ""}</h2>
+    ${rows.length ? rowsHtml(rows) : ""}${others.join("")}
     ${site.join_requests ? `<div class="hp-ask-cta"><a class="btn primary hp-ask-btn" href="/guides/join#ask">🙋 Ask to join</a>
       <span class="muted">New here? The server only lets in people on its list. Ask, and an admin will add you.</span></div>` : ""}
     <p class="muted"><a href="/guides/join">Step-by-step guide</a>${site.signup ? ' · <a href="/guides/account">Make an account on this website</a>' : ""}${site.discord ? ` · Questions? <a href="${esc(site.discord)}" target="_blank" rel="noopener">Join us on Discord</a>` : ""}</p></section>`;

@@ -154,7 +154,9 @@ class Server:
         host = s.get("rcon_host") or config.default_rcon_host
         return host, port, password
 
-    async def rcon(self, cmd: str) -> str | None:
+    async def rcon(self, cmd: str, wait: float | None = None) -> str | None:
+        """wait: a longer time for the game to answer (whitelist and op look the name up with Mojang or Xbox first).
+        Such a command isn't sent twice if it times out, so it can't happen twice."""
         conf = self.rcon_conf()
         if not conf:
             return None
@@ -165,8 +167,11 @@ class Server:
                 await self._rcon.close()
             self._rcon = Rcon(*conf, timeout=config.rcon_timeout)
         try:
-            out = await self._rcon.command(cmd)
+            out = await (self._rcon.command(cmd, wait) if wait else self._rcon.command(cmd))
         except RconError as first:
+            if wait:
+                self.rcon_error = str(first)
+                raise
             # A dropped connection is common (the server closes it now and then): reconnect and
             # try once more straight away. Only if that fails too, leave RCON alone for a bit, and
             # not for long, since races and games read positions every second.

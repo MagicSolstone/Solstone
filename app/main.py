@@ -556,7 +556,12 @@ async def public_site():
             servers.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "online": len(summ["online"]),
                             "max": summ["max_players"], "version": summ.get("version"), "has_icon": summ["has_icon"]})
         _site_cache = (time.monotonic(), servers)
-    return JSONResponse({**cfg, "logo": site.logo_url(), "servers": servers, "live": _status_cfg()["enabled"], "build": _asset_stamp()},
+    # servers with their own join details (a second server, Java only with mods, say): each gets its own lines
+    joins = [{"id": s.id, "name": s.display_name, "java": s.settings.get("join_address") or "",
+              "bedrock": s.settings.get("join_bedrock_address") or "", "bedrock_port": s.settings.get("join_bedrock_port") or 19132,
+              "note": s.settings.get("join_note") or ""}
+             for s in _public_servers_list() if s.settings.get("join_address") or s.settings.get("join_bedrock_address")]
+    return JSONResponse({**cfg, "logo": site.logo_url(), "servers": servers, "joins": joins, "live": _status_cfg()["enabled"], "build": _asset_stamp()},
                         headers={"Cache-Control": "no-cache"})
 
 
@@ -1745,6 +1750,14 @@ async def put_settings(sid: str, request: Request):
             body["bedtime"] = guard.validate_bedtime(body["bedtime"] or {})
         except (ValueError, TypeError) as e:
             raise HTTPException(400, "Bedtime needs times like 21:00") from e
+    for k, n in (("join_address", 80), ("join_bedrock_address", 80), ("join_note", 160)):
+        if k in body:
+            body[k] = " ".join(str(body[k] or "").split())[:n]
+    if "join_bedrock_port" in body:
+        try:
+            body["join_bedrock_port"] = max(1, min(65535, int(body["join_bedrock_port"]))) if body["join_bedrock_port"] not in ("", None) else ""
+        except (TypeError, ValueError):
+            raise HTTPException(400, "The Bedrock port is a number, like 19132") from None
     saved = settings_store.update_server(srv.id, body)
     auth.audit(user, srv.id, "settings", ", ".join(sorted(k for k in body if k != "rcon_password")) +
                (", rcon_password" if "rcon_password" in body else ""))

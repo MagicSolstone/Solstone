@@ -135,3 +135,16 @@ def test_pictures_in_posts(client, anon):
         assert card["image"] == url and "tower" not in card["excerpt"] and "Our build" in card["excerpt"]
     finally:
         client.delete(f"/api/posts/{p['id']}")
+
+
+def test_a_second_server_with_its_own_way_in(client, anon, sid):
+    try:
+        r = client.put(f"/api/servers/{sid}/settings", json={"join_address": "mods.example.net:25566", "join_note": "Needs the modpack"})
+        assert r.status_code == 200
+        j = next(x for x in anon.get("/api/public/site").json()["joins"] if x["id"] == sid)
+        assert j["java"] == "mods.example.net:25566" and j["bedrock"] == "" and j["note"] == "Needs the modpack"
+        assert client.put(f"/api/servers/{sid}/settings", json={"join_bedrock_port": "lots"}).status_code == 400
+        client.put(f"/api/servers/{sid}/settings", json={"private": True})
+        assert not [x for x in anon.get("/api/public/site").json()["joins"] if x["id"] == sid]     # private: never public
+    finally:
+        client.put(f"/api/servers/{sid}/settings", json={"join_address": "", "join_note": "", "private": ""})
