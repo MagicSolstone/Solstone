@@ -1319,7 +1319,7 @@ async function viewMods(sid) {
         <p class="muted small">Pack address: <code>${esc(pack.url)}</code> · Anyone with this address can download the pack's mods. <button class="linkish" type="button" data-newtoken>Make a new address</button></p>` : "";
     const sm = pack.server_mods.filter((m) => !m.server_only);
     return `<section class="section panel pk">
-      <div class="section-head"><h2>📦 Family modpack</h2><label class="check"><input type="checkbox" data-mp-on ${pack.enabled ? "checked" : ""}> Keep the family's Prism instances up to date from here</label></div>
+      <div class="section-head"><h2>📦 Modpack</h2><label class="check"><input type="checkbox" data-mp-on ${pack.enabled ? "checked" : ""}> Keep players' Prism instances up to date from here</label></div>
       <p class="muted">Every PC gets the same mods on each launch: this server's own jars (so they always match it) plus the client mods, resource packs and shaders below, for Minecraft ${esc(pack.mc || "?")}${pack.loader ? ` with Fabric Loader ${esc(pack.loader)}` : ""}.</p>
       ${setup}
       <h3>From this server</h3>

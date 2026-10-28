@@ -73,7 +73,6 @@ function modsHtml(m) {
   if (!m || !m.list?.length) return "";
   const head = `${m.list.length} ${m.list.length === 1 ? "mod" : "mods"} for ${esc([m.loader, m.mc && `Minecraft ${m.mc}`].filter(Boolean).join(" · "))}`;
   return `<details class="hp-mods"><summary>🧩 ${head}</summary>
-    ${m.modpack ? `<p class="muted small">Ask an admin for the family modpack: it installs all of these for you in Prism, and keeps them up to date.</p>` : ""}
     <ul>${m.list.map((x) => `<li>${x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.name)}</a>` : esc(x.name)}${x.version ? ` <span class="muted small">${esc(x.version)}</span>` : ""}${x.kind && x.kind !== "mod" ? ` <span class="chip">${esc(x.kind === "resourcepack" ? "Resource pack" : x.kind === "shader" ? "Shader" : x.kind)}</span>` : ""}</li>`).join("")}</ul></details>`;
 }
 
@@ -219,22 +218,26 @@ async function showAskStatus() {
     box.hidden = false;
     box.className = `hp-ask-status ${d.state}`;
     const each = (d.servers || []).length > 1 ? ` <span class="ask-each">${d.servers.map((x) => `<span class="${x.in ? "in" : ""}">${x.in ? "✅" : "⏳"} ${esc(x.name)}</span>`).join("")}</span>` : "";
-    box.innerHTML = d.state === "in"
+    box.innerHTML = d.state === "denied"
+      ? `Sorry, <b>${esc(d.player)}</b>, your request wasn't accepted this time. If you think that's a mistake, ask an admin you know. <button type="button" class="link-btn" data-ask-forget>Hide this</button>`
+      : d.state === "in"
       ? `🎉 <b>${esc(d.player)}</b>, you're in! Join the server now.${each} <button type="button" class="link-btn" data-ask-forget>Hide this</button>`
       : d.state === "partly"
         ? `<span class="spin" aria-hidden="true"></span> <b>${esc(d.player)}</b>, you're in on some already, and waiting for an admin on the rest.${each}`
         : `<span class="spin" aria-hidden="true"></span> Your request for <b>${esc(d.player)}</b> is waiting for an admin. It may not be right away, but they'll get to it as soon as they can.${each}`;
   }
   const old = Date.now() - (t.at || Date.now()) > ASK_BADGE_DAYS * 86400000;
-  renderAskBadge(d.state === "in" || (!old && !t.hidden) ? d : null);
-  if (d.state !== "in") askTimer = setTimeout(showAskStatus, document.hidden ? 180000 : 60000);
+  renderAskBadge(d.state === "in" || d.state === "denied" || (!old && !t.hidden) ? d : null);
+  if (d.state !== "in" && d.state !== "denied") askTimer = setTimeout(showAskStatus, document.hidden ? 180000 : 60000);
 }
 function renderAskBadge(d) {
   let b = $("#ask-badge");
   if (!d) { b?.remove(); return; }
   if (!b) { b = document.createElement("div"); b.id = "ask-badge"; b.setAttribute("role", "status"); document.body.append(b); }
   b.className = `ask-badge glass ${d.state}`;
-  b.innerHTML = d.state === "in"
+  b.innerHTML = d.state === "denied"
+    ? `<span aria-hidden="true">✋</span><span><b>Request not accepted</b><small>Your request for ${esc(d.player)} wasn't accepted this time</small></span><button type="button" class="ask-x" data-ask-forget aria-label="Close">×</button>`
+    : d.state === "in"
     ? `<span aria-hidden="true">🎉</span><span><b>You're in, ${esc(d.player)}!</b><small>Join the server now</small></span><button type="button" class="ask-x" data-ask-forget aria-label="Close">×</button>`
     : `<span class="spin" aria-hidden="true"></span><span><b>${d.state === "partly" ? "You're in on some" : "Request sent"}</b><small>${d.state === "partly"
       ? `In on ${esc(d.servers.filter((x) => x.in).map((x) => x.name).join(", "))}. Waiting on ${esc(d.servers.filter((x) => !x.in).map((x) => x.name).join(", "))}`

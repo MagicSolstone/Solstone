@@ -1,4 +1,8 @@
-# Solstone 1.8.3
+# Solstone 1.8.4
+
+- **Deny a request:** *Asked to join* (in Manage → Whitelist and in a server's Control) has a **Deny** button. The request comes off the list, nobody is added to a whitelist, and the person who asked sees *Request not accepted* on their badge and page. They can ask again later.
+- **The web map (BlueMap) is off the home page:** the live section no longer has a *World map* screen, and the setting for it is gone. The web map is on a server's World tab, for people signed in.
+- **Not just for family:** the home page's mods list no longer says to ask for "the family modpack", and the Mods page's modpack box is just *Modpack*, keeping *players'* Prism instances up to date.
 
 - **📜 Server rules:** a Rules page on the website (*Server rules*, under Help, and linked from the join guide), with family-friendly rules to start from: be kind, leave other people's builds and chests alone, no TNT or lava near anyone's builds, play fair, stay safe. Rewrite them in your own words in Website → **Rules and guides** (`{rules}` links to them from the other guides).
 - **Read the rules before asking to join:** the Ask to join form has a box to tick, *I've read the rules and I'll follow them*, with a link to them. It can't be sent without it.

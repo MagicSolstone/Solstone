@@ -543,14 +543,13 @@ function recapPanelHtml() {
 
 // ------------------------------------------------------------------ screens
 // One screen at a time, picked by its name; screens with nothing to show are left out.
-const SCREENS = [["live", "Happening now"], ["now", "Playing now"], ["map", "Where everyone is"], ["web", "World map"], ["leaders", "Leaderboards"], ["recap", "Today on the server"], ["feed", "Recent activity"]];
+const SCREENS = [["live", "Happening now"], ["now", "Playing now"], ["map", "Where everyone is"], ["leaders", "Leaderboards"], ["recap", "Today on the server"], ["feed", "Recent activity"]];
 const tv = { idx: -1, shown: null, pick: null };
 
 function tvAvailable(k, b) {
   if (k === "now") return true;
   if (k === "live") return (b.live || []).length > 0;
   if (k === "map") return hasMap(b);
-  if (k === "web") return !!b.web_map;
   if (k === "leaders") return !!st.leaders?.players?.some((r) => st.leaders.boards.some((bd) => r[bd.key] > 0));
   if (k === "recap") return !!st.recap && (st.recap.recap.players.length || st.recap.yesterday?.players.length || st.recap.on_this_day.length);
   if (k === "feed") return b.recent.length > 0;
@@ -600,9 +599,6 @@ function renderTv(b) {
   setHtml($("#tv-map"), hasPos ? `<div class="sp-map tv-map" id="sp-map"></div><span class="muted" id="sp-map-dim"></span>` : "");
   if (hasPos && tv.shown === "map") mountMap($("#sp-map"), b, st.map);
   setHtml($("#tv-live"), liveHtml(b, true));
-  // The web map's frame is only put in while its screen is showing: a frame loads even when hidden, and a map at a
-  // home-network address makes the browser ask every visitor for access to their local network.
-  setHtml($("#tv-web"), webMapHtml(b, tv.shown === "web"));
   setHtml($("#tv-leaders"), tvLeadersHtml());
   setHtml($("#tv-recap"), tvRecapHtml());
   setHtml($("#tv-feed"), b.recent.length ? `<div class="glass tv-feed">${feedHtml(b)}</div>` : "");
@@ -644,16 +640,8 @@ function tvShow(key) {
     el.classList.toggle("on", on); el.setAttribute("aria-hidden", String(!on));
   });
   if (tv.shown === "map" && hasMap(b)) { st.map = null; mountMap($("#sp-map"), b, null); }
-  setHtml($("#tv-web"), webMapHtml(b, tv.shown === "web"));
   requestAnimationFrame(alignSide);
   tvDots(b);
-}
-function webMapHtml(b, open) {
-  if (!b.web_map) return "";
-  const link = `<p class="muted"><a href="${esc(b.web_map)}" target="_blank" rel="noopener">Open the map full screen</a></p>`;
-  if (isHomeNetwork(b.web_map) && !isHomeNetwork(location.href))
-    return `${link}<p class="muted">This map is at a home-network address, so it only opens on the same Wi-Fi as the server.</p>`;
-  return open ? `${link}<iframe class="sp-webmap" src="${esc(b.web_map)}" title="World map" loading="lazy"></iframe>` : link;
 }
 setInterval(() => {
   document.querySelectorAll(".live-cd[data-cd]").forEach((el) => { const left = Number(el.dataset.cd) - Date.now() / 1000; el.textContent = left > 0 ? fmtCountdown(left) : "Time's up"; });

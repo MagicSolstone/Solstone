@@ -248,3 +248,27 @@ def test_whitelist_page_across_servers(client, anon, viewer, monkeypatch, sid):
         main.settings_store.save_section("join_requests", [])
         main.settings_store.save_section("join_let_in", [])
         signup._sent.clear()
+
+
+def test_saying_no_to_a_request(client, anon, viewer, monkeypatch, sid):
+    from app import main, notify, signup
+
+    async def fake_send(*a, **k):
+        return []
+    monkeypatch.setattr(notify, "send", fake_send)
+    signup._sent.clear()
+    client.put("/api/settings/site", json={"join_requests": True})
+    try:
+        t = anon.post("/api/public/join-request", json={"rules": True, "player": "No_Kid"}).json()["token"]
+        assert viewer.post("/api/whitelist/deny", json={"player": "No_Kid"}).status_code == 403
+        assert client.post("/api/whitelist/deny", json={"player": "No_Kid"}).status_code == 200
+        assert not any(r["player"] == "No_Kid" for r in client.get("/api/whitelist").json()["requests"])
+        assert not any(r["player"] == "No_Kid" for r in client.get(f"/api/servers/{sid}/control").json()["asked"])
+        st = anon.post("/api/public/join-request/status", json={"token": t}).json()
+        assert st["state"] == "denied" and st["player"] == "No_Kid"                  # their page tells them
+        assert client.post("/api/whitelist/deny", json={"player": "No_Kid"}).status_code == 404
+    finally:
+        client.put("/api/settings/site", json={"join_requests": False})
+        main.settings_store.save_section("join_requests", [])
+        main.settings_store.save_section("join_let_in", [])
+        signup._sent.clear()

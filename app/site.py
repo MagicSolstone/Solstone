@@ -199,6 +199,18 @@ def drop_join_request(player: str) -> None:
     settings_store.save_section("join_requests", [r for r in join_requests() if r.get("player", "").lower() != player.lower()])
 
 
+def deny_join_request(player: str) -> bool:
+    """Not this time: off the list, kept a while (marked denied) so their page can tell them."""
+    reqs = join_requests()
+    mine = [r for r in reqs if r.get("player", "").lower() == player.lower()]
+    if not mine:
+        return False
+    settings_store.save_section("join_requests", [r for r in reqs if r not in mine])
+    answered = (settings_store.load().get("join_let_in") or [])[-(REQUESTS_KEPT - len(mine)):]
+    settings_store.save_section("join_let_in", answered + [{**r, "ts_in": time.time(), "denied": True} for r in mine])
+    return True
+
+
 def request_for_token(token_hash: str) -> tuple[dict, bool] | None:
     """(the request, finished?) for someone checking their own request."""
     if not token_hash:

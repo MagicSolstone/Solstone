@@ -766,7 +766,6 @@ body.status-page { min-height: 100vh; }
 .sp-h a { font-size: .85rem; }
 .sp-map canvas { display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: 10px; border: 1px solid var(--line); }
 .sp-dims { margin-bottom: 10px; }
-.sp-webmap { width: 100%; height: 420px; border: 0; border-radius: 10px; background: #000; display: block; }
 .sp-feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .sp-feed li { display: grid; grid-template-columns: 22px 86px 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: .92rem; align-items: baseline; }
 .sp-feed li:last-child { border-bottom: 0; }
@@ -1810,11 +1809,13 @@ a.glance-me:hover { border-color: var(--gold); }
 .hp-ask-status { margin: 0; padding: 10px 14px; border-radius: 10px; font-size: 1.02rem; }
 .hp-ask-status.waiting { background: rgba(242, 193, 78, .12); border: 1px solid rgba(242, 193, 78, .45); }
 .hp-ask-status.in { background: rgba(76, 217, 100, .14); border: 1px solid rgba(76, 217, 100, .5); }
+.hp-ask-status.denied { background: rgba(255, 140, 90, .12); border: 1px solid rgba(255, 140, 90, .5); }
 /* Asked to join: a little badge in the corner until they're in */
 .ask-badge { position: fixed; left: 16px; bottom: 16px; z-index: 110; display: flex; align-items: center; gap: 12px; padding: 12px 14px 12px 16px;
   border-radius: 14px; max-width: min(360px, calc(100vw - 32px)); box-shadow: 0 10px 30px rgba(0,0,0,.45); border: 1px solid rgba(242, 193, 78, .5);
   background: rgba(16, 20, 32, .96) !important; animation: toastpop .35s ease-out; }
 .ask-badge.in { border-color: rgba(76, 217, 100, .7); background: rgba(16, 48, 28, .96) !important; }
+.ask-badge.denied { border-color: rgba(255, 140, 90, .7); }
 .ask-badge > span:nth-child(2) { display: grid; }
 .ask-badge small { color: var(--muted); }
 .ask-x { margin-left: auto; border: 0; background: none; color: var(--muted); font-size: 1.3rem; cursor: pointer; padding: 0 4px; }

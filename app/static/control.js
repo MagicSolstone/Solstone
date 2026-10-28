@@ -277,7 +277,7 @@ async function viewControl(sid) {
       <div><h3>Operators</h3><div class="chips">${chips(L.ops, "deop", "Remove operator")}</div></div></div>
       ${(info.asked || []).length ? `<div class="turned-away asked"><h3>Asked to join <small class="muted">from the website's join guide</small></h3>
         <ul>${info.asked.map((b) => `<li><code class="ta-name">${esc(b.player)}</code>${b.player.startsWith(".") ? ' <span class="chip">Bedrock</span>' : ""}${b.name ? ` <span>${esc(b.name)}</span>` : ""}<span class="muted small">${esc(fmtAgo(b.ts))}</span>
-          <button class="btn sm" type="button" data-copy-name="${esc(b.player)}">Copy</button><button class="btn sm primary" type="button" data-allow="${esc(b.player)}">Let them in</button>
+          <button class="btn sm" type="button" data-copy-name="${esc(b.player)}">Copy</button><button class="btn sm primary" type="button" data-allow="${esc(b.player)}">Let them in</button><button class="btn sm danger" type="button" data-deny="${esc(b.player)}">Deny</button>
           ${b.note ? `<p class="ta-note">“${esc(b.note)}”</p>` : ""}</li>`).join("")}</ul></div>` : ""}
       ${(info.blocked || []).length ? `<div class="turned-away"><h3>Tried to join <small class="muted">turned away by the whitelist in the last two weeks</small></h3>
         <ul>${info.blocked.map((b) => `<li><code class="ta-name">${esc(b.name)}</code>${b.bedrock ? ' <span class="chip">Bedrock</span>' : ""}<span class="muted small">${esc(fmtAgo(b.ts))}</span>
@@ -288,6 +288,8 @@ async function viewControl(sid) {
   $("#ctl-lists")?.addEventListener("click", async (e) => {
     const copy = e.target.closest("[data-copy-name]"), allow = e.target.closest("[data-allow]");
     if (copy) { navigator.clipboard?.writeText(copy.dataset.copyName).then(() => showToast("Copied", 1500), () => showToast(esc(copy.dataset.copyName), 4000)); return; }
+    const deny = e.target.closest("[data-deny]");
+    if (deny) { if (await denyRequest(deny.dataset.deny)) { info.asked = (info.asked || []).filter((b) => b.player !== deny.dataset.deny); renderLists(); } return; }
     if (allow) {
       const n = allow.dataset.allow;
       if (await confirmBox(`Let ${n} in?`, "They're added to the whitelist and can join straight away.", "Let them in", false)) {
@@ -394,7 +396,6 @@ async function viewAdmin(section = "users") {
         <label class="switch-row"><span>Show coordinates and the position map<br><small class="muted">Only to people signed in (Trusted and Admins, and Players when “Players can see the map” is on in Users). Visitors who aren't signed in never see where anyone is, or the map.</small></span><input type="checkbox" role="switch" data-sp="show_positions" ${lp.show_positions ? "checked" : ""}></label>
         <label class="switch-row"><span>Show held items and armour</span><input type="checkbox" role="switch" data-sp="show_items" ${lp.show_items ? "checked" : ""}></label>
         <label class="switch-row"><span>Show recent joins, deaths and advancements</span><input type="checkbox" role="switch" data-sp="show_activity" ${lp.show_activity ? "checked" : ""}></label>
-        <label class="switch-row"><span>Embed the web map (BlueMap, squaremap) <br><small class="muted">Also only for people signed in. Only works if they can reach the map's address too. A plain http:// map won't load on an https:// page.</small></span><input type="checkbox" role="switch" data-sp="show_web_map" ${lp.show_web_map ? "checked" : ""}></label>
         <p class="muted small" style="margin-top:8px">Anyone visiting the home page sees this. Hidden and private servers are never shown.</p>
       </div></section>
     <section class="section"><div class="section-head"><h2>Recap history</h2></div>
@@ -567,6 +568,13 @@ function wireFireworksSettings(el, fw) {
   });
 }
 
+// Say no to someone who asked to join (Manage → Whitelist and Control): their page tells them it wasn't accepted.
+async function denyRequest(player) {
+  if (!await confirmBox(`Deny ${player}'s request?`, "It comes off Asked to join, and their page says it wasn't accepted. They aren't added to any whitelist, and can ask again later.", "Deny")) return false;
+  try { await post("/api/whitelist/deny", { player }); showToast(`Denied ${esc(player)}'s request`, 2500); return true; }
+  catch (err) { showError(esc(err.message), 6000); return false; }
+}
+
 // ================================================================ Manage → Whitelist
 // Everyone who asked to join (each server they asked for, in or not), everyone the whitelist turned away, and each
 // server's list, across all servers. Letting someone in runs the game's own whitelist command on that server.
@@ -587,7 +595,8 @@ async function viewWhitelist() {
         <button class="btn sm" type="button" data-copy-name="${esc(r.player)}">Copy</button></div>
       ${r.note ? `<p class="ta-note">“${esc(r.note)}”</p>` : ""}
       <div class="wl-servers">${r.servers.map((x) => pill(x.id, x.name, x.in, r.player)).join("")}
-        ${waiting.length > 1 ? `<button class="btn sm" type="button" data-let-all="${esc(r.player)}" data-sids="${esc(waiting.map((x) => x.id).join(","))}">Let in on all ${waiting.length}</button>` : ""}</div></li>`;
+        ${waiting.length > 1 ? `<button class="btn sm" type="button" data-let-all="${esc(r.player)}" data-sids="${esc(waiting.map((x) => x.id).join(","))}">Let in on all ${waiting.length}</button>` : ""}
+        <button class="btn sm danger" type="button" data-deny="${esc(r.player)}">Deny</button></div></li>`;
   }).join("") : "";
   const blockedHtml = d.blocked.length ? d.blocked.map((b) => `<li class="wl-req"><div class="wl-who"><code class="ta-name">${esc(b.name)}</code>${b.bedrock ? ' <span class="chip">Bedrock</span>' : ""}
       <span class="muted small">turned away ${ago(b.ts)}</span><button class="btn sm" type="button" data-copy-name="${esc(b.name)}">Copy</button></div>
@@ -610,6 +619,8 @@ async function viewWhitelist() {
   };
   view().addEventListener("click", async (e) => {
     const copy = e.target.closest("[data-copy-name]"), one = e.target.closest("[data-let]"), all = e.target.closest("[data-let-all]"), un = e.target.closest("[data-unlist]");
+    const deny = e.target.closest("[data-deny]");
+    if (deny) { if (await denyRequest(deny.dataset.deny)) viewWhitelist(); return; }
     if (copy) { navigator.clipboard?.writeText(copy.dataset.copyName).then(() => showToast("Copied", 1500), () => showToast(esc(copy.dataset.copyName), 4000)); return; }
     if (one) { one.disabled = true; if (await letIn(one.dataset.let, one.dataset.sid)) { showToast(`${esc(one.dataset.let)} can join now`, 2500); viewWhitelist(); } else one.disabled = false; return; }
     if (all) {

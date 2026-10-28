@@ -55,11 +55,11 @@ def test_only_servers_keeps_one_solstone_to_its_own(monkeypatch, sid):
 
 def test_whereabouts_and_the_map_need_sign_in(client, anon, viewer, sid):
     from app import main
-    client.put("/api/settings/status", json={"enabled": True, "show_positions": True, "show_web_map": True})
+    client.put("/api/settings/status", json={"enabled": True, "show_positions": True})
     main._board_cache.clear()
     try:
         board = anon.get(f"/api/public/status/{sid}").json()
-        assert board["spawn"] is None and board["web_map"] is None
+        assert board["spawn"] is None and "web_map" not in board
         assert all("position" not in p for p in board["players"] + board["recently"])
         assert anon.get(f"/api/public/map/{sid}/regions").status_code == 404           # no map pictures for strangers
         assert anon.get(f"/api/public/map/{sid}/tile?x=0&z=0").status_code == 404
@@ -67,7 +67,7 @@ def test_whereabouts_and_the_map_need_sign_in(client, anon, viewer, sid):
         signed = viewer.get(f"/api/public/status/{sid}").json()
         assert signed["spawn"] is not None or any("position" in p for p in signed["players"] + signed["recently"])
     finally:
-        client.put("/api/settings/status", json={"enabled": False, "show_positions": False, "show_web_map": False})
+        client.put("/api/settings/status", json={"enabled": False, "show_positions": False})
         main._board_cache.clear()
 
 

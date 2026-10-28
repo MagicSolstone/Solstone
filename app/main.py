@@ -31,7 +31,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.8.3"
+VERSION = "1.8.4"
 
 
 @asynccontextmanager
@@ -341,7 +341,7 @@ async def status():
 # Off until an admin turns it on. Everything here is read-only and cached so anonymous
 # visitors can't hammer RCON or Crafty, and chat is never included.
 STATUS_DEFAULTS = {"enabled": False, "show_positions": False, "show_items": True,
-                   "show_activity": True, "show_web_map": False}
+                   "show_activity": True}       # the web map (BlueMap) is only on a server's World tab, signed in
 STATUS_TTL = 4.0
 _board_cache: dict[str, tuple[float, dict]] = {}
 _board_locks: dict[str, asyncio.Lock] = {}
@@ -405,10 +405,8 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
         "loader": summ["loader"], "game": summ["game_label"], "java": srv.is_java, "has_icon": summ["has_icon"],
         "started": summ["started"] if summ["running"] else None,
         "tps": summ["perf"]["tps"] if summ.get("perf") and summ["running"] is not False else None,
-        "world": None, "spawn": None, "players": [], "recent": [], "recently": [], "web_map": None,
+        "world": None, "spawn": None, "players": [], "recent": [], "recently": [],
     }
-    if cfg["show_web_map"] and summ.get("map_url"):
-        board["web_map"] = summ["map_url"]
     lang: dict = {}
     if srv.is_java:
         a = _assets(srv)
@@ -524,7 +522,7 @@ def _may_see_map(user) -> bool:
 
 def _without_whereabouts(board: dict) -> dict:
     strip = lambda rows: [{k: v for k, v in r.items() if k != "position"} for r in rows]   # noqa: E731
-    return {**board, "spawn": None, "race": None, "web_map": None,
+    return {**board, "spawn": None, "race": None,
             "players": strip(board.get("players", [])), "recently": strip(board.get("recently", []))}
 
 
@@ -725,6 +723,8 @@ async def join_request_status(request: Request):
     if not found:
         return {"state": "unknown"}
     r, finished = found
+    if r.get("denied"):
+        return {"state": "denied", "player": r["player"], "servers": []}
     await S.registry.refresh()
     public = {s.id: s for s in _public_servers_list() if s.is_java}
     sids = [x for x in (r.get("servers") or []) if x in public] or ([] if finished else list(public)[:1])
@@ -1920,6 +1920,17 @@ async def whitelist_overview(request: Request):
             e["ts"] = max(e["ts"], b["ts"])
             e["servers"].append({"id": s.id, "name": s.display_name})
     return {"servers": out_servers, "requests": reqs, "blocked": sorted(blocked.values(), key=lambda b: -b["ts"])}
+
+
+@app.post("/api/whitelist/deny")
+async def deny_request(request: Request):
+    """Say no to someone who asked to join: off the Asked to join list, and their page says it wasn't accepted."""
+    user = auth.require_admin(request)
+    player = str((await _body(request)).get("player") or "")
+    if not site.deny_join_request(player):
+        raise HTTPException(404, "That request isn't there any more")
+    auth.audit(user, None, "join_request_denied", player)
+    return {"ok": True}
 
 
 @app.get("/api/servers/{sid}/events")
