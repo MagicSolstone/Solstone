@@ -1911,3 +1911,5 @@ a.glance-me:hover { border-color: var(--gold); }
 .medal-list .rank { width: 1.4em; text-align: right; color: var(--muted); font-weight: 700; }
 .medal-list .medals { margin-left: auto; display: inline-flex; gap: 10px; font-weight: 700; }
 .medal-table details { margin-top: 8px; }
+.lb-empty-toggle { margin: 8px 0 0; }
+.empty-board { opacity: .7; }

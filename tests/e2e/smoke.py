@@ -152,6 +152,11 @@ def main() -> int:
             pg.goto(f"{base}/app#/s/{sid}/leaderboards"); pg.wait_for_timeout(1500)
             if not pg.locator(".board-group h2").count():
                 problems.append("leaderboards: no headings for the kinds of board")
+            n_all = pg.locator(".board").count()
+            pg.uncheck("#lb-empty"); pg.wait_for_timeout(1200)
+            if pg.locator(".empty-board").count() or pg.locator(".board").count() > n_all:
+                problems.append("leaderboards: hiding empty boards didn't hide them")
+            pg.check("#lb-empty"); pg.wait_for_timeout(1200)
             pg.click("#btn-account"); pg.click("#btn-my-players"); pg.wait_for_timeout(500)
             if not pg.locator("#mp-form").count():
                 problems.append("account menu: My Minecraft players doesn't open")

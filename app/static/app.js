@@ -1173,9 +1173,12 @@ async function viewLeaderboards(sid) {
   const data = await api(`/api/servers/${sid}/leaderboard`);
   // Boards nobody has scored on yet are left out. Medals: 1st, 2nd and 3rd on each board (equal scores share a place).
   const medals = {};
+  let showEmpty = true;
+  try { showEmpty = localStorage.getItem("solstone-lb-empty") !== "0"; } catch { /* private window */ }
+  const TIDE_ONLY = new Set(["fishing_level", "heaviest_fish"]);          // meaningless without the fishing mod
   const boardHtml = ({ key: k, title, kind, medals: counts }) => {
     const rows = data.players.filter((r) => r[k] > 0).sort((a, b) => b[k] - a[k]);
-    if (!rows.length) return "";
+    if (!rows.length) return showEmpty && (s.fishing || !TIDE_ONLY.has(k)) ? `<div class="board empty-board"><h3>${esc(title)}</h3><p class="muted small">Nobody yet. Be the first!</p></div>` : "";
     if (counts !== false) {
       const values = [...new Set(rows.map((r) => r[k]))];
       rows.forEach((r) => { const place = values.indexOf(r[k]); if (place < 3) { const m = (medals[r.uuid] ||= { r, n: [0, 0, 0] }); m.n[place] += 1; } });
@@ -1196,8 +1199,10 @@ async function viewLeaderboards(sid) {
       <ol class="medal-list">${ranked.slice(0, 5).map(medalRow).join("")}</ol>
       ${ranked.length > 5 ? `<details><summary>Everyone (${ranked.length})</summary><ol class="medal-list" start="6">${ranked.slice(5).map((m, i) => medalRow(m, i + 5)).join("")}</ol></details>` : ""}</section>` : "";
   const jump = groups.length > 1 ? `<nav class="chips board-jump" aria-label="Jump to">${(data.groups || []).filter((g) => groups.some((h) => h.includes(`<h2>${esc(g)}</h2>`))).map((g) => `<a class="chip" href="#" data-jump="lb-${esc(g.replace(/\W+/g, "-").toLowerCase())}">${esc(g)}</a>`).join("")}</nav>` : "";
-  setView(serverHeader(s, "leaderboards") + (groups.length ? `${medalHtml}${jump}${groups.join("")}` : `<div class="empty"><h3>No scores yet</h3><p>Leaderboards appear once players have some statistics.</p></div>`));
+  const toggle = `<label class="check lb-empty-toggle"><input type="checkbox" id="lb-empty" ${showEmpty ? "checked" : ""}> Show boards nobody has scored on yet</label>`;
+  setView(serverHeader(s, "leaderboards") + (groups.length ? `${medalHtml}${jump}${toggle}${groups.join("")}` : `<div class="empty"><h3>No scores yet</h3><p>Leaderboards appear once players have some statistics.</p></div>`));
   wireHeader(s);
+  $("#lb-empty")?.addEventListener("change", (e) => { try { localStorage.setItem("solstone-lb-empty", e.target.checked ? "1" : "0"); } catch { /* fine */ } viewLeaderboards(sid); });
   $$("[data-jump]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); document.getElementById(a.dataset.jump)?.scrollIntoView({ behavior: "smooth" }); }));
 }
 

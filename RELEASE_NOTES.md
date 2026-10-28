@@ -7,7 +7,8 @@
 
 ## Leaderboards
 - **🥇 Most medals** at the top: 1st, 2nd and 3rd places across every leaderboard (equal scores share a place), the top five shown and *Everyone* folded away below. Nobody gets a medal for *Most deaths*.
-- **Grouped by kind:** Adventure, Fighting, Mining and making, Getting around, Fishing, Farm and village, with buttons to jump to each. Boards nobody has scored on yet still stay hidden.
+- **Grouped by kind:** Adventure, Fighting, Mining and making, Getting around, Fishing, Farm and village, with buttons to jump to each.
+- **Every board shows**, even ones nobody has scored on yet (*Nobody yet. Be the first!*). Untick *Show boards nobody has scored on yet* to hide those; each browser remembers it.
 
 ## Adventures
 - **Players can see the adventures they were in** (Play → Adventures): their own trail and lines, plus what's public anyway (joins, deaths, advancements, contests, fish). Never anyone else's chat, and others' trails only when *Players can see the map* is on. They can watch, not save, hide or delete.
