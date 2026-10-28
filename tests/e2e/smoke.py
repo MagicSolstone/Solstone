@@ -40,7 +40,10 @@ def start_app(root: Path, port: int) -> subprocess.Popen:
            "ADMIN_USERNAME": ADMIN["username"], "ADMIN_PASSWORD": ADMIN["password"], "RECORDER_ENABLED": "false",
            "TZ": "America/Chicago"}
     log = open(root / "app.log", "w")
-    p = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(port)], cwd=REPO, env=env,
+    p = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(port),
+                          # idle connections stay open a while: with uvicorn's 5 s, a request reusing one as it closes gets
+                          # "socket hang up" (ECONNRESET), which failed a release once
+                          "--timeout-keep-alive", "120"], cwd=REPO, env=env,
                          stdout=log, stderr=subprocess.STDOUT)
     for _ in range(100):
         try:
