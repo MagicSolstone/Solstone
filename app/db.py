@@ -172,6 +172,8 @@ def conn() -> sqlite3.Connection:
                 _conn.execute("ALTER TABLE posts ADD COLUMN role TEXT")
             if "summary" not in cols:                # and its own words for its card (empty: the start of the post)
                 _conn.execute("ALTER TABLE posts ADD COLUMN summary TEXT")
+            if "card_image" not in cols:             # and its card's own picture ("" the first in the post, "none")
+                _conn.execute("ALTER TABLE posts ADD COLUMN card_image TEXT")
             # Early builds stored Crafty's byte counts as megabytes; convert them.
             _conn.execute("UPDATE metrics SET mem_mb = ROUND(mem_mb / 1048576.0, 1) WHERE mem_mb > 100000")
         return _conn

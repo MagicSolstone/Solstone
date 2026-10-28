@@ -1,3 +1,8 @@
+# Solstone 1.9.4
+
+- **Picture sizes in posts:** click on a picture's line in the text and pick **Picture size**: *Small*, *Medium*, *Large* or *Full width*. It's written into the text as `![Our castle|small](…)`, and the live view, Preview and the post all show it that size.
+- **A card picture of its own:** Website → Posts → the editor's **Card picture**: *the first picture in the post* (as before), *a picture just for the card* (upload one; it isn't shown in the post's text), or *no picture*.
+
 # Solstone 1.9.3
 
 - **A card description for each post:** Website → Posts → the editor has **Card description**: a line or two shown under the title on the post's card (home page, News, Help), instead of the start of the post. Leave it empty for the start of the post, as before. Fill-ins like `{name}` work there too, and the templates start with the built-in guides' own card lines.

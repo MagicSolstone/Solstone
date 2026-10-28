@@ -384,3 +384,25 @@ def test_top_bar_ready_for_who_is_signed_in(client, viewer, anon):
         c = client.get(path).text
         assert 'data-nav="events" data-signed-in>' in c and 'data-nav="manage" data-admin>' in c
     assert 'id="hp-signin">Sign in</a>' in anon.get("/").text and 'id="hp-signin">Sign in</a>' not in client.get("/").text
+
+
+def test_post_card_picture(client, anon):
+    pic = "/api/public/images/0123456789abcdef.png"
+    body = f"Look at this ![Our castle|small]({pic}) build."
+    p = client.post("/api/posts", json={"title": "Card picture", "body": body, "category": "news"}).json()
+
+    def card():
+        return next(x for x in anon.get("/api/public/posts?category=news&limit=100").json() if x["id"] == p["id"])
+    try:
+        assert card()["image"] == pic                                   # the first picture in the post, sized or not
+        assert "small" not in card()["excerpt"] and "castle" not in card()["excerpt"]
+        client.put(f"/api/posts/{p['id']}", json={"title": "Card picture", "body": body, "category": "news", "card_image": "fedcba9876543210.jpg"})
+        assert card()["image"] == "/api/public/images/fedcba9876543210.jpg"   # one just for the card
+        client.put(f"/api/posts/{p['id']}", json={"title": "Card picture", "body": body, "category": "news"})
+        assert card()["image"] == "/api/public/images/fedcba9876543210.jpg"   # kept when the field isn't sent
+        client.put(f"/api/posts/{p['id']}", json={"title": "Card picture", "body": body, "category": "news", "card_image": "none"})
+        assert card()["image"] is None                                   # no picture on the card
+        client.put(f"/api/posts/{p['id']}", json={"title": "Card picture", "body": body, "category": "news", "card_image": "../../etc/passwd"})
+        assert card()["image"] == pic                                   # anything else: back to the first picture
+    finally:
+        client.delete(f"/api/posts/{p['id']}")

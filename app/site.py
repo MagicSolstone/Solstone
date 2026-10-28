@@ -88,6 +88,7 @@ def remove_logo() -> str:
 IMAGE_MAX = 4 * 1024 * 1024
 IMAGE_NAME = re.compile(r"^[0-9a-f]{16}\.(png|jpg|gif|webp)$")
 IMAGE_MD = re.compile(r"!\[[^\]]*\]\(/api/public/images/([0-9a-f]{16}\.(?:png|jpg|gif|webp))\)")
+IMAGE_NAME = re.compile(r"^[0-9a-f]{16}\.(?:png|jpg|gif|webp)$")
 IMAGE_MIME = {"png": "image/png", "jpg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}
 
 
@@ -243,12 +244,16 @@ def _row(r, full: bool = True) -> dict:
     out = {"id": r["id"], "slug": r["slug"], "title": r["title"], "category": r["category"],
            "published": bool(r["published"]), "pinned": bool(r["pinned"]), "author": r["author"],
            "created": r["created_ts"], "updated": r["updated_ts"], "role": r["role"] if "role" in r.keys() else None,
-           "summary": (r["summary"] if "summary" in r.keys() else None) or ""}
+           "summary": (r["summary"] if "summary" in r.keys() else None) or "",
+           # the card's picture: "" the first one in the post, "none" no picture, or one of its own
+           "card_image": (r["card_image"] if "card_image" in r.keys() else None) or ""}
     if full:
         out["body"] = r["body"]
     else:
         pic = IMAGE_MD.search(r["body"])
-        out["image"] = f"/api/public/images/{pic.group(1)}" if pic else None   # the first picture, for the card
+        own = out["card_image"]
+        out["image"] = (None if own == "none" else f"/api/public/images/{own}" if own
+                        else f"/api/public/images/{pic.group(1)}" if pic else None)
         text = IMAGE_MD.sub("", r["body"])
         text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)      # a link's text, not its address
         text = re.sub(r"\{/?(?:red|orange|gold|green|aqua|blue|purple|pink|gray|big|small)\}", "", text)   # colours and sizes
@@ -297,19 +302,24 @@ def save(body: dict, author: str, pid: int | None = None) -> dict:
     published, pinned = int(bool(body.get("published", True))), int(bool(body.get("pinned", False)))
     role = body.get("role") if body.get("role") in ROLES else None
     summary = _line(body.get("summary"), 240)
+    card_image = str(body.get("card_image") or "")
+    card_image = card_image if card_image == "none" or IMAGE_NAME.match(card_image) else ""
     if pid is None:
-        pid = db.x("INSERT INTO posts(slug, title, body, category, published, pinned, author, created_ts, updated_ts, role, summary) "
-                   "VALUES (?,?,?,?,?,?,?,?,?,?,?)", (_slug_for(title), title, text, category, published, pinned, author, now, now, role, summary))
+        pid = db.x("INSERT INTO posts(slug, title, body, category, published, pinned, author, created_ts, updated_ts, role, summary, card_image) "
+                   "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (_slug_for(title), title, text, category, published, pinned, author, now, now, role, summary,
+                                                      card_image))
     else:
-        old = db.q("SELECT role, summary FROM posts WHERE id=?", (pid,))
+        old = db.q("SELECT role, summary, card_image FROM posts WHERE id=?", (pid,))
         if not old:
             raise LookupError("No such post")
         if "role" not in body:
             role = old[0]["role"]
         if "summary" not in body:
             summary = old[0]["summary"] or ""
-        db.x("UPDATE posts SET slug=?, title=?, body=?, category=?, published=?, pinned=?, updated_ts=?, role=?, summary=? WHERE id=?",
-             (_slug_for(title, pid), title, text, category, published, pinned, now, role, summary, pid))
+        if "card_image" not in body:
+            card_image = old[0]["card_image"] or ""
+        db.x("UPDATE posts SET slug=?, title=?, body=?, category=?, published=?, pinned=?, updated_ts=?, role=?, summary=?, card_image=? "
+             "WHERE id=?", (_slug_for(title, pid), title, text, category, published, pinned, now, role, summary, card_image, pid))
     if role:                                    # one post per role: this one takes it over
         db.x("UPDATE posts SET role=NULL WHERE role=? AND id<>?", (role, pid))
     return _row(db.q("SELECT * FROM posts WHERE id=?", (pid,))[0])

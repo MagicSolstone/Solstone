@@ -193,6 +193,16 @@ def main() -> int:
             pg.fill("#ws-edit [name=body]", "Line one\nLine two\n\nNew paragraph"); pg.wait_for_timeout(300)
             if pg.locator(".ws-live p").count() != 2 or pg.locator(".ws-live p br").count() != 1:
                 problems.append("post editor: one Enter isn't a new line, or a blank line isn't a new paragraph")
+            # a picture's size, picked from the toolbar with the cursor on its line; the card's own picture
+            pg.fill("#ws-edit [name=body]", "Hi\n\n![Our castle](/api/public/images/0123456789abcdef.png)\n\nBye")
+            pg.evaluate("""() => { const t = document.querySelector('#ws-edit [name=body]'); t.focus(); t.setSelectionRange(10, 10); }""")
+            pg.select_option("#ws-edit [data-picsize]", "small"); pg.wait_for_timeout(300)
+            if "![Our castle|small](" not in pg.locator("#ws-edit [name=body]").input_value() or not pg.locator(".ws-live img.post-img-small").count():
+                problems.append("post editor: Picture size didn't make the picture small")
+            pg.select_option("#ws-edit [data-card-mode]", "own"); pg.wait_for_timeout(200)
+            if pg.locator("#ws-edit [data-card-upload]").is_hidden():
+                problems.append("post editor: choosing a picture just for the card doesn't offer an upload")
+            check(pg, "post-editor-pictures")
             pg.click("#ws-edit [data-cancel]"); pg.wait_for_timeout(300)
             pg.goto(f"{base}/app#/s/{sid}/leaderboards"); pg.wait_for_timeout(1500)
             if not pg.locator(".board-group h2").count():

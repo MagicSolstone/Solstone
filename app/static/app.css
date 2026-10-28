@@ -1803,6 +1803,11 @@ a.glance-me:hover { border-color: var(--gold); }
 .hp-live .sp-body img.fallback { width: 64px; height: 64px; }
 /* Pictures in posts */
 .hp-body .post-img { display: block; max-width: 100%; height: auto; max-height: 70vh; margin: 12px auto; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.35); }
+.hp-body .post-img-small { max-width: min(100%, 240px); }
+.hp-body .post-img-medium { max-width: min(100%, 480px); }
+.hp-body .post-img-large { max-width: min(100%, 760px); }
+.ws-card-pic { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ws-card-pic img { width: 96px; height: 60px; object-fit: cover; border-radius: 8px; border: 1px solid var(--glass-edge); }
 .hp-post-pic { width: calc(100% + 32px); margin: -14px -16px 6px; height: 150px; object-fit: cover; border-radius: 14px 14px 0 0; display: block; }
 .ws-insert { align-items: center; margin-top: -4px; }
 .hp-ask-status { margin: 0; padding: 10px 14px; border-radius: 10px; font-size: 1.02rem; }

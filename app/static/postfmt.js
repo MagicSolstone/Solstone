@@ -15,7 +15,9 @@ const _STYLE_RE = new RegExp(`\\{(${[...POST_COLOURS, ...POST_SIZES].map(([k]) =
 function inline(s) {
   let out = s
     // pictures uploaded in Website (only those: nothing loaded from elsewhere)
-    .replace(/!\[([^\]]*)\]\((\/api\/public\/images\/[0-9a-f]{16}\.(?:png|jpg|gif|webp))\)/g, '<img class="post-img" src="$2" alt="$1" loading="lazy">')
+    // ![words|small](…): a size after the words (small, medium, large); none is full width
+    .replace(/!\[([^\]|]*)(?:\|(small|medium|large))?\]\((\/api\/public\/images\/[0-9a-f]{16}\.(?:png|jpg|gif|webp))\)/g,
+      (_, alt, size, src) => `<img class="post-img${size ? ` post-img-${size}` : ""}" src="${src}" alt="${alt}" loading="lazy">`)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
     .replace(/(^|[\s(>])[*_]([^*_]+)[*_](?=[\s).,!?:;<]|$)/g, "$1<i>$2</i>")

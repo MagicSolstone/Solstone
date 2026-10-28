@@ -49,6 +49,13 @@ function wsEditHtml(p) {
       <option value="">A blank post</option>${Object.entries(GUIDES).map(([k, g]) => `<option value="${k}">${esc(g.title)}</option>`).join("")}</select></label>`}
     <label>Title<input class="input" name="title" maxlength="120" required value="${esc(p.title || "")}"></label>
     <label>Card description <small>Optional: a line or two under the title on the post's card (home page, News, Help). Leave it empty to show the start of the post. Fill-ins like {name} work.</small><textarea class="input" name="summary" rows="2" maxlength="240">${esc(p.summary || "")}</textarea></label>
+    <div class="ws-card-pic"><label>Card picture <small>The picture on the post's card</small><select class="input sm" data-card-mode>
+        <option value="" ${!p.card_image ? "selected" : ""}>The first picture in the post</option>
+        <option value="own" ${p.card_image && p.card_image !== "none" ? "selected" : ""}>A picture just for the card</option>
+        <option value="none" ${p.card_image === "none" ? "selected" : ""}>No picture</option></select></label>
+      <img data-card-img alt="The card's picture" ${p.card_image && p.card_image !== "none" ? `src="/api/public/images/${esc(p.card_image)}"` : "hidden"}>
+      <label class="btn sm ws-file" data-card-upload ${p.card_image && p.card_image !== "none" ? "" : "hidden"}>Choose a picture<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-card-file hidden></label>
+      <input type="hidden" name="card_image" value="${esc(p.card_image || "")}"></div>
     <div class="ws-row"><label>Kind<select class="input" name="category">${WS_CATS.map(([k, l]) => `<option value="${k}" ${p.category === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       <label class="check"><input type="checkbox" name="published" ${p.published !== false ? "checked" : ""}> Published <small>Off keeps it a draft only admins see</small></label>
       <label class="check"><input type="checkbox" name="pinned" ${p.pinned ? "checked" : ""}> Pinned <small>Stays at the top</small></label>
@@ -66,12 +73,14 @@ function wsEditHtml(p) {
       <button type="button" class="btn sm" data-rule title="A line across">― Line</button>
       <select class="input sm" data-fill aria-label="Fill-in"><option value="">Fill-in…</option>${GUIDE_PLACEHOLDERS.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select>
       <button type="button" class="btn sm" data-link>🔗 Link</button>
-      <label class="btn sm ws-file">🖼 Picture<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-pic hidden></label></div>
+      <label class="btn sm ws-file">🖼 Picture<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-pic hidden></label>
+      <select class="input sm" data-picsize aria-label="Picture size" title="Click on a picture's line in the text, then pick its size"><option value="">Picture size…</option>
+        <option value="full">Full width</option><option value="large">Large</option><option value="medium">Medium</option><option value="small">Small</option></select></div>
     <div class="ws-compose">
       <label class="ws-compose-text">Text <small>Select some text, then pick a button. Or type the marks yourself: **bold**, # Heading, {red}colour{/red}.</small>
         <textarea class="input ws-text" name="body" rows="16" maxlength="20000" required>${esc(p.body || "")}</textarea></label>
       <div class="ws-compose-view"><span class="ws-compose-label">How it looks</span><div class="hp-body ws-live" aria-live="off"></div></div></div>
-    <small class="muted">Enter starts a new line; a blank line starts a new paragraph. Fill-ins like <code>{java_address}</code> become the main server's details (the first card on the home page), so they stay right when they change. The first picture also shows on the post's card. Pictures under 4 MB each.</small>
+    <small class="muted">Enter starts a new line; a blank line starts a new paragraph. Fill-ins like <code>{java_address}</code> become the main server's details (the first card on the home page), so they stay right when they change. The first picture also shows on the post's card, unless you choose another above. To size a picture, click on its line and pick <b>Picture size</b>. Pictures under 4 MB each.</small>
     <div class="actions"><button type="button" class="btn" data-preview title="See it as visitors will, before anyone else can">👁 Preview</button>
       <button type="button" class="btn" data-cancel>Cancel</button><button class="btn primary" type="submit" data-save>${wsSaveLabel(p.id, p.published !== false)}</button></div>
   </form>`;
@@ -168,6 +177,40 @@ function wsPosts(el) {
     form.category.value = "guide"; form.role.value = k;
     redraw();
   });
+  // Picture size: the picture the cursor is on (or the last one before it) gets |small, |medium or |large.
+  form.querySelector("[data-picsize]").addEventListener("change", (e) => {
+    const size = e.target.value; e.target.value = "";
+    if (!size) return;
+    const at = ta.selectionStart ?? 0, re = /!\[([^\]|]*)(?:\|\w+)?\]\((\/api\/public\/images\/[^)\s]+)\)/g;
+    let hit = null;
+    for (const m of ta.value.matchAll(re)) if (m.index <= at) hit = m;
+    if (!hit) { showToast("Click on a picture's line in the text first", 2500); return; }
+    const md = `![${hit[1]}${size === "full" ? "" : `|${size}`}](${hit[2]})`;
+    ta.value = ta.value.slice(0, hit.index) + md + ta.value.slice(hit.index + hit[0].length);
+    ta.focus(); ta.setSelectionRange(hit.index + md.length, hit.index + md.length);
+    ta.dispatchEvent(new Event("input"));
+  });
+  // The card's own picture (or the first in the post, or none)
+  const cardMode = form.querySelector("[data-card-mode]"), cardImg = form.querySelector("[data-card-img]"), cardVal = form.card_image;
+  const cardShow = () => {
+    const own = cardMode.value === "own";
+    form.querySelector("[data-card-upload]").hidden = !own;
+    cardImg.hidden = !own || !cardVal.value || cardVal.value === "none";
+    if (!own) cardVal.value = cardMode.value;
+  };
+  cardMode.addEventListener("change", () => { if (cardMode.value === "own" && cardVal.value === "none") cardVal.value = ""; cardShow(); });
+  form.querySelector("[data-card-file]").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    try {
+      const r = await fetch("/api/posts/images", { method: "POST", credentials: "same-origin", headers: { "X-Solstone": "1", "Content-Type": f.type || "application/octet-stream" }, body: f });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || `Upload failed (${r.status})`);
+      cardVal.value = d.url.split("/").pop(); cardImg.src = d.url; cardShow();
+      showToast("Card picture chosen", 1500);
+    } catch (err) { showError(esc(err.message), 5000); }
+    e.target.value = "";
+  });
   form.querySelector("[data-pic]").addEventListener("change", async (e) => {
     const f = e.target.files[0];
     if (!f) return;
@@ -187,7 +230,7 @@ function wsPosts(el) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(form);
-    const body = { title: f.get("title"), category: f.get("category"), body: f.get("body"), published: !!f.get("published"), pinned: !!f.get("pinned"), role: f.get("role") || "", summary: f.get("summary") || "" };
+    const body = { title: f.get("title"), category: f.get("category"), body: f.get("body"), published: !!f.get("published"), pinned: !!f.get("pinned"), role: f.get("role") || "", summary: f.get("summary") || "", card_image: f.get("card_image") || "" };
     try {
       if (ws.editing === "new") await post("/api/posts", body); else await post(`/api/posts/${ws.editing}`, body, "PUT");
       showToast(body.published ? "Saved — it's on the website" : "Saved as a draft", 2500);
