@@ -395,7 +395,8 @@ def test_letting_in_a_name_the_game_doesnt_know(client, sid, rcon):
         rcon["replies"]["whitelist add Real_Kid"] = "Added Real_Kid to the whitelist"
         site.add_join_request("Real_Kid", "", "", "")
         assert client.post(f"/api/servers/{sid}/control/player/Real_Kid/whitelist_add", json={}).status_code == 200
-        assert not any(x["player"] == "Real_Kid" for x in site.join_requests())
+        assert not [x for x in client.get(f"/api/servers/{sid}/control").json()["asked"] if x["player"] == "Real_Kid"]
+        assert [x for x in client.get(f"/api/servers/{sid}/control").json()["asked"] if x["player"] == "Fake_Kid_123"]
     finally:
         site.settings_store.save_section("join_requests", [])
         site.settings_store.save_section("join_let_in", [])

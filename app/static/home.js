@@ -197,13 +197,16 @@ async function showAskStatus() {
   if (box) {
     box.hidden = false;
     box.className = `hp-ask-status ${d.state}`;
+    const each = (d.servers || []).length > 1 ? ` <span class="ask-each">${d.servers.map((x) => `<span class="${x.in ? "in" : ""}">${x.in ? "✅" : "⏳"} ${esc(x.name)}</span>`).join("")}</span>` : "";
     box.innerHTML = d.state === "in"
-      ? `🎉 <b>${esc(d.player)}</b>, you're in! Join the server now. <button type="button" class="link-btn" data-ask-forget>Hide this</button>`
-      : `<span class="spin" aria-hidden="true"></span> Your request for <b>${esc(d.player)}</b> is waiting for an admin. It may not be right away, but they'll get to it as soon as they can.`;
+      ? `🎉 <b>${esc(d.player)}</b>, you're in! Join the server now.${each} <button type="button" class="link-btn" data-ask-forget>Hide this</button>`
+      : d.state === "partly"
+        ? `<span class="spin" aria-hidden="true"></span> <b>${esc(d.player)}</b>, you're in on some already, and waiting for an admin on the rest.${each}`
+        : `<span class="spin" aria-hidden="true"></span> Your request for <b>${esc(d.player)}</b> is waiting for an admin. It may not be right away, but they'll get to it as soon as they can.${each}`;
   }
   const old = Date.now() - (t.at || Date.now()) > ASK_BADGE_DAYS * 86400000;
   renderAskBadge(d.state === "in" || (!old && !t.hidden) ? d : null);
-  if (d.state === "waiting") askTimer = setTimeout(showAskStatus, document.hidden ? 180000 : 60000);
+  if (d.state !== "in") askTimer = setTimeout(showAskStatus, document.hidden ? 180000 : 60000);
 }
 function renderAskBadge(d) {
   let b = $("#ask-badge");
@@ -212,7 +215,9 @@ function renderAskBadge(d) {
   b.className = `ask-badge glass ${d.state}`;
   b.innerHTML = d.state === "in"
     ? `<span aria-hidden="true">🎉</span><span><b>You're in, ${esc(d.player)}!</b><small>Join the server now</small></span><button type="button" class="ask-x" data-ask-forget aria-label="Close">×</button>`
-    : `<span class="spin" aria-hidden="true"></span><span><b>Request sent</b><small>Waiting for an admin to let ${esc(d.player)} in</small></span><button type="button" class="ask-x" data-ask-hide aria-label="Hide">×</button>`;
+    : `<span class="spin" aria-hidden="true"></span><span><b>${d.state === "partly" ? "You're in on some" : "Request sent"}</b><small>${d.state === "partly"
+      ? `In on ${esc(d.servers.filter((x) => x.in).map((x) => x.name).join(", "))}. Waiting on ${esc(d.servers.filter((x) => !x.in).map((x) => x.name).join(", "))}`
+      : `Waiting for an admin to let ${esc(d.player)} in`}</small></span><button type="button" class="ask-x" data-ask-hide aria-label="Hide">×</button>`;
 }
 function forgetAsk() {
   try { localStorage.removeItem("solstone-ask"); } catch { /* fine */ }
@@ -240,6 +245,8 @@ function askFormHtml() {
       <fieldset class="hp-ask-ed"><legend>I play on</legend>
         <label class="check"><input type="radio" name="edition" value="java" checked> Java (PC or Mac)</label>
         <label class="check"><input type="radio" name="edition" value="bedrock"> Bedrock (phone, tablet, console, Windows)</label></fieldset>
+      ${(hp.site.ask_servers || []).length > 1 ? `<fieldset class="hp-ask-ed"><legend>Which servers? <small class="muted">Pick one or more</small></legend>
+        ${hp.site.ask_servers.map((x, i) => `<label class="check"><input type="checkbox" name="servers" value="${esc(x.id)}" ${i === 0 ? "checked" : ""}> ${esc(x.name)}</label>`).join("")}</fieldset>` : ""}
       <label>Your name in the game <small>Exactly as it shows. On Bedrock that's your Xbox gamertag.</small><input class="input" name="player" required maxlength="20" autocapitalize="off"></label>
       <label>Your first name <small>Optional, so the admins know who you are</small><input class="input" name="name" maxlength="40"></label>
       <label>A note <small>Optional: who you know here, for example</small><textarea class="input" name="note" rows="3" maxlength="300"></textarea></label>
@@ -252,7 +259,7 @@ document.addEventListener("submit", async (e) => {
   const f = new FormData(e.target), err = $(".login-error", e.target);
   try {
     const r = await fetch("/api/public/join-request", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-Solstone": "1" },
-      body: JSON.stringify({ edition: f.get("edition"), player: f.get("player"), name: f.get("name"), note: f.get("note") }) });
+      body: JSON.stringify({ edition: f.get("edition"), player: f.get("player"), name: f.get("name"), note: f.get("note"), servers: f.getAll("servers") }) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || "That didn't send. Try again in a moment.");
     try { localStorage.setItem("solstone-ask", JSON.stringify({ token: d.token, player: d.player, at: Date.now() })); } catch { /* private window */ }

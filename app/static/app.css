@@ -1828,3 +1828,5 @@ a.glance-me:hover { border-color: var(--gold); }
 .hp-join-server { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .hp-join-server h3 { margin: 0 0 8px; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; }
 .hp-join-note { margin: 8px 0 0; color: var(--muted); }
+.ask-each { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: .95rem; }
+.ask-each .in { color: #8be39b; }

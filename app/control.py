@@ -235,8 +235,8 @@ async def player_action(srv: S.Server, player: str, action: str, body: dict, sen
             reply = res["output"].strip()
             raise HTTPException(400, f"{p} wasn't added. The game said: {reply}" if reply else f"{p} wasn't added")
         if verb == "add":
-            from . import site                # let in: their request to join (if they asked) is done with
-            site.drop_join_request(p)
+            from . import site                # let in here: their request knows (for their own page)
+            site.mark_let_in(p, srv.id)
         return [res]
     if action in ("op", "deop"):
         return [await run(srv, f"{action} {p}", wait=30)]

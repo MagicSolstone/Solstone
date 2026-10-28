@@ -153,33 +153,59 @@ def join_requests() -> list[dict]:
     return list(settings_store.load().get("join_requests") or [])
 
 
-def add_join_request(player: str, name: str, note: str, token_hash: str = "") -> dict:
-    req = {"ts": time.time(), "player": player, "name": name, "note": note, "token": token_hash}
+def add_join_request(player: str, name: str, note: str, token_hash: str = "", servers: list[str] | None = None) -> dict:
+    """servers: the ones they'd like to play on (ids)."""
+    req = {"ts": time.time(), "player": player, "name": name, "note": note, "token": token_hash,
+           "servers": list(servers or []), "done": []}
     keep = [r for r in join_requests() if r.get("player", "").lower() != player.lower()][-(REQUESTS_KEPT - 1):]
     settings_store.save_section("join_requests", keep + [req])
     return req
 
 
-def drop_join_request(player: str) -> None:
-    """Let in: off the list of requests, and remembered as let in so they can see it (their own check only)."""
+def wants(r: dict, sid: str) -> bool:
+    """Did this request ask for that server? (Older requests didn't say: any server.)"""
+    return not r.get("servers") or sid in r["servers"]
+
+
+def mark_let_in(player: str, sid: str) -> None:
+    """Let in on one server from Control: their request knows, so their page can say so."""
     reqs = join_requests()
-    done = [r for r in reqs if r.get("player", "").lower() == player.lower() and r.get("token")]
-    settings_store.save_section("join_requests", [r for r in reqs if r.get("player", "").lower() != player.lower()])
-    if done:
-        let_in = (settings_store.load().get("join_let_in") or [])[-(REQUESTS_KEPT - 1):]
-        settings_store.save_section("join_let_in", let_in + [{"token": r["token"], "player": r["player"], "ts": time.time()} for r in done])
+    for r in reqs:
+        if r.get("player", "").lower() == player.lower() and sid not in r.setdefault("done", []):
+            r["done"].append(sid)
+    settings_store.save_section("join_requests", reqs)
 
 
-def join_request_state(token_hash: str) -> dict | None:
-    """What someone who asked can see about their own request: waiting, or let in."""
+def finish_join_request(token_hash: str) -> None:
+    """In on everything they asked for: off the list, kept a while so their page still says "you're in"."""
+    reqs = join_requests()
+    done = [r for r in reqs if r.get("token") == token_hash]
+    if not done:
+        return
+    settings_store.save_section("join_requests", [r for r in reqs if r.get("token") != token_hash])
+    let_in = (settings_store.load().get("join_let_in") or [])[-(REQUESTS_KEPT - 1):]
+    settings_store.save_section("join_let_in", let_in + [{**done[0], "ts_in": time.time()}])
+
+
+def drop_join_request(player: str) -> None:
+    """Done with this player's request altogether (every server)."""
+    mine = [r for r in join_requests() if r.get("player", "").lower() == player.lower()]
+    for r in mine:
+        if r.get("token"):
+            finish_join_request(r["token"])
+    settings_store.save_section("join_requests", [r for r in join_requests() if r.get("player", "").lower() != player.lower()])
+
+
+def request_for_token(token_hash: str) -> tuple[dict, bool] | None:
+    """(the request, finished?) for someone checking their own request."""
     if not token_hash:
         return None
-    for r in settings_store.load().get("join_let_in") or []:
-        if r.get("token") == token_hash:
-            return {"state": "in", "player": r["player"]}
     for r in join_requests():
         if r.get("token") == token_hash:
-            return {"state": "waiting", "player": r["player"]}
+            return r, False
+    for r in settings_store.load().get("join_let_in") or []:
+        if r.get("token") == token_hash:
+            return r, True
     return None
 
 

@@ -564,7 +564,9 @@ async def public_site():
               "bedrock": s.settings.get("join_bedrock_address") or "", "bedrock_port": s.settings.get("join_bedrock_port") or 19132,
               "note": s.settings.get("join_note") or ""}
              for s in _public_servers_list() if s.settings.get("join_address") or s.settings.get("join_bedrock_address")]
-    return JSONResponse({**cfg, "logo": site.logo_url(), "servers": servers, "joins": joins, "live": _status_cfg()["enabled"], "build": _asset_stamp()},
+    asks = [{"id": s.id, "name": s.display_name} for s in _public_servers_list() if s.is_java] if cfg["join_requests"] else []
+    return JSONResponse({**cfg, "logo": site.logo_url(), "servers": servers, "joins": joins, "ask_servers": asks,
+                         "live": _status_cfg()["enabled"], "build": _asset_stamp()},
                         headers={"Cache-Control": "no-cache"})
 
 
@@ -651,11 +653,18 @@ async def join_request(request: Request):
     elif " " in player:
         raise HTTPException(400, "Java names don't have spaces. On Bedrock? Pick Bedrock above")
     player = player[:17]
+    public = {s.id: s for s in _public_servers_list() if s.is_java}
+    picked = [str(x) for x in (body.get("servers") or []) if str(x) in public]
+    if not picked:
+        if len(public) > 1:
+            raise HTTPException(400, "Pick the server (or servers) you'd like to play on")
+        picked = list(public)
     if signup._hit(f"ask:{auth.client_ip(request)}", 3):
         raise HTTPException(429, "You've asked a few times already. An admin will see it soon")
     token = secrets.token_urlsafe(18)              # only they get this: it shows them when they've been let in
-    site.add_join_request(player, name, note, hashlib.sha256(token.encode()).hexdigest())
-    msg = f"{player} would like to join" + (f" ({name})" if name else "") + (f": {note}" if note else "")
+    site.add_join_request(player, name, note, hashlib.sha256(token.encode()).hexdigest(), picked)
+    where = ", ".join(public[x].display_name for x in picked)
+    msg = f"{player} would like to join {where}" + (f" ({name})" if name else "") + (f": {note}" if note else "")
     await notify.send("Asking to join", msg + "\nLet them in from Control → Whitelist.", "wave")
     return {"ok": True, "token": token, "player": player,
             "message": "Thanks! The admins have your request. This page shows here when you've been let in."}
@@ -664,18 +673,25 @@ async def join_request(request: Request):
 @app.post("/api/public/join-request/status")
 async def join_request_status(request: Request):
     """Has my request been answered? Only the person who asked can tell (with the private token their browser kept),
-    so nobody can look up who's been let in."""
+    so nobody can look up who's been let in. Each server they asked for: in yet or not (however they were let in:
+    from Control, the game's console or Crafty)."""
     body = await _body(request)
     token = str(body.get("token") or "")[:64]
     th = hashlib.sha256(token.encode()).hexdigest() if token else ""
-    found = site.join_request_state(th)
-    if found and found["state"] == "waiting":       # let in some other way (in the game, or Control's own box)
-        await S.registry.refresh()
-        listed = {n.lower() for srv in S.registry.servers.values() if srv.is_java for n in control.whitelist_names(srv)}
-        if found["player"].lower() in listed or found["player"].lower().lstrip(".") in listed:
-            site.drop_join_request(found["player"])
-            found = site.join_request_state(th)
-    return {"state": found["state"], "player": found["player"]} if found else {"state": "unknown"}
+    found = site.request_for_token(th)
+    if not found:
+        return {"state": "unknown"}
+    r, finished = found
+    await S.registry.refresh()
+    public = {s.id: s for s in _public_servers_list() if s.is_java}
+    sids = [x for x in (r.get("servers") or []) if x in public] or ([] if finished else list(public)[:1])
+    each = [{"name": public[x].display_name, "in": finished or x in (r.get("done") or []) or S.whitelisted(public[x], None, r["player"])}
+            for x in sids]
+    if not finished and each and all(e["in"] for e in each):
+        site.finish_join_request(th)
+        finished = True
+    state = "in" if finished else "partly" if any(e["in"] for e in each) else "waiting"
+    return {"state": state, "player": r["player"], "servers": each}
 
 
 # ---- players making their own account (a code sent to them in the game)
@@ -2010,8 +2026,8 @@ async def control_info(sid: str, request: Request):
         "known_players": sorted((p["name"] for p in S.known_players(srv).values()), key=str.lower) if srv.is_java else [],
         "lists": await control.whitelist(srv) if srv.is_java else None,
         "blocked": _turned_away(srv),
-        "asked": [r for r in site.join_requests()[::-1]
-                  if r["player"].lower() not in {n.lower() for n in control.whitelist_names(srv)}] if srv.is_java else [],
+        "asked": [r for r in site.join_requests()[::-1] if site.wants(r, srv.id) and srv.id not in (r.get("done") or [])
+                  and not S.whitelisted(srv, None, r["player"])] if srv.is_java else [],
         "bedtime": guard.bedtime_config(srv),
         "audit": auth.audit_log(srv.id, 40),
     }

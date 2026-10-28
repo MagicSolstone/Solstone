@@ -104,10 +104,13 @@ def test_asking_shows_only_you_when_youre_in(client, anon, monkeypatch, sid):
     try:
         r = anon.post("/api/public/join-request", json={"player": "Ticket_Kid"}).json()
         st = lambda t: anon.post("/api/public/join-request/status", json={"token": t}).json()   # noqa: E731
-        assert st(r["token"]) == {"state": "waiting", "player": "Ticket_Kid"}
+        w = st(r["token"])
+        assert w["state"] == "waiting" and w["player"] == "Ticket_Kid" and [s["in"] for s in w["servers"]] == [False]
         assert st("not-their-ticket")["state"] == "unknown" and st("")["state"] == "unknown"    # nobody else can look
-        main.site.drop_join_request("Ticket_Kid")                                               # what Let them in does
-        assert st(r["token"]) == {"state": "in", "player": "Ticket_Kid"}
+        main.site.mark_let_in("Ticket_Kid", sid)                                                # what Let them in does
+        done = st(r["token"])
+        assert done["state"] == "in" and done["servers"][0]["in"] is True
+        assert st(r["token"])["state"] == "in"                                                  # and it stays that way
     finally:
         client.put("/api/settings/site", json={"join_requests": False})
         main.settings_store.save_section("join_requests", [])
