@@ -2,6 +2,7 @@
 
 - **A card description for each post:** Website → Posts → the editor has **Card description**: a line or two shown under the title on the post's card (home page, News, Help), instead of the start of the post. Leave it empty for the start of the post, as before. Fill-ins like `{name}` work there too, and the templates start with the built-in guides' own card lines.
 - **The firework show is on to start:** every page has the show going in the background straight away, with **sound still off** until someone turns it on. Anyone who switches the show off keeps it off (their browser remembers), and browsers set to reduce motion start with it off.
+- **The top bar is complete straight away:** signed in, *Events*, *Servers* and *Manage* (and your name in the corner of the website) are there as the page opens, instead of popping in a moment later.
 - **Banners line up with the page:** announcements and other banners on the Events, Servers and Manage pages sat off to one side on wide screens. They now line up with the page like on the home page.
 - Website → Site details: the Cloudflare steps for the *website is down* page match Cloudflare's screens (*Start with Hello World*, a **Route** rather than a custom domain).
 

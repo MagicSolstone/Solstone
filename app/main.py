@@ -2833,16 +2833,16 @@ async def status_page(sid: str = ""):
 @app.get("/faq", include_in_schema=False)
 @app.get("/help", include_in_schema=False)
 @app.get("/post/{slug}", include_in_schema=False)
-async def home_page(slug: str = ""):
+async def home_page(request: Request, slug: str = ""):
     """The public website: home, news, guides, FAQ and posts. No sign-in."""
-    return HTMLResponse(_page("home.html"), headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(await _page_for("home.html", request), headers={"Cache-Control": "no-cache", "Vary": "Cookie"})
 
 
 @app.get("/app", include_in_schema=False)
 @app.get("/app/{full_path:path}", include_in_schema=False)
-async def app_page(full_path: str = ""):
+async def app_page(request: Request, full_path: str = ""):
     """The signed-in app (it routes by #/... after this)."""
-    return HTMLResponse(_page("index.html"), headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(await _page_for("index.html", request), headers={"Cache-Control": "no-cache", "Vary": "Cookie"})
 
 
 @app.get("/{full_path:path}", include_in_schema=False)
@@ -2871,3 +2871,18 @@ def _page(name: str) -> str:
     for n in ASSET_NAMES:
         html = html.replace(f"/static/{n}\"", f"/static/{n}?v={stamp}\"")
     return html.replace("{{SITE_NAME}}", _html_escape(site.config()["name"])).replace("{{SITE_LOGO}}", _html_escape(site.logo_url()))
+
+
+async def _page_for(name: str, request: Request) -> str:
+    """The page with the top bar already right for whoever's signed in: Events, Servers (and Manage for admins)
+    and their name, instead of those popping in a moment later. Only what the bar shows; every API route still
+    checks the sign-in itself."""
+    html = _page(name)
+    user = await asyncio.to_thread(auth.user_from_request, request)
+    if not user:
+        return html
+    html = html.replace(" data-signed-in hidden", " data-signed-in")
+    if user.role == "admin":
+        html = html.replace(" data-admin hidden", " data-admin")
+    return html.replace('<a class="btn sm" href="/app" id="hp-signin">Sign in</a>',       # the home page's corner
+                        f'<a class="btn sm" href="/app" id="hp-signin">👤 {_html_escape(user.shown)}</a>')

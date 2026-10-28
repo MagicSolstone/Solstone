@@ -372,3 +372,15 @@ def test_post_card_description(client, anon):
         assert card["excerpt"] == "New text."
     finally:
         client.delete(f"/api/posts/{p['id']}")
+
+
+def test_top_bar_ready_for_who_is_signed_in(client, viewer, anon):
+    """The bar comes from the server already right, so Events, Servers and Manage don't pop in a moment later."""
+    for path in ("/", "/app"):
+        a = anon.get(path).text
+        assert 'data-nav="events" data-signed-in hidden' in a and 'data-nav="manage" data-admin hidden' in a
+        v = viewer.get(path).text
+        assert 'data-nav="events" data-signed-in>' in v and 'data-nav="manage" data-admin hidden' in v
+        c = client.get(path).text
+        assert 'data-nav="events" data-signed-in>' in c and 'data-nav="manage" data-admin>' in c
+    assert 'id="hp-signin">Sign in</a>' in anon.get("/").text and 'id="hp-signin">Sign in</a>' not in client.get("/").text
