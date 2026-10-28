@@ -681,7 +681,7 @@ async function viewWhitelist() {
   setView(`<div class="fwe-head"><h1>Whitelist</h1>
       <p class="muted">Who's asked to join, who the whitelist turned away, and who's on each server's list. A player's account gets every server they're on the whitelist of.</p></div>
     <section class="section"><div class="section-head"><h2>Asked to join</h2><span class="muted">${d.requests.length || "Nobody"} waiting</span></div>
-      ${reqHtml ? `<ul class="wl-list">${reqHtml}</ul>` : `<div class="panel"><p class="muted">No requests waiting. With <i>Ask to join</i> on (Website → Join and account guides), they show here, and you get a notification.</p></div>`}</section>
+      ${reqHtml ? `<ul class="wl-list">${reqHtml}</ul>` : `<div class="panel"><p class="muted">No requests waiting. With <i>Ask to join</i> on (Website → Site details), they show here, and you get a notification.</p></div>`}</section>
     ${blockedHtml ? `<section class="section"><div class="section-head"><h2>Tried to join</h2><span class="muted">Turned away in the last two weeks</span></div><ul class="wl-list">${blockedHtml}</ul></section>` : ""}
     <section class="section"><div class="section-head"><h2>Each server's list</h2></div>
       <form class="panel btn-row wl-add" id="wl-add"><input class="input sm" name="name" placeholder="Name (.Name for Bedrock)" pattern="\\.?[A-Za-z0-9_]{1,16}" required>
