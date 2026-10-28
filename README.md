@@ -189,4 +189,4 @@ SERVERS_DIR=/path/to/crafty/servers DATA_DIR=./data CRAFTY_URL=... CRAFTY_TOKEN=
   uvicorn app.main:app --reload --port 8080
 ```
 
-Backend: FastAPI (`app/`). Frontend: vanilla JS in `app/static/`, with no build step. Fonts are bundled (Pixelify Sans and Atkinson Hyperlegible, SIL OFL).
+Backend: FastAPI (`app/`). Frontend: vanilla JS in `app/static/`, with no build step. **How it all fits together, and which files to change for what: [docs/HOW-SOLSTONE-WORKS.md](docs/HOW-SOLSTONE-WORKS.md).** Fonts are bundled (Pixelify Sans and Atkinson Hyperlegible, SIL OFL).
