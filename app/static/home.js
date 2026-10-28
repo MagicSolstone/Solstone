@@ -108,7 +108,7 @@ function joinCard(site) {
     return `<article class="hp-join-card ${j.main ? "main" : ""}" ${j.color ? `style="--accent:${esc(j.color)}"` : ""}>
       <header>${icon}<div><h3>${esc(j.name)}</h3><span class="chip">${kind}</span></div></header>
       ${statusLine(j.status)}${rowsHtml(r)}${j.note ? `<p class="hp-join-note">${esc(j.note)}</p>` : ""}${modsHtml(j.mods)}
-      ${site.live ? `<a class="hp-join-live" href="#live" data-live-sid="${esc(j.id)}">👀 See who's on, live →</a>` : ""}</article>`;
+      ${site.live ? `<a class="hp-join-live" href="#live" data-live-sid="${esc(j.id)}">📊 Go to live stats →</a>` : ""}</article>`;
   });
   if (!cards.length) return "";
   return `<section class="hp-join glass"><h2>Join the server${cards.length > 1 ? "s" : ""}</h2>

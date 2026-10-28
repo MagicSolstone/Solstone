@@ -1,3 +1,7 @@
+# Solstone 1.8.6
+
+- **📊 Go to live stats:** each server's card on the home page links to its live section with *Go to live stats →* (it said *See who's on, live*).
+
 # Solstone 1.8.5
 
 - **💾 Solstone backs itself up:** once a day, a zip of its database (accounts, posts, history, fishing and the rest), its settings and the website's pictures, in `/data/backups` (the newest 14 kept). The database is copied with SQLite's own backup, so it's whole even when Solstone was busy. Manage → Servers & live info → **Solstone's own backups** lists them, with **Download** and **Back up now**. A failed backup sends a *Backup* notification. Point your off-site backup at the folder (or set `SOLSTONE_BACKUP_DIR` to a share). The world itself is still in Crafty's backups.
