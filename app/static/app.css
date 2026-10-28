@@ -1837,3 +1837,17 @@ a.glance-me:hover { border-color: var(--gold); }
 .hp-join-state { margin: 0 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--muted); }
 .hp-join-state b { color: var(--bone); }
 .hp-join-main { margin: 0 0 6px; font-size: 1.05rem; }
+/* How to join: a card for each server */
+.hp-join-cards { display: grid; gap: 14px; }
+.hp-join-cards.many { grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); }
+.hp-join-card { padding: 14px 16px; border-radius: 14px; background: rgba(10, 14, 26, .35); border: 1px solid var(--glass-edge); display: grid; gap: 8px; align-content: start; }
+.hp-join-card header { display: flex; align-items: center; gap: 12px; }
+.hp-join-card header img { border-radius: 8px; image-rendering: pixelated; }
+.hp-join-card h3 { margin: 0 0 2px; font-size: 1.15rem; }
+.hp-join-card .hp-join-state { margin: 0; }
+.hp-join-card .hp-join-rows { margin: 2px 0; }
+.hp-join-card .hp-ed { min-width: 70px; }
+.hp-join-live { font-weight: 700; font-size: .95rem; }
+.ws-joins { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 10px; }
+.ws-joins legend { font-weight: 700; padding: 0 6px; }
+.ws-join { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }

@@ -92,24 +92,21 @@ function joinCard(site) {
   const rowsHtml = (rows) => `<div class="hp-join-rows">${rows.map(([ed, addr, extra]) => `<div class="hp-join-row">
       <span class="hp-ed">${esc(ed)}</span><code class="hp-addr">${esc(addr)}</code>${extra ? `<span class="muted">${esc(extra)}</span>` : ""}
       <button class="btn sm" type="button" data-copy="${esc(addr)}">Copy</button></div>`).join("")}</div>`;
-  const rows = [];
-  if (site.java_address) rows.push(["Java Edition", site.java_address, ""]);
-  if (site.bedrock_address) rows.push(["Bedrock Edition", site.bedrock_address, `Port ${site.bedrock_port}`]);
-  // Servers with their own way in (a modded one that's Java only, say), each with its own lines and note.
-  const others = (site.joins || []).map((j) => {
+  // One card per server: what it is, how it's doing, and how to get on it.
+  const cards = (site.joins || []).map((j) => {
     const r = [];
-    if (j.java) r.push(["Java Edition", j.java, ""]);
-    if (j.bedrock) r.push(["Bedrock Edition", j.bedrock, `Port ${j.bedrock_port}`]);
-    const st = statusLine((site.servers || []).find((x) => x.id === j.id));
-    return `<div class="hp-join-server"><h3>${esc(j.name)}${j.java && !j.bedrock ? ' <span class="chip">Java only</span>' : !j.java && j.bedrock ? ' <span class="chip">Bedrock only</span>' : ""}</h3>
-      ${st}${rowsHtml(r)}${j.note ? `<p class="hp-join-note">${esc(j.note)}</p>` : ""}${modsHtml(j.mods)}</div>`;
+    if (j.java) r.push(["Java", j.java, ""]);
+    if (j.bedrock) r.push(["Bedrock", j.bedrock, `Port ${j.bedrock_port}`]);
+    const kind = j.java && j.bedrock ? "Java and Bedrock" : j.java ? "Java only" : "Bedrock only";
+    const icon = site.live && j.status?.has_icon ? `<img class="px" src="/api/public/icon/${encodeURIComponent(j.id)}.png" alt="" width="40" height="40">` : "";
+    return `<article class="hp-join-card">
+      <header>${icon}<div><h3>${esc(j.name)}</h3><span class="chip">${kind}</span></div></header>
+      ${statusLine(j.status)}${rowsHtml(r)}${j.note ? `<p class="hp-join-note">${esc(j.note)}</p>` : ""}${modsHtml(j.mods)}
+      ${site.live ? `<a class="hp-join-live" href="#live" data-live-sid="${esc(j.id)}">👀 See who's on, live →</a>` : ""}</article>`;
   });
-  if (!rows.length && !others.length) return "";
-  // The main addresses (Site details) belong to the one public server without its own join details, if there's one.
-  const own = new Set((site.joins || []).map((j) => j.id)), rest = (site.servers || []).filter((x) => !own.has(x.id));
-  const main = rest.length === 1 ? rest[0] : null;
-  return `<section class="hp-join glass"><h2>Join the server${others.length + (rows.length ? 1 : 0) > 1 ? "s" : ""}</h2>
-    ${rows.length ? `${others.length && main ? `<h3 class="hp-join-main">${esc(main.name)}</h3>` : ""}${statusLine(main)}${rowsHtml(rows)}` : ""}${others.join("")}
+  if (!cards.length) return "";
+  return `<section class="hp-join glass"><h2>Join the server${cards.length > 1 ? "s" : ""}</h2>
+    <div class="hp-join-cards ${cards.length > 1 ? "many" : ""}">${cards.join("")}</div>
     ${site.join_requests ? `<div class="hp-ask-cta"><a class="btn primary hp-ask-btn" href="/guides/join#ask">🙋 Ask to join</a>
       <span class="muted">New here? The server only lets in people on its list. Ask, and an admin will add you.</span></div>` : ""}
     <p class="muted"><a href="/guides/join">Step-by-step guide</a>${site.signup ? ' · <a href="/guides/account">Make an account on this website</a>' : ""}${site.discord ? ` · Questions? <a href="${esc(site.discord)}" target="_blank" rel="noopener">Join us on Discord</a>` : ""}</p></section>`;
@@ -162,7 +159,7 @@ async function home() {
   const [news, guides] = await Promise.all([getJSON("/api/public/posts?category=news&limit=3"), getJSON("/api/public/posts?category=guide&limit=4")]);
   return `<section class="hp-hero"><h1>${esc(s.name)}</h1>${s.tagline ? `<p class="hp-tagline">${esc(s.tagline)}</p>` : ""}</section>
     <p class="hp-ask-status" id="ask-status" hidden></p>
-    ${joinCard(s)}${serversCard(s)}
+    ${joinCard(s) || serversCard(s)}
     <section><div class="hp-head"><h2>News</h2><a href="/news">All news →</a></div>${postCards(news, "No news yet.")}</section>
     <section><div class="hp-head"><h2>Help</h2><a href="/help">All guides and questions →</a></div>${postCards([...builtinCards(), ...guides].slice(0, 4), "")}</section>
     ${s.live ? liveSection() : ""}

@@ -3,6 +3,7 @@
 - **On the whitelist means it's in their account:** a player's account now sees every server they're on the whitelist of, however they were added (Control, the game's console, Crafty), not just the one they signed up from. No need to sign up again with a code on each server. Private servers are never included.
 - **Ask to join for the servers you want:** with more than one server, the form asks which (one or more). Each shows only in that server's Control, and the player's page and badge say which they're in on so far (*In on Family Realm. Waiting on Mods*).
 - **"You're in" however you let them in:** adding someone from the game's console or Crafty counts too. Their page notices within a minute.
+- **A card for each server** in the home page's *Join the servers*: its name and picture, Java and Bedrock (or *Java only*), how it's doing, the addresses to copy, its note and mods, and *See who's on, live*. Set them all in Website → Site details → **How to join each server** (or in each server's ⚙). The main address there is used by the join guide and by the first server left empty.
 - **The join box says how each server is doing:** *Online · 3 / 10 playing · up 3 h · running smoothly (19.9 TPS)*, or *Offline right now* (with *Show the public servers' status* on in Site details).
 - **The mods to install for a modded server:** tick *List the mods players need* in the server's ⚙ How to join this server, and its box shows them (folded away until opened), with the loader and Minecraft version. With the family modpack on, it's the modpack's list, links included.
 

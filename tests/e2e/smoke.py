@@ -279,15 +279,18 @@ def main() -> int:
             pg.request.put(f"{base}/api/servers/{sid}/settings", data={"join_address": "mods.example.net:25566", "join_note": "Needs the modpack", "join_mods": True}, headers=H)
             def running(route):                  # the server as if it were up (there's no game here)
                 d = json.loads(route.fetch().text())
+                up = {"running": True, "online": 3, "max": 10, "tps": 19.9, "started": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 3 * 3600 - 600))}
                 for x in d.get("servers", []):
-                    x.update({"running": True, "online": 3, "max": 10, "tps": 19.9, "started": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 3 * 3600 - 600))})
+                    x.update(up)
+                for j in d.get("joins", []):
+                    j["status"] = {**(j.get("status") or {}), **up}
                 route.fulfill(json=d)
             anon.route("**/api/public/site", running)
             anon.goto(f"{base}/"); anon.reload(); anon.wait_for_timeout(1200)
             anon.locator(".hp-mods summary").first.click() if anon.locator(".hp-mods summary").count() else None
             if "Online" not in (anon.locator(".hp-join").text_content() or ""):
                 problems.append("home: the join box doesn't say the server is online")
-            if "mods.example.net:25566" not in (anon.locator(".hp-join .hp-join-server").text_content() if anon.locator(".hp-join .hp-join-server").count() else ""):
+            if "mods.example.net:25566" not in (anon.locator(".hp-join .hp-join-card").text_content() if anon.locator(".hp-join .hp-join-card").count() else ""):
                 problems.append("home: a second server's own join address isn't shown")
             check(anon, "site-home-two-servers")
             anon.unroute("**/api/public/site")
@@ -339,6 +342,11 @@ def main() -> int:
                 check(anon, "site-home-youre-in")
                 wl.unlink()
                 pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(1000)
+                pg.click('.fws-tabs [data-tab="site"]'); pg.wait_for_timeout(800)
+                if not pg.locator(".ws-join").count():
+                    problems.append("website: no join details for each server in Site details")
+                pg.locator(".ws-joins").scroll_into_view_if_needed() if pg.locator(".ws-joins").count() else None
+                check(pg, "website-joins")
                 pg.click('.fws-tabs [data-tab="guides"]'); pg.wait_for_timeout(400)
                 pg.click('.ws-guide[data-guide="join"] [data-start]'); pg.wait_for_timeout(200)
                 if "{java_address}" not in pg.locator('.ws-guide[data-guide="join"] textarea').input_value():

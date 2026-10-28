@@ -121,14 +121,28 @@ function wsSite(el) {
           <button type="button" class="btn sm" id="ws-logo-reset">Use Solstone's</button></span></div></div>
     <label>Site name<input class="input" name="name" maxlength="80" value="${esc(s.name)}"></label>
     <label>Tagline <small>One line under the name</small><input class="input" name="tagline" maxlength="160" value="${esc(s.tagline)}" placeholder="A family Minecraft server"></label>
-    <div class="ws-row"><label>Java address<input class="input" name="java_address" maxlength="80" value="${esc(s.java_address)}" placeholder="play.example.net"></label>
-      <label>Bedrock address<input class="input" name="bedrock_address" maxlength="80" value="${esc(s.bedrock_address)}" placeholder="play.example.net"></label>
-      <label>Bedrock port<input class="input" name="bedrock_port" inputmode="numeric" value="${esc(s.bedrock_port)}"></label></div>
+    <fieldset class="ws-joins"><legend>How to join each server <small class="muted">One card per server on the home page, with how it's doing</small></legend>
+      <div class="ws-row ws-main"><label>Main address: Java<input class="input" name="java_address" maxlength="80" value="${esc(s.java_address)}" placeholder="play.example.net"></label>
+        <label>Bedrock<input class="input" name="bedrock_address" maxlength="80" value="${esc(s.bedrock_address)}" placeholder="play.example.net"></label>
+        <label>Bedrock port<input class="input" name="bedrock_port" inputmode="numeric" value="${esc(s.bedrock_port)}"></label></div>
+      <p class="muted small">The main address is used by the join guide, and by the first server below that's left empty. Give any other server its own. Empty Bedrock: Java only. Private servers never show.</p>
+      ${(state.servers || []).filter((x) => !x.private).map((x, i) => `<div class="ws-join" data-sid="${esc(x.id)}"><b>${esc(x.name)}</b>
+        <div class="ws-row"><label>Java<input class="input" data-j="join_address" maxlength="80" placeholder="${i === 0 ? "(the main address)" : "mods.example.net:25566"}"></label>
+          <label>Bedrock<input class="input" data-j="join_bedrock_address" maxlength="80"></label>
+          <label>Port<input class="input" data-j="join_bedrock_port" inputmode="numeric" placeholder="19132"></label></div>
+        <label>Note <small>Optional, for example: Needs the modpack</small><input class="input" data-j="join_note" maxlength="160"></label>
+        <label class="check"><input type="checkbox" data-j="join_mods"> List the mods players need</label></div>`).join("")}
+    </fieldset>
     <label>Discord invite <small>A discord.gg or discord.com link</small><input class="input" name="discord" maxlength="200" value="${esc(s.discord)}" placeholder="https://discord.gg/..."></label>
     <label>About <small>Shown at the bottom of the home page. Same formatting as posts.</small><textarea class="input" name="about" rows="6" maxlength="4000">${esc(s.about)}</textarea></label>
     <label class="check"><input type="checkbox" name="home_live" ${s.home_live ? "checked" : ""}> Show the public servers' status on the home page <small>Running or not and how many are on. Private servers are never shown.</small></label>
     <div class="actions"><a class="btn" href="/" target="_blank" rel="noopener">Open the home page</a><button class="btn primary" type="submit">Save</button></div>
   </form>`;
+  // each server's join details come from its settings
+  $$(".ws-join").forEach(async (row) => {
+    const cur = await api(`/api/servers/${encodeURIComponent(row.dataset.sid)}/settings`).catch(() => ({}));
+    $$("[data-j]", row).forEach((i) => { if (i.type === "checkbox") i.checked = !!cur[i.dataset.j]; else i.value = cur[i.dataset.j] ?? ""; });
+  });
   $("#ws-logo-file").addEventListener("change", async (e) => {
     const f = e.target.files[0];
     if (!f) return;
@@ -148,7 +162,15 @@ function wsSite(el) {
     const f = new FormData(e.target);
     const body = Object.fromEntries(["name", "tagline", "java_address", "bedrock_address", "bedrock_port", "discord", "about"].map((k) => [k, f.get(k)]));
     body.home_live = !!f.get("home_live");
-    try { ws.data.site = await post("/api/settings/site", body, "PUT"); showToast("Saved", 2000); renderWebsite(); }
+    try {
+      ws.data.site = await post("/api/settings/site", body, "PUT");
+      for (const row of $$(".ws-join")) {               // each server's own way in, kept in its settings
+        const v = {};
+        $$("[data-j]", row).forEach((i) => { v[i.dataset.j] = i.type === "checkbox" ? i.checked : i.value; });
+        await post(`/api/servers/${encodeURIComponent(row.dataset.sid)}/settings`, v, "PUT");
+      }
+      showToast("Saved", 2000); renderWebsite();
+    }
     catch (err) { showError(esc(err.message), 5000); }
   });
 }

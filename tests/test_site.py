@@ -185,3 +185,17 @@ def test_asking_for_some_servers(client, anon, monkeypatch, sid):
         client.put("/api/settings/site", json={"join_requests": False})
         main.settings_store.save_section("join_requests", [])
         signup._sent.clear()
+
+
+def test_one_join_card_per_server(client, anon, sid):
+    client.put("/api/settings/site", json={"java_address": "play.example.net", "bedrock_address": "play.example.net"})
+    try:
+        j = next(x for x in anon.get("/api/public/site").json()["joins"] if x["id"] == sid)
+        assert j["java"] == "play.example.net" and j["bedrock"] == "play.example.net"      # the main address, for the main server
+        assert "status" in j
+        client.put(f"/api/servers/{sid}/settings", json={"join_address": "mods.example.net"})
+        j = next(x for x in anon.get("/api/public/site").json()["joins"] if x["id"] == sid)
+        assert j["java"] == "mods.example.net" and j["bedrock"] == ""                      # its own wins
+    finally:
+        client.put(f"/api/servers/{sid}/settings", json={"join_address": ""})
+        client.put("/api/settings/site", json={"java_address": "", "bedrock_address": ""})

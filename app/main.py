@@ -560,11 +560,21 @@ async def public_site():
                             "max": summ["max_players"], "version": summ.get("version"), "has_icon": summ["has_icon"],
                             "started": summ.get("started") if summ["running"] else None, "tps": (summ.get("perf") or {}).get("tps")})
         _site_cache = (time.monotonic(), servers)
-    # servers with their own join details (a second server, Java only with mods, say): each gets its own lines
-    joins = [{"id": s.id, "name": s.display_name, "java": s.settings.get("join_address") or "",
-              "bedrock": s.settings.get("join_bedrock_address") or "", "bedrock_port": s.settings.get("join_bedrock_port") or 19132,
-              "note": s.settings.get("join_note") or "", "mods": _mods_for_players(s) if s.settings.get("join_mods") else None}
-             for s in _public_servers_list() if s.settings.get("join_address") or s.settings.get("join_bedrock_address")]
+    # How to join, one card per public server: its own addresses (its ⚙ settings, or Website → Site details), with
+    # Site details' addresses standing in for the first server that has none of its own (the main one, usually).
+    await S.registry.refresh()
+    status = {x["id"]: x for x in servers}
+    joins, main_used = [], False
+    for srv in _public_servers_list():
+        st = srv.settings
+        java, bed, port = st.get("join_address") or "", st.get("join_bedrock_address") or "", st.get("join_bedrock_port") or ""
+        if not (java or bed) and not main_used and (cfg["java_address"] or cfg["bedrock_address"]):
+            java, bed, port, main_used = cfg["java_address"], cfg["bedrock_address"], cfg["bedrock_port"], True
+        if not (java or bed):
+            continue
+        joins.append({"id": srv.id, "name": srv.display_name, "java": java, "bedrock": bed, "bedrock_port": port or 19132,
+                      "note": st.get("join_note") or "", "mods": _mods_for_players(srv) if st.get("join_mods") else None,
+                      "status": status.get(srv.id)})
     asks = [{"id": s.id, "name": s.display_name} for s in _public_servers_list() if s.is_java] if cfg["join_requests"] else []
     return JSONResponse({**cfg, "logo": site.logo_url(), "servers": servers, "joins": joins, "ask_servers": asks,
                          "live": _status_cfg()["enabled"], "build": _asset_stamp()},
