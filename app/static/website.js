@@ -37,6 +37,8 @@ function renderWebsite() {
 // ---------------------------------------------------------------- posts
 const wsDate = (ts) => new Date(ts * 1000).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
 
+const wsSaveLabel = (saved, published) => (published ? (saved ? "Save" : "Publish") : "Save draft");
+
 function wsEditHtml(p) {
   return `<form class="ws-edit panel" id="ws-edit">
     <label>Title<input class="input" name="title" maxlength="120" required value="${esc(p.title || "")}"></label>
@@ -48,7 +50,8 @@ function wsEditHtml(p) {
     <div class="btn-row ws-insert"><label class="btn sm ws-file">🖼 Add a picture<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-pic hidden></label>
       <button type="button" class="btn sm" data-link>🔗 Add a link</button>
       <small class="muted">The first picture also shows on the post's card. Under 4 MB each.</small></div>
-    <div class="actions"><button type="button" class="btn" data-cancel>Cancel</button><button class="btn primary" type="submit">${p.id ? "Save" : "Publish"}</button></div>
+    <div class="actions"><button type="button" class="btn" data-preview title="See it as visitors will, before anyone else can">👁 Preview</button>
+      <button type="button" class="btn" data-cancel>Cancel</button><button class="btn primary" type="submit" data-save>${wsSaveLabel(p.id, p.published !== false)}</button></div>
   </form>`;
 }
 
@@ -74,6 +77,17 @@ function wsPosts(el) {
   const form = $("#ws-edit");
   if (!form) return;
   form.querySelector("[data-cancel]").addEventListener("click", () => { ws.editing = null; renderWebsite(); });
+  form.published.addEventListener("change", () => { form.querySelector("[data-save]").textContent = wsSaveLabel(ws.editing && ws.editing !== "new", form.published.checked); });
+  // Preview: what's typed now (saved or not, published or not), on the real post page in a tab of its own. Only this
+  // browser has it: it goes through this browser's storage, never the server, so nobody else can see it.
+  form.querySelector("[data-preview]").addEventListener("click", () => {
+    const f = new FormData(form);
+    try {
+      localStorage.setItem("solstone-post-preview", JSON.stringify({ title: f.get("title") || "Untitled", category: f.get("category"),
+        body: f.get("body") || "", author: me.user?.shown || "", created: Date.now() / 1000 }));
+    } catch { showError("This browser won't keep the preview (a private window?)", 5000); return; }
+    window.open("/post/__preview__", "solstone-preview");
+  });
   // Put text in where the cursor is (on a line of its own for a picture).
   const ta = form.querySelector("textarea[name=body]");
   const insert = (text, ownLine) => {

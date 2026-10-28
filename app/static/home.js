@@ -186,10 +186,23 @@ async function section(key) {
 
 async function article(slug) {
   let p;
+  if (slug === "__preview__") return previewArticle();
   try { p = await getJSON(`/api/public/posts/${encodeURIComponent(slug)}`); } catch { return `<section><h1>Not found</h1><p class="muted">That post isn't here any more. <a href="/">Back home</a></p></section>`; }
   const back = { news: ["/news", "News"], guide: ["/help", "Help"], faq: ["/help", "Help"] }[p.category] || ["/", "Home"];
   document.title = `${p.title} · ${hp.site.name}`;
   return `<article class="hp-article glass"><a class="back" href="${back[0]}">← ${esc(back[1])}</a>
+    <h1>${esc(p.title)}</h1><p class="hp-post-meta">${esc(dateText(p.created))}${p.author ? ` · ${esc(p.author)}` : ""}</p>
+    <div class="hp-body">${markdown(p.body)}</div></article>`;
+}
+
+// A post being written (Website → Posts → 👁 Preview): from this browser's storage, shown as visitors will see it.
+function previewArticle() {
+  let p = null;
+  try { p = JSON.parse(localStorage.getItem("solstone-post-preview") || "null"); } catch { /* nothing kept */ }
+  if (!p) return `<section><h1>Nothing to preview</h1><p class="muted">Press 👁 Preview in the post editor (Website → Posts).</p></section>`;
+  document.title = `Preview: ${p.title} · ${hp.site.name}`;
+  return `<p class="hp-preview-note glass">👁 <b>Preview.</b> Only you can see this. Nobody else sees the post until it's published and saved. Press Preview again after changes, or reload this tab.</p>
+    <article class="hp-article glass"><a class="back" href="${p.category === "news" ? "/news" : "/help"}">← ${p.category === "news" ? "News" : "Help"}</a>
     <h1>${esc(p.title)}</h1><p class="hp-post-meta">${esc(dateText(p.created))}${p.author ? ` · ${esc(p.author)}` : ""}</p>
     <div class="hp-body">${markdown(p.body)}</div></article>`;
 }

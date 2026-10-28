@@ -161,6 +161,20 @@ def main() -> int:
                 pg.goto(f"{base}/app{hash_}"); pg.wait_for_timeout(1300)
                 check(pg, name)
 
+            # a draft, previewed before anyone else can see it
+            pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(1200)
+            pg.click("#ws-new"); pg.wait_for_timeout(300)
+            pg.fill("#ws-edit [name=title]", "Secret draft"); pg.fill("#ws-edit [name=body]", "Coming **soon**.")
+            pg.uncheck("#ws-edit [name=published]")
+            if (pg.locator("#ws-edit [data-save]").text_content() or "").strip() != "Save draft":
+                problems.append("post editor: an unpublished post's button doesn't say Save draft")
+            with pg.expect_popup() as pop:
+                pg.click("#ws-edit [data-preview]")
+            prev = pop.value; prev.wait_for_timeout(1500)
+            if "Secret draft" not in (prev.locator(".hp-article").text_content() or "") or not prev.locator(".hp-body strong, .hp-body b").count():
+                problems.append("post editor: Preview doesn't show the post as it'll look")
+            check(prev, "post-preview"); prev.close()
+            pg.click("#ws-edit [data-cancel]"); pg.wait_for_timeout(300)
             pg.goto(f"{base}/app#/s/{sid}/leaderboards"); pg.wait_for_timeout(1500)
             if not pg.locator(".board-group h2").count():
                 problems.append("leaderboards: no headings for the kinds of board")
