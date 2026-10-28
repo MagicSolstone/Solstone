@@ -556,3 +556,34 @@ def fish_catches(server_id: str, player: str | None = None) -> list[dict]:
     else:
         rows = q("SELECT * FROM fish_catches WHERE server_id=? ORDER BY ts", (server_id,))
     return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------- clearing what Solstone kept about a server
+# (Manage → Servers: for a new world, or a fresh start.) The game server itself is never touched.
+CHAT_TYPES = ("chat", "webchat", "webdm")
+CLEAR_KINDS = ("chat", "activity", "recaps", "play", "performance", "fishing")
+
+
+def clear_server(server_id: str, kinds: set[str]) -> dict[str, int]:
+    """Delete the chosen kinds of saved history for one server. Returns rows removed per kind.
+    Sessions still open (someone playing right now) are kept, so they don't count as joining again."""
+    marks = ",".join("?" * len(CHAT_TYPES))
+    plan = {
+        "chat": [(f"DELETE FROM events WHERE server_id=? AND type IN ({marks})", (server_id, *CHAT_TYPES))],
+        "activity": [(f"DELETE FROM events WHERE server_id=? AND type NOT IN ({marks})", (server_id, *CHAT_TYPES))],
+        "recaps": [("DELETE FROM recaps WHERE server_id=?", (server_id,))],
+        "play": [("DELETE FROM sessions WHERE server_id=? AND end_ts IS NOT NULL", (server_id,)),
+                 ("DELETE FROM positions WHERE server_id=?", (server_id,)),
+                 ("DELETE FROM adventures WHERE server_id=?", (server_id,)),
+                 ("DELETE FROM adventures_hidden WHERE server_id=?", (server_id,))],
+        "performance": [("DELETE FROM metrics WHERE server_id=?", (server_id,))],
+        "fishing": [("DELETE FROM fish_catches WHERE server_id=?", (server_id,))],
+    }
+    out: dict[str, int] = {}
+    with _lock:
+        c = conn()
+        for kind in CLEAR_KINDS:
+            if kind in kinds:
+                out[kind] = sum(c.execute(sql, args).rowcount for sql, args in plan[kind])
+        c.commit()
+    return out

@@ -13,11 +13,13 @@ import time
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+import httpx
 
 from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, races, fireworks, fwshow, guard, notify, recap, selfcheck, signup, site, skins, tide, upcoming, welcome, worldmap
 from . import servers as S
@@ -31,7 +33,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.8.4"
+VERSION = "1.8.5"
 
 
 @asynccontextmanager
@@ -576,7 +578,7 @@ async def public_site():
         if not (java or bed):
             continue
         joins.append({"id": srv.id, "name": srv.display_name, "java": java, "bedrock": bed, "bedrock_port": port or 19132,
-                      "note": st.get("join_note") or "", "mods": _mods_for_players(srv) if st.get("join_mods") else None,
+                      "note": st.get("join_note") or "", "mods": _mods_for_players(srv) if st.get("join_mods") or modpack.get(srv.id)["public_download"] else None,
                       "status": status.get(srv.id), "main": srv.id == cfg.get("main_server"),
                       "color": st.get("join_color") or ""})
     if joins and not (cfg["java_address"] or cfg["bedrock_address"]):     # the join guide's {java_address} and the like:
@@ -659,7 +661,7 @@ def _mods_for_players(srv: S.Server) -> dict | None:
         return None
     try:
         pack = modpack.get(srv.id)
-        if pack.get("enabled"):
+        if pack.get("enabled") or pack.get("public_download"):
             mods = [{"name": m["name"], "version": m.get("version") or ""} for m in modpack.server_mods(srv) if m["included"]]
             mods += [{"name": e["title"], "version": e.get("version") or "", "kind": e.get("kind", "mod"),
                       "link": f"https://modrinth.com/{e.get('kind', 'mod')}/{e['slug']}"} for e in pack["extra"]]
@@ -669,7 +671,8 @@ def _mods_for_players(srv: S.Server) -> dict | None:
     except Exception as e:
         log.debug("mod list for %s failed: %s", srv.id, e)
         return None
-    return {"loader": S.detect_loader(srv), "mc": srv.mc_version, "modpack": bool(pack.get("enabled")), "list": mods[:150]}
+    return {"loader": S.detect_loader(srv), "mc": srv.mc_version, "modpack": bool(pack.get("enabled")), "list": mods[:150],
+            "download": f"/api/public/modpack/{quote(srv.id)}.mrpack" if pack.get("public_download") else None}
 
 
 # ---- asking to join, from the join guide: a notification for the admins with the exact name to let in
@@ -1652,7 +1655,8 @@ def _pack_view(srv, request: Request) -> dict:
     cfg = modpack.get(srv.id)
     base = _public_base(request)
     url = f"{base}/api/public/pack/{cfg['token']}/pack.toml" if cfg["token"] else ""
-    return {"enabled": cfg["enabled"], "url": url, "command": modpack.prism_command(url) if url else "",
+    return {"enabled": cfg["enabled"], "public_download": cfg["public_download"], "url": url,
+            "mrpack": f"/api/servers/{quote(srv.id)}/modpack.mrpack", "command": modpack.prism_command(url) if url else "",
             "bootstrap": "/api/public/packwiz-installer-bootstrap.jar", "mc": srv.mc_version,       # same site as the page
             "loader": modpack.fabric_loader_version(srv), "server_mods": modpack.server_mods(srv),
             "extra": [{k: e.get(k) for k in ("slug", "title", "kind", "version", "filename", "icon")} for e in cfg["extra"]]}
@@ -1673,6 +1677,8 @@ async def put_modpack(sid: str, request: Request):
     cfg = modpack.get(srv.id)
     if "enabled" in body:
         cfg["enabled"] = bool(body["enabled"])
+    if "public_download" in body:
+        cfg["public_download"] = bool(body["public_download"])
     if isinstance(body.get("server_mods"), list):
         cfg["server_mods"] = [str(x) for x in body["server_mods"]][:200]
     if body.get("new_token"):
@@ -1732,6 +1738,32 @@ async def modpack_updates(sid: str, action: str, request: Request):
         auth.audit(user, srv.id, "modpack:update", ", ".join(c["slug"] for c in changed))
         return {"changed": changed, "pack": await asyncio.to_thread(_pack_view, srv, request)}
     raise HTTPException(404, "Unknown action")
+
+
+async def _mrpack_response(srv) -> FileResponse:
+    try:
+        path = await modpack.mrpack(srv)
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"Couldn't reach Modrinth to finish the pack: {e}") from e
+    return FileResponse(path, media_type="application/x-modrinth-modpack+zip", filename=modpack.mrpack_name(srv))
+
+
+@app.get("/api/servers/{sid}/modpack.mrpack")
+async def admin_mrpack(sid: str, request: Request):
+    """The pack as one file to import (admins, to hand to someone, whether or not it's on the website)."""
+    auth.require_admin(request)
+    return await _mrpack_response(await _server(sid))
+
+
+@app.get("/api/public/modpack/{sid}.mrpack")
+async def public_mrpack(sid: str):
+    """The pack on the website, when the admin chose to offer it there (public servers only)."""
+    srv = next((s for s in _public_servers_list() if s.id == sid), None)
+    if not srv or not modpack.get(srv.id)["public_download"]:
+        raise HTTPException(404, "No modpack to download here")
+    return await _mrpack_response(srv)
 
 
 @app.get("/api/public/packwiz-installer-bootstrap.jar")
@@ -1836,6 +1868,27 @@ async def put_settings(sid: str, request: Request):
     safe = {k: v for k, v in saved.items() if k != "rcon_password"}
     safe["rcon_password_set"] = "rcon_password" in saved
     return safe
+
+
+@app.post("/api/servers/{sid}/clear")
+async def clear_saved(sid: str, request: Request):
+    """Clear what Solstone kept about a server (chat, activity, play history, map pictures...). The game isn't touched."""
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    kinds = {str(k) for k in ((await _body(request)).get("what") or [])}
+    unknown = kinds - set(db.CLEAR_KINDS) - {"map"}
+    if not kinds or unknown:
+        raise HTTPException(400, "Pick what to clear")
+    out = await asyncio.to_thread(db.clear_server, srv.id, kinds)
+    if "map" in kinds:
+        out["map"] = await asyncio.to_thread(worldmap.clear_tiles, srv.id)
+    if "play" in kinds:
+        welcomed = settings_store.load().get("welcomed") or {}
+        if welcomed.pop(srv.id, None) is not None:
+            settings_store.save_section("welcomed", welcomed)
+    _board_cache.pop(srv.id, None)
+    auth.audit(user, srv.id, "clear_saved", ", ".join(sorted(kinds)))
+    return {"ok": True, "cleared": out}
 
 
 @app.post("/api/servers/{sid}/welcome/try")

@@ -809,3 +809,12 @@ def tile(sid: str, world: Path, dim: str, rx: int, rz: int, assets) -> tuple[str
                 _worker = threading.Thread(target=_work, daemon=True, name="map-tiles")
                 _worker.start()
     return ("ready", dst) if dst_m else ("working", None)
+
+
+def clear_tiles(sid: str) -> int:
+    """Forget the map pictures drawn for a server (a new world): they're drawn again as they're looked at."""
+    import shutil
+    root = config.data_dir / "maptiles" / f"v{RENDER_VERSION}" / sid
+    n = sum(1 for _ in root.rglob("*.png")) if root.is_dir() else 0
+    shutil.rmtree(root, ignore_errors=True)
+    return n

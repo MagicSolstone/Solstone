@@ -1726,7 +1726,7 @@ body.on-editor:not(.ui-hidden) .fwbar .fwb-launch, body.on-editor:not(.ui-hidden
 .ws-logo img { width: 64px; height: 64px; object-fit: contain; border-radius: 8px; background: var(--well); image-rendering: pixelated; }
 .ws-logo > div { display: grid; gap: 6px; }
 .ws-file { cursor: pointer; }
-.ws-text { font-family: ui-monospace, Menlo, monospace; font-size: .92rem; line-height: 1.5; resize: vertical; }
+.ws-text { width: 100%; box-sizing: border-box; min-width: 0; font-family: ui-monospace, Menlo, monospace; font-size: .92rem; line-height: 1.5; resize: vertical; }
 
 
 /* Who played which days (instead of hours, for anyone but an admin) */
@@ -1854,8 +1854,6 @@ a.glance-me:hover { border-color: var(--gold); }
 .ws-join { display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
 .hp-join-card { border-color: var(--accent, var(--glass-edge)); }
 .hp-join-card[style*="--accent"] { border-width: 2px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent), 0 8px 24px rgba(0,0,0,.25); }
-.hp-join-card.main { --accent-default: var(--gold); border: 2px solid var(--accent, var(--gold)); }
-.main-chip { background: rgba(242, 193, 78, .18); color: var(--gold); }
 .ws-join-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .ws-color { display: inline-flex; align-items: center; gap: 6px; font-size: .9rem; margin-left: auto; }
 .ws-color input[type=color] { width: 34px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
@@ -1884,3 +1882,11 @@ a.glance-me:hover { border-color: var(--gold); }
   padding: 10px 12px; border-radius: 8px; line-height: 1.5; text-shadow: 2px 2px 0 rgba(0, 0, 0, .45); overflow-wrap: anywhere; }
 .wel-try { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 .hp-ask-rules { margin: 4px 0 8px; }
+.pk-ways { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); margin: 10px 0 16px; }
+.pk-way { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; align-content: start; }
+.pk-way h3 { margin: 0; }
+.hp-pack { display: grid; gap: 6px; justify-items: start; margin: 8px 0; }
+.hp-pack details { font-size: .92rem; }
+.hp-pack ol { margin: 6px 0; padding-left: 20px; display: grid; gap: 4px; }
+.clear-form { display: grid; gap: 10px; }
+.clear-form label.check { align-items: flex-start; }

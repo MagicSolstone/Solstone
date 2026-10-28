@@ -1319,9 +1319,17 @@ async function viewMods(sid) {
         <p class="muted small">Pack address: <code>${esc(pack.url)}</code> · Anyone with this address can download the pack's mods. <button class="linkish" type="button" data-newtoken>Make a new address</button></p>` : "";
     const sm = pack.server_mods.filter((m) => !m.server_only);
     return `<section class="section panel pk">
-      <div class="section-head"><h2>📦 Modpack</h2><label class="check"><input type="checkbox" data-mp-on ${pack.enabled ? "checked" : ""}> Keep players' Prism instances up to date from here</label></div>
-      <p class="muted">Every PC gets the same mods on each launch: this server's own jars (so they always match it) plus the client mods, resource packs and shaders below, for Minecraft ${esc(pack.mc || "?")}${pack.loader ? ` with Fabric Loader ${esc(pack.loader)}` : ""}.</p>
-      ${setup}
+      <div class="section-head"><h2>📦 Modpack</h2></div>
+      <p class="muted">The mods players need, for Minecraft ${esc(pack.mc || "?")}${pack.loader ? ` with Fabric Loader ${esc(pack.loader)}` : ""}: this server's own jars (so they always match it) plus the client mods, resource packs and shaders below. Two ways to hand it out:</p>
+      <div class="pk-ways">
+        <div class="pk-way"><h3>⬇ One file to import</h3>
+          <p class="muted small">A <b>.mrpack</b> file. In Prism: <b>Add Instance → Import</b>, pick the file, and it sets up Minecraft, Fabric and every mod (the Modrinth App and CurseForge import it too). It doesn't update by itself: when you change the pack, they import the new file.</p>
+          <div class="btn-row"><button class="btn sm primary" type="button" data-mrpack>Download the .mrpack</button></div>
+          <label class="check"><input type="checkbox" data-mp-public ${pack.public_download ? "checked" : ""}> <span>Offer it on the website<br><small class="muted">A download, with how to install it, on this server's card on the home page</small></span></label></div>
+        <div class="pk-way"><h3>🔄 Keeps itself up to date (packwiz)</h3>
+          <p class="muted small">For Prism on PCs you set up yourself: a small installer runs before each launch and downloads whatever changed.</p>
+          <label class="check"><input type="checkbox" data-mp-on ${pack.enabled ? "checked" : ""}> Keep Prism instances up to date from here</label>
+          ${setup}</div></div>
       <h3>From this server</h3>
       <div class="pk-list">${sm.map((m) => `<label class="check pk-item"><input type="checkbox" data-sm="${esc(m.id)}" ${m.included ? "checked" : ""}> <b>${esc(m.name)}</b> <span class="muted small">${esc(m.version || "")}${m.environment === "client" ? " · client mod" : ""}</span></label>`).join("")}</div>
       <h3>From Modrinth <span class="muted small">${pack.extra.length}</span></h3>
@@ -1340,6 +1348,18 @@ async function viewMods(sid) {
   const busy = (el, on) => { if (el) { el.disabled = on; el.classList.toggle("busy", on); } };
   const wire = () => {
     $("[data-mp-on]")?.addEventListener("change", async (e) => { pack = await post(base, { enabled: e.target.checked }, "PUT"); render(); });
+    $("[data-mp-public]")?.addEventListener("change", async (e) => { pack = await post(base, { public_download: e.target.checked }, "PUT"); showToast(e.target.checked ? "On the website now" : "Off the website", 2000); render(); });
+    $("[data-mrpack]")?.addEventListener("click", async (e) => {
+      const b = e.currentTarget; b.disabled = true; b.textContent = "Making it…";
+      try {
+        const r = await fetch(pack.mrpack, { credentials: "same-origin" });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || "That didn't work");
+        const name = (r.headers.get("content-disposition") || "").match(/filename="?([^";]+)/)?.[1] || "modpack.mrpack";
+        const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(await r.blob()), download: name });
+        a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      } catch (err) { showError(esc(err.message), 7000); }
+      b.disabled = false; b.textContent = "Download the .mrpack";
+    });
     $("[data-newtoken]")?.addEventListener("click", async () => { if (!confirm("Make a new pack address? Every PC's pre-launch command will need the new one.")) return; pack = await post(base, { new_token: true }, "PUT"); render(); });
     $$("[data-sm]").forEach((b) => b.addEventListener("change", async () => {
       pack = await post(base, { server_mods: $$("[data-sm]").filter((x) => x.checked).map((x) => x.dataset.sm) }, "PUT"); render();

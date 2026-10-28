@@ -1,3 +1,11 @@
+# Solstone 1.8.5
+
+- **⬇ The modpack as one file:** a server's Mods page can now hand out its pack as a **.mrpack** file. In Prism it's **Add Instance → Import**: one file sets up the right Minecraft, Fabric and every mod (the Modrinth App and CurseForge import it too). Mods from Modrinth are downloaded by the launcher; the server's own jars (like Tide+) go inside the file, so they don't need to be on Modrinth. **Download the .mrpack** to give it to someone yourself, or tick **Offer it on the website** to put a download, with step-by-step install help, on the server's card on the home page (off to start). Packwiz is still there for Prism instances that keep themselves up to date.
+- **🧹 Clear saved history** (Manage → Servers & live info): pick a server and what to clear: chat, activity, daily recaps, play history, performance graphs, the fishing journal, map pictures. **Tick what a new world needs** picks play history, activity and the map. Only what Solstone kept: the game server, its world, items, whitelist and logs aren't touched.
+- **A cleaner home page:** the big site name and tagline at the top are gone (the bar already has the logo and name). Want them back? Website → Site details → *Show the name (and tagline) big at the top of the home page*.
+- **No star on the main server:** it's still first everywhere, just without the ⭐ chip or a gold border. Give it a border colour in Site details to make it stand out.
+- **Rules and guides:** the text boxes use the full width. The three built-in guides are in the same order everywhere: joining, making an account, the rules.
+
 # Solstone 1.8.4
 
 - **Deny a request:** *Asked to join* (in Manage → Whitelist and in a server's Control) has a **Deny** button. The request comes off the list, nobody is added to a whitelist, and the person who asked sees *Request not accepted* on their badge and page. They can ask again later.

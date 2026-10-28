@@ -121,12 +121,13 @@ function wsSite(el) {
         <span class="btn-row"><label class="btn sm ws-file">Choose a picture<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" id="ws-logo-file" hidden></label>
           <button type="button" class="btn sm" id="ws-logo-reset">Use Solstone's</button></span></div></div>
     <label>Site name<input class="input" name="name" maxlength="80" value="${esc(s.name)}"></label>
-    <label>Tagline <small>One line under the name</small><input class="input" name="tagline" maxlength="160" value="${esc(s.tagline)}" placeholder="A family Minecraft server"></label>
+    <label>Tagline <small>One line about the site: on the sign-in page, and under the name if it's shown big on the home page</small><input class="input" name="tagline" maxlength="160" value="${esc(s.tagline)}" placeholder="A Minecraft server for friends"></label>
+    <label class="check"><input type="checkbox" name="home_title" ${s.home_title ? "checked" : ""}> Show the name (and tagline) big at the top of the home page <small>Off: just the bar at the top, with the logo and name</small></label>
     <fieldset class="ws-joins"><legend>How to join each server <small class="muted">One card per server on the home page, with how it's doing</small></legend>
       <p class="muted small">Each server gets its own card. Leave Bedrock empty for Java only, or Java empty for Bedrock only; a server with neither isn't shown. Private servers never show. The join guide uses the first server's addresses.</p>
       ${(state.servers || []).filter((x) => !x.private).map((x, i) => `<div class="ws-join" data-sid="${esc(x.id)}">
         <div class="ws-join-head"><b>${esc(x.name)}</b>
-          <label class="check"><input type="radio" name="main_server" value="${esc(x.id)}" ${s.main_server === x.id ? "checked" : ""}> ⭐ Main server <small class="muted">first everywhere</small></label>
+          <label class="check"><input type="radio" name="main_server" value="${esc(x.id)}" ${s.main_server === x.id ? "checked" : ""}> Main server <small class="muted">first everywhere</small></label>
           <label class="ws-color" title="The colour of its card's border">Border <input type="color" data-j="join_color" value="#f2c14e"><button type="button" class="link-btn" data-nocolor>none</button></label></div>
         <div class="ws-row"><label>Java<input class="input" data-j="join_address" maxlength="80" placeholder="${i === 0 ? "play.example.net" : "mods.example.net:25566"}"></label>
           <label>Bedrock<input class="input" data-j="join_bedrock_address" maxlength="80"></label>
@@ -178,6 +179,7 @@ function wsSite(el) {
     body.java_address = ""; body.bedrock_address = "";           // now kept with each server, below
     body.main_server = f.get("main_server") || "";
     body.home_live = !!f.get("home_live");
+    body.home_title = !!f.get("home_title");
     try {
       for (const row of $$(".ws-join")) {               // each server's own way in, kept in its settings (first, so
         const v = {};                                   // the old main address is only cleared once it's moved)
@@ -204,7 +206,7 @@ function wsGuides(el) {
     <section class="panel"><label class="switch-row"><span><b>An “Ask to join” form on the join guide</b><br><small class="muted">Anyone can send their name in the game (and, if they like, their first name and a note). You get a notification, and they show in a server's Control → Whitelist, ready to let in. ${ws.data.notify_ready === false ? "<b>Set up notifications first (Manage → Notifications)</b>, or the messages only show in Control." : ""}</small></span>
       <input type="checkbox" role="switch" name="join_requests" ${s.join_requests ? "checked" : ""}></label></section>
     <p class="muted small">Same formatting as posts. These fill themselves in from Site details: ${GUIDE_PLACEHOLDERS.map(([k, l]) => `<code>{${k}}</code> ${esc(l.toLowerCase())}`).join(", ")}.</p>
-    ${box("rules")}${box("join")}${box("account")}
+    ${box("join")}${box("account")}${box("rules")}
     <div class="actions"><button class="btn primary" type="submit">Save guides</button></div></form>`;
   $$(".ws-guide").forEach((sec) => {
     const key = sec.dataset.guide, ta = $("[data-guide-text]", sec);

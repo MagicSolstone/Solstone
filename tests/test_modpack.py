@@ -37,6 +37,10 @@ def modrinth(monkeypatch):
             hits = [{"slug": k, "title": p["title"], "description": "", "icon_url": None} for k, p in FAKE.items()
                     if q in k.replace("-", "") or q in p["title"].lower().replace(" ", "")]
             return {"hits": hits[:params["limit"]]}
+        if path == "versions":                                                     # several versions by id (for sha1)
+            import json
+            ids = json.loads(params["ids"])
+            return [_version(pp.get("slug", k), v) for k, pp in FAKE.items() for v in pp["versions"] if v["id"] in ids]
         parts = path.split("/")
         p = FAKE.get(parts[1])
         if p is None:
@@ -135,3 +139,35 @@ def test_pack_links_use_the_address_people_came_in_on(client, sid, modrinth, mon
     assert 'url = "https://playsolstone.com/api/public/pack/' in tide
     monkeypatch.setattr(C.config, "public_url", "https://mc.example.org")           # PUBLIC_URL wins
     assert client.get(base).json()["url"].startswith("https://mc.example.org/")
+
+
+def test_one_file_to_import(client, anon, sid, modrinth, monkeypatch):
+    import io
+    import json
+    import zipfile
+
+    modpack, _calls = modrinth
+    monkeypatch.setattr(modpack, "fabric_loader_version", lambda srv: "0.19.5")
+    base = f"/api/servers/{sid}/modpack"
+    client.post(f"{base}/add", json={"names": "Sodium\nresourcepack: Fresh Animations"})
+    assert anon.get(f"{base}.mrpack").status_code in (401, 403)
+    r = client.get(f"{base}.mrpack")
+    assert r.status_code == 200 and r.headers["content-disposition"].endswith('.mrpack"')
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    index = json.loads(z.read("modrinth.index.json"))
+    assert index["formatVersion"] == 1 and index["dependencies"]["fabric-loader"] == "0.19.5" and index["dependencies"]["minecraft"]
+    by_path = {f["path"]: f for f in index["files"]}
+    assert set(by_path) == {"mods/sodium-0.7.0.jar", "resourcepacks/fresh-animations-1.10.jar"}
+    assert all(f["hashes"]["sha1"] and f["hashes"]["sha512"] and f["downloads"][0].startswith("https://cdn.modrinth.com/") for f in index["files"])
+    assert any(n.startswith("overrides/mods/") and "tide" in n for n in z.namelist())           # the server's own jar goes inside
+    # on the website only when the admin says so
+    assert anon.get(f"/api/public/modpack/{sid}.mrpack").status_code == 404
+    client.put(base, json={"public_download": True})
+    assert anon.get(f"/api/public/modpack/{sid}.mrpack").status_code == 200
+    client.put(f"/api/servers/{sid}/settings", json={"join_address": "mods.example.net"})
+    try:
+        join = next(j for j in anon.get("/api/public/site").json()["joins"] if j["id"] == sid)
+        assert join["mods"]["download"] == f"/api/public/modpack/{sid}.mrpack"      # even without the mods list ticked
+    finally:
+        client.put(f"/api/servers/{sid}/settings", json={"join_address": ""})
+        client.put(base, json={"public_download": False})

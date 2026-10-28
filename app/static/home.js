@@ -72,7 +72,14 @@ const CAT_LABEL = { news: "News", guide: "Guide", faq: "FAQ" };
 function modsHtml(m) {
   if (!m || !m.list?.length) return "";
   const head = `${m.list.length} ${m.list.length === 1 ? "mod" : "mods"} for ${esc([m.loader, m.mc && `Minecraft ${m.mc}`].filter(Boolean).join(" · "))}`;
-  return `<details class="hp-mods"><summary>🧩 ${head}</summary>
+  const dl = m.download ? `<div class="hp-pack"><a class="btn primary sm" href="${esc(m.download)}" download>⬇ Download the modpack</a>
+      <details><summary>How to install it</summary><ol>
+        <li>Get <a href="https://prismlauncher.org" target="_blank" rel="noopener">Prism Launcher</a> (free, for Windows, Mac and Linux) and sign in with your Microsoft account.</li>
+        <li>Download the modpack (the button above). It's one <b>.mrpack</b> file.</li>
+        <li>In Prism, choose <b>Add Instance</b>, then <b>Import</b>, pick the file, and choose <b>OK</b>. Prism sets up the right Minecraft, Fabric and every mod.</li>
+        <li>Launch it, then join the server from <b>Multiplayer</b>.</li></ol>
+        <p class="muted small">The Modrinth App and CurseForge can import the file too. When the mods change, download it again and import the new one.</p></details></div>` : "";
+  return `${dl}<details class="hp-mods"><summary>🧩 ${head}</summary>
     <ul>${m.list.map((x) => `<li>${x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.name)}</a>` : esc(x.name)}${x.version ? ` <span class="muted small">${esc(x.version)}</span>` : ""}${x.kind && x.kind !== "mod" ? ` <span class="chip">${esc(x.kind === "resourcepack" ? "Resource pack" : x.kind === "shader" ? "Shader" : x.kind)}</span>` : ""}</li>`).join("")}</ul></details>`;
 }
 
@@ -99,7 +106,7 @@ function joinCard(site) {
     const kind = j.java && j.bedrock ? "Java and Bedrock" : j.java ? "Java only" : "Bedrock only";
     const icon = site.live && j.status?.has_icon ? `<img class="px" src="/api/public/icon/${encodeURIComponent(j.id)}.png" alt="" width="40" height="40">` : "";
     return `<article class="hp-join-card ${j.main ? "main" : ""}" ${j.color ? `style="--accent:${esc(j.color)}"` : ""}>
-      <header>${icon}<div><h3>${esc(j.name)}</h3><span class="chip">${kind}</span>${j.main ? ' <span class="chip main-chip">⭐ Main server</span>' : ""}</div></header>
+      <header>${icon}<div><h3>${esc(j.name)}</h3><span class="chip">${kind}</span></div></header>
       ${statusLine(j.status)}${rowsHtml(r)}${j.note ? `<p class="hp-join-note">${esc(j.note)}</p>` : ""}${modsHtml(j.mods)}
       ${site.live ? `<a class="hp-join-live" href="#live" data-live-sid="${esc(j.id)}">👀 See who's on, live →</a>` : ""}</article>`;
   });
@@ -156,7 +163,7 @@ function builtinCards() {
 async function home() {
   const s = hp.site;
   const [news, guides] = await Promise.all([getJSON("/api/public/posts?category=news&limit=3"), getJSON("/api/public/posts?category=guide&limit=4")]);
-  return `<section class="hp-hero"><h1>${esc(s.name)}</h1>${s.tagline ? `<p class="hp-tagline">${esc(s.tagline)}</p>` : ""}</section>
+  return `${s.home_title ? `<section class="hp-hero"><h1>${esc(s.name)}</h1>${s.tagline ? `<p class="hp-tagline">${esc(s.tagline)}</p>` : ""}</section>` : ""}
     <p class="hp-ask-status" id="ask-status" hidden></p>
     ${joinCard(s) || serversCard(s)}
     <section><div class="hp-head"><h2>News</h2><a href="/news">All news →</a></div>${postCards(news, "No news yet.")}</section>

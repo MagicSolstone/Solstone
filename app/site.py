@@ -16,6 +16,7 @@ from .config import config as app_config
 CATEGORIES = ("news", "guide", "faq")
 DEFAULTS = {"name": "Solstone", "tagline": "", "java_address": "", "bedrock_address": "", "bedrock_port": 19132,
             "discord": "", "about": "", "home_live": True, "signup": False,
+            "home_title": False,          # the name and tagline big at the top of the home page (the bar already has them)
             # the two built-in guides, in the admin's own words (empty: Solstone's wording); {java_address} and the
             # like are filled in from the details above, so the guides stay right when an address or port changes
             "guide_join": "", "guide_account": "", "guide_rules": "",
@@ -141,7 +142,7 @@ def clean_config(body: dict) -> dict:
             pass
     if "main_server" in body:
         out["main_server"] = re.sub(r"[^A-Za-z0-9_.\-]", "", str(body["main_server"] or ""))[:64]
-    for k in ("home_live", "signup", "join_requests"):
+    for k in ("home_live", "signup", "join_requests", "home_title"):
         if k in body:
             out[k] = bool(body[k])
     out["name"] = out["name"] or DEFAULTS["name"]

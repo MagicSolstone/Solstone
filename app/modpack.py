@@ -17,6 +17,7 @@ import hashlib
 import json
 import re
 import secrets
+import zipfile
 from pathlib import Path
 from urllib.parse import quote
 
@@ -46,6 +47,7 @@ def get(sid: str) -> dict:
     cfg.setdefault("token", "")
     cfg.setdefault("server_mods", None)                 # None: the defaults (Tide, Fabric API)
     cfg.setdefault("extra", [])
+    cfg.setdefault("public_download", False)            # the .mrpack on the website, for anyone (off: admins only)
     return cfg
 
 
@@ -294,3 +296,62 @@ async def bootstrap_jar() -> bytes:
 
 def prism_command(pack_url: str) -> str:
     return f'"$INST_JAVA" -jar packwiz-installer-bootstrap.jar {pack_url}'
+
+
+# ------------------------------------------------------------------ one file to import: a Modrinth pack (.mrpack)
+# Prism, the Modrinth App and CurseForge all import it: a new instance with the right Minecraft and Fabric, and the mods.
+# Mods from Modrinth are downloaded by the launcher; the server's own jars (Tide+ and the like, which may not be on
+# Modrinth) go inside the file. No auto-update: they import the new one when the pack changes.
+# Format: https://support.modrinth.com/en/articles/8802351-modrinth-modpack-format-mrpack
+def mrpack_dir() -> Path:
+    return config.data_dir / "mrpack"
+
+
+async def _with_sha1(sid: str, cfg: dict) -> list[dict]:
+    """The pack's Modrinth files with both hashes the format wants (sha1 is looked up once, then kept)."""
+    missing = [e["version_id"] for e in cfg["extra"] if not e.get("sha1") and e.get("version_id")]
+    if missing:
+        versions = await _get_json(f"{MODRINTH}/versions", {"ids": json.dumps(missing)})
+        by_file = {f["filename"]: f for v in versions or [] for f in v.get("files", [])}
+        for e in cfg["extra"]:
+            f = by_file.get(e["filename"])
+            if f and not e.get("sha1"):
+                e["sha1"], e["size"] = f["hashes"]["sha1"], f.get("size", e.get("size", 0))
+        save(sid, cfg)
+    return [e for e in cfg["extra"] if e.get("sha1")]
+
+
+async def mrpack(srv) -> Path:
+    """Build (or reuse) the server's .mrpack. ValueError with a message for the admin when it can't be made."""
+    cfg = get(srv.id)
+    loader, mc = fabric_loader_version(srv), srv.mc_version
+    if not loader or not mc:
+        raise ValueError("Solstone needs the server's Minecraft and Fabric versions: start the server once, then try again")
+    extra = await _with_sha1(srv.id, cfg)
+    jars = [(m, srv.dir / "mods" / m["file"]) for m in server_mods(srv) if m["included"]]
+    jars = [(m, p) for m, p in jars if p.is_file()]
+    files = [{"path": f"{KINDS[e['kind']]}/{e['filename']}", "hashes": {"sha1": e["sha1"], "sha512": e["sha512"]},
+              "env": {"client": "required", "server": "unsupported"}, "downloads": [e["url"]], "fileSize": e.get("size", 0)}
+             for e in extra]
+    key = hashlib.sha256(json.dumps([files, [(p.name, p.stat().st_size, p.stat().st_mtime) for _, p in jars], mc, loader,
+                                     srv.display_name]).encode()).hexdigest()[:12]
+    out = mrpack_dir() / f"{re.sub(r'[^A-Za-z0-9_.-]', '_', srv.id)}-{key}.mrpack"
+    if out.is_file():
+        return out
+    index = {"formatVersion": 1, "game": "minecraft", "versionId": key, "name": srv.display_name,
+             "summary": f"The mods for {srv.display_name}", "files": files,
+             "dependencies": {"minecraft": mc, "fabric-loader": loader}}
+    mrpack_dir().mkdir(parents=True, exist_ok=True)
+    for old in mrpack_dir().glob(f"{re.sub(r'[^A-Za-z0-9_.-]', '_', srv.id)}-*.mrpack"):
+        old.unlink(missing_ok=True)
+    tmp = out.with_suffix(".tmp")
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("modrinth.index.json", json.dumps(index, indent=2))
+        for _m, p in jars:
+            z.write(p, f"overrides/mods/{p.name}")
+    tmp.replace(out)
+    return out
+
+
+def mrpack_name(srv) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", srv.display_name).strip("-") + ".mrpack"

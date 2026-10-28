@@ -359,6 +359,17 @@ function rulesHtml(rules, canRcon) {
     : `<label class="switch-row"><span>${esc(r.label)}</span><input class="input sm num-in" type="number" min="0" max="100" data-rule="${esc(r.key)}" value="${esc(r.value)}"></label>`).join("")}</div>`;
 }
 
+// What Solstone keeps about a server that Manage → Servers can clear (db.clear_server, worldmap.clear_tiles).
+const CLEAR_KINDS = [
+  ["chat", "Chat", "Everything said in the game's chat and from the website."],
+  ["activity", "Activity", "Joins, leaves, deaths, advancements, contests and the like: recent activity and players' timelines."],
+  ["recaps", "Daily recaps", "The summary of each day, and “on this day”."],
+  ["play", "Play history", "Who played when (days played, last seen, play time), where they went, and Adventures. Their first-time welcome message comes again."],
+  ["performance", "Performance graphs", "CPU, memory, players and how smoothly it ran."],
+  ["fishing", "Fishing journal", "Every fish caught, and the records."],
+  ["map", "Map pictures", "The Solstone map of the world. It's drawn again from the new world as people look at it."],
+];
+
 // ================================================================ Users & activity
 // Manage → Users, Servers & live info, Activity log (one section each).
 async function viewAdmin(section = "users") {
@@ -402,7 +413,13 @@ async function viewAdmin(section = "users") {
       <div class="panel" style="max-width:720px"><p class="muted small">Every day is summarised and kept for good, so “on this day” can look back years. When Solstone first starts it also reads each server's old logs (the <code>logs/*.log.gz</code> files Minecraft keeps) to fill in the days before it was installed. If you've copied older logs in, read them again here.</p>
         <button class="btn" id="ann-backfill" type="button" style="margin-top:8px">Read old logs again</button></div></section>
     <section class="section"><div class="section-head"><h2>Each server</h2></div>
-      <div class="panel"><p>A server's own settings (its name, Private, the web map, bedtime) are on its page: open it from <b>Servers</b> and press ⚙.</p></div></section>`;
+      <div class="panel"><p>A server's own settings (its name, Private, the web map, bedtime) are on its page: open it from <b>Servers</b> and press ⚙.</p></div></section>
+    <section class="section"><div class="section-head"><h2>Clear saved history</h2><span class="muted">For a new world, or a fresh start</span></div>
+      <form class="panel clear-form" id="clear-form" style="max-width:720px">
+        <p class="muted small">Only what Solstone kept. The game server isn't touched: the world, everyone's items, the whitelist and the server's own log files all stay.</p>
+        <label>Server <select class="input" name="sid">${(state.servers || []).map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}</select></label>
+        ${CLEAR_KINDS.map(([k, t, d]) => `<label class="check"><input type="checkbox" name="what" value="${k}"> <span><b>${t}</b><br><small class="muted">${d}</small></span></label>`).join("")}
+        <div class="btn-row"><button class="btn sm" type="button" data-new-world>Tick what a new world needs</button><button class="btn danger" type="submit">Clear</button></div></form></section>`;
   const activityHtml = `<section class="section"><div class="section-head"><h2>Admin activity</h2><span class="muted">Commands, changes and sign-in failures across all servers</span></div>
       <div class="panel">${auditHtml(audit, true)}</div></section>`;
   setView({ users: usersHtml, servers: serversHtml, activity: activityHtml }[section] || usersHtml);
@@ -412,6 +429,21 @@ async function viewAdmin(section = "users") {
     $$("[data-sp]").forEach((i) => { body[i.dataset.sp] = i.checked; });
     try { await post("/api/settings/status", body, "PUT"); showToast(body.enabled ? 'Saved. <a href="/#live" target="_blank" rel="noopener">See it on the home page</a>' : "Live info is off the home page", 3500); }
     catch (err) { showError(esc(err.message), 5000); }
+  });
+  $("#clear-form")?.addEventListener("click", (e) => {
+    if (!e.target.closest("[data-new-world]")) return;
+    $$('#clear-form [name="what"]').forEach((i) => { i.checked = ["play", "map", "activity"].includes(i.value); });
+  });
+  $("#clear-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target), what = f.getAll("what"), name = state.servers.find((x) => x.id === f.get("sid"))?.name || f.get("sid");
+    if (!what.length) { showError("Tick what to clear first", 3000); return; }
+    const list = CLEAR_KINDS.filter(([k]) => what.includes(k)).map(([, t]) => t.toLowerCase()).join(", ");
+    if (!await confirmBox(`Clear ${name}'s ${list}?`, "This can't be undone. The game server and its world aren't changed.", "Clear")) return;
+    try {
+      await post(`/api/servers/${encodeURIComponent(f.get("sid"))}/clear`, { what });
+      showToast(`Cleared ${esc(name)}'s ${esc(list)}`, 3500); e.target.reset();
+    } catch (err) { showError(esc(err.message), 6000); }
   });
   $("#ann-backfill")?.addEventListener("click", async (e) => {
     e.target.disabled = true; e.target.textContent = "Reading…";

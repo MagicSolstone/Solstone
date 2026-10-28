@@ -149,6 +149,14 @@ def main() -> int:
                 pg.goto(f"{base}/app{hash_}"); pg.wait_for_timeout(1300)
                 check(pg, name)
 
+            pg.goto(f"{base}/app#/manage/servers"); pg.wait_for_timeout(1200)
+            if not pg.locator("#clear-form [name=what]").count():
+                problems.append("manage: no Clear saved history")
+            pg.goto(f"{base}/app#/s/{sid}/mods"); pg.wait_for_timeout(1500)
+            if not pg.locator("[data-mrpack]").count() or not pg.locator("[data-mp-public]").count():
+                problems.append("mods: no .mrpack download or website switch")
+            else:
+                pg.locator("[data-mrpack]").scroll_into_view_if_needed(); check(pg, "mods-modpack")
             # editing a saved picture firework with another tab of the controls open (the painter isn't on screen)
             pic = pg.request.post(f"{base}/api/fireworks", data={"name": "Smoke picture", "pattern": "picture", "colors": ["#ff0000", "#00ff00"],
                                                                  "picture": ["..00..", ".0110.", "..00.."]}, headers=H).json()
@@ -381,11 +389,15 @@ def main() -> int:
                 check(pg, "website-joins")
                 pg.click('#ws-site button[type="submit"]'); pg.wait_for_timeout(1500)
                 anon.goto(f"{base}/"); anon.reload(); anon.wait_for_timeout(1200)
-                if not anon.locator(".hp-join-card.main .main-chip").count() or "survival world" not in (anon.locator(".hp-join-card.main").text_content() or ""):
-                    problems.append("home: the main server isn't starred, or its About text is missing")
+                if "main" not in (anon.locator(".hp-join-card").first.get_attribute("class") or "").split() or "survival world" not in (anon.locator(".hp-join-card.main").text_content() or ""):
+                    problems.append("home: the main server isn't first, or its About text is missing")
+                if anon.locator(".hp-hero").count():
+                    problems.append("home: the big name shows with Show the name big off")
                 check(anon, "site-home-main-server")
                 pg.click('.fws-tabs [data-tab="guides"]'); pg.wait_for_timeout(400)
                 pg.click('.ws-guide[data-guide="join"] [data-start]'); pg.wait_for_timeout(200)
+                if (pg.locator('.ws-guide[data-guide="join"] textarea').bounding_box() or {}).get("width", 0) < 600:
+                    problems.append("website: the guide text boxes are narrow")
                 if "{java_address}" not in pg.locator('.ws-guide[data-guide="join"] textarea').input_value():
                     problems.append("website: Start from Solstone's wording didn't put the placeholders in")
                 check(pg, "website-guides")
