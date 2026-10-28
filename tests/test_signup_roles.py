@@ -175,3 +175,29 @@ def test_players_can_see_the_map_when_allowed(player, client, viewer, sid):
         assert player.get(f"/api/servers/{sid}/players/{other}").status_code == 404   # still not their page
     finally:
         client.put("/api/settings/players", json={"see_map": False})
+
+
+def test_on_the_whitelist_means_its_in_their_account(client, player, sid, tyler):
+    """A player account limited to another server still gets this one once Tyler is on its whitelist."""
+    import json as _json
+
+    from app import servers as S
+    me = player.get("/api/auth/me").json()["user"]
+    client.patch(f"/api/users/{me['id']}", json={"servers": ["somewhere-else"]})
+    wl = S.registry.servers[sid].dir / "whitelist.json"
+    old = wl.read_text() if wl.exists() else None
+    try:
+        wl.write_text("[]")
+        assert player.get(f"/api/servers/{sid}").status_code == 404
+        wl.write_text(_json.dumps([{"uuid": tyler, "name": "Tyler"}]))          # let in, from the game or Crafty
+        assert player.get(f"/api/servers/{sid}").status_code == 200
+        assert any(s["id"] == sid for s in player.get("/api/servers").json())
+        client.put(f"/api/servers/{sid}/settings", json={"private": True})
+        assert player.get(f"/api/servers/{sid}").status_code == 404                # never a private one
+    finally:
+        client.put(f"/api/servers/{sid}/settings", json={"private": ""})
+        if old is None:
+            wl.unlink(missing_ok=True)
+        else:
+            wl.write_text(old)
+        client.patch(f"/api/users/{me['id']}", json={"servers": None})

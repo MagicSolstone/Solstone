@@ -90,9 +90,12 @@ def _private(srv: S.Server) -> bool:
 
 def _allowed(srv: S.Server) -> bool:
     """The signed-in person may see this server (some logins are limited to one or two). Signed-out pages
-    have their own rules (public servers only)."""
+    have their own rules (public servers only). A login linked to a Minecraft player also sees every server
+    that player is on the whitelist of: let them in on a second server and it shows in their account too."""
     u = _viewer.get()
-    return u is None or u.may_see(srv.id)
+    if u is None or u.may_see(srv.id):
+        return True
+    return bool(u.player_uuid) and srv.is_java and S.whitelisted(srv, u.player_uuid, u.player_name)
 
 
 def _visible(srv: S.Server) -> bool:

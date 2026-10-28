@@ -22,6 +22,24 @@ log = logging.getLogger("solstone.servers")
 
 
 # ---------------------------------------------------------------- small helpers
+def whitelist_entries(srv) -> tuple[set[str], set[str]]:
+    """(uuids without dashes, names lowercased) on this server's whitelist, re-read only when the file changes."""
+    def load(p: Path):
+        rows = json.loads(p.read_text()) or []
+        return ({str(r.get("uuid", "")).replace("-", "").lower() for r in rows if r.get("uuid")},
+                {str(r.get("name", "")).lower() for r in rows if r.get("name")})
+    return _cache.get(("whitelist", srv.id), srv.dir / "whitelist.json", load) or (set(), set())
+
+
+def whitelisted(srv, uuid: str | None, name: str | None) -> bool:
+    """Is this player on the server's whitelist (by UUID, or by name, with or without Floodgate's dot)?"""
+    uuids, names = whitelist_entries(srv)
+    if uuid and str(uuid).replace("-", "").lower() in uuids:
+        return True
+    n = (name or "").lower()
+    return bool(n) and (n in names or n.lstrip(".") in names or "." + n.lstrip(".") in names)
+
+
 class MtimeCache:
     """Cache keyed by (key, mtime) so file reads only happen when files change."""
 
