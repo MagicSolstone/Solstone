@@ -228,8 +228,8 @@ function wsSite(el) {
     <p class="muted">When this computer is off or Solstone isn't running, visitors can still get a page from Cloudflare: the site's name, your contact email, and whether each Minecraft server is still up (and how many are playing, never who). It's a small Cloudflare Worker, free on Cloudflare's free plan.</p>
     <ol class="ws-steps">
       <li>Save the details above, then <a class="btn sm" href="/api/settings/site/offline-worker" download>⬇ Download the Worker</a></li>
-      <li>In Cloudflare: <b>Workers &amp; Pages → Create → Create Worker</b>, name it (like <i>site-offline</i>), <b>Deploy</b>, then <b>Edit code</b>. Paste in the downloaded file in place of what's there and <b>Deploy</b> again.</li>
-      <li>In the Worker: <b>Settings → Domains &amp; Routes → Add → Route</b>: <code>${esc(location.host)}/*</code> on your domain's zone. The website's address must be proxied by Cloudflare (orange cloud, or a Cloudflare Tunnel).</li>
+      <li>In Cloudflare: <b>Workers &amp; Pages → Create application → Start with Hello World</b>, name it (like <i>site-offline</i>) and <b>Deploy</b>. Then <b>Edit code</b>, replace everything there with the downloaded file, and <b>Deploy</b> again. (Not <i>Upload</i> or static files: that's for Pages, and won't take it.)</li>
+      <li>In the Worker: <b>Settings → Domains &amp; Routes → Add → Route</b> (not <i>Custom domain</i>): <code>${esc(location.host)}/*</code> on your domain's zone. The website's address must be proxied by Cloudflare (orange cloud, or a Cloudflare Tunnel). Its own <i>workers.dev</i> address isn't needed; you can turn it off there.</li>
       <li>To try it, stop Solstone for a moment and open the website.</li>
     </ol>
     <p class="muted small">Changed the name, contact or servers? Download it again and paste it over the old one. The server check uses mcsrvstat.us, a free public status checker.</p>
