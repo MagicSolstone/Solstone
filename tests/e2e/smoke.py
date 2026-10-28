@@ -211,6 +211,9 @@ def main() -> int:
             if not pg.locator("#clear-form [name=what]").count():
                 problems.append("manage: no Clear saved history")
             pg.goto(f"{base}/app#/s/{sid}/mods"); pg.wait_for_timeout(1500)
+            appear(pg, "#mod-updates button, #mod-updates .mod-bedrock", 1, 20000)
+            if not pg.locator("#mod-updates").count():
+                problems.append("mods: no update check for admins")
             if not pg.locator("[data-mrpack]").count() or not pg.locator("[data-mp-public]").count():
                 problems.append("mods: no .mrpack download or website switch")
             else:
@@ -495,7 +498,11 @@ def main() -> int:
                 check(pg, "website-welcome")
             # sign-up from the sign-in page, and what a player account sees
             pg.request.put(f"{base}/api/settings/site", data={"signup": True}, headers=H)
-            anon.goto(f"{base}/app"); anon.wait_for_timeout(1500)
+            anon.goto(f"{base}/app"); anon.wait_for_timeout(1000)
+            try:
+                anon.wait_for_selector("#btn-signup", state="visible", timeout=15000)
+            except Exception:
+                pass                                         # reported just below
             if "Smoke SMP" not in (anon.locator(".login-title h1").text_content() or ""):
                 problems.append("sign-in: the site name isn't shown")
             if not anon.locator("#btn-signup").is_visible():

@@ -1927,3 +1927,10 @@ a.glance-me:hover { border-color: var(--gold); }
 .ws-compose-view { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; background: rgba(0, 0, 0, .18); min-height: 200px; max-height: 520px; overflow: auto; }
 .ws-compose-label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
 @media (max-width: 860px) { .ws-compose { grid-template-columns: 1fr; } }
+/* Mods: updates from Modrinth */
+.mod-updates { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 10px; }
+.mod-bedrock { flex-basis: 100%; margin: 0; padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(255, 140, 90, .6); background: rgba(255, 140, 90, .12); }
+.mod-badge { font-size: .78rem; margin-left: auto; white-space: nowrap; color: var(--muted); }
+.mod-badge.update a { color: var(--gold); font-weight: 700; }
+.mod-badge.update.key a { color: #ff9d6b; }
+.mod-badge.ok { color: #69db7c; }

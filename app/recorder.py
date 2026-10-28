@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, notify, races, recap, selfbackup, skins, tide, welcome
+from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, notify, races, modupdates, recap, selfbackup, skins, tide, welcome
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -103,7 +103,23 @@ class Recorder:
                        asyncio.create_task(self._loop(self.fish_poll, 3)),
                        asyncio.create_task(self._loop(self.track, adventures.TRACK_INTERVAL)),
                        asyncio.create_task(self._loop(self.warm_skins, 6 * 3600)),
-                       asyncio.create_task(self._loop(self.self_backup, 3600))]
+                       asyncio.create_task(self._loop(self.self_backup, 3600)),
+                       asyncio.create_task(self._loop(self.mod_updates, 6 * 3600))]
+
+    async def mod_updates(self) -> None:
+        """New builds of each server's mods on Modrinth (Geyser and Floodgate first): a notification, once per new build."""
+        await asyncio.sleep(600)                    # not right at start-up
+        for srv in list(S.registry.servers.values()):
+            if not srv.is_java or not (srv.dir / "mods").is_dir():
+                continue
+            try:
+                result = await modupdates.check(srv)
+            except Exception:
+                log.exception("mod update check failed for %s", srv.id)
+                continue
+            line = None if result.get("error") else modupdates.updates_line(result, server_id=srv.id)
+            if line:
+                maybe_notify("updates", srv.display_name, f"Mod updates: {line}", sid=srv.id)
 
     async def self_backup(self) -> None:
         """Solstone's own backup, once a day (selfbackup.py). A failure is a notification, not a silent gap."""

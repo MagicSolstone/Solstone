@@ -12,10 +12,10 @@ from . import settings_store
 
 log = logging.getLogger("solstone.notify")
 
-EVENT_TYPES = ["join", "leave", "death", "advancement", "server", "backup", "blocked"]
+EVENT_TYPES = ["join", "leave", "death", "advancement", "server", "backup", "blocked", "updates"]
 DEFAULT_EVENTS = ["join"]
 TAGS = {"join": "green_circle", "leave": "wave", "death": "skull", "advancement": "trophy", "server": "gear",
-        "backup": "floppy_disk", "blocked": "no_entry", "screen_time": "hourglass", "digest": "bar_chart"}
+        "backup": "floppy_disk", "blocked": "no_entry", "screen_time": "hourglass", "digest": "bar_chart", "updates": "arrow_up"}
 
 
 def get_config() -> dict:

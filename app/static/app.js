@@ -1372,7 +1372,7 @@ async function viewMods(sid) {
   const s = await serverFrame(sid, "mods");
   const data = await api(`/api/servers/${sid}/mods`);
   const listHtml = `<div class="section-head"><h2>${data.mods.length} ${data.mods.length === 1 ? "mod" : "mods"}</h2><span class="muted">${esc(data.loader)}</span></div>` +
-    (data.mods.length ? `<div class="mods">${data.mods.map((m) => `<div class="mod"><div class="mn"><span>${esc(m.name)}</span><span class="mv">${esc(m.version || "")}</span></div>${m.description ? `<p>${esc(m.description)}</p>` : ""}</div>`).join("")}</div>`
+    (data.mods.length ? `${isAdmin() ? `<div class="mod-updates" id="mod-updates"><span class="muted small">Checking Modrinth for updates…</span></div>` : ""}<div class="mods">${data.mods.map((m) => `<div class="mod" data-file="${esc(m.file)}"><div class="mn"><span>${esc(m.name)}</span><span class="mv">${esc(m.version || "")}</span></div>${m.description ? `<p>${esc(m.description)}</p>` : ""}</div>`).join("")}</div>`
       : `<div class="empty"><h3>No mods installed</h3><p>This server runs ${esc(data.loader)} without a mods folder.</p></div>`);
   if (!isAdmin() || !data.mods.length) { setView(serverHeader(s, "mods") + listHtml); wireHeader(s); return; }
   let pack = await api(`/api/servers/${encodeURIComponent(sid)}/modpack`).catch(() => null);
@@ -1414,7 +1414,38 @@ async function viewMods(sid) {
       ${note ? `<p class="notice small">${note}</p>` : ""}
     </section>`;
   };
-  const render = () => { setView(serverHeader(s, "mods") + packHtml() + listHtml); wireHeader(s); wire(); };
+  const render = () => { setView(serverHeader(s, "mods") + listHtml + packHtml()); wireHeader(s); wire(); paintUpdates(); };
+  // Updates from Modrinth (by each jar's fingerprint, for this server's Minecraft version): a badge on each mod, and
+  // Geyser and Floodgate called out at the top, since Bedrock players can't join when they fall behind.
+  let upd = null;
+  const paintUpdates = () => {
+    const box = $("#mod-updates");
+    if (!box || !upd) return;
+    if (upd.error) { box.innerHTML = `<span class="muted small">⚠️ ${esc(upd.error)}</span> <button class="btn sm" type="button" data-recheck>Try again</button>`; }
+    else {
+      const rows = Object.values(upd.mods), news = rows.filter((r) => r.status === "update"), bedrock = news.filter((r) => r.important);
+      box.innerHTML = `${bedrock.length ? `<p class="mod-bedrock">⚠️ <b>Update ${esc(bedrock.map((r) => r.name).join(" and "))}</b>: Bedrock players may not be able to join until ${bedrock.length > 1 ? "they're" : "it's"} up to date.</p>` : ""}
+        <span class="${news.length ? "" : "muted"} small">${news.length ? `⬆ ${news.length} ${news.length === 1 ? "mod has" : "mods have"} a newer build for Minecraft ${esc(upd.mc || "")}` : "✓ Everything on Modrinth is up to date"}
+        · checked ${esc(fmtAgo(upd.checked))}</span> <button class="btn sm" type="button" data-recheck>Check again</button>`;
+      $$(".mod[data-file]").forEach((el) => {
+        const r = upd.mods[el.dataset.file];
+        el.querySelector(".mod-badge")?.remove();
+        if (!r) return;
+        const b = document.createElement("span");
+        b.className = `mod-badge ${r.status}${r.important ? " key" : ""}`;
+        b.innerHTML = r.status === "update" ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">⬆ ${esc(r.latest)} available</a>`
+          : r.status === "ok" ? "✓ Up to date" : "Not on Modrinth";
+        el.querySelector(".mn")?.append(b);
+      });
+    }
+    box.querySelector("[data-recheck]")?.addEventListener("click", () => loadUpdates(true));
+  };
+  const loadUpdates = async (force) => {
+    const box = $("#mod-updates");
+    if (box && force) box.innerHTML = `<span class="muted small">Checking Modrinth…</span>`;
+    upd = await api(`/api/servers/${encodeURIComponent(sid)}/mods/updates${force ? "?force=1" : ""}`).catch((err) => ({ error: err.message }));
+    paintUpdates();
+  };
   const busy = (el, on) => { if (el) { el.disabled = on; el.classList.toggle("busy", on); } };
   const wire = () => {
     $("[data-mp-on]")?.addEventListener("change", async (e) => { pack = await post(base, { enabled: e.target.checked }, "PUT"); render(); });
@@ -1469,6 +1500,7 @@ async function viewMods(sid) {
     });
   };
   render();
+  loadUpdates(false);
 }
 
 // ---------------------------------------------------------------- settings

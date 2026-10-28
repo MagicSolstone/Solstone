@@ -1,5 +1,10 @@
 # Solstone 1.9.0
 
+## Mod updates
+- **Which mods have a newer build:** a server's **Mods** page (admins) asks Modrinth about every mod, by each jar's fingerprint, and marks each one **⬆ 2.7.0 available** (with a link to that build), **✓ Up to date**, or **Not on Modrinth** (jars like Tide+, checked by hand). Only builds for the server's own Minecraft version and loader are offered. **Check again** asks right away; otherwise it's kept for an hour.
+- **Geyser and Floodgate first:** when either has an update, a warning at the top says Bedrock players may not be able to join until it's updated.
+- **A notification for new builds:** Notifications → *New builds of the server's mods* (off to start). Solstone checks every six hours and tells you once per new build, Geyser and Floodgate first.
+
 ## Guides and rules are posts now
 - **Start a post from a template:** a new post in Website → Posts can start from **How to join the server**, **Making an account on this website** or **Server rules**: Solstone's wording, ready to make your own with the formatting toolbar and the live view. Pin it, unpublish it or preview it like any post.
 - **Use as:** a post can be *the join guide*, *the guide to making an account* or *the server rules*. Everything that links there uses it: the home page's *Step-by-step guide*, the Ask to join form (and its rules box), and `{rules}` in the welcome message in the game. The join guide gets the Ask to join form under it. Only one post can be each; a draft doesn't stand in. Without one, Solstone's own wording shows, as before.

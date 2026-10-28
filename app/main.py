@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, races, fireworks, fwshow, guard, notify, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, welcome, worldmap
+from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -1729,6 +1729,13 @@ async def get_world(sid: str):
 async def get_mods(sid: str):
     srv = await _server(sid)
     return {"loader": S.detect_loader(srv), "mods": await asyncio.to_thread(S.mods, srv)}
+
+
+@app.get("/api/servers/{sid}/mods/updates")
+async def mod_updates(sid: str, request: Request, force: bool = False):
+    """Admins: which mods have a newer build on Modrinth for this server's Minecraft version and loader."""
+    auth.require_admin(request)
+    return await modupdates.check(await _server(sid), force=force)
 
 
 # ---- the family modpack (packwiz): Prism updates every PC's mods from here

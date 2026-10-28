@@ -497,7 +497,8 @@ async function openNotifications() {
   const [c, everyone] = await Promise.all([api("/api/settings/notifications").catch(() => null), api("/api/players/all").catch(() => [])]);
   if (!c) return showError("Couldn't load notification settings", 4000);
   const labels = { join: "Someone joins", leave: "Someone leaves", death: "Someone dies", advancement: "Advancements",
-    server: "Server starts, stops or crashes", backup: "Backups are overdue", blocked: "Someone the whitelist turned away (with their exact name, to let them in from Control)" };
+    server: "Server starts, stops or crashes", backup: "Backups are overdue", blocked: "Someone the whitelist turned away (with their exact name, to let them in from Control)",
+    updates: "New builds of the server's mods (Geyser and Floodgate first: Bedrock players need them up to date)" };
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const hourLabel = (h) => new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: "numeric" });
   openModal(`<h2>Notifications</h2>
