@@ -354,3 +354,21 @@ def test_offline_worker(client, viewer, anon):
             assert subprocess.run(["node", "--check", str(f)], capture_output=True).returncode == 0
     finally:
         client.put("/api/settings/site", json={"contact": ""})
+
+
+def test_post_card_description(client, anon):
+    p = client.post("/api/posts", json={"title": "Card words", "body": "The long text of the post starts here.", "category": "news",
+                                        "summary": "  A short line for the card.  "}).json()
+    try:
+        card = next(x for x in anon.get("/api/public/posts?category=news&limit=100").json() if x["id"] == p["id"])
+        assert card["excerpt"] == "A short line for the card."
+        # changed without the field (an older page): the description stays
+        client.put(f"/api/posts/{p['id']}", json={"title": "Card words", "body": "New text.", "category": "news"})
+        card = next(x for x in anon.get("/api/public/posts?category=news&limit=100").json() if x["id"] == p["id"])
+        assert card["excerpt"] == "A short line for the card."
+        # emptied: the start of the post again
+        client.put(f"/api/posts/{p['id']}", json={"title": "Card words", "body": "New text.", "category": "news", "summary": ""})
+        card = next(x for x in anon.get("/api/public/posts?category=news&limit=100").json() if x["id"] == p["id"])
+        assert card["excerpt"] == "New text."
+    finally:
+        client.delete(f"/api/posts/{p['id']}")

@@ -167,8 +167,11 @@ def conn() -> sqlite3.Connection:
                               "GROUP BY server_id, ts, type, COALESCE(player, ''), message)")
                 _conn.executescript(SCHEMA)
             # Added later: a post can be the join guide, the account guide or the rules (site.ROLES)
-            if "role" not in {c[1] for c in _conn.execute("PRAGMA table_info(posts)")}:
+            cols = {c[1] for c in _conn.execute("PRAGMA table_info(posts)")}
+            if "role" not in cols:
                 _conn.execute("ALTER TABLE posts ADD COLUMN role TEXT")
+            if "summary" not in cols:                # and its own words for its card (empty: the start of the post)
+                _conn.execute("ALTER TABLE posts ADD COLUMN summary TEXT")
             # Early builds stored Crafty's byte counts as megabytes; convert them.
             _conn.execute("UPDATE metrics SET mem_mb = ROUND(mem_mb / 1048576.0, 1) WHERE mem_mb > 100000")
         return _conn

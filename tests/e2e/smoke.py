@@ -507,8 +507,15 @@ def main() -> int:
             if "{java_address}" in (pg.locator(".ws-live").text_content() or ""):
                 problems.append("post editor: the live view shows {java_address} instead of the address")
             check(pg, "post-template")
+            if not pg.locator("#ws-edit [name=summary]").input_value():
+                problems.append("post editor: the template didn't fill in the card description")
             pg.fill("#ws-edit [name=body]", "Hello from **{name}**, port {bedrock_port}. {ask}")
+            pg.fill("#ws-edit [name=summary]", "Our own words for {name}'s card")
             pg.click("#ws-edit [data-save]"); pg.wait_for_timeout(1200)
+            anon.goto(f"{base}/help"); anon.wait_for_timeout(1200)
+            if not anon.locator(".hp-post:has-text(\"Our own words for Smoke SMP's card\")").count():
+                problems.append("help: a guide's card doesn't show its own card description")
+            check(anon, "help-card-description")
             anon.goto(f"{base}/guides/join"); anon.wait_for_timeout(1200)
             if "Hello from Smoke SMP, port 19132." not in (anon.locator(".hp-body").text_content() or ""):
                 problems.append("join guide: the post standing in for it wasn't shown, or its fill-ins weren't done")

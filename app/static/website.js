@@ -48,6 +48,7 @@ function wsEditHtml(p) {
     ${p.id ? "" : `<label class="ws-template">Start from <small>Solstone's wording, ready to make your own</small><select class="input" data-template>
       <option value="">A blank post</option>${Object.entries(GUIDES).map(([k, g]) => `<option value="${k}">${esc(g.title)}</option>`).join("")}</select></label>`}
     <label>Title<input class="input" name="title" maxlength="120" required value="${esc(p.title || "")}"></label>
+    <label>Card description <small>Optional: a line or two under the title on the post's card (home page, News, Help). Leave it empty to show the start of the post. Fill-ins like {name} work.</small><textarea class="input" name="summary" rows="2" maxlength="240">${esc(p.summary || "")}</textarea></label>
     <div class="ws-row"><label>Kind<select class="input" name="category">${WS_CATS.map(([k, l]) => `<option value="${k}" ${p.category === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       <label class="check"><input type="checkbox" name="published" ${p.published !== false ? "checked" : ""}> Published <small>Off keeps it a draft only admins see</small></label>
       <label class="check"><input type="checkbox" name="pinned" ${p.pinned ? "checked" : ""}> Pinned <small>Stays at the top</small></label>
@@ -163,6 +164,7 @@ function wsPosts(el) {
     if (ta.value.trim() && !confirm("Replace the text with Solstone's wording?")) { e.target.value = ""; return; }
     ta.value = guideTemplate(k, { ...(ws.pub || {}), ...ws.data.site });
     if (!form.title.value.trim()) form.title.value = GUIDES[k].title;
+    if (!form.summary.value.trim()) form.summary.value = GUIDES[k].excerpt;      // its card says what the built-in one did
     form.category.value = "guide"; form.role.value = k;
     redraw();
   });
@@ -185,7 +187,7 @@ function wsPosts(el) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(form);
-    const body = { title: f.get("title"), category: f.get("category"), body: f.get("body"), published: !!f.get("published"), pinned: !!f.get("pinned"), role: f.get("role") || "" };
+    const body = { title: f.get("title"), category: f.get("category"), body: f.get("body"), published: !!f.get("published"), pinned: !!f.get("pinned"), role: f.get("role") || "", summary: f.get("summary") || "" };
     try {
       if (ws.editing === "new") await post("/api/posts", body); else await post(`/api/posts/${ws.editing}`, body, "PUT");
       showToast(body.published ? "Saved — it's on the website" : "Saved as a draft", 2500);

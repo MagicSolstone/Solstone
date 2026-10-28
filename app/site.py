@@ -242,7 +242,8 @@ def save_config(body: dict) -> dict:
 def _row(r, full: bool = True) -> dict:
     out = {"id": r["id"], "slug": r["slug"], "title": r["title"], "category": r["category"],
            "published": bool(r["published"]), "pinned": bool(r["pinned"]), "author": r["author"],
-           "created": r["created_ts"], "updated": r["updated_ts"], "role": r["role"] if "role" in r.keys() else None}
+           "created": r["created_ts"], "updated": r["updated_ts"], "role": r["role"] if "role" in r.keys() else None,
+           "summary": (r["summary"] if "summary" in r.keys() else None) or ""}
     if full:
         out["body"] = r["body"]
     else:
@@ -252,7 +253,7 @@ def _row(r, full: bool = True) -> dict:
         text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)      # a link's text, not its address
         text = re.sub(r"\{/?(?:red|orange|gold|green|aqua|blue|purple|pink|gray|big|small)\}", "", text)   # colours and sizes
         text = re.sub(r"[#*_`>\[\]()!-]", "", text)
-        out["excerpt"] = _line(text, 220)
+        out["excerpt"] = out["summary"] or _line(text, 220)     # the card: its own description, or the post's start
     return out
 
 
@@ -295,17 +296,20 @@ def save(body: dict, author: str, pid: int | None = None) -> dict:
     now = time.time()
     published, pinned = int(bool(body.get("published", True))), int(bool(body.get("pinned", False)))
     role = body.get("role") if body.get("role") in ROLES else None
+    summary = _line(body.get("summary"), 240)
     if pid is None:
-        pid = db.x("INSERT INTO posts(slug, title, body, category, published, pinned, author, created_ts, updated_ts, role) "
-                   "VALUES (?,?,?,?,?,?,?,?,?,?)", (_slug_for(title), title, text, category, published, pinned, author, now, now, role))
+        pid = db.x("INSERT INTO posts(slug, title, body, category, published, pinned, author, created_ts, updated_ts, role, summary) "
+                   "VALUES (?,?,?,?,?,?,?,?,?,?,?)", (_slug_for(title), title, text, category, published, pinned, author, now, now, role, summary))
     else:
-        old = db.q("SELECT role FROM posts WHERE id=?", (pid,))
+        old = db.q("SELECT role, summary FROM posts WHERE id=?", (pid,))
         if not old:
             raise LookupError("No such post")
         if "role" not in body:
             role = old[0]["role"]
-        db.x("UPDATE posts SET slug=?, title=?, body=?, category=?, published=?, pinned=?, updated_ts=?, role=? WHERE id=?",
-             (_slug_for(title, pid), title, text, category, published, pinned, now, role, pid))
+        if "summary" not in body:
+            summary = old[0]["summary"] or ""
+        db.x("UPDATE posts SET slug=?, title=?, body=?, category=?, published=?, pinned=?, updated_ts=?, role=?, summary=? WHERE id=?",
+             (_slug_for(title, pid), title, text, category, published, pinned, now, role, summary, pid))
     if role:                                    # one post per role: this one takes it over
         db.x("UPDATE posts SET role=NULL WHERE role=? AND id<>?", (role, pid))
     return _row(db.q("SELECT * FROM posts WHERE id=?", (pid,))[0])
