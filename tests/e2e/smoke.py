@@ -166,6 +166,18 @@ def main() -> int:
             pg.click("#ws-new"); pg.wait_for_timeout(300)
             pg.fill("#ws-edit [name=title]", "Secret draft"); pg.fill("#ws-edit [name=body]", "Coming **soon**.")
             pg.uncheck("#ws-edit [name=published]")
+            # the toolbar and the live view: select a word, make it a colour, add a subheading
+            pg.evaluate("""() => { const t = document.querySelector('#ws-edit [name=body]'); t.focus(); t.setSelectionRange(0, 6); }""")
+            pg.select_option("#ws-edit [data-style][aria-label=Colour]", "red"); pg.wait_for_timeout(200)
+            pg.evaluate("""() => { const t = document.querySelector('#ws-edit [name=body]'); t.setSelectionRange(t.value.length, t.value.length); }""")
+            pg.press("#ws-edit [name=body]", "Enter"); pg.press("#ws-edit [name=body]", "Enter"); pg.keyboard.type("Part two")
+            pg.select_option("#ws-edit [data-line]", "## "); pg.wait_for_timeout(300)
+            body = pg.locator("#ws-edit [name=body]").input_value()
+            if "{red}Coming{/red}" not in body or "## Part two" not in body:
+                problems.append(f"post editor: the toolbar didn't format the text ({body!r})")
+            if not pg.locator(".ws-live .pf-red").count() or not pg.locator(".ws-live h3").count() or not pg.locator(".ws-live b").count():
+                problems.append("post editor: the live view doesn't show the colour, subheading or bold")
+            check(pg, "post-editor-toolbar")
             if (pg.locator("#ws-edit [data-save]").text_content() or "").strip() != "Save draft":
                 problems.append("post editor: an unpublished post's button doesn't say Save draft")
             with pg.expect_popup() as pop:

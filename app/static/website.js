@@ -45,11 +45,23 @@ function wsEditHtml(p) {
     <div class="ws-row"><label>Kind<select class="input" name="category">${WS_CATS.map(([k, l]) => `<option value="${k}" ${p.category === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       <label class="check"><input type="checkbox" name="published" ${p.published !== false ? "checked" : ""}> Published <small>Off keeps it a draft only admins see</small></label>
       <label class="check"><input type="checkbox" name="pinned" ${p.pinned ? "checked" : ""}> Pinned <small>Stays at the top</small></label></div>
-    <label>Text <small>Plain text with a little formatting: # Heading, **bold**, *italic*, - lists, [a link](https://...), &gt; a quote. A blank line starts a new paragraph.</small>
-      <textarea class="input ws-text" name="body" rows="14" maxlength="20000" required>${esc(p.body || "")}</textarea></label>
-    <div class="btn-row ws-insert"><label class="btn sm ws-file">🖼 Add a picture<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-pic hidden></label>
-      <button type="button" class="btn sm" data-link>🔗 Add a link</button>
-      <small class="muted">The first picture also shows on the post's card. Under 4 MB each.</small></div>
+    <div class="ws-fmt" role="toolbar" aria-label="Formatting">
+      <button type="button" class="btn sm" data-wrap="**" title="Bold"><b>B</b></button>
+      <button type="button" class="btn sm" data-wrap="*" title="Italic"><i>I</i></button>
+      <select class="input sm" data-line aria-label="Heading"><option value="">Heading…</option><option value="# ">Heading</option><option value="## ">Subheading</option><option value="### ">Small heading</option></select>
+      <select class="input sm" data-style aria-label="Colour"><option value="">Colour…</option>${POST_COLOURS.map(([k, l]) => `<option value="${k}" class="pf-${k}">${l}</option>`).join("")}</select>
+      <select class="input sm" data-style aria-label="Size"><option value="">Size…</option>${POST_SIZES.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
+      <button type="button" class="btn sm" data-prefix="- " title="A list with dots">• List</button>
+      <button type="button" class="btn sm" data-prefix="1. " title="A numbered list">1. List</button>
+      <button type="button" class="btn sm" data-prefix="&gt; " title="A quote">❝ Quote</button>
+      <button type="button" class="btn sm" data-rule title="A line across">― Line</button>
+      <button type="button" class="btn sm" data-link>🔗 Link</button>
+      <label class="btn sm ws-file">🖼 Picture<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-pic hidden></label></div>
+    <div class="ws-compose">
+      <label class="ws-compose-text">Text <small>Select some text, then pick a button. Or type the marks yourself: **bold**, # Heading, {red}colour{/red}.</small>
+        <textarea class="input ws-text" name="body" rows="16" maxlength="20000" required>${esc(p.body || "")}</textarea></label>
+      <div class="ws-compose-view"><span class="ws-compose-label">How it looks</span><div class="hp-body ws-live" aria-live="off"></div></div></div>
+    <small class="muted">A blank line starts a new paragraph. The first picture also shows on the post's card. Pictures under 4 MB each.</small>
     <div class="actions"><button type="button" class="btn" data-preview title="See it as visitors will, before anyone else can">👁 Preview</button>
       <button type="button" class="btn" data-cancel>Cancel</button><button class="btn primary" type="submit" data-save>${wsSaveLabel(p.id, p.published !== false)}</button></div>
   </form>`;
@@ -97,7 +109,42 @@ function wsPosts(el) {
     ta.value = before + pre + text + post + after;
     const at = (before + pre + text).length;
     ta.focus(); ta.setSelectionRange(at, at);
+    ta.dispatchEvent(new Event("input"));          // the live view follows
   };
+  // The live view beside the text: the same formatting the site uses, as you type.
+  const live = form.querySelector(".ws-live");
+  let pending = 0;
+  const redraw = () => { cancelAnimationFrame(pending); pending = requestAnimationFrame(() => { live.innerHTML = markdown(ta.value) || '<p class="muted">Start typing…</p>'; }); };
+  ta.addEventListener("input", redraw);
+  redraw();
+  const changed = () => { ta.focus(); redraw(); };
+  // Marks around the selected text (or a placeholder to type over), e.g. **bold** or {red}…{/red}.
+  const wrap = (open, close, placeholder) => {
+    const a = ta.selectionStart, b = ta.selectionEnd, sel = ta.value.slice(a, b) || placeholder;
+    ta.setRangeText(open + sel + close, a, b, "end");
+    ta.setSelectionRange(a + open.length, a + open.length + sel.length);
+    changed();
+  };
+  // Something at the start of each selected line ("## ", "- "); pressing it again takes it off.
+  const prefixLines = (mark) => {
+    const v = ta.value, a = v.lastIndexOf("\n", ta.selectionStart - 1) + 1;
+    let b = v.indexOf("\n", Math.max(ta.selectionEnd - 1, a)); if (b < 0) b = v.length;
+    const lines = v.slice(a, b).split("\n");
+    const strip = (l) => l.replace(/^(#{1,3} |[-*] |\d+[.)] |> )/, "");
+    const all = lines.every((l, i) => (mark === "1. " ? l.startsWith(`${i + 1}. `) : l.startsWith(mark)));
+    const out = lines.map((l, i) => (all ? strip(l) : (mark === "1. " ? `${i + 1}. ` : mark) + strip(l))).join("\n");
+    ta.setRangeText(out, a, b, "select");
+    changed();
+  };
+  form.querySelectorAll("[data-wrap]").forEach((b) => b.addEventListener("click", () => wrap(b.dataset.wrap, b.dataset.wrap, b.title === "Bold" ? "bold text" : "slanted text")));
+  form.querySelectorAll("[data-prefix]").forEach((b) => b.addEventListener("click", () => prefixLines(b.dataset.prefix.replace("&gt;", ">"))));
+  form.querySelector("[data-line]").addEventListener("change", (e) => { if (e.target.value) prefixLines(e.target.value); e.target.value = ""; });
+  form.querySelectorAll("[data-style]").forEach((s) => s.addEventListener("change", (e) => {
+    const k = e.target.value;
+    if (k) wrap(`{${k}}`, `{/${k}}`, k === "big" || k === "small" ? "some text" : "coloured text");
+    e.target.value = "";
+  }));
+  form.querySelector("[data-rule]").addEventListener("click", () => insert("---", true));
   form.querySelector("[data-pic]").addEventListener("change", async (e) => {
     const f = e.target.files[0];
     if (!f) return;

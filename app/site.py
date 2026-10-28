@@ -243,6 +243,7 @@ def _row(r, full: bool = True) -> dict:
         out["image"] = f"/api/public/images/{pic.group(1)}" if pic else None   # the first picture, for the card
         text = IMAGE_MD.sub("", r["body"])
         text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)      # a link's text, not its address
+        text = re.sub(r"\{/?(?:red|orange|gold|green|aqua|blue|purple|pink|gray|big|small)\}", "", text)   # colours and sizes
         text = re.sub(r"[#*_`>\[\]()!-]", "", text)
         out["excerpt"] = _line(text, 220)
     return out

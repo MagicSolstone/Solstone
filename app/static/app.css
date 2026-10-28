@@ -1914,3 +1914,15 @@ a.glance-me:hover { border-color: var(--gold); }
 .lb-empty-toggle { margin: 8px 0 0; }
 .empty-board { opacity: .7; }
 .hp-preview-note { padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(242, 193, 78, .55); margin: 12px 0; }
+
+/* Post text: colours and sizes (postfmt.js), and the editor's toolbar and live view */
+.pf-red { color: #ff6b6b; } .pf-orange { color: #ffa94d; } .pf-gold { color: var(--gold, #f2c14e); } .pf-green { color: #69db7c; }
+.pf-aqua { color: #66d9e8; } .pf-blue { color: #74c0fc; } .pf-purple { color: #b197fc; } .pf-pink { color: #f783ac; } .pf-gray { color: #adb5bd; }
+.pf-big { font-size: 1.3em; } .pf-small { font-size: .85em; }
+.hp-body hr { border: 0; border-top: 1px solid var(--line, rgba(255,255,255,.2)); margin: 18px 0; }
+.ws-fmt { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ws-fmt select.input { width: auto; }
+.ws-compose { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; align-items: start; }
+.ws-compose-view { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; background: rgba(0, 0, 0, .18); min-height: 200px; max-height: 520px; overflow: auto; }
+.ws-compose-label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
+@media (max-width: 860px) { .ws-compose { grid-template-columns: 1fr; } }

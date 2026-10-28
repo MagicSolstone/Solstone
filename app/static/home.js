@@ -24,45 +24,7 @@ function toast(text, html = false) {
   clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, html ? 6000 : 2500);
 }
 
-// ------------------------------------------------------------------ Markdown (a safe subset)
-function inline(s) {
-  return s
-    // pictures uploaded in Website (only those: nothing loaded from elsewhere)
-    .replace(/!\[([^\]]*)\]\((\/api\/public\/images\/[0-9a-f]{16}\.(?:png|jpg|gif|webp))\)/g, '<img class="post-img" src="$2" alt="$1" loading="lazy">')
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
-    .replace(/(^|[\s(])[*_]([^*_]+)[*_](?=[\s).,!?:;]|$)/g, "$1<i>$2</i>")
-    .replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/(?!\/)|#[\w-]+(?=\)))[^\s)]*)\)/g, (_, t, href) =>
-      `<a href="${href}"${href.startsWith("/") || href.startsWith("#") ? "" : ' target="_blank" rel="noopener"'}>${t}</a>`);
-}
-
-function markdown(src) {
-  const lines = esc(src).replace(/\r/g, "").split("\n");
-  const out = [];
-  let list = null, para = [];
-  const flush = () => {
-    if (para.length) { out.push(`<p>${inline(para.join(" "))}</p>`); para = []; }
-    if (list) { out.push(`</${list}>`); list = null; }
-  };
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    let m;
-    if (!line.trim()) { flush(); continue; }
-    if ((m = line.match(/^(#{1,3})\s+(.*)$/))) { flush(); const n = Math.min(4, m[1].length + 1); out.push(`<h${n}>${inline(m[2])}</h${n}>`); continue; }
-    if ((m = line.match(/^&gt;\s?(.*)$/))) { flush(); out.push(`<blockquote>${inline(m[1])}</blockquote>`); continue; }
-    if ((m = line.match(/^\s*[-*]\s+(.*)$/)) || (m = line.match(/^\s*\d+[.)]\s+(.*)$/))) {
-      const kind = /^\s*\d/.test(line) ? "ol" : "ul";
-      if (para.length) { out.push(`<p>${inline(para.join(" "))}</p>`); para = []; }
-      if (list !== kind) { if (list) out.push(`</${list}>`); out.push(`<${kind}>`); list = kind; }
-      out.push(`<li>${inline(m[1])}</li>`);
-      continue;
-    }
-    if (list) { out.push(`</${list}>`); list = null; }
-    para.push(line.trim());
-  }
-  flush();
-  return out.join("");
-}
+// Post text is turned into HTML by postfmt.js (shared with the post editor's live preview).
 
 // ------------------------------------------------------------------ pieces
 const dateText = (ts) => new Date(ts * 1000).toLocaleDateString([], { year: "numeric", month: "long", day: "numeric" });

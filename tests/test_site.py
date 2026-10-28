@@ -272,3 +272,12 @@ def test_saying_no_to_a_request(client, anon, viewer, monkeypatch, sid):
         main.settings_store.save_section("join_requests", [])
         main.settings_store.save_section("join_let_in", [])
         signup._sent.clear()
+
+
+def test_colours_and_sizes_stay_out_of_excerpts(client, anon):
+    p = client.post("/api/posts", json={"title": "Colourful", "category": "news", "body": "{red}Big news{/red} and {big}more{/big} here.\n\n---\n\n## Part two"}).json()
+    try:
+        card = next(x for x in anon.get("/api/public/posts?category=news").json() if x["slug"] == p["slug"])
+        assert card["excerpt"].startswith("Big news and more here") and "{" not in card["excerpt"]
+    finally:
+        client.delete(f"/api/posts/{p['id']}")

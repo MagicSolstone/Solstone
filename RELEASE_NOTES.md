@@ -1,5 +1,6 @@
 # Solstone 1.8.8
 
+- **Formatting toolbar and a live view in the post editor:** select some text and click **B** (bold), **I** (italic), **Heading / Subheading / Small heading**, a **Colour** (red, orange, gold, green, aqua, blue, purple, pink, grey), a **Size** (bigger, smaller), **• List**, **1. List**, **❝ Quote** or **― Line**, plus **🔗 Link** and **🖼 Picture** as before. Beside the text, **How it looks** shows it formatted as you type. The text itself stays plain, so you can still see exactly where links and pictures point: colours and sizes are written `{red}like this{/red}` and `{big}this{/big}`, and headings `## like this`.
 - **👁 Preview a post before anyone sees it:** Website → Posts → the post editor has a **Preview** button. It opens the post in a tab of its own exactly as visitors will see it (the real post page, pictures and formatting included), from what's typed right now: saved or not, published or not. Only your browser has it, so nobody else can see a preview. Change something and press Preview again: the same tab updates.
 - **Save draft:** with *Published* unticked, the editor's button says **Save draft** instead of *Publish*, so it's clear nothing goes out yet.
 
