@@ -18,7 +18,7 @@ CATEGORIES = ("news", "guide", "faq")
 # home page, the Ask to join form and the in-game welcome message link there). Without one, Solstone's own wording.
 ROLES = {"join": "How to join the server", "account": "Making an account on this website", "rules": "Server rules"}
 DEFAULTS = {"name": "Solstone", "tagline": "", "java_address": "", "bedrock_address": "", "bedrock_port": 19132,
-            "discord": "", "about": "", "home_live": True, "signup": False,
+            "discord": "", "contact": "", "about": "", "home_live": True, "signup": False,
             "home_title": False,          # the name and tagline big at the top of the home page (the bar already has them)
             # the two built-in guides, in the admin's own words (empty: Solstone's wording); {java_address} and the
             # like are filled in from the details above, so the guides stay right when an address or port changes
@@ -26,6 +26,7 @@ DEFAULTS = {"name": "Solstone", "tagline": "", "java_address": "", "bedrock_addr
             "join_requests": False,       # an "Ask to join" form on the join guide, sent to the admins' notifications
             "main_server": ""}            # shown first everywhere (home page, Ask to join), starred; its addresses feed the join guide
 GUIDE_MAX = 8000
+_EMAIL = re.compile(r"^[^@\s<>()\[\]\\,;:\"]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$")
 _SLUG = re.compile(r"[^a-z0-9]+")
 
 
@@ -138,6 +139,9 @@ def clean_config(body: dict) -> dict:
     if "discord" in body:
         d = _line(body["discord"], 200)
         out["discord"] = d if not d or d.startswith(("https://discord.gg/", "https://discord.com/")) else cur["discord"]
+    if "contact" in body:                             # the email address people can reach the admins at
+        c = _line(body["contact"], 120)
+        out["contact"] = c if not c or _EMAIL.match(c) else cur["contact"]
     if "bedrock_port" in body:
         try:
             out["bedrock_port"] = max(1, min(65535, int(body["bedrock_port"])))

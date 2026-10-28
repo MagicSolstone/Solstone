@@ -4,7 +4,7 @@
 
    One line break is a new line; a blank line is a new paragraph.
    # Heading · ## Subheading · ### Small heading · **bold** · *italic* · - list · 1. list · > quote · --- line
-   [a link](https://…) · ![a picture](/api/public/images/…) · {red}coloured{/red} · {big}bigger{/big} · {small}smaller{/small} */
+   [a link](https://…) or (mailto:…) · ![a picture](/api/public/images/…) · {red}coloured{/red} · {big}bigger{/big} · {small}smaller{/small} */
 "use strict";
 
 const POST_COLOURS = [["red", "Red"], ["orange", "Orange"], ["gold", "Gold"], ["green", "Green"], ["aqua", "Aqua"],
@@ -19,8 +19,8 @@ function inline(s) {
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
     .replace(/(^|[\s(>])[*_]([^*_]+)[*_](?=[\s).,!?:;<]|$)/g, "$1<i>$2</i>")
-    .replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/(?!\/)|#[\w-]+(?=\)))[^\s)]*)\)/g, (_, t, href) =>
-      `<a href="${href}"${href.startsWith("/") || href.startsWith("#") ? "" : ' target="_blank" rel="noopener"'}>${t}</a>`);
+    .replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:|\/(?!\/)|#[\w-]+(?=\)))[^\s)]*)\)/g, (_, t, href) =>
+      `<a href="${href}"${/^(\/|#|mailto:)/.test(href) ? "" : ' target="_blank" rel="noopener"'}>${t}</a>`);
   for (let i = 0; i < 3 && _STYLE_RE.test(out); i++) {          // a colour inside a size (or the other way round)
     _STYLE_RE.lastIndex = 0;
     out = out.replace(_STYLE_RE, (_, k, t) => `<span class="pf-${k}">${t}</span>`);

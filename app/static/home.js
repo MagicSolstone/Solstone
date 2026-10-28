@@ -141,7 +141,8 @@ async function section(key) {
     const [guides, faq] = await Promise.all([getJSON("/api/public/posts?category=guide&limit=100"), getJSON("/api/public/posts?category=faq&limit=100")]);
     return `<section><h1>Help</h1><p class="muted">How to join, how things work here, and answers to common questions.</p></section>
       <section><h2>Guides</h2>${postCards([...builtinCards(), ...guides], "")}</section>
-      <section id="faq"><h2>Questions</h2>${faqList(faq)}</section>`;
+      <section id="faq"><h2>Questions</h2>${faqList(faq)}</section>
+      ${hp.site.contact ? `<section id="contact" class="hp-contact glass"><h2>Contact</h2><p>A problem with your account, a question (parents too), or something stolen or broken in the game? Email <a href="mailto:${esc(hp.site.contact)}">${esc(hp.site.contact)}</a>.</p></section>` : ""}`;
   }
   const [title, cat] = SECTIONS[key];
   const posts = await getJSON(`/api/public/posts?category=${cat}&limit=100`);
@@ -300,7 +301,7 @@ async function route() {
   main.innerHTML = html;
   document.querySelectorAll("[data-nav]").forEach((a) => a.toggleAttribute("aria-current", a.dataset.nav === nav));
   showAskStatus();
-  if (location.hash === "#faq" || location.hash === "#ask") $(location.hash)?.scrollIntoView(); else if (location.hash !== "#live") window.scrollTo(0, 0);
+  if (["#faq", "#ask", "#contact"].includes(location.hash)) $(location.hash)?.scrollIntoView(); else if (location.hash !== "#live") window.scrollTo(0, 0);
   if ($("#live") && typeof startLive === "function") {
     await startLive({ scene: hp.scene, toast: (h) => toast(h, true) });
     if (location.hash === "#live") $("#live")?.scrollIntoView();
@@ -341,6 +342,9 @@ document.addEventListener("toggle", async (e) => {
 document.addEventListener("DOMContentLoaded", async () => {
   try { hp.site = await getJSON("/api/public/site"); } catch { hp.site = { name: "Solstone", servers: [], live: false }; }
   $("#hp-name").textContent = $("#hp-foot-name").textContent = hp.site.name;
+  if (hp.site.contact) {                                // the footer's Contact: an email link, on every page
+    const a = $("#hp-foot-contact a"); a.href = `mailto:${hp.site.contact}`; a.title = hp.site.contact; $("#hp-foot-contact").hidden = false;
+  }
   showSignedIn();
   const sky = $("#home-sky");
   if (sky && typeof startSkyScene === "function") {

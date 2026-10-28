@@ -217,12 +217,23 @@ function wsSite(el) {
         <label>About this server <small>Optional, shown on its card: what it is, who it's for. For example: Our survival world for the whole family, or: Modded adventures, needs the modpack.</small><textarea class="input" data-j="join_note" maxlength="300" rows="2"></textarea></label>
         <label class="check"><input type="checkbox" data-j="join_mods"> List the mods players need</label></div>`).join("")}
     </fieldset>
+    <label>Contact email <small>Where players and parents can reach you: account problems, questions, something stolen or broken. Shown on the Help page and at the bottom of every page, and <code>{contact}</code> puts it in any post.</small><input class="input" type="email" name="contact" maxlength="120" value="${esc(s.contact || "")}" placeholder="contact@example.com"></label>
     <label>Discord invite <small>A discord.gg or discord.com link</small><input class="input" name="discord" maxlength="200" value="${esc(s.discord)}" placeholder="https://discord.gg/..."></label>
     <label>About <small>Shown at the bottom of the home page. Same formatting as posts.</small><textarea class="input" name="about" rows="6" maxlength="4000">${esc(s.about)}</textarea></label>
     <label class="check"><input type="checkbox" name="join_requests" ${s.join_requests ? "checked" : ""}> An <b>Ask to join</b> form on the join guide <small>People send their name in the game (and, if they like, a first name and a note). You get a notification, and they show in Manage → Whitelist.${ws.data.notify_ready === false ? " Set up notifications first (Manage → Notifications)." : ""}</small></label>
     <label class="check"><input type="checkbox" name="home_live" ${s.home_live ? "checked" : ""}> Show the public servers' status on the home page <small>Running or not and how many are on. Private servers are never shown.</small></label>
     <div class="actions"><a class="btn" href="/" target="_blank" rel="noopener">Open the home page</a><button class="btn primary" type="submit">Save</button></div>
-  </form>`;
+  </form>
+  <section class="panel ws-offline"><h3>If this website goes down</h3>
+    <p class="muted">When this computer is off or Solstone isn't running, visitors can still get a page from Cloudflare: the site's name, your contact email, and whether each Minecraft server is still up (and how many are playing, never who). It's a small Cloudflare Worker, free on Cloudflare's free plan.</p>
+    <ol class="ws-steps">
+      <li>Save the details above, then <a class="btn sm" href="/api/settings/site/offline-worker" download>⬇ Download the Worker</a></li>
+      <li>In Cloudflare: <b>Workers &amp; Pages → Create → Create Worker</b>, name it (like <i>site-offline</i>), <b>Deploy</b>, then <b>Edit code</b>. Paste in the downloaded file in place of what's there and <b>Deploy</b> again.</li>
+      <li>In the Worker: <b>Settings → Domains &amp; Routes → Add → Route</b>: <code>${esc(location.host)}/*</code> on your domain's zone. The website's address must be proxied by Cloudflare (orange cloud, or a Cloudflare Tunnel).</li>
+      <li>To try it, stop Solstone for a moment and open the website.</li>
+    </ol>
+    <p class="muted small">Changed the name, contact or servers? Download it again and paste it over the old one. The server check uses mcsrvstat.us, a free public status checker.</p>
+  </section>`;
   // each server's join details come from its settings
   $$(".ws-join").forEach(async (row) => {
     const cur = await api(`/api/servers/${encodeURIComponent(row.dataset.sid)}/settings`).catch(() => ({}));
@@ -258,7 +269,7 @@ function wsSite(el) {
   $("#ws-site").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
-    const body = Object.fromEntries(["name", "tagline", "discord", "about"].map((k) => [k, f.get(k)]));
+    const body = Object.fromEntries(["name", "tagline", "contact", "discord", "about"].map((k) => [k, f.get(k)]));
     body.java_address = ""; body.bedrock_address = "";           // now kept with each server, below
     body.main_server = f.get("main_server") || "";
     body.home_live = !!f.get("home_live");
@@ -285,13 +296,13 @@ const WELCOME_COLOURS = [["0", "#000000", "Black"], ["1", "#0000aa", "Dark blue"
   ["9", "#5555ff", "Blue"], ["a", "#55ff55", "Green"], ["b", "#55ffff", "Aqua"], ["c", "#ff5555", "Red"], ["d", "#ff55ff", "Pink"],
   ["e", "#ffff55", "Yellow"], ["f", "#ffffff", "White"]];
 const WELCOME_STYLES = [["l", "B", "Bold"], ["o", "I", "Italic"], ["n", "U", "Underline"], ["r", "↺", "Back to plain"]];
-const WELCOME_FIELDS = [["player", "Their name"], ["server", "The server's name"], ["rules", "The rules page"], ["site", "The website"]];
+const WELCOME_FIELDS = [["player", "Their name"], ["server", "The server's name"], ["rules", "The rules page"], ["site", "The website"], ["contact", "The contact email"]];
 const WELCOME_START = "&6&lWelcome to {server}, {player}!&r\n&7Please read the rules: &b{rules}\n&aHave fun, and be kind!";
 
 function welcomePreview(text, sid) {
   const srv = (state.servers || []).find((x) => x.id === sid);
   const base = location.origin;
-  const vals = { player: "Steve", server: srv?.name || "the server", site: base, rules: `${base}/guides/rules` };
+  const vals = { player: "Steve", server: srv?.name || "the server", site: base, rules: `${base}/guides/rules`, contact: ws.data.site.contact || "an admin" };
   const filled = text.replace(/\{(\w+)\}/g, (m, k) => (k.toLowerCase() in vals ? vals[k.toLowerCase()] : m));
   const colour = Object.fromEntries(WELCOME_COLOURS.map(([c, hex]) => [c, hex]));
   return filled.split("\n").map((line) => {

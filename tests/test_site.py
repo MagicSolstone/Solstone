@@ -315,3 +315,42 @@ def test_join_cards_say_the_minecraft_version(client, anon, sid):
         assert card["version"] and s["java_version"] == card["version"]           # from the world's save
     finally:
         client.put(f"/api/servers/{sid}/settings", json={"join_address": ""})
+
+
+def test_contact_email(client, anon):
+    try:
+        assert client.put("/api/settings/site", json={"contact": "contact@fbc.example"}).status_code == 200
+        assert anon.get("/api/public/site").json()["contact"] == "contact@fbc.example"
+        client.put("/api/settings/site", json={"contact": "not an email <script>"})       # refused: the old one stays
+        assert anon.get("/api/public/site").json()["contact"] == "contact@fbc.example"
+        from app import welcome
+        assert "contact@fbc.example" in welcome.fill("Questions? {contact}", "Steve", "Survival")
+    finally:
+        client.put("/api/settings/site", json={"contact": ""})
+    assert anon.get("/api/public/site").json()["contact"] == ""
+
+
+def test_offline_worker(client, viewer, anon):
+    import json
+    import re
+    import shutil
+    import subprocess
+    assert anon.get("/api/settings/site/offline-worker").status_code == 401
+    assert viewer.get("/api/settings/site/offline-worker").status_code == 403
+    try:
+        client.put("/api/settings/site", json={"contact": "help@fbc.example"})
+        r = client.get("/api/settings/site/offline-worker")
+        assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+        code = r.text
+        assert "__SITE__" not in code and "export default" in code
+        cfg = json.loads(re.search(r"const SITE = (\{.*?\n\});", code, re.S).group(1))
+        assert cfg["contact"] == "help@fbc.example" and isinstance(cfg["servers"], list)
+        assert set(cfg) == {"name", "contact", "discord", "servers"}          # nothing beyond what the home page shows
+        if shutil.which("node"):
+            import tempfile
+            from pathlib import Path
+            f = Path(tempfile.mkdtemp()) / "worker.mjs"
+            f.write_text(code)
+            assert subprocess.run(["node", "--check", str(f)], capture_output=True).returncode == 0
+    finally:
+        client.put("/api/settings/site", json={"contact": ""})

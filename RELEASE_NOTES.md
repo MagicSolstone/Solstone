@@ -1,3 +1,9 @@
+# Solstone 1.9.2
+
+- **Contact email:** Website → Site details → **Contact email** (like contact@yourdomain). Where players and parents can reach you: account problems, questions, something stolen or broken. It shows at the bottom of every page (*Contact*) and in a **Contact** section on the Help page. `{contact}` puts it in any post (the toolbar's **Fill-in…** has it), and in the welcome message in the game. Without one, `{contact}` points to Discord, or says *an admin*.
+- **A page for when the website is down:** Website → Site details → **If this website goes down** downloads a small Cloudflare Worker, filled in with the site's name, contact and servers, with the steps to add it (free on Cloudflare's free plan). When the website can't be reached (the computer's off, the tunnel's down, Solstone isn't running), visitors get a page with the site's name, your contact email and whether each Minecraft server is still up and how many are playing (never who), checked through mcsrvstat.us. Otherwise it changes nothing.
+- Links in posts can be email links: `[write to us](mailto:you@example.com)`.
+
 # Solstone 1.9.1
 
 - **Manage → Holidays:** every holiday and special day in one list (New Year, Valentine's, St. Patrick's, Easter, 4th of July, Halloween, Thanksgiving, Christmas, the Friday night show and your own dates). Switch off the ones you don't celebrate and they're gone from the Events page, the message on every page and the fireworks. **Edit** changes a day's name, date, message, colours and show; **+ Add a date** adds your own. (It used to be the Calendar tab in the fireworks settings; that page links here now.)

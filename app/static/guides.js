@@ -5,7 +5,7 @@
 
 const GUIDE_PLACEHOLDERS = [["name", "The site's name"], ["java_address", "Java address"], ["bedrock_address", "Bedrock address"],
   ["bedrock_port", "Bedrock port"], ["java_version", "The server's Minecraft version"], ["discord", "Discord invite link"], ["ask", "A link to the Ask to join form"],
-  ["rules", "A link to the rules"]];
+  ["rules", "A link to the rules"], ["contact", "The contact email (Site details)"]];
 
 const GUIDES = {
   join: {
@@ -94,10 +94,15 @@ Admins can usually see who changed what, and put it back. Breaking the rules can
 // {java_address} and the other fill-ins, in any post or guide: the main server's details from Site details (the
 // first card on the home page), so the text stays right when an address, a port or the version changes.
 // onJoinPage: {ask} jumps to the form further down that page; anywhere else it links to it.
+// {contact}: the site's contact email as a link, or the next best way to reach an admin
+function contactLink(site) {
+  return site.contact ? `[${site.contact}](mailto:${site.contact})` : site.discord ? `[Discord](${site.discord})` : "an admin";
+}
 function fillPostVars(text, site, onJoinPage = false) {
   const vals = { name: site.name, java_address: site.java_address || "", bedrock_address: site.bedrock_address || site.java_address || "",
     bedrock_port: site.bedrock_port, java_version: site.java_version || "the version shown on the home page", discord: site.discord || "",
-    ask: onJoinPage ? "[Ask to join](#ask)" : "[Ask to join](/guides/join#ask)", rules: "[the rules](/guides/rules)" };
+    ask: onJoinPage ? "[Ask to join](#ask)" : "[Ask to join](/guides/join#ask)", rules: "[the rules](/guides/rules)",
+    contact: contactLink(site) };
   return String(text || "").replace(/\{(\w+)\}/g, (m, k) => (k in vals ? String(vals[k]) : m));
 }
 

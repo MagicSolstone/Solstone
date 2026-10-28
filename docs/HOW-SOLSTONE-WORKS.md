@@ -50,6 +50,7 @@ Every file starts with a docstring saying what it's for. The main ones:
 | Reading the server log (joins, chat, deaths...) | `logparse.py` |
 | Notifications (ntfy, Discord) | `notify.py` |
 | Public website: site details, posts, guides, ask to join | `site.py` |
+| The "website is down" page on Cloudflare (a Worker, downloaded from Site details) | `offline_worker.js` (filled in by `offline_worker` in `main.py`) |
 | Welcome message in the game | `welcome.py` |
 | Bedtime and screen time | `guard.py` |
 | Announcements and birthdays | `board.py` |

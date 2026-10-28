@@ -1677,7 +1677,7 @@ body.on-editor:not(.ui-hidden) .fwbar .fwb-launch, body.on-editor:not(.ui-hidden
 .hp-hero { padding: 28px 0 6px; }
 .hp-hero h1 { font-size: clamp(2.2rem, 6vw, 3.4rem); color: var(--gold); text-shadow: 0 3px 0 rgba(0,0,0,.35); }
 .hp-tagline { font-size: 1.15rem; color: var(--muted); max-width: 60ch; margin-top: 8px; }
-.hp-join, .hp-about, .hp-article { padding: 18px 20px; border-radius: var(--radius-m); }
+.hp-join, .hp-about, .hp-article, .hp-contact { padding: 18px 20px; border-radius: var(--radius-m); }
 .hp-join-rows { display: flex; flex-direction: column; gap: 10px; }
 .hp-join-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .hp-ed { min-width: 9.5em; font-weight: 700; }
@@ -1932,3 +1932,9 @@ a.glance-me:hover { border-color: var(--gold); }
 .mod-badge.update a { color: var(--gold); font-weight: 700; }
 .mod-badge.update.key a { color: #ff9d6b; }
 .mod-badge.ok { color: #69db7c; }
+
+/* Website → Site details: the Cloudflare "website is down" page */
+.ws-offline { margin-top: 16px; }
+.ws-offline h3 { margin: 0 0 6px; }
+.ws-steps { margin: 10px 0; padding-left: 22px; display: grid; gap: 8px; }
+.ws-steps code { word-break: break-all; }

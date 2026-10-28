@@ -47,7 +47,10 @@ def start_app(root: Path, port: int) -> subprocess.Popen:
            "SERVERS_DIR": str(root / "servers"), "DATA_DIR": str(root / "data"), "BACKUPS_DIR": str(root / "backups"),
            "DOWNLOAD_ASSETS": "false", "CRAFTY_URL": "", "CRAFTY_TOKEN": "", "RCON_HOST": "127.0.0.1", "RCON_TIMEOUT": "1",
            "ADMIN_USERNAME": ADMIN["username"], "ADMIN_PASSWORD": ADMIN["password"], "RECORDER_ENABLED": "false",
-           "TZ": "America/Chicago"}
+           "TZ": "America/Chicago",
+           # every page here comes from one address, quicker than any visitor: the public limit (240 a minute) would
+           # answer some with "Too many requests" (the sign-in page then hid Make an account). It has its own pytest.
+           "PUBLIC_REQUESTS_PER_MINUTE": "0"}
     log = open(root / "app.log", "w")
     p = subprocess.Popen([sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(port),
                           # idle connections stay open a while: with uvicorn's 5 s, a request reusing one as it closes gets
@@ -466,6 +469,9 @@ def main() -> int:
                 pg.evaluate("""() => { const c = document.querySelector('.ws-join [data-j="join_color"]'); c.value = '#4cd964'; c.dispatchEvent(new Event('input')); }""")
                 pg.locator('.ws-join [data-j="join_note"]').first.fill("Our survival world for the whole family.")
                 check(pg, "website-joins")
+                pg.fill('#ws-site [name="contact"]', "contact@example.net")
+                if not pg.locator('.ws-offline a[href="/api/settings/site/offline-worker"]').count():
+                    problems.append("website: no download for the Cloudflare offline page")
                 pg.click('#ws-site button[type="submit"]'); pg.wait_for_timeout(1500)
                 anon.goto(f"{base}/"); anon.reload(); anon.wait_for_timeout(1200)
                 if "main" not in (anon.locator(".hp-join-card").first.get_attribute("class") or "").split() or "survival world" not in (anon.locator(".hp-join-card.main").text_content() or ""):
@@ -473,6 +479,12 @@ def main() -> int:
                 if anon.locator(".hp-hero").count():
                     problems.append("home: the big name shows with Show the name big off")
                 check(anon, "site-home-main-server")
+                if anon.locator("#hp-foot-contact").is_hidden() or "mailto:contact@example.net" not in (anon.locator("#hp-foot-contact a").get_attribute("href") or ""):
+                    problems.append("home: the footer doesn't link the contact email")
+                anon.goto(f"{base}/help"); anon.wait_for_timeout(1200)
+                if "contact@example.net" not in (anon.locator("#contact").text_content() if anon.locator("#contact").count() else ""):
+                    problems.append("help: no Contact section with the email")
+                check(anon, "site-help-contact")
             # a guide from a template, standing in for the built-in join guide, with its fill-ins done on the page
             pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(1200)
             pg.click('.fws-tabs [data-tab="posts"]'); pg.wait_for_timeout(400)

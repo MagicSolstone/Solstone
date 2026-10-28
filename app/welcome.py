@@ -2,7 +2,7 @@
 
 The text is plain, with a few extras that work the same on Java and Bedrock:
   - colours and styles with the game's own & codes: &a green, &6 gold, &l bold, &o italic, &n underline, &r back to plain
-  - {player}, {server}, {site} (the website's address) and {rules} (the rules page's address)
+  - {player}, {server}, {site} (the website's address), {rules} (the rules page's address) and {contact} (the contact email)
   - a web address (https://…) can be clicked on Java; Bedrock players see it written out
 It's sent with tellraw only to the player who joined: on their first time, every time, or not at all.
 """
@@ -44,7 +44,9 @@ def site_url() -> str:
 
 def fill(text: str, player: str, server: str) -> str:
     base = site_url()
-    vals = {"player": player, "server": server, "site": base or "", "rules": f"{base}/guides/rules" if base else "the rules page"}
+    contact = (settings_store.load().get("site") or {}).get("contact") or ""
+    vals = {"player": player, "server": server, "site": base or "", "rules": f"{base}/guides/rules" if base else "the rules page",
+            "contact": contact or "an admin"}
     return re.sub(r"\{(\w+)\}", lambda m: vals.get(m.group(1).lower(), m.group(0)), text)
 
 

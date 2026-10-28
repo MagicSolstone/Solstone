@@ -33,7 +33,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.9.1"
+VERSION = "1.9.2"
 
 
 @asynccontextmanager
@@ -605,6 +605,21 @@ async def public_logo():
         raise HTTPException(404)
     return FileResponse(lg["file"], media_type=lg["mime"], headers={"Cache-Control": "public, max-age=31536000, immutable",
                                                                    "X-Content-Type-Options": "nosniff"})
+
+
+@app.get("/api/settings/site/offline-worker")
+async def offline_worker(request: Request):
+    """The Cloudflare Worker that shows a "website is down" page (app/offline_worker.js), with this site's name,
+    contact and public servers' addresses filled in. Only what the home page already shows publicly."""
+    auth.require_admin(request)
+    pub = json.loads((await public_site()).body)
+    cfg = {"name": pub["name"], "contact": pub.get("contact") or "", "discord": pub.get("discord") or "",
+           "servers": [{"name": j["name"], "java": j["java"], "bedrock": j["bedrock"], "bedrock_port": j["bedrock_port"]}
+                       for j in pub["joins"]]}
+    code = (Path(__file__).parent / "offline_worker.js").read_text(encoding="utf-8")
+    code = code.replace("__SITE__", json.dumps(cfg, ensure_ascii=False, indent=2).replace("</", "<\\/"), 1)
+    return Response(code, media_type="text/javascript; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="solstone-offline-worker.js"'})
 
 
 @app.post("/api/settings/site/logo")
