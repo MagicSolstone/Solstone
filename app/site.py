@@ -19,7 +19,8 @@ DEFAULTS = {"name": "Solstone", "tagline": "", "java_address": "", "bedrock_addr
             # the two built-in guides, in the admin's own words (empty: Solstone's wording); {java_address} and the
             # like are filled in from the details above, so the guides stay right when an address or port changes
             "guide_join": "", "guide_account": "",
-            "join_requests": False}       # an "Ask to join" form on the join guide, sent to the admins' notifications
+            "join_requests": False,       # an "Ask to join" form on the join guide, sent to the admins' notifications
+            "main_server": ""}            # shown first everywhere (home page, Ask to join), starred; its addresses feed the join guide
 GUIDE_MAX = 8000
 _SLUG = re.compile(r"[^a-z0-9]+")
 
@@ -138,6 +139,8 @@ def clean_config(body: dict) -> dict:
             out["bedrock_port"] = max(1, min(65535, int(body["bedrock_port"])))
         except (TypeError, ValueError):
             pass
+    if "main_server" in body:
+        out["main_server"] = re.sub(r"[^A-Za-z0-9_.\-]", "", str(body["main_server"] or ""))[:64]
     for k in ("home_live", "signup", "join_requests"):
         if k in body:
             out[k] = bool(body[k])

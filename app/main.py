@@ -509,6 +509,8 @@ async def public_status():
             continue
         out.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "crashed": summ["crashed"],
                     "online": len(summ["online"]), "max": summ["max_players"], "has_icon": summ["has_icon"]})
+    main = site.config().get("main_server")
+    out.sort(key=lambda x: x["id"] != main)       # the main server's tab first
     _list_cache = (time.monotonic(), out)
     return {"enabled": True, "servers": out, "build": _asset_stamp()}
 
@@ -565,7 +567,9 @@ async def public_site():
     await S.registry.refresh()
     status = {x["id"]: x for x in servers}
     joins, main_used = [], False
-    for srv in _public_servers_list():
+    # the main server first (starred), then the rest as they come
+    ordered = sorted(_public_servers_list(), key=lambda x: x.id != cfg.get("main_server"))
+    for srv in ordered:
         st = srv.settings
         java, bed, port = st.get("join_address") or "", st.get("join_bedrock_address") or "", st.get("join_bedrock_port") or ""
         if not (java or bed) and not main_used and (cfg["java_address"] or cfg["bedrock_address"]):
@@ -574,11 +578,12 @@ async def public_site():
             continue
         joins.append({"id": srv.id, "name": srv.display_name, "java": java, "bedrock": bed, "bedrock_port": port or 19132,
                       "note": st.get("join_note") or "", "mods": _mods_for_players(srv) if st.get("join_mods") else None,
-                      "status": status.get(srv.id)})
+                      "status": status.get(srv.id), "main": srv.id == cfg.get("main_server"),
+                      "color": st.get("join_color") or ""})
     if joins and not (cfg["java_address"] or cfg["bedrock_address"]):     # the join guide's {java_address} and the like:
         cfg = {**cfg, "java_address": joins[0]["java"], "bedrock_address": joins[0]["bedrock"],  # the first server's
                "bedrock_port": joins[0]["bedrock_port"]}
-    asks = [{"id": s.id, "name": s.display_name} for s in _public_servers_list() if s.is_java] if cfg["join_requests"] else []
+    asks = [{"id": s.id, "name": s.display_name, "main": s.id == cfg.get("main_server")} for s in ordered if s.is_java] if cfg["join_requests"] else []
     return JSONResponse({**cfg, "logo": site.logo_url(), "servers": servers, "joins": joins, "ask_servers": asks,
                          "live": _status_cfg()["enabled"], "build": _asset_stamp()},
                         headers={"Cache-Control": "no-cache"})
@@ -1805,7 +1810,10 @@ async def put_settings(sid: str, request: Request):
             raise HTTPException(400, "Bedtime needs times like 21:00") from e
     if "join_mods" in body:
         body["join_mods"] = True if body["join_mods"] else ""
-    for k, n in (("join_address", 80), ("join_bedrock_address", 80), ("join_note", 160)):
+    if "join_color" in body:                 # a border colour for its card: #rrggbb, or nothing
+        c = str(body["join_color"] or "").strip().lower()
+        body["join_color"] = c if re.fullmatch(r"#[0-9a-f]{6}", c) else ""
+    for k, n in (("join_address", 80), ("join_bedrock_address", 80), ("join_note", 300)):
         if k in body:
             body[k] = " ".join(str(body[k] or "").split())[:n]
     if "join_bedrock_port" in body:

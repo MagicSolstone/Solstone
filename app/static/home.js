@@ -99,8 +99,8 @@ function joinCard(site) {
     if (j.bedrock) r.push(["Bedrock", j.bedrock, `Port ${j.bedrock_port}`]);
     const kind = j.java && j.bedrock ? "Java and Bedrock" : j.java ? "Java only" : "Bedrock only";
     const icon = site.live && j.status?.has_icon ? `<img class="px" src="/api/public/icon/${encodeURIComponent(j.id)}.png" alt="" width="40" height="40">` : "";
-    return `<article class="hp-join-card">
-      <header>${icon}<div><h3>${esc(j.name)}</h3><span class="chip">${kind}</span></div></header>
+    return `<article class="hp-join-card ${j.main ? "main" : ""}" ${j.color ? `style="--accent:${esc(j.color)}"` : ""}>
+      <header>${icon}<div><h3>${esc(j.name)}</h3><span class="chip">${kind}</span>${j.main ? ' <span class="chip main-chip">⭐ Main server</span>' : ""}</div></header>
       ${statusLine(j.status)}${rowsHtml(r)}${j.note ? `<p class="hp-join-note">${esc(j.note)}</p>` : ""}${modsHtml(j.mods)}
       ${site.live ? `<a class="hp-join-live" href="#live" data-live-sid="${esc(j.id)}">👀 See who's on, live →</a>` : ""}</article>`;
   });

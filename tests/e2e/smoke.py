@@ -351,7 +351,15 @@ def main() -> int:
                 if pg.locator('.ws-join [data-j="join_address"]').first.input_value() != "play.example.net":
                     problems.append("website: the old main address didn't move to the first server")
                 pg.locator(".ws-joins").scroll_into_view_if_needed() if pg.locator(".ws-joins").count() else None
+                pg.locator('.ws-join input[name="main_server"]').first.check()
+                pg.evaluate("""() => { const c = document.querySelector('.ws-join [data-j="join_color"]'); c.value = '#4cd964'; c.dispatchEvent(new Event('input')); }""")
+                pg.locator('.ws-join [data-j="join_note"]').first.fill("Our survival world for the whole family.")
                 check(pg, "website-joins")
+                pg.click('#ws-site button[type="submit"]'); pg.wait_for_timeout(1500)
+                anon.goto(f"{base}/"); anon.reload(); anon.wait_for_timeout(1200)
+                if not anon.locator(".hp-join-card.main .main-chip").count() or "survival world" not in (anon.locator(".hp-join-card.main").text_content() or ""):
+                    problems.append("home: the main server isn't starred, or its About text is missing")
+                check(anon, "site-home-main-server")
                 pg.click('.fws-tabs [data-tab="guides"]'); pg.wait_for_timeout(400)
                 pg.click('.ws-guide[data-guide="join"] [data-start]'); pg.wait_for_timeout(200)
                 if "{java_address}" not in pg.locator('.ws-guide[data-guide="join"] textarea').input_value():

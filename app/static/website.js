@@ -123,11 +123,14 @@ function wsSite(el) {
     <label>Tagline <small>One line under the name</small><input class="input" name="tagline" maxlength="160" value="${esc(s.tagline)}" placeholder="A family Minecraft server"></label>
     <fieldset class="ws-joins"><legend>How to join each server <small class="muted">One card per server on the home page, with how it's doing</small></legend>
       <p class="muted small">Each server gets its own card. Leave Bedrock empty for Java only, or Java empty for Bedrock only; a server with neither isn't shown. Private servers never show. The join guide uses the first server's addresses.</p>
-      ${(state.servers || []).filter((x) => !x.private).map((x, i) => `<div class="ws-join" data-sid="${esc(x.id)}"><b>${esc(x.name)}</b>
+      ${(state.servers || []).filter((x) => !x.private).map((x, i) => `<div class="ws-join" data-sid="${esc(x.id)}">
+        <div class="ws-join-head"><b>${esc(x.name)}</b>
+          <label class="check"><input type="radio" name="main_server" value="${esc(x.id)}" ${s.main_server === x.id ? "checked" : ""}> ⭐ Main server <small class="muted">first everywhere</small></label>
+          <label class="ws-color" title="The colour of its card's border">Border <input type="color" data-j="join_color" value="#f2c14e"><button type="button" class="link-btn" data-nocolor>none</button></label></div>
         <div class="ws-row"><label>Java<input class="input" data-j="join_address" maxlength="80" placeholder="${i === 0 ? "play.example.net" : "mods.example.net:25566"}"></label>
           <label>Bedrock<input class="input" data-j="join_bedrock_address" maxlength="80"></label>
           <label>Port<input class="input" data-j="join_bedrock_port" inputmode="numeric" placeholder="19132"></label></div>
-        <label>Note <small>Optional, for example: Needs the modpack</small><input class="input" data-j="join_note" maxlength="160"></label>
+        <label>About this server <small>Optional, shown on its card: what it is, who it's for. For example: Our survival world for the whole family, or: Modded adventures, needs the modpack.</small><textarea class="input" data-j="join_note" maxlength="300" rows="2"></textarea></label>
         <label class="check"><input type="checkbox" data-j="join_mods"> List the mods players need</label></div>`).join("")}
     </fieldset>
     <label>Discord invite <small>A discord.gg or discord.com link</small><input class="input" name="discord" maxlength="200" value="${esc(s.discord)}" placeholder="https://discord.gg/..."></label>
@@ -138,7 +141,14 @@ function wsSite(el) {
   // each server's join details come from its settings
   $$(".ws-join").forEach(async (row) => {
     const cur = await api(`/api/servers/${encodeURIComponent(row.dataset.sid)}/settings`).catch(() => ({}));
-    $$("[data-j]", row).forEach((i) => { if (i.type === "checkbox") i.checked = !!cur[i.dataset.j]; else i.value = cur[i.dataset.j] ?? ""; });
+    $$("[data-j]", row).forEach((i) => {
+      if (i.type === "checkbox") i.checked = !!cur[i.dataset.j];
+      else if (i.type === "color") { i.value = cur.join_color || "#f2c14e"; i.dataset.set = cur.join_color ? "1" : ""; }
+      else i.value = cur[i.dataset.j] ?? "";
+    });
+    const col = $('[data-j="join_color"]', row);
+    col.addEventListener("input", () => { col.dataset.set = "1"; });
+    $("[data-nocolor]", row).addEventListener("click", () => { col.dataset.set = ""; col.value = "#f2c14e"; showToast("No border colour for this one", 1500); });
     // From before each server had its own: the old main address belongs to the first server, so it moves there.
     if (row === $(".ws-join") && !cur.join_address && !cur.join_bedrock_address && (s.java_address || s.bedrock_address)) {
       $('[data-j="join_address"]', row).value = s.java_address || "";
@@ -165,11 +175,12 @@ function wsSite(el) {
     const f = new FormData(e.target);
     const body = Object.fromEntries(["name", "tagline", "discord", "about"].map((k) => [k, f.get(k)]));
     body.java_address = ""; body.bedrock_address = "";           // now kept with each server, below
+    body.main_server = f.get("main_server") || "";
     body.home_live = !!f.get("home_live");
     try {
       for (const row of $$(".ws-join")) {               // each server's own way in, kept in its settings (first, so
         const v = {};                                   // the old main address is only cleared once it's moved)
-        $$("[data-j]", row).forEach((i) => { v[i.dataset.j] = i.type === "checkbox" ? i.checked : i.value; });
+        $$("[data-j]", row).forEach((i) => { v[i.dataset.j] = i.type === "checkbox" ? i.checked : i.type === "color" ? (i.dataset.set ? i.value : "") : i.value; });
         await post(`/api/servers/${encodeURIComponent(row.dataset.sid)}/settings`, v, "PUT");
       }
       ws.data.site = await post("/api/settings/site", body, "PUT");

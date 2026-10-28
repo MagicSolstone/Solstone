@@ -208,3 +208,17 @@ def test_the_join_guide_uses_the_first_servers_addresses(client, anon, sid):
         assert s["java_address"] == "play.family.net" and s["bedrock_port"] == 19133
     finally:
         client.put(f"/api/servers/{sid}/settings", json={"join_address": "", "join_bedrock_address": "", "join_bedrock_port": ""})
+
+
+def test_main_server_first_with_its_colour(client, anon, sid):
+    try:
+        client.put(f"/api/servers/{sid}/settings", json={"join_address": "play.family.net", "join_color": "#FF8800"})
+        assert client.put(f"/api/servers/{sid}/settings", json={"join_color": "red; background:url(x)"}).json().get("join_color") is None
+        client.put(f"/api/servers/{sid}/settings", json={"join_color": "#ff8800"})
+        client.put("/api/settings/site", json={"main_server": sid, "join_requests": True})
+        s = anon.get("/api/public/site").json()
+        assert s["joins"][0]["id"] == sid and s["joins"][0]["main"] is True and s["joins"][0]["color"] == "#ff8800"
+        assert s["ask_servers"][0]["id"] == sid and s["ask_servers"][0]["main"] is True
+    finally:
+        client.put(f"/api/servers/{sid}/settings", json={"join_address": "", "join_color": ""})
+        client.put("/api/settings/site", json={"main_server": "", "join_requests": False})
