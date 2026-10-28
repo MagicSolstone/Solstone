@@ -103,6 +103,8 @@ def _init() -> None:
             db.conn().execute("ALTER TABLE users ADD COLUMN real_name TEXT")
         db.conn().execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_users_player ON users(player_uuid) WHERE player_uuid IS NOT NULL")
         db.conn().execute("UPDATE users SET role='trusted' WHERE role='viewer'")   # the old name
+        if "main" not in {r["name"] for r in db.q("PRAGMA table_info(user_players)")}:   # the one they're shown as
+            db.conn().execute("ALTER TABLE user_players ADD COLUMN main INTEGER NOT NULL DEFAULT 0")
         db.conn().execute("INSERT OR IGNORE INTO user_players(user_id, uuid, name, added_ts) "        # from one linked player each
                           "SELECT id, player_uuid, player_name, created_ts FROM users WHERE player_uuid IS NOT NULL")
         _ready = True
@@ -157,8 +159,16 @@ class User:
         return self.role == "player"
 
     @property
+    def main_player(self) -> dict | None:
+        """The Minecraft account they're shown as: the one marked main, else the first linked."""
+        return next((p for p in self.players if p.get("main")), self.players[0] if self.players else None)
+
+    @property
     def shown(self) -> str:
-        """The name other people see (chat, the activity feed): the display name, else the login."""
+        """The name other people see. Players: their (main) Minecraft name, the name everyone knows them by in the
+        game; nobody picks another. Admins and Trusted: their display name if they set one, else the login."""
+        if self.is_player and self.main_player:
+            return self.main_player["name"]
         return self.display_name or self.username
 
     def public(self) -> dict:
@@ -178,7 +188,8 @@ def _row_user(r) -> User:
 
 def _players_of(uid: int) -> list[dict]:
     try:
-        return [{"uuid": p["uuid"], "name": p["name"]} for p in db.q("SELECT uuid, name FROM user_players WHERE user_id=? ORDER BY added_ts, rowid", (uid,))]
+        return [{"uuid": p["uuid"], "name": p["name"], "main": bool(p["main"]), "bedrock": p["name"].startswith(".")}
+                for p in db.q("SELECT uuid, name, main FROM user_players WHERE user_id=? ORDER BY added_ts, rowid", (uid,))]
     except Exception:                       # before _init has made the table
         return []
 
@@ -200,6 +211,9 @@ def set_display_name(uid: int, name: str | None) -> User:
     """Empty clears it (back to the login name). Letters, numbers, spaces and _ . ' -, up to 24, and not someone else's."""
     _init()
     name = " ".join((name or "").split())
+    u = get_user(uid)
+    if u and u.is_player and name:
+        raise HTTPException(400, "Players are shown by their Minecraft name. Pick which one under My Minecraft accounts")
     if name and not _DISPLAY_NAME.match(name):
         raise HTTPException(400, "Use up to 24 letters, numbers, spaces and _ . ' -")
     if name:
@@ -265,6 +279,11 @@ def create_user(username: str, password: str, role: str, check: bool = True,
     return get_user(uid)
 
 
+def username_taken(name: str) -> bool:
+    _init()
+    return bool(db.q("SELECT 1 FROM users WHERE username=? COLLATE NOCASE", (name,)))
+
+
 def user_for_player(uuid: str) -> str | None:
     """The login already linked to this Minecraft player, if any."""
     _init()
@@ -289,6 +308,18 @@ def add_player(uid: int, player: tuple[str, str]) -> User:
     else:
         db.x("INSERT INTO user_players(user_id, uuid, name, added_ts) VALUES (?,?,?,?)", (uid, player[0], player[1], time.time()))
     _sync_first(uid)
+    u = get_user(uid)
+    if not u:
+        raise HTTPException(404, "User not found")
+    return u
+
+
+def set_main_player(uid: int, uuid: str) -> User:
+    """Which of their Minecraft accounts they're shown as."""
+    _init()
+    if not db.q("SELECT 1 FROM user_players WHERE user_id=? AND uuid=?", (uid, uuid)):
+        raise HTTPException(404, "That Minecraft account isn't linked to this login")
+    db.x("UPDATE user_players SET main = (uuid = ?) WHERE user_id=?", (uuid, uid))
     u = get_user(uid)
     if not u:
         raise HTTPException(404, "User not found")
@@ -326,7 +357,8 @@ def set_servers(uid: int, servers: list[str] | None) -> User:
 
 def list_users() -> list[dict]:
     _init()
-    return [{"id": r["id"], "username": r["username"], "display_name": r["display_name"], "role": r["role"], "created": r["created_ts"],
+    return [{"id": r["id"], "username": r["username"], "display_name": r["display_name"], "shown": _row_user(r).shown,
+             "role": r["role"], "created": r["created_ts"],
              "last_login": r["last_login_ts"], "player_name": r["player_name"], "real_name": r["real_name"],
              "players": _players_of(r["id"]),
              "servers": _servers_of(r["servers"])} for r in db.q("SELECT * FROM users ORDER BY username COLLATE NOCASE")]
@@ -420,6 +452,20 @@ def _limited(key: str, limit: int = MAX_FAILS) -> bool:
     return len(hits) >= limit
 
 
+def _login_rows(typed: str):
+    """The login for what was typed: its username, else any Minecraft name linked to it (Java or Bedrock, with or
+    without Bedrock's dot), so someone with both signs in with either, with the one password."""
+    typed = typed.strip()
+    rows = db.q("SELECT * FROM users WHERE username=? COLLATE NOCASE", (typed,))
+    if rows or not typed:
+        return rows
+    for name in (typed, f".{typed}" if not typed.startswith(".") else typed[1:]):
+        rows = db.q("SELECT u.* FROM user_players p JOIN users u ON u.id = p.user_id WHERE p.name=? COLLATE NOCASE", (name,))
+        if rows:
+            return rows
+    return []
+
+
 def login(request: Request, username: str, password: str) -> tuple[User, str]:
     _init()
     ip = client_ip(request)
@@ -430,7 +476,7 @@ def login(request: Request, username: str, password: str) -> tuple[User, str]:
     limits = (MAX_FAILS, MAX_FAILS, USER_MAX_FAILS)
     if any(_limited(k, n) for k, n in zip(keys, limits, strict=True)):
         raise HTTPException(429, "Too many failed sign-ins. Wait 15 minutes and try again")
-    rows = db.q("SELECT * FROM users WHERE username=? COLLATE NOCASE", (username or "",))
+    rows = _login_rows(username or "")
     ok = verify_password(password or "", rows[0]["password_hash"] if rows else _DUMMY_HASH) and bool(rows)
     if not ok:
         for k in keys:

@@ -50,7 +50,7 @@ function showLogin(message = "") {
     <div class="login-wrap"><div id="login-board" class="board-stack" hidden></div><form class="login-card" id="login-form" autocomplete="on">
       <img src="${esc(SITE_LOGO)}" alt="" width="56" height="56">
       <div class="login-title"><h1>${esc(SITE_NAME)}</h1><p class="tagline" id="login-tagline">Sign in to see the servers</p></div>
-      <label>Username<input class="input" name="username" autocomplete="username" autocapitalize="off" required></label>
+      <label>Minecraft name or username<input class="input" name="username" autocomplete="username" autocapitalize="off" required></label>
       <label>Password<input class="input" type="password" name="password" autocomplete="current-password" required></label>
       <p class="login-error" role="alert">${esc(message)}</p>
       <button class="btn primary" type="submit">Sign in</button>
@@ -94,7 +94,7 @@ function openSignup() {
     <p class="muted small" style="margin-top:12px">Not on the server yet? <a href="/guides/join">How to join</a></p>`;
   const step2 = (msg) => `<h2>Check the game chat</h2><p class="muted">${esc(msg)}</p>
     <form id="su-finish" autocomplete="off"><label>The six-digit code<input class="input" name="code" inputmode="numeric" maxlength="7" required autocomplete="one-time-code"></label>
-      <label>Pick a username <small>What you'll sign in with here. Letters, numbers, dots, dashes and underscores.</small><input class="input" name="username" required pattern="[A-Za-z0-9_.\\-]{2,32}" autocapitalize="off" autocomplete="username"></label>
+      <p class="su-login">You'll sign in here with your Minecraft name, <b>${esc(player)}</b>, and the password you pick now.</p>
       <label>Pick a password <small>8 or more characters. Not the one for your Microsoft account.</small><input class="input" type="password" name="password" minlength="8" required autocomplete="new-password"></label>
       <label>Your first name <small>Optional. Only the admins see it, so they know who you are.</small><input class="input" name="real_name" maxlength="40" autocomplete="given-name"></label>
       <div class="su-bday"><span>Your birthday <small>Optional. You get a birthday banner and fireworks on the day.</small></span>
@@ -118,7 +118,7 @@ function openSignup() {
         const f = new FormData(e.target);
         try {
           const birthday = f.get("bmonth") && f.get("bday") ? { month: +f.get("bmonth"), day: +f.get("bday") } : null;
-          const r = await post("/api/public/signup/finish", { player, code: f.get("code"), username: f.get("username"), password: f.get("password"),
+          const r = await post("/api/public/signup/finish", { player, code: f.get("code"), password: f.get("password"),
             real_name: f.get("real_name") || "", birthday });
           closeModal(); signedIn(r.user); showToast(`Welcome, ${esc(r.user.shown)}!`, 3000);
         } catch (err) { $(".login-error", e.target).textContent = err.message; }
@@ -187,17 +187,26 @@ function wireAccountMenu() {
 function showAccountPlayers(user) {
   const names = (user.players || []).map((p) => p.name).join(", ");
   $("#btn-account").title = [user.real_name, names && `In the game: ${names}`].filter(Boolean).join(" · ");
-  $("#account-role").textContent = (ROLE_NAMES.find(([v]) => v === user.role) || [, "Signed in"])[1] + (names ? ` · ${names}` : "");
+  $("#account-role").textContent = `${(ROLE_NAMES.find(([v]) => v === user.role) || [, "Signed in"])[1]} · signed in as ${user.username}`;
+  $("#account-name").textContent = user.shown;
+  // players are shown by their Minecraft name (picked in My Minecraft accounts), so no display name of their own
+  const dn = $("#btn-display-name"); if (dn) dn.hidden = user.role === "player";
 }
 
-// Your Minecraft players: a Java one and a Bedrock one can both be yours. Linking one sends a code to that player in
-// the game (only whoever is playing as them sees it), the same way as making an account.
+// Your Minecraft accounts: a Java one and a Bedrock one can both be yours, and you sign in with either name (one
+// password). Linking one sends a code to that player in the game (only whoever is playing as them sees it), the
+// same way as making an account. Players are shown on the site by the one marked main.
 function openMyPlayers() {
-  const list = () => (me.user.players || []).length
-    ? `<ul class="my-players">${me.user.players.map((p) => `<li>${faceHtml({ name: p.name, uuid: p.uuid }, 24)} <b>${esc(p.name)}</b>${p.name.startsWith(".") ? ' <span class="chip">Bedrock</span>' : ' <span class="chip">Java</span>'}
-        ${isPlayer() && me.user.players.length <= 1 ? "" : `<button class="btn sm" type="button" data-unlink="${esc(p.uuid)}">Unlink</button>`}</li>`).join("")}</ul>`
-    : `<p class="muted">No Minecraft player linked yet.</p>`;
-  openModal(`<h2>My Minecraft players</h2>
+  const list = () => {
+    const ps = me.user.players || [];
+    if (!ps.length) return `<p class="muted">No Minecraft account linked yet.</p>`;
+    const main = (ps.find((p) => p.main) || ps[0]).uuid;
+    return `<ul class="my-players">${ps.map((p) => `<li>${faceHtml({ name: p.name, uuid: p.uuid }, 24)} <b>${esc(p.name)}</b>${p.name.startsWith(".") ? ' <span class="chip">Bedrock</span>' : ' <span class="chip">Java</span>'}
+        ${ps.length > 1 ? (p.uuid === main ? ' <span class="chip mp-main">⭐ Main</span>' : `<button class="btn sm" type="button" data-main="${esc(p.uuid)}">Make main</button>`) : ""}
+        ${isPlayer() && ps.length <= 1 ? "" : `<button class="btn sm" type="button" data-unlink="${esc(p.uuid)}">Unlink</button>`}</li>`).join("")}</ul>
+      <p class="muted small">You can sign in with ${ps.length > 1 ? "any of these names" : "this name"} and your one password.${isPlayer() && ps.length > 1 ? " On the website you're shown as your ⭐ main one." : ""}</p>`;
+  };
+  openModal(`<h2>My Minecraft accounts</h2>
     <div id="mp-list">${list()}</div>
     <form id="mp-form" class="mp-form"><h3>Link another</h3>
       <p class="muted small">Play on Java and Bedrock with different names? Link both, so your page and the servers you're on include each. Be in the game as that player, type the name here (Bedrock names start with a dot), and a code appears in your game chat.</p>
@@ -207,6 +216,12 @@ function openMyPlayers() {
       <div class="actions"><button type="button" class="btn" data-close-modal>Close</button><button class="btn primary" type="submit" id="mp-go">Send me a code</button></div></form>`, (m) => {
     let sent = false;
     $("#mp-list", m).addEventListener("click", async (e) => {
+      const mb = e.target.closest("[data-main]");
+      if (mb) {
+        try { const r = await post(`/api/auth/players/${encodeURIComponent(mb.dataset.main)}/main`, {}); me.user = r.user; showAccountPlayers(me.user); $("#mp-list", m).innerHTML = list(); showToast(`You're shown as ${esc(r.user.shown)}`, 2500); }
+        catch (err) { showError(esc(err.message), 5000); }
+        return;
+      }
       const b = e.target.closest("[data-unlink]");
       if (!b) return;
       try { const r = await api(`/api/auth/players/${encodeURIComponent(b.dataset.unlink)}`, { method: "DELETE" }); me.user = r.user; showAccountPlayers(me.user); $("#mp-list", m).innerHTML = list(); }

@@ -584,6 +584,13 @@ def main() -> int:
                 problems.append(f"player account: wrong tabs ({tabs.strip()})")
             pl.goto(f"{base}/app#/s/{sid}/p/{puuid}"); pl.wait_for_timeout(1300)
             check(pl, "player-account-own-page")
+            # a player is shown by their Minecraft name, and has no display name of their own to pick
+            pl.click("#btn-account"); pl.wait_for_timeout(300)
+            if (pl.locator("#account-name").text_content() or "").strip() != "Tyler" or pl.locator("#btn-display-name").is_visible():
+                problems.append("player account: not shown as their Minecraft name, or offered a display name")
+            if "signed in as smoke_player" not in (pl.locator("#account-role").text_content() or ""):
+                problems.append("player account: the menu doesn't say which login they're signed in with")
+            pl.keyboard.press("Escape")
             # signed in, the website offers the way back to the servers, and the app links back to the website
             pl.goto(f"{base}/"); pl.wait_for_timeout(1200)
             if not pl.locator(".hp-nav #btn-servers").is_visible() or not pl.locator(".hp-nav a[href='/app#/events']").is_visible() or pl.locator("#hp-signin").count():

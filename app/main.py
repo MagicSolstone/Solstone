@@ -1541,6 +1541,18 @@ async def link_finish(request: Request):
     return {"user": u.public()}
 
 
+@app.post("/api/auth/players/{uuid}/main")
+async def link_main(uuid: str, request: Request):
+    """Which of your Minecraft accounts you're shown as on the website (a player's name everywhere)."""
+    user = auth.require_user(request)
+    mine = next((x for x in user.player_uuids if S.norm_uuid(x) == S.norm_uuid(uuid)), None)
+    if not mine:
+        raise HTTPException(404, "That player isn't linked to your login")
+    u = await asyncio.to_thread(auth.set_main_player, user.id, mine)
+    auth.audit(user, None, "main_player", u.shown)
+    return {"user": _me(u)}
+
+
 @app.delete("/api/auth/players/{uuid}")
 async def link_remove(uuid: str, request: Request):
     """Unlink one of your own Minecraft accounts (a Player login keeps at least one: it's how it sees anything)."""

@@ -125,13 +125,13 @@ def finish(typed: str, code: str, username: str, password: str, real_name: str =
             _codes.pop(uuid, None)
             raise HTTPException(400, "Wrong code too many times. Ask for a new one")
         raise HTTPException(400, "That code isn't right")
-    # they see the server they signed up on; an admin can give them more in Users
-    user = auth.create_user(username.strip(), password, "player", player=(uuid, entry["name"]), servers=[entry["server"]])
+    # Their login is their Minecraft name (Bedrock's dot and all), so there's one name to remember. They see the
+    # server they signed up on; an admin can give them more in Users.
+    name = entry["name"]
+    if auth.username_taken(name):
+        raise HTTPException(409, f"There's already a login called {name}. Ask an admin to sort it out")
+    user = auth.create_user(name, password, "player", player=(uuid, name), servers=[entry["server"]])
     _codes.pop(uuid, None)
-    try:
-        auth.set_display_name(user.id, entry["name"].lstrip("."))
-    except HTTPException:
-        pass                    # their in-game name is someone's login already: they can pick one later
     if real_name.strip():
         try:
             auth.set_real_name(user.id, real_name)

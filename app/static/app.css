@@ -576,6 +576,7 @@ body.is-admin hr.admin-only { display: block !important; }
 body.logged-out .account-menu { display: none; }
 .account-menu button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
 .account-menu button:hover { background: var(--tuff-2); }
+.account-menu [hidden] { display: none; }
 .account-role { padding: 6px 10px 8px; color: var(--muted); font-size: .82rem; border-bottom: 1px solid var(--basalt); margin-bottom: 4px; }
 
 /* ------------------------------------------------------------ buttons and small inputs */

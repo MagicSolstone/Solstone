@@ -52,7 +52,10 @@ def test_signup_with_a_code_from_the_game(client, anon, game):
         me = anon.get("/api/auth/me").json()["user"]
         assert me["role"] == "player" and me["player"]["name"] == "Tyler" and me["shown"] == "Tyler"
         assert me["real_name"] == "Tyler J"                         # their own, and the admins' (below)
-        assert next(u for u in client.get("/api/users").json() if u["username"] == "tyler_web")["real_name"] == "Tyler J"
+        assert next(u for u in client.get("/api/users").json() if u["username"] == "Tyler")["real_name"] == "Tyler J"   # the login is their Minecraft name
+        from fastapi.testclient import TestClient
+        c2 = TestClient(main.app, headers={"X-Solstone": "1"})
+        assert c2.post("/api/auth/login", json={"username": "tyler", "password": "long-enough-1"}).status_code == 200
         bdays = client.get("/api/board").json()["birthdays"]
         assert {"player": "Tyler", "month": 3, "day": 14} == {k: v for k, v in next(b for b in bdays if b["player"] == "Tyler").items() if k in ("player", "month", "day")}
         assert me["servers"] == [helpers.SID]                       # the server they signed up on
@@ -60,12 +63,12 @@ def test_signup_with_a_code_from_the_game(client, anon, game):
         again = anon.post("/api/public/signup/finish", json={"player": "Tyler", "code": code, "username": "tyler2", "password": "long-enough-1"})
         assert again.status_code == 400
         anon.post("/api/public/signup/start", json={"player": "Tyler"})
-        assert "already have an account" in game[-1] and "tyler_web" in game[-1]
+        assert "already have an account" in game[-1] and "Tyler" in game[-1]
     finally:
         _signup_on(client, False)
         client.put("/api/board", json={"birthdays": [b for b in client.get("/api/board").json()["birthdays"] if b["player"] != "Tyler"]})
         for u in client.get("/api/users").json():
-            if u["username"] == "tyler_web":
+            if u["username"] == "Tyler":
                 client.delete(f"/api/users/{u['id']}")
 
 
@@ -288,3 +291,27 @@ def test_players_see_their_own_adventures(player, client, sid):
         db.x("DELETE FROM sessions WHERE server_id=? AND start_ts >= ? AND start_ts <= ?", (sid, t0 - 1, t0 + 7201))
         db.x("DELETE FROM positions WHERE server_id=? AND ts = ?", (sid, t0 + 100))
         db.x("DELETE FROM events WHERE server_id=? AND ts BETWEEN ? AND ?", (sid, t0 + 199, t0 + 231))
+
+
+def test_one_login_any_of_its_minecraft_names(client, player, sid, tyler):
+    """Sign in with the login or any linked Minecraft name (Bedrock with or without its dot); shown as the main one."""
+    from fastapi.testclient import TestClient
+    me = player.get("/api/auth/me").json()
+    uid = (me.get("user") or me)["id"]
+    other_name = helpers.PLAYERS[1][0]
+    u = client.patch(f"/api/users/{uid}", json={"add_player": other_name}).json()
+    try:
+        c = TestClient(main.app, headers={"X-Solstone": "1"})
+        for typed in ("pl_tyler", "tyler", other_name.lower()):
+            assert c.post("/api/auth/login", json={"username": typed, "password": "player-pass-1"}).status_code == 200, typed
+        assert c.post("/api/auth/login", json={"username": "tyler", "password": "wrong-pass-1"}).status_code == 401
+        assert player.get("/api/auth/me").json()["user"]["shown"] == "Tyler"           # the first one, to start
+        second = next(p for p in u["players"] if p["name"] == other_name)
+        r = player.post(f"/api/auth/players/{second['uuid']}/main", json={})
+        assert r.status_code == 200 and r.json()["user"]["shown"] == other_name
+        assert [p["main"] for p in r.json()["user"]["players"]] == [False, True]
+        # players don't pick a display name; their Minecraft name is it
+        assert player.post("/api/auth/profile", json={"display_name": "Cool Kid"}).status_code == 400
+        assert player.post("/api/auth/players/not-theirs/main", json={}).status_code == 404
+    finally:
+        client.patch(f"/api/users/{uid}", json={"remove_player": next(p for p in u["players"] if p["name"] == other_name)["uuid"]})
