@@ -152,11 +152,16 @@ def main() -> int:
             pic = pg.request.post(f"{base}/api/posts/images", data=_b.getvalue(), headers={**H, "Content-Type": "image/png"}).json()["url"]
             pg.request.post(f"{base}/api/posts", data={"title": "Our new castle", "category": "news",
                                                        "body": f"Look what we built!\n\n![The castle]({pic})\n\nCome and see it."}, headers=H)
+            # an event: three challenges one after another
+            import time as _t
+            pg.request.post(f"{base}/api/servers/{sid}/eventgroups", headers=H, data={
+                "title": "Fishing Fridays", "desc": "Bring your best rod!", "start": _t.time() + 7200, "gap": 2, "repeat": "weekly",
+                "items": [{"type": "contest", "body": {"kind": "fish", "minutes": 5, "prize": {"item": "diamond", "count": 1}}, "note": "Warm-up"}] * 3})
             routes = {
                 "home": "#/", "overview": f"#/s/{sid}", "player": f"#/s/{sid}/p/{puuid}",
                 "player-stats": f"#/s/{sid}/p/{puuid}/stats", "player-history": f"#/s/{sid}/p/{puuid}/history", "player-fishing": f"#/s/{sid}/p/{puuid}/fishing",
                 "player-advancements": f"#/s/{sid}/p/{puuid}/advancements", "world": f"#/s/{sid}/world",
-                "control": f"#/s/{sid}/control", "check": f"#/s/{sid}/check", "chat": f"#/s/{sid}/chat", "challenges": f"#/s/{sid}/challenges", "races": f"#/s/{sid}/challenges/races", "games": f"#/s/{sid}/challenges/games", "joining": f"#/s/{sid}/challenges/joining", "performance": f"#/s/{sid}/performance",
+                "control": f"#/s/{sid}/control", "check": f"#/s/{sid}/check", "chat": f"#/s/{sid}/chat", "challenges": f"#/s/{sid}/challenges", "races": f"#/s/{sid}/challenges/races", "games": f"#/s/{sid}/challenges/games", "joining": f"#/s/{sid}/challenges/joining", "eventgroups": f"#/s/{sid}/challenges/events", "performance": f"#/s/{sid}/performance",
                 "leaderboards": f"#/s/{sid}/leaderboards", "fishing": f"#/s/{sid}/fishing", "fishing-player": f"#/s/{sid}/fishing/Tyler", "mods": f"#/s/{sid}/mods", "adventures": f"#/s/{sid}/adventures", "events": "#/events",
                 "fireworks-editor": "#/fireworks", "fireworks-settings": "#/fireworks/show",
                 "announcements": "#/manage/announcements", "admin": "#/manage/users", "manage-servers": "#/manage/servers",
@@ -167,6 +172,23 @@ def main() -> int:
             for name, hash_ in routes.items():
                 pg.goto(f"{base}/app{hash_}"); pg.wait_for_timeout(1300)
                 check(pg, name)
+
+            # the event: its lineup on Challenges → Events, one card with pills on Events
+            pg.goto(f"{base}/app#/s/{sid}/challenges/events"); pg.wait_for_timeout(1300)
+            if pg.locator(".eg-card .eg-part").count() != 3:
+                problems.append("events tab: the event's three challenges aren't listed")
+            pg.locator(".eg-card .eg-part").nth(2).locator("[data-move='-1']").click(); pg.wait_for_timeout(900)
+            pg.goto(f"{base}/app#/events"); pg.wait_for_timeout(1300)
+            if pg.locator(".up-event .up-pill").count() < 3 or "Bring your best rod" not in (pg.locator(".up-event").first.text_content() or ""):
+                problems.append("events page: the event isn't one card with its challenges")
+            pg.locator(".up-event [data-coming-all]").first.click(); pg.wait_for_timeout(1300)
+            if pg.locator(".up-event").first.locator(".up-pill .up-coming.on").count() != 3:
+                problems.append("events page: 'I'm coming to all of it' didn't sign up for each")
+            # adding a contest to it from the Contests page
+            pg.goto(f"{base}/app#/s/{sid}/challenges/events"); pg.wait_for_timeout(1200)
+            pg.locator(".eg-card [data-add='contest']").first.click(); pg.wait_for_timeout(1300)
+            if not pg.locator(".eg-adding").count() or pg.locator("#ch-form [name=when]").count():
+                problems.append("contests: adding to an event doesn't show the event form")
 
             # Manage → Activity: filters and a page count
             pg.goto(f"{base}/app#/manage/activity"); pg.wait_for_timeout(1300)
@@ -787,6 +809,10 @@ def main() -> int:
                 check(m, name)
             m.goto(f"{base}/app#/s/{sid}/fishing"); m.wait_for_timeout(1000)
             check(m, "m-fishing")
+            m.goto(f"{base}/app#/events"); m.wait_for_timeout(1200)
+            check(m, "m-events")
+            if m.evaluate("document.documentElement.scrollWidth") > 392:
+                problems.append("phone: the Events page is wider than the screen")
             # Servers: a list with several servers, straight to the server with one
             m.goto(f"{base}/app#/events"); m.wait_for_timeout(1000)
             m.click("#btn-servers"); m.wait_for_timeout(600)

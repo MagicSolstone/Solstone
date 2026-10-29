@@ -2073,3 +2073,43 @@ a.glance-me:hover { border-color: var(--gold); }
 .ch-rounds-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .ch-rounds-row [hidden] { display: none; }
 .ch-form .section-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Events page: an event's card, its challenges as a row that scrolls sideways */
+.up-event { display: grid; gap: 8px; padding: 14px 16px; border-top: 1px solid rgba(255, 255, 255, .06); }
+.up-event:first-child { border-top: 0; }
+.up-event.live { background: rgba(80, 200, 120, .08); }
+.up-event-head { display: flex; align-items: flex-start; gap: 12px; }
+.up-event-desc { margin: 0; color: var(--muted); font-size: .92em; }
+.up-pills { list-style: none; margin: 0; padding: 2px 2px 8px; display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x proximity; }
+.up-pill { flex: 0 0 auto; min-width: 140px; max-width: 200px; display: grid; gap: 4px; align-content: start; padding: 8px 10px;
+  border-radius: 12px; background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .08); scroll-snap-align: start; position: relative; }
+.up-pill + .up-pill::before { content: "→"; position: absolute; left: -8px; top: 10px; transform: translateX(-50%); opacity: .35; font-size: .8em; }
+.up-pill.live { border-color: rgba(80, 200, 120, .6); background: rgba(80, 200, 120, .12); }
+.up-pill.done { opacity: .55; }
+.up-pill-time { font-weight: 700; font-variant-numeric: tabular-nums; font-size: .9em; }
+.up-pill-name { font-weight: 600; line-height: 1.25; }
+.up-pill-note { color: var(--muted); font-size: .82em; line-height: 1.3; }
+.up-pill .btn { justify-self: start; margin-top: 2px; }
+.up-event-foot { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; }
+@media (max-width: 600px) { .up-event { padding: 12px; } .up-event-head .up-when { padding-left: 0; flex-basis: auto; } }
+
+/* Challenges → Events: an event and its lineup */
+.eg-list { display: grid; gap: 14px; max-width: 900px; }
+.eg-form { display: grid; gap: 10px; max-width: 900px; }
+.eg-row { display: flex; flex-wrap: wrap; gap: 10px 16px; }
+.eg-card { display: grid; gap: 10px; }
+.eg-head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+.eg-head h3 { margin: 0 0 2px; }
+.eg-desc { margin: 6px 0 0; white-space: pre-line; }
+.eg-parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; border-left: 2px solid rgba(255, 255, 255, .12); }
+.eg-part { display: grid; grid-template-columns: 80px 28px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 10px; margin-left: 10px; background: rgba(255, 255, 255, .03); }
+.eg-part.eg-running { background: rgba(80, 200, 120, .12); }
+.eg-part.eg-done { opacity: .6; }
+.eg-time { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.eg-emoji { font-size: 1.2rem; text-align: center; }
+.eg-what { display: grid; gap: 2px; min-width: 0; }
+.eg-acts { display: flex; flex-wrap: wrap; gap: 2px; justify-content: flex-end; }
+.eg-add { align-items: center; }
+.eg-adding { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.ch-ingroup { margin: 4px 0 0; }
+@media (max-width: 600px) { .eg-part { grid-template-columns: 72px 24px minmax(0, 1fr); } .eg-acts { grid-column: 1 / -1; justify-content: flex-start; } }

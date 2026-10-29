@@ -59,3 +59,28 @@ function markdown(src) {
   flush();
   return out.join("");
 }
+
+// An event on the Events page (app and public): its name, time and description, then its challenges in order
+// as a row of cards that scrolls sideways. Signed in, each says who's coming and has its own "I'm coming!".
+function upEventHtml(it, signedIn = false) {
+  const parts = it.parts || [];
+  const allMe = signedIn && parts.length && parts.every((p) => p.me);
+  const desc = (it.detail || "").split("\n").map((l) => esc(l)).join("<br>");
+  const pill = (p) => `<li class="up-pill ${p.live ? "live" : ""} ${p.done ? "done" : ""}">
+      <span class="up-pill-time">${p.live ? "On now" : `${p.approx ? "≈" : ""}${esc(p.time)}`}</span>
+      <span class="up-pill-name"><span aria-hidden="true">${esc(p.emoji)}</span> ${esc(p.title)}</span>
+      ${p.note ? `<span class="up-pill-note">${esc(p.note)}</span>` : ""}
+      ${signedIn && !p.done ? `<button type="button" class="btn sm up-coming ${p.me ? "on" : ""}" data-coming="${esc(p.key)}" aria-pressed="${!!p.me}"
+        title="${esc((p.who || []).join(", "))}">${p.me ? "✅ Coming" : "🙋 I'm coming"}${p.coming ? ` · ${p.coming}` : ""}</button>` : ""}</li>`;
+  const who = signedIn ? [...new Set(parts.flatMap((p) => p.who || []))].sort((a, b) => a.localeCompare(b)) : [];
+  return `<li class="up-event ${it.live ? "live" : ""}">
+    <div class="up-event-head"><div class="up-main"><b>${it.link && signedIn ? `<a href="${esc(it.link)}">${esc(it.title)}</a>` : esc(it.title)}</b>
+        <span class="muted small">${esc([it.server, `${parts.length} challenge${parts.length === 1 ? "" : "s"}`, it.repeat === "weekly" ? "every week" : it.repeat === "daily" ? "every day" : ""].filter(Boolean).join(" · "))}</span></div>
+      <span class="up-when">${it.live ? '<span class="state-pill live"><span class="status-dot on"></span>On now</span>' : `${esc(it.time)}${it.end_time ? `–${esc(it.end_time)}` : ""}`}</span></div>
+    ${desc ? `<p class="up-event-desc">${desc}</p>` : ""}
+    <ol class="up-pills">${parts.map(pill).join("")}</ol>
+    <div class="up-event-foot">${it.optin ? `<span class="muted small">Join each one in the game with <code>/trigger join</code></span>` : ""}
+      ${signedIn && parts.some((p) => !p.done) ? `<button type="button" class="btn sm up-coming ${allMe ? "on" : ""}" data-coming-all="${esc(parts.filter((p) => !p.done).map((p) => p.key).join(","))}" aria-pressed="${allMe}">${allMe ? "✅ Coming to all of it" : "🙋 I'm coming to all of it"}</button>` : ""}</div>
+    ${who.length ? `<p class="small up-who">🙋 ${esc(who.join(", "))}</p>` : ""}
+  </li>`;
+}

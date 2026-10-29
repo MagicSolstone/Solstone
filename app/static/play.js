@@ -75,7 +75,17 @@ async function viewChallenges(sid) {
   const base = `/api/servers/${encodeURIComponent(sid)}/challenges`;
   let [d, fish] = await Promise.all([api(base), api(`/api/servers/${encodeURIComponent(sid)}/fishing`).catch(() => null)]);
   const fishOn = () => !!fish?.status?.version || !!fish?.tide;        // the fishing pack, or the Tide mod
-  const draft = { kind: "fish", name: "", when: "now", at: "", minutes: 10, prize: null, second: null, say: true, lure: 0, fair: true, hot: false, hot_bonus: 2, hot_on: 60, hot_off: 30, hot_far: 40, g: { on: false, spot: null, r: 4 }, repeat: "", optin: true, after: null, gap: 5, editing: null, rounds: 1, rgap: 2, allRounds: true };
+  const draft = { kind: "fish", name: "", when: "now", at: "", minutes: 10, prize: null, second: null, say: true, lure: 0, fair: true, hot: false, hot_bonus: 2, hot_on: 60, hot_off: 30, hot_far: 40, g: { on: false, spot: null, r: 4 }, repeat: "", optin: true, editing: null, rounds: 1, rgap: 2 };
+  // adding a contest to an event (or changing one in it): the same form, without its own time
+  const adding = egAdd?.type === "contest" && egAdd.sid === sid ? egAdd : null;
+  egAdd = null;
+  if (adding?.body) {
+    const b = adding.body;
+    Object.assign(draft, { kind: b.kind || "fish", name: b.name || "", minutes: +b.minutes || 10, say: b.say !== false, lure: +b.lure || 0, fair: b.fair !== false, hot: !!b.hot,
+      hot_bonus: b.hot_bonus || 2, hot_on: b.hot_on || 60, hot_off: b.hot_off || 30, hot_far: b.hot_far || 40,
+      g: b.gather ? { on: true, spot: b.gather, r: b.gather.r || 4 } : { on: false, spot: null, r: 4 },
+      prize: b.prize ? { item: b.prize.item, count: b.prize.count, label: b.prize.name } : null, second: b.second ? { item: b.second.item, count: b.second.count, label: b.second.name } : null });
+  }
   const ROD_KINDS = ["fish", "fish_points", "fish_heaviest"];
   // default time for "later": the next 8 PM, or the next hour if that's already past today
   const next8 = () => { const t = new Date(); t.setHours(20, 0, 0, 0); if (t < new Date()) { t.setTime(Date.now() + 3600e3); t.setMinutes(0, 0, 0); } return t; };
@@ -99,24 +109,15 @@ async function viewChallenges(sid) {
       : `<span class="muted">${esc({ done: "Finished", skipped: "Didn't run", cancelled: "Called off" }[c.state] || c.state)} · ${esc(fmtWhen(c.start))}</span>`;
     return `<div class="ch-card panel ch-${c.state}" data-cid="${esc(c.id)}">
       <div class="ch-head"><span class="ch-emoji">${k.emoji}</span><div><h3>${esc(c.name)}</h3>${status}</div>
-        <div class="ch-acts">${c.state === "scheduled" ? `<button class="btn sm" type="button" data-edit title="Change the time, prizes or anything else">✏️ Edit</button><button class="btn sm" type="button" data-next title="Another contest straight after this one (a night of back-to-back contests)">＋ Next</button>` : ""}${c.state === "scheduled" || c.state === "running" ? `<button class="btn sm danger" type="button" data-cancel>${c.state === "running" ? "Stop" : "Cancel"}</button>` : `<button class="btn sm" type="button" data-again title="Set up the same challenge again">Run again</button><button class="icon-btn" type="button" data-cancel title="Remove from the list" aria-label="Remove">✕</button>`}</div></div>
+        <div class="ch-acts">${c.state === "scheduled" && !c.group_title ? `<button class="btn sm" type="button" data-edit title="Change the time, prizes or anything else">✏️ Edit</button>` : ""}${c.state === "scheduled" || c.state === "running" ? `<button class="btn sm danger" type="button" data-cancel>${c.state === "running" ? "Stop" : "Cancel"}</button>` : `<button class="btn sm" type="button" data-again title="Set up the same challenge again">Run again</button><button class="icon-btn" type="button" data-cancel title="Remove from the list" aria-label="Remove">✕</button>`}</div></div>
       <div class="ch-prize">🏆 ${prizeHtml({ ...c.prize, label: c.prize.name })}${c.second ? ` <span class="muted">· 2nd:</span> ${prizeHtml({ ...c.second, label: c.second.name })}` : ""}</div>
+      ${c.group_title ? `<p class="small ch-ingroup">🗓️ Part of <a href="#/s/${encodeURIComponent(sid)}/challenges/events">${esc(c.group_title)}</a>${c.state === "scheduled" ? ": change it there" : ""}</p>` : ""}
       ${c.result ? `<p class="ch-result">${esc(c.result)}</p>` : ""}
       ${joinedLine(c)}
       ${c.state === "running" || c.state === "done" ? scoresHtml(c) : ""}
     </div>`;
   };
-  // back to back: right after another contest, with a break between
-  const afterOf = () => d.items.find((x) => x.id === draft.after && x.state === "scheduled");
-  const afterAt = () => { const a = afterOf(); return a ? localInput(new Date((a.start + a.minutes * 60 + draft.gap * 60) * 1000)) : draft.at; };
-  const afterRow = () => {
-    const a = afterOf();
-    if (!a) return "";
-    return `<span class="ch-after">↪ After <b>${esc(a.name)}</b> (ends ${esc(new Date((a.start + a.minutes * 60) * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }))}) with a break of
-      <select class="input sm" name="gap">${[0, 2, 5, 10, 15, 30].map((m) => `<option value="${m}" ${draft.gap === m ? "selected" : ""}>${m} min</option>`).join("")}</select>
-      <button type="button" class="icon-btn" data-no-after aria-label="Not after it">✕</button></span>`;
-  };
-  const submitText = () => (draft.editing ? "Save the changes" : draft.when === "now" ? (draft.rounds > 1 ? `Start ${draft.rounds} contests` : "Start the challenge") : draft.rounds > 1 ? `Schedule ${draft.rounds} contests` : "Schedule it");
+  const submitText = () => (adding ? (adding.iid ? "Save the change" : draft.rounds > 1 ? `Add ${draft.rounds} to ${adding.title}` : `Add to ${adding.title}`) : draft.editing ? "Save the changes" : draft.when === "now" ? (draft.rounds > 1 ? `Start ${draft.rounds} contests` : "Start the challenge") : draft.rounds > 1 ? `Schedule ${draft.rounds} contests` : "Schedule it");
   const editingOf = () => d.items.find((x) => x.id === draft.editing && x.state === "scheduled");
   // "5 contests: 7:00, 7:07, 7:14, 7:21, 7:28 (over at 7:33). Each is joined and won on its own."
   const roundsPlan = () => {
@@ -128,7 +129,8 @@ async function viewChallenges(sid) {
     return `${draft.rounds} contests: ${starts.map(hm).join(", ")} (over at ${hm(starts[starts.length - 1] + draft.minutes * 60)}). Players join each one on its own, and each has its own winner and prizes.`;
   };
   const formHtml = () => `<form class="panel ch-form" id="ch-form">
-      <div class="section-head"><h3>${draft.editing ? `Change ${esc(editingOf()?.name || "the contest")}` : "New challenge"}</h3>${draft.editing ? `<button class="btn sm" type="button" data-stop-edit>Stop changing it</button>` : ""}</div>
+      ${adding ? egBanner(adding, "a contest") : ""}
+      <div class="section-head"><h3>${adding ? (adding.iid ? "Change the contest" : "The contest") : draft.editing ? `Change ${esc(editingOf()?.name || "the contest")}` : "New challenge"}</h3>${draft.editing && !adding ? `<button class="btn sm" type="button" data-stop-edit>Stop changing it</button>` : ""}</div>
       <div class="ch-kinds" role="radiogroup" aria-label="What counts">${d.kinds.filter((k) => !k.retired).map((k) => {
         const off = k.pack && !fishOn();
         const what = k.key === "fish_points" ? "most points (needs the fishing pack or Tide)" : k.key === "fish_heaviest" ? "heaviest fish (needs the fishing pack or Tide)" : `most ${k.unit}`;
@@ -137,16 +139,15 @@ async function viewChallenges(sid) {
       <div class="ch-grid">
         <label>Name <input class="input" name="name" maxlength="40" placeholder="${esc(kind(draft.kind).label)}" value="${esc(draft.name)}"></label>
         <label>How long <select class="input" name="minutes">${[5, 10, 15, 20, 30, 45, 60].map((m) => `<option value="${m}" ${draft.minutes === m ? "selected" : ""}>${m} minutes</option>`).join("")}</select></label>
-        <div class="ch-when"><span class="lbl">When</span>
+        ${adding ? "" : `<div class="ch-when"><span class="lbl">When</span>
           <label class="check"><input type="radio" name="when" value="now" ${draft.when === "now" ? "checked" : ""}> Right now</label>
-          <label class="check"><input type="radio" name="when" value="later" ${draft.when === "later" ? "checked" : ""}> At <input class="input sm" type="datetime-local" name="at" value="${esc(draft.at)}"></label>
-          ${afterRow()}</div>
-        ${draft.editing ? (editingOf()?.series ? `<label class="check ch-allrounds"><input type="checkbox" name="all_rounds" ${draft.allRounds ? "checked" : ""}> Change every round still to come the same way (prizes and settings; each keeps its own time)</label>` : "")
-          : `<div class="ch-rounds"><span class="lbl">Back to back</span>
+          <label class="check"><input type="radio" name="when" value="later" ${draft.when === "later" ? "checked" : ""}> At <input class="input sm" type="datetime-local" name="at" value="${esc(draft.at)}"></label></div>`}
+        ${draft.editing || adding?.iid ? ""
+          : `<div class="ch-rounds"><span class="lbl">${adding ? "How many" : "Back to back"}</span>
           <span class="ch-rounds-row"><select class="input sm" name="rounds" aria-label="How many">${Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}" ${draft.rounds === i + 1 ? "selected" : ""}>${i ? `${i + 1} contests in a row` : "Just this one"}</option>`).join("")}</select>
-            <span ${draft.rounds > 1 ? "" : "hidden"} class="ch-rgap">with a <select class="input sm" name="rgap" aria-label="Break">${[0, 1, 2, 3, 5, 10, 15].map((m) => `<option value="${m}" ${draft.rgap === m ? "selected" : ""}>${m} minute</option>`).join("")}</select> break between</span></span>
-          <small class="muted ch-rounds-plan">${roundsPlan()}</small></div>`}
-        <label>Repeats <select class="input" name="repeat">${[["", "Just once"], ["weekly", "Every week, same day and time"], ["daily", "Every day, same time"]].map(([v, l]) => `<option value="${v}" ${draft.repeat === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+            <span ${draft.rounds > 1 && !adding ? "" : "hidden"} class="ch-rgap">with a <select class="input sm" name="rgap" aria-label="Break">${[0, 1, 2, 3, 5, 10, 15].map((m) => `<option value="${m}" ${draft.rgap === m ? "selected" : ""}>${m} minute</option>`).join("")}</select> break between</span></span>
+          <small class="muted ch-rounds-plan">${adding ? "" : roundsPlan()}</small></div>`}
+        ${adding ? "" : `<label>Repeats <select class="input" name="repeat">${[["", "Just once"], ["weekly", "Every week, same day and time"], ["daily", "Every day, same time"]].map(([v, l]) => `<option value="${v}" ${draft.repeat === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>`}
         <div class="ch-prizes"><span class="lbl">Prize for the winner</span><button type="button" class="btn ch-pick" data-pick="prize">${prizeHtml(draft.prize)}</button>
           <span class="lbl">Second place <small class="muted">(optional)</small></span><span class="ch-second"><button type="button" class="btn ch-pick" data-pick="second">${prizeHtml(draft.second)}</button>${draft.second ? `<button type="button" class="icon-btn" data-clear-second aria-label="No second prize">✕</button>` : ""}</span></div>
       </div>
@@ -165,7 +166,7 @@ async function viewChallenges(sid) {
         <small class="muted">Each player gets one when it starts (or when they join); it's taken back at the end.</small></label>
       ${fish?.tide ? `<label class="check ch-fair" ${ROD_KINDS.includes(draft.kind) ? "" : "hidden"}><input type="checkbox" name="fair" ${draft.fair ? "checked" : ""}> Fair play: everyone fishes at the same level for the contest (Tide levels are switched off until it ends)</label>` : ""}
       <label class="check"><input type="checkbox" name="say" ${draft.say ? "checked" : ""}> Announce it in the game (countdown alerts, start, winner) and show the scores on everyone's screen</label>
-      ${optinField(draft.optin)}
+      ${adding ? "" : optinField(draft.optin)}
       ${d.rcon ? "" : `<p class="notice">This server needs RCON turned on for challenges (⚙ settings).</p>`}
       <div class="btn-row"><button class="btn primary" type="submit" ${d.rcon ? "" : "disabled"}>${submitText()}</button></div>
     </form>`;
@@ -250,17 +251,14 @@ async function viewChallenges(sid) {
     const form = $("#ch-form");
     const sync = () => { const f = new FormData(form); draft.kind = f.get("kind"); draft.name = f.get("name"); draft.minutes = +f.get("minutes"); draft.when = f.get("when"); draft.at = f.get("at"); draft.say = !!f.get("say"); draft.repeat = f.get("repeat") || ""; draft.lure = +(f.get("lure") || 0); draft.fair = !!f.get("fair"); draft.optin = !!f.get("optin");
       if (f.get("rounds")) { draft.rounds = +f.get("rounds"); draft.rgap = +(f.get("rgap") ?? draft.rgap); }
-      if (form.all_rounds) draft.allRounds = form.all_rounds.checked;
-      if (f.get("gap") != null) draft.gap = +f.get("gap");
       draft.hot = !!f.get("hot"); for (const k of ["hot_bonus", "hot_on", "hot_off", "hot_far"]) if (f.get(k)) draft[k] = +f.get(k); };
     form.addEventListener("change", (e) => {
       sync();
       if (e.target.name === "kind") { form.querySelectorAll(".ch-kind").forEach((l) => l.classList.toggle("on", l.querySelector("input").checked)); form.name.placeholder = kind(draft.kind).label; form.querySelector(".ch-lure").hidden = !ROD_KINDS.includes(draft.kind); if (form.querySelector(".ch-fair")) form.querySelector(".ch-fair").hidden = !ROD_KINDS.includes(draft.kind); form.querySelector(".ch-hot").hidden = draft.kind !== "fish_points"; }
-      if (e.target.name === "gap") { draft.at = afterAt(); form.at.value = draft.at; }
-      if (e.target.name === "at") { draft.when = "later"; form.querySelector('[name=when][value=later]').checked = true; if (draft.after) { draft.after = null; render(); return; } }
+      if (e.target.name === "at") { draft.when = "later"; form.querySelector('[name=when][value=later]').checked = true; }
       form.querySelector("[type=submit]").textContent = submitText();
       const plan = form.querySelector(".ch-rounds-plan");
-      if (plan) { plan.textContent = roundsPlan(); form.querySelector(".ch-rgap").hidden = draft.rounds < 2; }
+      if (plan && !adding) { plan.textContent = roundsPlan(); form.querySelector(".ch-rgap").hidden = draft.rounds < 2; }
     });
     form.querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", () => {
       sync();
@@ -269,7 +267,7 @@ async function viewChallenges(sid) {
         pick: (item, count) => { draft[which] = { item: item.id, count, label: item.name }; render(); } });
     }));
     form.querySelector("[data-stop-edit]")?.addEventListener("click", () => { Object.assign(draft, { editing: null, name: "", when: "now" }); render(); });
-    form.querySelector("[data-no-after]")?.addEventListener("click", () => { sync(); draft.after = null; render(); });
+    form.querySelector("[data-eg-cancel]")?.addEventListener("click", () => egBack(sid));
     form.querySelector("[data-clear-second]")?.addEventListener("click", () => { sync(); draft.second = null; render(); });
     wireGather(form, sid, draft.g, () => { sync(); render(); }, d.spawn);
     form.addEventListener("submit", async (e) => {
@@ -277,15 +275,26 @@ async function viewChallenges(sid) {
       if (!draft.prize) { showToast("Choose a prize for the winner first", 2500); return; }
       if (draft.g.on && !draft.g.spot) { showToast("Pick the spot to teleport everyone to (or untick teleporting)", 3000); return; }
       const start = draft.when === "now" ? Date.now() / 1000 : new Date(draft.at).getTime() / 1000;
+      const body = { kind: draft.kind, name: draft.name, minutes: draft.minutes, say: draft.say, lure: ROD_KINDS.includes(draft.kind) ? draft.lure : 0, fair: ROD_KINDS.includes(draft.kind) && !!fish?.tide && draft.fair,
+        gather: gatherBody(draft.g), hot: draft.kind === "fish_points" && draft.hot, hot_bonus: draft.hot_bonus, hot_on: draft.hot_on, hot_off: draft.hot_off, hot_far: draft.hot_far,
+        prize: { item: draft.prize.item, count: draft.prize.count, name: draft.prize.label }, second: draft.second ? { item: draft.second.item, count: draft.second.count, name: draft.second.label } : null };
       try {
+        if (adding) { await egSave(adding, "contest", body, draft.rounds); return; }
+        if (!draft.editing && draft.rounds > 1) {
+          // several in a row: an event of their own, so they show (and can be changed) together
+          const ev = await post(`/api/servers/${encodeURIComponent(sid)}/eventgroups`, { title: draft.name || kind(draft.kind).label, start, gap: draft.rgap, repeat: draft.repeat, optin: draft.optin,
+            items: Array.from({ length: draft.rounds }, () => ({ type: "contest", body })) });
+          showToast(`${esc(ev.title)}: ${draft.rounds} contests in a row, on the Events tab`, 3500);
+          Object.assign(draft, { name: "", rounds: 1 }); egBack(sid); return;
+        }
         const url = draft.editing ? `${base}/${encodeURIComponent(draft.editing)}` : base;
-        const c = await post(url, { rounds: draft.editing ? undefined : draft.rounds, gap: draft.rgap, all_rounds: draft.editing ? draft.allRounds : undefined, kind: draft.kind, name: draft.name, start, minutes: draft.minutes, say: draft.say, repeat: draft.repeat, optin: draft.optin, lure: ROD_KINDS.includes(draft.kind) ? draft.lure : 0, fair: ROD_KINDS.includes(draft.kind) && !!fish?.tide && draft.fair,
+        const c = await post(url, { kind: draft.kind, name: draft.name, start, minutes: draft.minutes, say: draft.say, repeat: draft.repeat, optin: draft.optin, lure: ROD_KINDS.includes(draft.kind) ? draft.lure : 0, fair: ROD_KINDS.includes(draft.kind) && !!fish?.tide && draft.fair,
           gather: gatherBody(draft.g),
           hot: draft.kind === "fish_points" && draft.hot, hot_bonus: draft.hot_bonus, hot_on: draft.hot_on, hot_off: draft.hot_off, hot_far: draft.hot_far,
           prize: { item: draft.prize.item, count: draft.prize.count, name: draft.prize.label }, second: draft.second ? { item: draft.second.item, count: draft.second.count, name: draft.second.label } : null },
           draft.editing ? "PUT" : "POST");
-        showToast(draft.editing ? "Saved" : c.made > 1 ? `${c.made} contests ${draft.when === "now" ? "set up: the first starts in a few seconds" : "scheduled"}` : draft.when === "now" ? `${esc(c.name)} starts in a few seconds` : `${esc(c.name)} is scheduled`, 3000);
-        Object.assign(draft, { name: "", after: null, editing: null, rounds: 1 }); await reload();
+        showToast(draft.editing ? "Saved" : draft.when === "now" ? `${esc(c.name)} starts in a few seconds` : `${esc(c.name)} is scheduled`, 3000);
+        Object.assign(draft, { name: "", editing: null, rounds: 1 }); await reload();
       } catch (err) { showError(esc(err.message), 4000); }
     });
     $$(".ch-card").forEach((el) => {
@@ -295,20 +304,14 @@ async function viewChallenges(sid) {
         try { await api(`${base}/${encodeURIComponent(c.id)}`, { method: "DELETE" }); await reload(); } catch (err) { showError(esc(err.message), 4000); }
       });
       el.querySelector("[data-edit]")?.addEventListener("click", () => {
-        Object.assign(draft, { editing: c.id, kind: c.kind, name: c.name, minutes: c.minutes, say: c.say, optin: !!c.optin, repeat: c.repeat || "", after: null, lure: c.lure || 0, fair: c.fair !== false,
+        Object.assign(draft, { editing: c.id, kind: c.kind, name: c.name, minutes: c.minutes, say: c.say, optin: !!c.optin, repeat: c.repeat || "", lure: c.lure || 0, fair: c.fair !== false,
           hot: !!c.hot, hot_bonus: c.hot_bonus || 2, hot_on: c.hot_on || 60, hot_off: c.hot_off || 30, hot_far: c.hot_far || 40, when: "later", at: localInput(new Date(c.start * 1000)),
-          g: c.gather ? { on: true, spot: c.gather, r: c.gather.r || 4 } : { on: false, spot: null, r: 4 }, allRounds: true,
+          g: c.gather ? { on: true, spot: c.gather, r: c.gather.r || 4 } : { on: false, spot: null, r: 4 },
           prize: { ...c.prize, label: c.prize.name }, second: c.second ? { ...c.second, label: c.second.name } : null });
         render(); $("#ch-form").scrollIntoView({ behavior: "smooth", block: "center" });
       });
-      el.querySelector("[data-next]")?.addEventListener("click", () => {
-        Object.assign(draft, { kind: c.kind, name: "", minutes: c.minutes, say: c.say, optin: !!c.optin, repeat: c.repeat || "", lure: c.lure || 0, fair: c.fair !== false, when: "later",
-          after: c.id, prize: { ...c.prize, label: c.prize.name }, second: c.second ? { ...c.second, label: c.second.name } : null });
-        draft.at = afterAt();
-        render(); $("#ch-form").scrollIntoView({ behavior: "smooth", block: "center" });
-      });
       el.querySelector("[data-again]")?.addEventListener("click", () => {
-        Object.assign(draft, { kind: c.kind, name: c.name, minutes: c.minutes, say: c.say, optin: !!c.optin, after: null, lure: c.lure || 0, fair: c.fair !== false, hot: !!c.hot, hot_bonus: c.hot_bonus || 2, hot_on: c.hot_on || 60, hot_off: c.hot_off || 30, hot_far: c.hot_far || 40, when: "now",
+        Object.assign(draft, { kind: c.kind, name: c.name, minutes: c.minutes, say: c.say, optin: !!c.optin, lure: c.lure || 0, fair: c.fair !== false, hot: !!c.hot, hot_bonus: c.hot_bonus || 2, hot_on: c.hot_on || 60, hot_off: c.hot_off || 30, hot_far: c.hot_far || 40, when: "now",
           prize: { ...c.prize, label: c.prize.name }, second: c.second ? { ...c.second, label: c.second.name } : null });
         render(); $("#ch-form").scrollIntoView({ behavior: "smooth", block: "center" });
       });
@@ -372,7 +375,121 @@ function rconEchoNote(d) {
 // Contests and races share the Challenges tab.
 function playSwitch(sid, on) {
   const base = `#/s/${encodeURIComponent(sid)}/challenges`;
-  return `<nav class="seg play-switch" aria-label="Kind of challenge"><a href="${base}" ${on === "contests" ? 'aria-current="page"' : ""}>🏆 Contests</a><a href="${base}/races" ${on === "races" ? 'aria-current="page"' : ""}>🏁 Races</a><a href="${base}/games" ${on === "games" ? 'aria-current="page"' : ""}>🎲 Games</a><a href="${base}/joining" ${on === "joining" ? 'aria-current="page"' : ""}>📣 Joining</a></nav>`;
+  return `<nav class="seg play-switch" aria-label="Kind of challenge"><a href="${base}/events" ${on === "events" ? 'aria-current="page"' : ""}>🗓️ Events</a><a href="${base}" ${on === "contests" ? 'aria-current="page"' : ""}>🏆 Contests</a><a href="${base}/races" ${on === "races" ? 'aria-current="page"' : ""}>🏁 Races</a><a href="${base}/games" ${on === "games" ? 'aria-current="page"' : ""}>🎲 Games</a><a href="${base}/joining" ${on === "joining" ? 'aria-current="page"' : ""}>📣 Joining</a></nav>`;
+}
+
+// Adding a challenge to an event (or changing one in it): the Contests, Races and Games pages' own forms, in
+// "event" mode. { sid, gid, title, type, iid?, body? }; read once by the page it sends you to.
+let egAdd = null;
+const egBack = (sid) => { location.hash = `#/s/${encodeURIComponent(sid)}/challenges/events`; };
+const egBanner = (a, what) => `<div class="notice eg-adding"><span>${a.iid ? "Changing" : "Adding"} ${what} ${a.iid ? "in" : "to"} <b>${esc(a.title)}</b>.</span>
+  <button class="btn sm" type="button" data-eg-cancel>Back to the event</button></div>`;
+async function egSave(a, type, body, count = 1) {
+  const base = `/api/servers/${encodeURIComponent(a.sid)}/eventgroups/${encodeURIComponent(a.gid)}/items`;
+  const clean = { ...body };
+  for (const k of ["start", "when", "at", "optin", "repeat", "rounds", "gap", "all_rounds"]) delete clean[k];
+  if (a.iid) await post(`${base}/${encodeURIComponent(a.iid)}`, { body: clean }, "PUT");
+  else await post(base, { type, body: clean, count });
+  showToast(a.iid ? "Changed" : count > 1 ? `${count} added to ${esc(a.title)}` : `Added to ${esc(a.title)}`, 2500);
+  egAdd = null; egBack(a.sid);
+}
+
+// ---------------------------------------------------------------- events: a lineup of challenges, one after another
+async function viewEventGroups(sid) {
+  if (!isAdmin()) { location.replace(`#/s/${encodeURIComponent(sid)}`); return; }
+  egAdd = null;
+  const s = await serverFrame(sid, "challenges");
+  const base = `/api/servers/${encodeURIComponent(sid)}/eventgroups`;
+  let d = await api(base);
+  let editing = null;                                  // an event's id, "new", or null
+  const localInput = (ts) => { const t = new Date(ts * 1000); return new Date(t.getTime() - t.getTimezoneOffset() * 60e3).toISOString().slice(0, 16); };
+  const next8 = () => { const t = new Date(); t.setHours(20, 0, 0, 0); if (t < new Date()) t.setDate(t.getDate() + 1); return t.getTime() / 1000; };
+  const hm = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const day = (ts) => new Date(ts * 1000).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  const REP = { weekly: "every week", daily: "every day" };
+  const form = (g) => `<form class="panel eg-form" id="eg-form">
+      <h3>${g ? `Change ${esc(g.title)}` : "New event"}</h3>
+      <label>Name <input class="input" name="title" maxlength="60" required placeholder="Fishing Fridays" value="${esc(g?.title || "")}"></label>
+      <label>Description <small class="muted">(optional: shown on the Events page)</small><textarea class="input" name="desc" rows="2" maxlength="600" placeholder="Bring your best rod! Prizes for every round.">${esc(g?.desc || "")}</textarea></label>
+      <div class="eg-row">
+        <label>Starts <input class="input sm" type="datetime-local" name="start" value="${localInput(g?.start || next8())}" ${g && g.state === "running" ? "disabled" : ""}></label>
+        <label>Break between challenges <select class="input sm" name="gap">${[0, 1, 2, 3, 5, 10, 15, 20, 30].map((m) => `<option value="${m}" ${(g?.gap ?? 2) === m ? "selected" : ""}>${m} minute${m === 1 ? "" : "s"}</option>`).join("")}</select></label>
+        <label>Repeats <select class="input sm" name="repeat">${[["", "Just once"], ["weekly", "Every week"], ["daily", "Every day"]].map(([v, l]) => `<option value="${v}" ${(g?.repeat || "") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
+      ${optinField(g ? g.optin : true)}
+      <div class="btn-row"><button class="btn primary" type="submit">${g ? "Save" : "Make the event"}</button><button class="btn" type="button" data-eg-close>Cancel</button></div>
+    </form>`;
+  const partRow = (g, p, i) => {
+    const can = p.state === "planned" || p.state === "scheduled";
+    const st = p.state === "running" ? `<span class="ch-live">● On now</span>` : p.state === "done" ? `<span class="muted small">${esc(p.result || "Over")}</span>` : "";
+    const who = g.optin && p.joined ? `<span class="muted small">✋ ${p.joined.length ? `${p.joined.length} in` : "nobody yet"}</span>` : "";
+    return `<li class="eg-part eg-${esc(p.state)}" data-iid="${esc(p.id)}">
+      <span class="eg-time">${p.exact ? "" : "≈"}${esc(hm(p.start))}</span><span class="eg-emoji" aria-hidden="true">${esc(p.emoji)}</span>
+      <span class="eg-what"><b>${esc(p.title)}</b><span class="muted small">${Math.round(p.minutes)} min${p.type === "contest" ? "" : " or so"}${p.note ? ` · ${esc(p.note)}` : ""}</span>${st}${who}</span>
+      <span class="eg-acts">${can ? `<button class="icon-btn" type="button" data-move="-1" aria-label="Earlier" ${i === 0 ? "disabled" : ""}>↑</button><button class="icon-btn" type="button" data-move="1" aria-label="Later" ${i === g.parts.length - 1 ? "disabled" : ""}>↓</button>
+        <button class="icon-btn" type="button" data-copy title="Another the same, right after it" aria-label="Copy">⧉</button><button class="icon-btn" type="button" data-note title="A note for this one" aria-label="Note">🏷️</button>
+        <button class="icon-btn" type="button" data-change title="Change it" aria-label="Change">✏️</button><button class="icon-btn" type="button" data-remove aria-label="Remove">✕</button>` : ""}</span></li>`;
+  };
+  const card = (g) => `<div class="panel eg-card eg-${esc(g.state)}" data-gid="${esc(g.id)}">
+      <div class="eg-head"><div><h3>${esc(g.title)}</h3>
+        <span class="muted small">${esc(day(g.start))}, ${esc(hm(g.start))}${g.parts.length ? `–${esc(hm(g.end))}` : ""}${g.repeat ? ` · 🔁 ${REP[g.repeat]}` : ""} · ${g.gap} min breaks · ${g.optin ? "players join" : "everyone's in"}</span>
+        ${g.desc ? `<p class="eg-desc">${esc(g.desc)}</p>` : ""}</div>
+        <div class="ch-acts">${["scheduled", "running"].includes(g.state) ? `<button class="btn sm" type="button" data-eg-edit>✏️ Edit</button><button class="btn sm danger" type="button" data-eg-del>${g.state === "running" ? "Stop" : "Cancel"}</button>` : `<button class="icon-btn" type="button" data-eg-del aria-label="Remove">✕</button>`}</div></div>
+      ${g.parts.length ? `<ol class="eg-parts">${g.parts.map((p, i) => partRow(g, p, i)).join("")}</ol>` : `<p class="muted">No challenges yet: add the first one.</p>`}
+      ${["scheduled", "running"].includes(g.state) ? `<div class="btn-row eg-add"><span class="muted small">Add</span><button class="btn sm" type="button" data-add="contest">🏆 Contest</button><button class="btn sm" type="button" data-add="race">🏁 Race</button><button class="btn sm" type="button" data-add="game">🎲 Game</button></div>` : ""}
+    </div>`;
+  const render = () => {
+    const on = d.groups.filter((g) => ["scheduled", "running"].includes(g.state)), past = d.groups.filter((g) => !["scheduled", "running"].includes(g.state));
+    setView(serverHeader(s, "challenges") + playSwitch(sid, "events") + `
+      <p class="muted ch-intro">An event is a lineup of challenges played one after another, like <i>Fishing Fridays</i>: three fishing contests, then a race. It shows on the Events page as one card with its challenges in order.
+        Contests have set lengths, so their times are exact; after a race or game, the next one starts a set break after it ends (≈ times until then). Players join each challenge on its own.</p>
+      ${editing === "new" ? form(null) : `<div class="btn-row"><button class="btn primary" type="button" data-eg-new>＋ New event</button></div>`}
+      ${on.length ? `<section class="section"><div class="eg-list">${on.map((g) => (editing === g.id ? form(g) : card(g))).join("")}</div></section>`
+        : editing ? "" : `<div class="empty"><p>No events yet. Make one, then add its challenges.</p></div>`}
+      ${past.length ? `<section class="section"><div class="section-head"><h2>Finished</h2></div><div class="eg-list">${past.map(card).join("")}</div></section>` : ""}`);
+    wireHeader(s);
+    $("[data-eg-new]")?.addEventListener("click", () => { editing = "new"; render(); });
+    $("[data-eg-close]")?.addEventListener("click", () => { editing = null; render(); });
+    $("#eg-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.target, g = d.groups.find((x) => x.id === editing);
+      const body = { title: f.title.value, desc: f.desc.value, gap: +f.gap.value, repeat: f.repeat.value, optin: f.optin.checked };
+      if (!f.start.disabled) body.start = new Date(f.start.value).getTime() / 1000;
+      try {
+        const r = g ? await post(`${base}/${encodeURIComponent(g.id)}`, body, "PUT") : await post(base, body);
+        editing = null; d = await api(base); render();
+        if (!g) showToast(`${esc(r.title)} is made: now add its challenges`, 3500);
+      } catch (err) { showError(esc(err.message), 4000); }
+    });
+    $$(".eg-card").forEach((el) => {
+      const g = d.groups.find((x) => x.id === el.dataset.gid);
+      el.querySelector("[data-eg-edit]")?.addEventListener("click", () => { editing = g.id; render(); });
+      el.querySelector("[data-eg-del]")?.addEventListener("click", async () => {
+        if (["scheduled", "running"].includes(g.state) && !(await confirmBox(`${g.state === "running" ? "Stop" : "Cancel"} ${g.title}?`, g.repeat ? "Its challenges won't happen, and it won't come back next time." : "Its challenges won't happen.", g.state === "running" ? "Stop it" : "Cancel it"))) return;
+        try { await api(`${base}/${encodeURIComponent(g.id)}`, { method: "DELETE" }); d = await api(base); render(); } catch (err) { showError(esc(err.message), 4000); }
+      });
+      el.querySelectorAll("[data-add]").forEach((b) => b.addEventListener("click", () => {
+        egAdd = { sid, gid: g.id, title: g.title, type: b.dataset.add };
+        location.hash = `#/s/${encodeURIComponent(sid)}/challenges${b.dataset.add === "contest" ? "" : b.dataset.add === "race" ? "/races" : "/games"}`;
+      }));
+      el.querySelectorAll(".eg-part").forEach((row) => {
+        const p = g.parts.find((x) => x.id === row.dataset.iid);
+        const change = async (body) => { try { await post(`${base}/${encodeURIComponent(g.id)}/items/${encodeURIComponent(p.id)}`, body, "PUT"); d = await api(base); render(); } catch (err) { showError(esc(err.message), 4000); } };
+        row.querySelectorAll("[data-move]").forEach((b) => b.addEventListener("click", () => change({ step: +b.dataset.move })));
+        row.querySelector("[data-copy]")?.addEventListener("click", () => change({ copy: true }));
+        row.querySelector("[data-remove]")?.addEventListener("click", async () => { if (await confirmBox(`Take ${p.title} out of ${g.title}?`, "", "Take it out")) change({ remove: true }); });
+        row.querySelector("[data-note]")?.addEventListener("click", async () => {
+          const note = await promptBox("A note for this challenge", "Shown under it on the Events page (leave empty for none).", p.note || "", 160);
+          if (note != null) change({ note });
+        });
+        row.querySelector("[data-change]")?.addEventListener("click", () => {
+          egAdd = { sid, gid: g.id, title: g.title, type: p.type, iid: p.id, body: p.body };
+          location.hash = `#/s/${encodeURIComponent(sid)}/challenges${p.type === "contest" ? "" : p.type === "race" ? "/races" : "/games"}`;
+        });
+      });
+    });
+  };
+  render();
+  every(15000, async () => { if (!editing && !$(".modal")) { d = await api(base); render(); } });
 }
 
 // "Who's in" on an event's card: everyone online, or those who joined so far.
@@ -587,6 +704,8 @@ async function viewRaces(sid) {
   const base = `/api/servers/${encodeURIComponent(sid)}/races`;
   let d = await api(base);
   let editing = null;                     // the course being edited: { id?, name, points: [...] }
+  const adding = egAdd?.type === "race" && egAdd.sid === sid ? egAdd : null;     // a race for an event
+  egAdd = null;
   const fmtT = (sec) => (sec == null ? "" : `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`);
   const fmtWhen = (ts) => new Date(ts * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
   const length = (pts) => Math.round(pts.slice(1).reduce((a, p, i) => a + Math.hypot(p.x - pts[i].x, p.z - pts[i].z), 0));
@@ -606,6 +725,7 @@ async function viewRaces(sid) {
         <div class="ch-acts">${["scheduled", "countdown", "running"].includes(r.state) ? `<button class="btn sm danger" type="button" data-stop>${r.state === "scheduled" ? "Cancel" : "Stop"}</button>` : `<button class="icon-btn" type="button" data-stop title="Remove from the list" aria-label="Remove">✕</button>`}</div></div>
       ${r.prizes?.some(Boolean) ? `<div class="ch-prize">${r.prizes.map((p, i) => (p ? `<span class="muted">${["🥇", "🥈", "🥉"][i]}</span> ${itemIcon({ id: p.item })}<span>${p.count} × ${esc(p.name || itemName({ id: p.item }))}</span>` : "")).join(" ")}</div>` : ""}
       ${r.marker_error ? `<p class="notice small">The markers didn't place: ${esc(r.marker_error)}</p>` : ""}
+      ${r.group_title ? `<p class="small ch-ingroup">🗓️ Part of <a href="#/s/${encodeURIComponent(sid)}/challenges/events">${esc(r.group_title)}</a></p>` : ""}
       ${joinedLine(r)}${r.result ? `<p class="ch-result">${esc(r.result)}</p>` : ""}
       ${rows ? `<ol class="ch-scores">${rows}</ol>` : live ? `<p class="muted small">Waiting for racers…</p>` : ""}
     </div>`;
@@ -619,6 +739,7 @@ async function viewRaces(sid) {
     if (editing) return renderEditor();
     const live = d.runs.filter((r) => ["running", "countdown"].includes(r.state)), soon = d.runs.filter((r) => r.state === "scheduled"), past = d.runs.filter((r) => !["running", "countdown", "scheduled"].includes(r.state));
     setView(serverHeader(s, "challenges") + playSwitch(sid, "races") + rconEchoNote(d) + `
+      ${adding ? egBanner(adding, "a race") + `<p class="muted">${adding.iid ? "Change it below." : "Press <b>Race</b> on the course to race."}</p>` : ""}
       <p class="muted ch-intro">Lay out a course of checkpoints on the map, then race it. In the game each point is a tall glowing column with its name floating above it, and everyone sees which way to go and how far.</p>
       ${d.rcon ? "" : `<p class="notice">Races need RCON turned on for this server (⚙ settings).</p>`}
       ${live.length ? `<section class="section"><div class="section-head"><h2>Racing now</h2></div><div class="ch-list">${live.map(runCard).join("")}</div></section>` : ""}
@@ -628,6 +749,7 @@ async function viewRaces(sid) {
       ${past.length ? `<section class="section"><div class="section-head"><h2>Finished</h2></div><div class="ch-list">${past.map(runCard).join("")}</div></section>` : ""}`);
     wireHeader(s);
     $("#rc-new").addEventListener("click", () => { editing = { name: "", points: [] }; render(); });
+    $("[data-eg-cancel]")?.addEventListener("click", () => egBack(sid));
     $$("[data-cid]").forEach((el) => {
       const c = d.courses.find((x) => x.id === el.dataset.cid);
       el.querySelector("[data-edit]").addEventListener("click", () => { editing = JSON.parse(JSON.stringify(c)); render(); });
@@ -712,19 +834,20 @@ async function viewRaces(sid) {
 
   // --- starting a race
   const openRaceStart = (c) => {
-    const prizes = [null, null, null];
+    const pre = adding?.body || {};
+    const prizes = [0, 1, 2].map((i) => pre.prizes?.[i] || null);
     const at = (() => { const t = new Date(Date.now() + 15 * 60e3); t.setSeconds(0, 0); return new Date(t.getTime() - t.getTimezoneOffset() * 60e3).toISOString().slice(0, 16); })();
     const prizeBtn = (i) => `<button type="button" class="btn ch-pick" data-prize="${i}">${prizes[i] ? `${itemIcon({ id: prizes[i].item })}<span>${prizes[i].count} × ${esc(prizes[i].name)}</span>` : `<span class="muted">${i ? "Optional" : "Choose…"}</span>`}</button>`;
     const body = () => `<h2>Race ${esc(c.name)}</h2>
       <form id="rs-form" class="rs-form">
-        <div class="ch-when"><span class="lbl">When</span>
+        ${adding ? `<p class="muted small">Part of <b>${esc(adding.title)}</b>: it starts when its turn comes.</p><input type="hidden" name="when" value="now"><input type="hidden" name="at" value="">` : `<div class="ch-when"><span class="lbl">When</span>
           <label class="check"><input type="radio" name="when" value="now" checked> Right now (10-second countdown)</label>
-          <label class="check"><input type="radio" name="when" value="later"> At <input class="input sm" type="datetime-local" name="at" value="${at}"></label></div>
-        <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30].map((m) => `<option value="${m}" ${m === 15 ? "selected" : ""}>${m} minutes</option>`).join("")}</select></label>
-        <label class="check"><input type="checkbox" name="teleport" checked> Line everyone up at the start, held still until GO, and send them back where they were afterwards</label>
-        ${optinField(true)}
+          <label class="check"><input type="radio" name="when" value="later"> At <input class="input sm" type="datetime-local" name="at" value="${at}"></label></div>`}
+        <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30].map((m) => `<option value="${m}" ${m === (+pre.minutes || 15) ? "selected" : ""}>${m} minutes</option>`).join("")}</select></label>
+        <label class="check"><input type="checkbox" name="teleport" ${pre.teleport === false ? "" : "checked"}> Line everyone up at the start, held still until GO, and send them back where they were afterwards</label>
+        ${adding ? `<input type="checkbox" name="optin" hidden>` : optinField(true)}
         <div class="rs-prizes">${["🥇 1st", "🥈 2nd", "🥉 3rd"].map((l, i) => `<span class="lbl">${l}</span><span id="rs-p${i}">${prizeBtn(i)}</span>`).join("")}</div>
-        <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Start</button></div>
+        <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">${adding ? (adding.iid ? "Save the change" : `Add to ${esc(adding.title)}`) : "Start"}</button></div>
       </form>`;
     openModal(body(), (m) => {
       const wire = () => m.querySelectorAll("[data-prize]").forEach((b) => b.addEventListener("click", () => {
@@ -745,6 +868,7 @@ async function viewRaces(sid) {
           const f = e.target;
           const start = f.when.value === "now" ? Date.now() / 1000 : new Date(f.at.value).getTime() / 1000;
           try {
+            if (adding) { closeModal(); await egSave(adding, "race", { course: c.id, minutes: +f.minutes.value, teleport: f.teleport.checked, prizes }); return; }
             await post(`${base}/runs`, { course: c.id, start, minutes: +f.minutes.value, teleport: f.teleport.checked, optin: f.optin.checked, prizes });
             closeModal(); showToast(f.when.value === "now" ? "Race starting: 10-second countdown in the game" : "Race scheduled", 3000); await reload();
           } catch (err) { showError(esc(err.message), 4000); }
@@ -756,6 +880,8 @@ async function viewRaces(sid) {
 
   const reload = async () => { d = await api(base); render(); };
   render();
+  const racing = adding?.body?.course && d.courses.find((c) => c.id === adding.body.course);
+  if (racing) openRaceStart(racing);                    // changing an event's race: straight to its settings
   every(1000, tickLeft);
   every(2000, async () => {
     if (editing || $(".modal")) return;
@@ -777,6 +903,8 @@ async function viewGames(sid) {
   const s = await serverFrame(sid, "challenges");
   const base = `/api/servers/${encodeURIComponent(sid)}/games`;
   let d = await api(base);
+  const adding = egAdd?.type === "game" && egAdd.sid === sid ? egAdd : null;      // a game for an event
+  egAdd = null;
   const fmtT = (sec) => `${Math.floor(Math.max(0, sec) / 60)}:${String(Math.floor(Math.max(0, sec) % 60)).padStart(2, "0")}`;
   const fmtWhen = (ts) => new Date(ts * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
   const online = () => state.servers.find((x) => x.id === sid)?.online || [];
@@ -800,6 +928,7 @@ async function viewGames(sid) {
     return `<div class="ch-card panel ch-${live ? "running" : r.state}" data-gid="${esc(r.id)}">
       <div class="ch-head"><span class="ch-emoji">${emoji}</span><div><h3>${esc(r.name)}</h3>${status}</div>
         <div class="ch-acts">${live || r.state === "scheduled" ? `<button class="btn sm danger" type="button" data-stop>${live ? "Stop" : "Cancel"}</button>` : `<button class="icon-btn" type="button" data-stop aria-label="Remove">✕</button>`}</div></div>
+      ${r.group_title ? `<p class="small ch-ingroup">🗓️ Part of <a href="#/s/${encodeURIComponent(sid)}/challenges/events">${esc(r.group_title)}</a></p>` : ""}
       ${joinedLine(r)}${r.result ? `<p class="ch-result">${esc(r.result)}</p>` : ""}${r.chest_error ? `<p class="notice small">The chest didn't place: ${esc(r.chest_error)}</p>` : ""}${body}</div>`;
   };
   const render = () => {
@@ -807,6 +936,7 @@ async function viewGames(sid) {
     const packOk = (d.pack || 0) >= d.pack_needed, spleefOk = (d.pack || 0) >= (d.pack_needed_spleef || 10);
     const needsPack = (k) => (k === "archery" && !packOk) || (k === "spleef" && !spleefOk);
     setView(serverHeader(s, "challenges") + playSwitch(sid, "games") + rconEchoNote(d) + `
+      ${adding ? egBanner(adding, "a game") + `<p class="muted">${adding.iid ? "Change it below." : "Press <b>Set up</b> on the game to play."}</p>` : ""}
       ${d.rcon ? "" : `<p class="notice">Games need RCON turned on for this server (⚙ settings).</p>`}
       ${live.length ? `<section class="section"><div class="section-head"><h2>Playing now</h2></div><div class="ch-list">${live.map(runCard).join("")}</div></section>` : ""}
       <section class="section"><div class="ch-list">${Object.entries(GAME_INFO).map(([k, [e, t, about]]) => `<div class="ch-card panel gm-pick">
@@ -817,6 +947,7 @@ async function viewGames(sid) {
       ${past.length ? `<section class="section"><div class="section-head"><h2>Finished</h2></div><div class="ch-list">${past.map(runCard).join("")}</div></section>` : ""}`);
     wireHeader(s);
     $$("[data-setup]").forEach((b) => b.addEventListener("click", () => openSetup(b.dataset.setup)));
+    $("[data-eg-cancel]")?.addEventListener("click", () => egBack(sid));
     $$("[data-gid]").forEach((el) => el.querySelector("[data-stop]")?.addEventListener("click", async () => {
       const r = d.runs.find((x) => x.id === el.dataset.gid);
       const active = ["scheduled", "countdown", "hiding", "running"].includes(r.state);
@@ -835,6 +966,10 @@ async function viewGames(sid) {
       mode: "bullseye", word: "HORSE", give_bow: true, hint_after: 5, items: [], prize: null, hot: false, hot_bonus: 2, hot_far: 40, hot_on: 45, hot_off: 20,
       underwater: false, g: { on: false, spot: null, r: 4 }, layers: 1, best_of: 3, teams: false, snowballs: false, shrink: true, shrink_after: 60,
       seconds: 120, rounds: 1, peaceful: true, optin: true };
+    if (adding?.body?.game === game) {                   // changing an event's game: its own settings
+      const b = adding.body;
+      Object.assign(f, b, { prize: b.prizes?.[0] || null, items: b.items || [], g: b.gather ? { on: true, spot: b.gather, r: b.gather.r || 4 } : { on: false, spot: null, r: 4 } });
+    }
     if (game === "spleef") f.radius = 10;
     const at = (() => { const t = new Date(Date.now() + 15 * 60e3); t.setSeconds(0, 0); return new Date(t.getTime() - t.getTimezoneOffset() * 60e3).toISOString().slice(0, 16); })();
     f.at = at;
@@ -895,18 +1030,18 @@ async function viewGames(sid) {
         <div class="gm-opts">${options()}</div>
         ${game === "archery" || game === "treasure" ? gatherHtml(f.g, online()) : game === "hideseek" ? `<p class="muted small">Everyone is brought to the middle of the area when it starts, and back to where they were when it's over.</p>` : ""}
         ${game !== "treasure" ? `<div class="gm-prize"><span class="lbl">Prize for the winner${game === "hideseek" ? "s" : ""}</span><button type="button" class="btn ch-pick" id="gm-prize">${pickBtn(f.prize, "Optional")}</button></div>` : ""}
-        <div class="ch-when"><span class="lbl">When</span>
+        ${adding ? `<p class="muted small">Part of <b>${esc(adding.title)}</b>: it starts when its turn comes.</p>` : `<div class="ch-when"><span class="lbl">When</span>
           <label class="check"><input type="radio" name="when" value="now" ${f.when === "now" ? "checked" : ""}> Right now</label>
           <label class="check"><input type="radio" name="when" value="later" ${f.when === "later" ? "checked" : ""}> At <input class="input sm" type="datetime-local" name="at" value="${esc(f.at)}"></label></div>
-        ${optinField(f.optin)}
-        <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Start</button></div>
+        ${optinField(f.optin)}`}
+        <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">${adding ? (adding.iid ? "Save the change" : `Add to ${esc(adding.title)}`) : "Start"}</button></div>
       </form>`;
     const sync = (m) => {
       const fm = $("#gm-form", m);
       for (const k of ["seeker", "mode", "word"]) if (fm[k]) f[k] = fm[k].value;
       for (const k of ["hide_secs", "minutes", "seconds", "rounds", "hint_after", "radius", "hot_bonus", "hot_far", "hot_on", "hot_off", "layers", "best_of", "shrink_after"]) if (fm[k]) f[k] = +fm[k].value;
       for (const k of ["no_dig", "marco", "infect", "give_bow", "hot", "teams", "snowballs", "shrink", "underwater", "peaceful", "optin"]) if (fm[k]) f[k] = fm[k].checked;
-      f.when = fm.when.value; f.at = fm.at.value;
+      if (fm.when) { f.when = fm.when.value; f.at = fm.at.value; }
     };
     const show = () => openModal(body(), (m) => {
       m.classList.add("gm-modal");
@@ -970,6 +1105,10 @@ async function viewGames(sid) {
         if (f.g.on && !f.g.spot) { showToast("Pick the spot to teleport everyone to (or untick teleporting)", 3000); return; }
         const start = f.when === "now" ? Date.now() / 1000 : new Date(f.at).getTime() / 1000;
         try {
+          if (adding) {
+            const { prize, g, ...rest } = f;
+            closeModal(); await egSave(adding, "game", { ...rest, prizes: prize ? [prize] : [], gather: gatherBody(g) }); return;
+          }
           await post(base, { ...f, start, prizes: f.prize ? [f.prize] : [], gather: gatherBody(f.g) });
           closeModal(); showToast(f.when === "now" ? `${GAME_INFO[game][1]} is starting` : "Scheduled", 3000); await reload();
         } catch (err) { showError(esc(err.message), 4000); }
@@ -979,6 +1118,7 @@ async function viewGames(sid) {
   };
 
   render();
+  if (adding?.body?.game) openSetup(adding.body.game);        // changing an event's game: straight to its settings
   every(1000, tickLeft);
   every(2000, async () => {
     if ($(".modal")) return;

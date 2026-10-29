@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, board, challenges, community, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
+from . import adventures, auth, backups, board, challenges, community, control, db, eventgroups, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.11.1"
+VERSION = "1.12.0"
 
 
 @asynccontextmanager
@@ -1438,9 +1438,10 @@ async def get_upcoming(request: Request):
     names = {sid: srv.display_name for sid, srv in S.registry.servers.items() if _visible(srv)}
     items = upcoming.items(names)
     user = request.state.user
-    signed = await asyncio.to_thread(community.signups, [i["key"] for i in items])
+    every = [i for i in items if i["key"]] + [p for i in items for p in i.get("parts") or []]
+    signed = await asyncio.to_thread(community.signups, [i["key"] for i in every])
     shown = await asyncio.to_thread(lambda: {u["id"]: u["shown"] for u in auth.list_users()})
-    for i in items:                                  # who's coming: names for everyone signed in (never on the public page)
+    for i in every:                                  # who's coming: names for everyone signed in (never on the public page)
         ids = signed.get(i["key"], [])
         i["coming"], i["me"] = len(ids), user.id in ids
         if shown:
@@ -1455,6 +1456,9 @@ async def public_upcoming():
     names = {sid: srv.display_name for sid, srv in S.registry.servers.items() if _visible(srv) and not _private(srv)}
     items = [{k: v for k, v in i.items() if k not in ("link", "key")} for i in upcoming.items(names)
              if i.get("server") is None or i["server"] in names.values()]
+    for i in items:
+        if i.get("parts"):
+            i["parts"] = [{k: v for k, v in p.items() if k != "key"} for p in i["parts"]]
     return JSONResponse({"items": items, "days": upcoming.DAYS, "now": time.time()}, headers={"Cache-Control": "no-cache"})
 
 
@@ -2875,7 +2879,7 @@ async def get_challenges(sid: str, request: Request):
         spawn = (await asyncio.to_thread(S.world_info, srv, False)).get("spawn")
     except Exception:
         spawn = None
-    return {"kinds": challenges.kinds(), "items": optin.annotate("contest", challenges.list_for(srv.id)), "gifts": challenges.gifts_for(srv.id),
+    return {"kinds": challenges.kinds(), "items": eventgroups.tag(optin.annotate("contest", challenges.list_for(srv.id))), "gifts": challenges.gifts_for(srv.id),
             "rcon": bool(srv.rcon_conf()), "now": time.time(), "rcon_echo": _rcon_echo(srv), "spawn": spawn}
 
 
@@ -2901,6 +2905,74 @@ async def edit_challenge(sid: str, cid: str, request: Request):
         raise HTTPException(404, "Challenge not found") from None
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+
+
+# ---- events: a named lineup of contests, races and games, one after another (eventgroups.py)
+def _eg_call(fn, *a):
+    try:
+        return fn(*a)
+    except KeyError:
+        raise HTTPException(404, "Event not found") from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.get("/api/servers/{sid}/eventgroups")
+async def list_eventgroups(sid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    gs = eventgroups.list_for(srv.id)
+    st = optin._state()
+    for g in gs:                                   # who has joined each challenge so far (in the game)
+        for p in g["parts"]:
+            if p["ref"] and g["optin"]:
+                p["joined"] = optin.joined(f"{p['type']}:{p['ref']}", st)
+    return {"groups": gs, "now": time.time()}
+
+
+@app.post("/api/servers/{sid}/eventgroups")
+async def add_eventgroup(sid: str, request: Request):
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    g = _eg_call(eventgroups.create, srv.id, await _body(request))
+    auth.audit(user, srv.id, "event_add", g["title"])
+    return g
+
+
+@app.put("/api/servers/{sid}/eventgroups/{gid}")
+async def put_eventgroup(sid: str, gid: str, request: Request):
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    g = _eg_call(eventgroups.update, srv.id, gid, await _body(request))
+    auth.audit(user, srv.id, "event_change", g["title"])
+    return g
+
+
+@app.post("/api/servers/{sid}/eventgroups/{gid}/items")
+async def add_eventgroup_items(sid: str, gid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    return _eg_call(eventgroups.add_items, srv.id, gid, await _body(request))
+
+
+@app.put("/api/servers/{sid}/eventgroups/{gid}/items/{iid}")
+async def put_eventgroup_item(sid: str, gid: str, iid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    return _eg_call(eventgroups.change_item, srv.id, gid, iid, await _body(request))
+
+
+@app.delete("/api/servers/{sid}/eventgroups/{gid}")
+async def delete_eventgroup(sid: str, gid: str, request: Request):
+    """Call an event off (whatever of it is on now stops) or, once it's over, take it off the list."""
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    for kind, rid in _eg_call(eventgroups.running_refs, srv.id, gid):
+        await {"contest": challenges.cancel, "race": races.cancel, "game": games.cancel}[kind](srv, rid)
+    if not eventgroups.remove(srv.id, gid):
+        raise HTTPException(404, "Event not found")
+    auth.audit(user, srv.id, "event_remove", gid)
+    return {"ok": True}
 
 
 @app.delete("/api/servers/{sid}/challenges/{cid}")
@@ -3113,7 +3185,7 @@ async def get_games(sid: str, request: Request):
         except Exception:
             pack = None
     w = await asyncio.to_thread(S.world_info, srv, False) if srv.is_java else {}
-    return {"runs": optin.annotate("game", games.runs_for(srv.id)), "rcon": bool(srv.rcon_conf()), "pack": pack, "pack_needed": 2, "pack_needed_spleef": 10,
+    return {"runs": eventgroups.tag(optin.annotate("game", games.runs_for(srv.id))), "rcon": bool(srv.rcon_conf()), "pack": pack, "pack_needed": 2, "pack_needed_spleef": 10,
             "spawn": w.get("spawn"), "now": time.time(), "rcon_echo": _rcon_echo(srv)}
 
 
@@ -3153,7 +3225,7 @@ async def game_target(sid: str, request: Request, player: str):
 async def get_races(sid: str, request: Request):
     auth.require_admin(request)
     srv = await _server(sid)
-    runs = optin.annotate("race", races.runs_for(srv.id))
+    runs = eventgroups.tag(optin.annotate("race", races.runs_for(srv.id)))
     for r in runs:
         r["standings"] = races.standings(r)
     w = await asyncio.to_thread(S.world_info, srv, False) if srv.is_java else {}

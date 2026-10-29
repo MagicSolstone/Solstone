@@ -303,6 +303,12 @@ def event_key(kind: str, title: str, at: float) -> str:
     return hashlib.sha1(f"{kind}|{title}|{int(at)}".encode()).hexdigest()[:12]
 
 
+def item_key(kind: str, title: str, item: dict) -> str:
+    """The "I'm coming!" key of a contest, race or game: of its event's lineup when it's part of one (that doesn't
+    change when the lineup's times shift), otherwise of its own name and start."""
+    return item.get("signup") or event_key(kind, title, item["start"])
+
+
 def signups(keys: list[str]) -> dict[str, list[int]]:
     _init()
     if not keys:

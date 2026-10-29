@@ -1,3 +1,26 @@
+# Solstone 1.12.0
+
+- **Events: a lineup of challenges under one name.** Play → Challenges has a new first tab, **🗓️ Events**.
+  - **The event:** an event like *Fishing Fridays* has:
+    - a name;
+    - a description you write, if you want one;
+    - a start time;
+    - the break between challenges;
+    - whether it repeats (once, every week or every day);
+    - whether players choose to join.
+  - **Its challenges:** each one is a contest, race or game, in order, with its own kind, length and prizes, and an optional 🏷️ note ("Warm-up", "Double prizes!").
+    - Add one with **🏆 Contest**, **🏁 Race** or **🎲 Game**. These open the usual form, without its own time. A contest can be added several times over ("5 in a row").
+    - Each challenge can be moved up or down (↑ ↓), copied (⧉), changed (✏️) or taken out (✕) until it starts. The event's name, description, break and start can be changed too.
+  - **Times:** contests have set lengths, so their times are exact. After a race or game, whatever comes next starts the chosen break after it actually ends. Until then those times are shown with ≈.
+  - **Joining:** players still join each challenge on its own with `/trigger join`.
+  - **Repeats:** a weekly event comes back as a whole once it's over.
+  - **Back to back:** choosing several contests "back to back" on the Contests page now makes an event of them, so they stay together.
+  - **On the other tabs:** contests, races and games that are part of an event say *🗓️ Part of Fishing Fridays* on the Contests, Races and Games tabs. They're changed from the event.
+- **Events page:**
+  - **One card per event:** its name, time span (7:00–7:33), how often it repeats and your description, with its challenges as a row of cards in order (time, name, note) that scrolls sideways on phones. The one on now is highlighted.
+  - **Signed in:** each challenge has its own **I'm coming**, with who's coming. **I'm coming to all of it** signs you up for every one at once.
+  - **Visitors:** they see the same card, without names or buttons.
+
 # Solstone 1.11.1
 
 - **Change a scheduled contest:** **✏️ Edit** on a contest that hasn't started puts it back in the form. You can change the time, the prizes, its length or anything else, then **Save the changes**.

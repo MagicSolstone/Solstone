@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from . import community, board, challenges, db, fwshow, games, races
+from . import community, board, challenges, db, eventgroups, fwshow, games, races
 
 DAYS = 90
 NIGHT_GAP = 45 * 60            # seconds between one event's end and the next one's start that still make one night
@@ -32,7 +32,7 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
 
     # contests, races, games: on now, or scheduled ahead
     for c in challenges._load()["items"]:
-        if c["server"] not in server_names:
+        if c["server"] not in server_names or c.get("group"):      # part of an event: shown with it (below)
             continue
         label, emoji, unit, _crit, _div = challenges.KINDS.get(c["kind"], ("Contest", "🏆", ("", ""), [], 1))
         link = f"#/s/{c['server']}/challenges"
@@ -50,7 +50,7 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
                     ends=at + c["minutes"] * 60, optin=bool(c.get("optin")))
                 at += step
     for r in races._load()["runs"]:
-        if r["server"] not in server_names:
+        if r["server"] not in server_names or r.get("group"):
             continue
         link = f"#/s/{r['server']}/challenges/races"
         if r["state"] in ("countdown", "running"):
@@ -59,7 +59,7 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
             add(r["start"], "race", "🏁", f"{r['name']} race", f"{len(r['points']) - 2} checkpoints · {r['minutes']} minutes", server=r["server"], link=link,
                 ends=r["start"] + r["minutes"] * 60, optin=bool(r.get("optin")))
     for r in games._load()["runs"]:
-        if r["server"] not in server_names:
+        if r["server"] not in server_names or r.get("group"):
             continue
         name, emoji = games.KINDS.get(r["game"], ("Game", "🎲"))
         link = f"#/s/{r['server']}/challenges/games"
@@ -68,6 +68,32 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
         elif r["state"] == "scheduled" and r["start"] <= until:
             add(r["start"], "game", emoji, r["name"] or name, name if (r["name"] or name) != name else "", server=r["server"], link=link,
                 ends=r["start"] + float(r.get("minutes") or 10) * 60, optin=bool(r.get("optin")))
+
+    # events: one card each, with its lineup of challenges in order (and the next few times a repeating one is on)
+    for g in eventgroups._load()["groups"]:
+        if g["server"] not in server_names or g["state"] in eventgroups.FINISHED or not g["items"]:
+            continue
+        v = eventgroups.view(g, t)
+        step = challenges.REPEATS.get(g.get("repeat") or "")
+        ahead = 28 * 86400 if g.get("repeat") == "weekly" else 6 * 86400
+        k = 0
+        while v["start"] + k * (step or 0) <= until and (k == 0 or (step and k * step <= ahead)):
+            shift = k * (step or 0)
+            first = {**g, "start": g["start"] + shift}
+            parts = [{"id": p["id"], "kind": p["type"], "title": p["title"], "emoji": p["emoji"], "note": p["note"],
+                      "at": p["start"] + shift, "time": _clock(p["start"] + shift), "approx": not p["exact"],
+                      "live": k == 0 and p["state"] == "running", "done": k == 0 and p["state"] == "done",
+                      "key": eventgroups.signup_key(first, p["id"])} for p in v["parts"]]
+            live = k == 0 and v["state"] == "running"
+            at = v["start"] + shift
+            out.append({"ends": v["end"] + shift, "at": at, "date": datetime.fromtimestamp(at, zone).date().isoformat(),
+                        "time": _clock(at), "end_time": _clock(v["end"] + shift), "kind": "event", "emoji": parts[0]["emoji"],
+                        "title": g["title"], "detail": g["desc"], "server": server_names.get(g["server"]),
+                        "link": f"#/s/{g['server']}/challenges", "live": live, "days": 1, "key": None, "parts": parts,
+                        "optin": g["optin"], "repeat": g.get("repeat") or "", "then": False})
+            k += 1
+            if not step:
+                break
 
     cfg = board.config()
 

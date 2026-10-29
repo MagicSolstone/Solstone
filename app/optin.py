@@ -104,7 +104,7 @@ def key(kind: str, item: dict) -> str:
 def _event(kind: str, item: dict, title: str, state: str, late: bool, say: bool = True) -> dict:
     return {"key": key(kind, item), "kind": kind, "server": item["server"], "title": title, "start": item["start"], "state": state,
             "optin": bool(item.get("optin")), "late": late, "say": say, "item": item,
-            "signup": community.event_key(kind, title, item["start"])}
+            "signup": community.item_key(kind, title, item)}
 
 
 def events(sid: str | None = None) -> list[dict]:

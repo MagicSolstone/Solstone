@@ -34,6 +34,19 @@ function confirmBox(title, text, okLabel, danger = true) {
   });
 }
 
+// Ask for a line of text that may be left empty. Resolves to the text ("" when emptied), or null if cancelled.
+function promptBox(title, text, value = "", max = 160) {
+  return new Promise((resolve) => {
+    openModal(`<h2>${esc(title)}</h2><form id="pb-form"><p class="muted" style="margin-bottom:10px">${esc(text)}</p>
+      <input class="input" id="pb-in" maxlength="${max}" value="${esc(value)}" autocomplete="off">
+      <div class="actions" style="margin-top:14px"><button type="button" class="btn" id="pb-no">Cancel</button><button type="submit" class="btn primary">Save</button></div></form>`, (m) => {
+      $("#pb-no", m).addEventListener("click", () => { closeModal(); resolve(null); });
+      $("#pb-form", m).addEventListener("submit", (e) => { e.preventDefault(); const v = $("#pb-in", m).value.trim(); closeModal(); resolve(v); });
+      $("#pb-in", m).focus();
+    });
+  });
+}
+
 // Ask for a short line of text. Resolves to the text, or "" if cancelled.
 function textBox(title, text, value = "", max = 40) {
   return new Promise((resolve) => {

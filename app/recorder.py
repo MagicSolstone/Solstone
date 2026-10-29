@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome
+from . import adventures, backups, board, challenges, db, eventgroups, fishing, fwshow, games, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -160,6 +160,7 @@ class Recorder:
         visible = [s for s in S.registry.servers.values() if not s.settings.get("hidden")]
         await guard.tick(visible)
         await board.tick(visible)
+        eventgroups.tick()  # events: their challenges' times kept in step, repeats brought back
         if not challenges.busy():                 # far-off starts; running contests are on the fast loop
             await challenges.tick(visible)
 
@@ -168,6 +169,8 @@ class Recorder:
         race, game, contest, moving, joining = races.busy(), games.busy(), challenges.busy(), gather.busy(), optin.busy()
         if not (race or game or contest or moving or joining):
             return
+        if eventgroups.busy():
+            eventgroups.tick()  # what follows a race or game waits for it to end
         await S.registry.refresh()
         visible = [s for s in S.registry.servers.values() if not s.settings.get("hidden")]
         if race:
