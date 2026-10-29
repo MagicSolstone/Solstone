@@ -20,6 +20,7 @@
   - **One card per event:** its name, time span (7:00–7:33), how often it repeats and your description, with its challenges as a row of cards in order (time, name, note) that scrolls sideways on phones. The one on now is highlighted.
   - **Signed in:** each challenge has its own **I'm coming**, with who's coming. **I'm coming to all of it** signs you up for every one at once.
   - **Visitors:** they see the same card, without names or buttons.
+- **Sign-in page:** just signing in now, plus the announcements. The *See who's playing* box is gone, since visitors land on the home page, which already shows who's on.
 
 # Solstone 1.11.1
 

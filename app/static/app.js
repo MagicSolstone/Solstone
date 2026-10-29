@@ -56,7 +56,7 @@ function showLogin(message = "") {
       <button class="btn primary" type="submit">Sign in</button>
       <p class="login-alt"><span id="login-signup" hidden>New here? <button type="button" class="link-btn" id="btn-signup">Make an account</button> · </span><a href="/guides/join">How to join the server</a> · <a href="/">Home</a></p>
       <p class="login-made">Made with Solstone</p>
-    </form><a class="login-status glass" id="login-status-link" href="/#live" hidden></a></div>`;
+    </form></div>`;
   const form = $("#login-form");
   form.querySelector("input").focus();
   fetch("/api/public/site").then((r) => r.json()).then((site) => {
@@ -64,9 +64,7 @@ function showLogin(message = "") {
     $("#login-signup").hidden = !site.signup;
   }).catch(() => {});
   $("#btn-signup").addEventListener("click", openSignup);
-  loadPublicStatus().then(() => startLoginScene());
-  state.loginRefresh && clearInterval(state.loginRefresh);
-  state.loginRefresh = setInterval(() => { if (!me.user) loadPublicStatus(); }, 30000);
+  startLoginScene();
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = new FormData(form), btn = form.querySelector("button");
@@ -132,7 +130,6 @@ async function signedIn(user) {
   showNavFor(user);
   fwLoaded = null; loadFireworkSettings();            // signed in: whose fireworks are whose, and which are yours
   stopLoginScene();
-  clearInterval(state.loginRefresh);
   if (!appSky.scene && $("#app-sky")) {
     // A bright in-game day is dimmed behind the panels (but not when the page is hidden to watch).
     appSky.scene = startSkyScene($("#app-sky"), { auto: false, sound: (t, i) => FWAudio.play(t, i),
