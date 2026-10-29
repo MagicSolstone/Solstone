@@ -1958,6 +1958,7 @@ a.glance-me:hover { border-color: var(--gold); }
 .fws-more > summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
 .fws-more[open] > summary { margin-bottom: 6px; }
 /* Fireworks editor: your join firework */
+.fwe-join[hidden] { display: none; }
 .fwe-join { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; margin: 0 0 12px; }
 .fwe-join select { max-width: 320px; }
 

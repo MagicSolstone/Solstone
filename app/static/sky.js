@@ -1218,7 +1218,9 @@ function startSkyScene(cv, opts = {}) {
   }
   const onVis = () => {
     if (document.hidden) { running = false; cancelAnimationFrame(raf); }
-    else if (auto && !reduced) wake();
+    // back on the page: carry on with whatever was in the air (a sky that only launches on request, like the
+    // editor's preview, used to stay frozen until the next launch)
+    else if (!(auto && reduced)) wake();
   };
   const onResize = () => { resize(); if (!running) { if (reduced && auto) still(); else { frame = 0; step(); } } };
   function still() {

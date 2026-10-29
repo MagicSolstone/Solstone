@@ -190,6 +190,11 @@ def main() -> int:
             if not pg.locator(".eg-adding").count() or pg.locator("#ch-form [name=when]").count():
                 problems.append("contests: adding to an event doesn't show the event form")
 
+            # the firework editor: no empty box above the save bar when there's no join firework to pick
+            pg.goto(f"{base}/app#/fireworks"); pg.wait_for_timeout(1200)
+            if pg.locator("#fwe-join").count() and pg.locator("#fwe-join").is_visible() and not (pg.locator("#fwe-join").text_content() or "").strip():
+                problems.append("firework editor: an empty box shows above the save bar")
+
             # Manage → Activity: filters and a page count
             pg.goto(f"{base}/app#/manage/activity"); pg.wait_for_timeout(1300)
             if not pg.locator("#audit-filters [name=action]").count() or not pg.locator("#audit-keep").count():
