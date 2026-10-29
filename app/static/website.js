@@ -41,6 +41,7 @@ const wsDate = (ts) => new Date(ts * 1000).toLocaleDateString([], { day: "numeri
 // What a post can stand in for: the built-in pages the site links to (site.ROLES).
 const WS_ROLES = { join: "The join guide (Ask to join goes under it)", account: "The guide to making an account", rules: "The server rules" };
 
+const wsDay = (ts) => { const d = ts ? new Date(ts * 1000) : new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const wsSaveLabel = (saved, published) => (published ? (saved ? "Save" : "Publish") : "Save draft");
 
 function wsEditHtml(p) {
@@ -56,6 +57,7 @@ function wsEditHtml(p) {
       <img data-card-img alt="The card's picture" ${p.card_image && p.card_image !== "none" ? `src="/api/public/images/${esc(p.card_image)}"` : "hidden"}>
       <label class="btn sm ws-file" data-card-upload ${p.card_image && p.card_image !== "none" ? "" : "hidden"}>Choose a picture<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-card-file hidden></label>
       <input type="hidden" name="card_image" value="${esc(p.card_image || "")}"></div>
+    <label class="ws-date">Date <small>Shown on the post. News is listed by it, newest first</small><input class="input sm" type="date" name="date" value="${wsDay(p.created)}" data-was="${wsDay(p.created)}"></label>
     <div class="ws-row"><label>Kind<select class="input" name="category">${WS_CATS.map(([k, l]) => `<option value="${k}" ${p.category === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       <label class="check"><input type="checkbox" name="published" ${p.published !== false ? "checked" : ""}> Published <small>Off keeps it a draft only admins see</small></label>
       <label class="check"><input type="checkbox" name="pinned" ${p.pinned ? "checked" : ""}> Pinned <small>Stays at the top</small></label>
@@ -88,16 +90,29 @@ function wsEditHtml(p) {
 
 function wsPosts(el) {
   const posts = ws.data.posts;
-  const rows = posts.map((p) => ws.editing === p.id ? wsEditHtml(p) : `<div class="ws-post" data-id="${p.id}">
+  const ordered = (cat) => cat === "guide" || cat === "faq";      // guides and questions: the admin's own order
+  const row = (p, i, list) => ws.editing === p.id ? wsEditHtml(p) : `<div class="ws-post" data-id="${p.id}">
       <div><b>${esc(p.title)}</b>${p.pinned ? " 📌" : ""}${p.role ? ` <span class="chip">${esc(WS_ROLES[p.role]?.replace(/ \(.*\)$/, "") || p.role)}</span>` : ""}<div class="muted">${esc(WS_CATS.find(([k]) => k === p.category)?.[1] || "")} · ${esc(wsDate(p.created))}${p.published ? "" : " · <b>Draft</b>"}</div></div>
       <span class="btn-row">${p.published ? `<a class="btn sm" href="/post/${encodeURIComponent(p.slug)}" target="_blank" rel="noopener">View</a>` : ""}
-        <button class="btn sm" type="button" data-edit>Edit</button><button class="btn sm danger" type="button" data-del>Delete</button></span></div>`).join("");
+        ${ordered(p.category) ? `<button class="btn sm" type="button" data-move="up" ${i === 0 ? "disabled" : ""} aria-label="Move ${esc(p.title)} up">↑</button><button class="btn sm" type="button" data-move="down" ${i === list.length - 1 ? "disabled" : ""} aria-label="Move ${esc(p.title)} down">↓</button>` : ""}
+        <button class="btn sm" type="button" data-edit>Edit</button><button class="btn sm danger" type="button" data-del>Delete</button></span></div>`;
+  // one list per kind: news by date (newest first), guides and questions in the order given with ↑ ↓
+  const KIND = { news: "News", guide: "Guides", faq: "Questions" };
+  const rows = WS_CATS.map(([k, l]) => {
+    const label = KIND[k] || l;
+    const list = posts.filter((p) => p.category === k);
+    return list.length ? `<h3 class="ws-kind">${esc(label)} <small class="muted">${ordered(k) ? "in this order on the Help page and the home page: ↑ ↓ to move" : "newest first, by their date"}</small></h3>${list.map(row).join("")}` : "";
+  }).join("");
   el.innerHTML = `<section class="panel"><div class="ws-list">${rows || `<p class="muted">No posts yet. News is for updates and events. On the Help page, guides are for how-tos (the rules, starting out) and questions are for quick answers.</p>`}</div>
     ${ws.editing === "new" ? wsEditHtml({ category: "news", published: true }) : `<button class="btn primary" id="ws-new" style="margin-top:12px">+ New post</button>`}</section>`;
   $("#ws-new")?.addEventListener("click", () => { ws.editing = "new"; renderWebsite(); $("#ws-edit input[name=title]")?.focus(); });
   el.querySelectorAll(".ws-post[data-id]").forEach((row) => {
     const id = +row.dataset.id;
     row.querySelector("[data-edit]").addEventListener("click", () => { ws.editing = id; renderWebsite(); });
+    row.querySelectorAll("[data-move]").forEach((b) => b.addEventListener("click", async () => {
+      try { await post(`/api/posts/${id}/move`, { up: b.dataset.move === "up" }); ws.data = await api("/api/posts"); renderWebsite(); }
+      catch (err) { showError(esc(err.message), 4000); }
+    }));
     row.querySelector("[data-del]").addEventListener("click", async (e) => {
       const b = e.currentTarget;
       if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Really delete?"; return; }
@@ -231,6 +246,7 @@ function wsPosts(el) {
     e.preventDefault();
     const f = new FormData(form);
     const body = { title: f.get("title"), category: f.get("category"), body: f.get("body"), published: !!f.get("published"), pinned: !!f.get("pinned"), role: f.get("role") || "", summary: f.get("summary") || "", card_image: f.get("card_image") || "" };
+    if (form.date.value && form.date.value !== form.date.dataset.was) body.date = form.date.value;   // only a date that was changed
     try {
       if (ws.editing === "new") await post("/api/posts", body); else await post(`/api/posts/${ws.editing}`, body, "PUT");
       showToast(body.published ? "Saved — it's on the website" : "Saved as a draft", 2500);

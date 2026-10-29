@@ -170,6 +170,20 @@ def main() -> int:
 
             # a draft, previewed before anyone else can see it
             pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(1200)
+            # posts grouped by kind; guides and questions move with ↑ ↓, news has a date in its editor
+            for t in ("Smoke guide one", "Smoke guide two"):
+                pg.request.post(f"{base}/api/posts", data={"title": t, "body": "x", "category": "guide"}, headers=H)
+            pg.reload(); pg.wait_for_timeout(1200)
+            if not pg.locator(".ws-kind:has-text('Guides')").count():
+                problems.append("website: posts aren't grouped by kind")
+            two = pg.locator('.ws-post:has-text("Smoke guide two") [data-move="up"]')
+            if not two.count():
+                problems.append("website: guides have no ↑ ↓")
+            else:
+                two.click(); pg.wait_for_timeout(1000)
+                names = pg.locator(".ws-post b").all_text_contents()
+                if names.index("Smoke guide two") > names.index("Smoke guide one"):
+                    problems.append("website: ↑ didn't move the guide up")
             pg.click("#ws-new"); pg.wait_for_timeout(300)
             pg.fill("#ws-edit [name=title]", "Secret draft"); pg.fill("#ws-edit [name=body]", "Coming **soon**.")
             pg.uncheck("#ws-edit [name=published]")

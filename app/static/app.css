@@ -2041,3 +2041,7 @@ a.glance-me:hover { border-color: var(--gold); }
 .cm-new label:not(.check) { display: grid; gap: 4px; }
 .hp-more { display: flex; justify-content: center; margin-top: 12px; }
 .app-foot { text-align: center; font-size: .78rem; padding: 18px 0 70px; opacity: .7; }
+.ws-kind { margin: 16px 0 6px; font-size: 1rem; }
+.ws-kind:first-child { margin-top: 0; }
+.ws-kind small { font-weight: normal; font-size: .8rem; }
+.ws-date .input { max-width: 180px; }

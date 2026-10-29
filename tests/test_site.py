@@ -419,3 +419,34 @@ def test_home_counts_and_version_at_the_bottom(client, anon):
     finally:
         client.put("/api/settings/site", json={"home_news": 3, "home_guides": 4})
     assert r is not None
+
+
+def test_post_dates_and_order(client, anon):
+    made = []
+    try:
+        for title in ("Guide A", "Guide B", "Guide C"):
+            made.append(client.post("/api/posts", json={"title": title, "body": "x", "category": "guide"}).json())
+        order = lambda: [p["title"] for p in anon.get("/api/public/posts?category=guide&limit=50").json() if p["title"].startswith("Guide ")]  # noqa: E731
+        assert order() == ["Guide A", "Guide B", "Guide C"]                     # new ones go last, in the order written
+        client.post(f"/api/posts/{made[2]['id']}/move", json={"up": True})
+        assert order() == ["Guide A", "Guide C", "Guide B"]
+        client.post(f"/api/posts/{made[0]['id']}/move", json={"up": False})
+        assert order() == ["Guide C", "Guide A", "Guide B"]
+        client.post(f"/api/posts/{made[0]['id']}/move", json={"up": True})
+        client.post(f"/api/posts/{made[0]['id']}/move", json={"up": True})        # already first: stays
+        assert order() == ["Guide A", "Guide C", "Guide B"]
+        # news: by its date, which can be set
+        old = client.post("/api/posts", json={"title": "Old news", "body": "x", "category": "news", "date": "2020-05-01"}).json()
+        made.append(old)
+        new = client.post("/api/posts", json={"title": "Fresh news", "body": "x", "category": "news"}).json()
+        made.append(new)
+        titles = [p["title"] for p in anon.get("/api/public/posts?category=news&limit=50").json()]
+        assert titles.index("Fresh news") < titles.index("Old news")
+        client.put(f"/api/posts/{old['id']}", json={"title": "Old news", "body": "x", "category": "news", "date": "2099-01-01"})
+        titles = [p["title"] for p in anon.get("/api/public/posts?category=news&limit=50").json()]
+        assert titles[0] == "Old news" or titles.index("Old news") < titles.index("Fresh news")
+        assert client.post(f"/api/posts/{new['id']}/move", json={"up": True}).status_code == 400     # news goes by date
+        assert client.post("/api/posts", json={"title": "Bad", "body": "x", "date": "someday"}).status_code == 400
+    finally:
+        for p in made:
+            client.delete(f"/api/posts/{p['id']}")

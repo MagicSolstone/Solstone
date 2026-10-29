@@ -1,3 +1,10 @@
+# Solstone 1.10.5
+
+- **Put posts in the order you want:** Website → Posts lists them by kind: **News**, **Guides** and **Questions**.
+  - **Guides and questions** have **↑ ↓** buttons: the Help page and the home page show them in that order. New ones go at the end.
+  - **News** goes by date, newest first, and each post now has a **Date** in its editor: change it to put a post where it belongs (or on the day of an event). The date is the one shown on the post.
+  - **Pinned** posts still come first, whatever their date or place.
+
 # Solstone 1.10.4
 
 - **The top-down map no longer gets stuck when you zoom out fast:**

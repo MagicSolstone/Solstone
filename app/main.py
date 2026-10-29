@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.10.4"
+VERSION = "1.10.5"
 
 
 @asynccontextmanager
@@ -882,6 +882,19 @@ async def edit_post(pid: int, request: Request):
         raise HTTPException(404, str(e)) from e
     auth.audit(user, None, "post_edit", p["title"])
     return p
+
+
+@app.post("/api/posts/{pid}/move")
+async def move_post(pid: int, request: Request):
+    """A guide or question one place up or down (its order on the Help page and the home page)."""
+    auth.require_admin(request)
+    body = await _body(request)
+    try:
+        return await asyncio.to_thread(site.move, pid, -1 if body.get("up") else 1)
+    except LookupError as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
 
 
 @app.delete("/api/posts/{pid}")

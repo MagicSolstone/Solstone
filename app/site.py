@@ -8,6 +8,7 @@ of Markdown, turned into HTML in the browser (home.js), never stored as HTML.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 import time
 
 from . import db, settings_store
@@ -253,7 +254,8 @@ def _row(r, full: bool = True) -> dict:
            "created": r["created_ts"], "updated": r["updated_ts"], "role": r["role"] if "role" in r.keys() else None,
            "summary": (r["summary"] if "summary" in r.keys() else None) or "",
            # the card's picture: "" the first one in the post, "none" no picture, or one of its own
-           "card_image": (r["card_image"] if "card_image" in r.keys() else None) or ""}
+           "card_image": (r["card_image"] if "card_image" in r.keys() else None) or "",
+           "position": r["position"] if "position" in r.keys() else 0}
     if full:
         out["body"] = r["body"]
     else:
@@ -269,6 +271,10 @@ def _row(r, full: bool = True) -> dict:
     return out
 
 
+ORDERED = ("guide", "faq")              # these go in the admin's own order (↑ ↓); news by date, newest first
+_ORDER = "pinned DESC, CASE WHEN category IN ('guide','faq') THEN position ELSE 0 END, created_ts DESC"
+
+
 def posts(category: str | None = None, drafts: bool = False, limit: int = 50) -> list[dict]:
     where, args = [], []
     if category:
@@ -276,8 +282,7 @@ def posts(category: str | None = None, drafts: bool = False, limit: int = 50) ->
         args.append(category)
     if not drafts:
         where.append("published=1")
-    sql = "SELECT * FROM posts" + (" WHERE " + " AND ".join(where) if where else "") + \
-          " ORDER BY pinned DESC, created_ts DESC LIMIT ?"
+    sql = "SELECT * FROM posts" + (" WHERE " + " AND ".join(where) if where else "") + f" ORDER BY {_ORDER} LIMIT ?"
     return [_row(r, full=drafts) for r in db.q(sql, (*args, max(1, min(200, limit))))]
 
 
@@ -311,10 +316,12 @@ def save(body: dict, author: str, pid: int | None = None) -> dict:
     summary = _line(body.get("summary"), 240)
     card_image = str(body.get("card_image") or "")
     card_image = card_image if card_image == "none" or IMAGE_NAME.match(card_image) else ""
+    when = _date(body.get("date"))                 # the post's date, as the admin set it (news is listed by it)
     if pid is None:
-        pid = db.x("INSERT INTO posts(slug, title, body, category, published, pinned, author, created_ts, updated_ts, role, summary, card_image) "
-                   "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (_slug_for(title), title, text, category, published, pinned, author, now, now, role, summary,
-                                                      card_image))
+        last = db.q("SELECT COALESCE(MAX(position), 0) AS m FROM posts WHERE category=?", (category,))[0]["m"]
+        pid = db.x("INSERT INTO posts(slug, title, body, category, published, pinned, author, created_ts, updated_ts, role, summary, card_image, "
+                   "position) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (_slug_for(title), title, text, category, published, pinned, author, when or now,
+                                                                   now, role, summary, card_image, last + 1))
     else:
         old = db.q("SELECT role, summary, card_image FROM posts WHERE id=?", (pid,))
         if not old:
@@ -327,9 +334,41 @@ def save(body: dict, author: str, pid: int | None = None) -> dict:
             card_image = old[0]["card_image"] or ""
         db.x("UPDATE posts SET slug=?, title=?, body=?, category=?, published=?, pinned=?, updated_ts=?, role=?, summary=?, card_image=? "
              "WHERE id=?", (_slug_for(title, pid), title, text, category, published, pinned, now, role, summary, card_image, pid))
+        if when:
+            db.x("UPDATE posts SET created_ts=? WHERE id=?", (when, pid))
     if role:                                    # one post per role: this one takes it over
         db.x("UPDATE posts SET role=NULL WHERE role=? AND id<>?", (role, pid))
     return _row(db.q("SELECT * FROM posts WHERE id=?", (pid,))[0])
+
+
+def _date(v) -> float | None:
+    """A date from the editor ("2026-11-01", or with a time): the time it stands for, in the server's time zone."""
+    if not v:
+        return None
+    try:
+        d = datetime.fromisoformat(str(v).strip()[:19])
+    except ValueError:
+        raise ValueError("Pick a date for the post") from None
+    if len(str(v).strip()) <= 10:
+        d = d.replace(hour=12)                    # just a day: midday, so it's that day wherever it's read
+    return d.replace(tzinfo=db.tz()).timestamp()
+
+
+def move(pid: int, step: int) -> list[dict]:
+    """Move a guide or question one place up (-1) or down (+1) among its kind. Pinned ones stay on top whatever."""
+    row = db.q("SELECT category FROM posts WHERE id=?", (pid,))
+    if not row:
+        raise LookupError("No such post")
+    cat = row[0]["category"]
+    if cat not in ORDERED:
+        raise ValueError("News goes by date: change its date instead")
+    ids = [r["id"] for r in db.q(f"SELECT id FROM posts WHERE category=? ORDER BY {_ORDER}", (cat,))]
+    i = ids.index(pid)
+    j = max(0, min(len(ids) - 1, i + (1 if step > 0 else -1)))
+    ids[i], ids[j] = ids[j], ids[i]
+    for n, x in enumerate(ids, 1):                # numbered afresh, so the order is exactly what's shown
+        db.x("UPDATE posts SET position=? WHERE id=?", (n, x))
+    return posts(cat, drafts=True, limit=200)
 
 
 def guide_posts() -> dict[str, str]:
