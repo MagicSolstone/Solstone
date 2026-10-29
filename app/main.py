@@ -2294,16 +2294,9 @@ def _turned_away(srv: S.Server, days: int = 14) -> list[dict]:
     return list(seen.values())
 
 
-@app.get("/api/whitelist")
-async def whitelist_overview(request: Request):
-    """Manage → Whitelist: everyone who asked to join (with each server they asked for, in or not yet), everyone the
-    whitelist turned away lately, and each server's list, all in one place."""
-    auth.require_admin(request)
-    await S.registry.refresh()
-    servers = [s for s in S.registry.servers.values() if s.is_java and not s.settings.get("hidden")]
+def _open_requests(servers: list) -> list[dict]:
+    """Asks to join still waiting on an admin: not yet on the whitelist of every server they asked for."""
     by_id = {s.id: s for s in servers}
-    out_servers = [{"id": s.id, "name": s.display_name, "private": _private(s), "enabled": s.props.get("white-list", "false") == "true",
-                    "whitelist": control.whitelist_names(s)} for s in servers]
     reqs = []
     for r in site.join_requests()[::-1]:
         want = [x for x in (r.get("servers") or list(by_id)) if x in by_id]
@@ -2312,6 +2305,19 @@ async def whitelist_overview(request: Request):
         if each and all(e["in"] for e in each):
             continue                                  # done everywhere: their own page says so
         reqs.append({**{k: r.get(k) for k in ("player", "name", "note", "ts")}, "bedrock": mcname.is_bedrock(r["player"]), "servers": each})
+    return reqs
+
+
+@app.get("/api/whitelist")
+async def whitelist_overview(request: Request):
+    """Manage → Whitelist: everyone who asked to join (with each server they asked for, in or not yet), everyone the
+    whitelist turned away lately, and each server's list, all in one place."""
+    auth.require_admin(request)
+    await S.registry.refresh()
+    servers = [s for s in S.registry.servers.values() if s.is_java and not s.settings.get("hidden")]
+    out_servers = [{"id": s.id, "name": s.display_name, "private": _private(s), "enabled": s.props.get("white-list", "false") == "true",
+                    "whitelist": control.whitelist_names(s)} for s in servers]
+    reqs = _open_requests(servers)
     blocked: dict[str, dict] = {}
     for s in servers:
         for b in _turned_away(s):
@@ -2437,8 +2443,13 @@ async def community_signup(request: Request):
 @app.get("/api/community/unread")
 async def community_unread(request: Request):
     user = request.state.user
+    requests = 0
+    if user.role == "admin":                          # asks to join waiting on an admin count too
+        await S.registry.refresh()
+        servers = [s for s in S.registry.servers.values() if s.is_java and not s.settings.get("hidden")]
+        requests = len(await asyncio.to_thread(_open_requests, servers))
     return {"mine": await asyncio.to_thread(community.unread, user.id),
-            "admin": await asyncio.to_thread(community.unread_admin) if user.role == "admin" else 0}
+            "admin": await asyncio.to_thread(community.unread_admin) if user.role == "admin" else 0, "requests": requests}
 
 
 @app.get("/api/community/messages")

@@ -726,6 +726,7 @@ async function viewWhitelist() {
   document.title = `Whitelist · ${SITE_NAME}`;
   fillServersMenu(state.servers, null);
   const d = await api("/api/whitelist");
+  cmRefreshUnread();                                   // the number on your name: asks still waiting
   const ago = (ts) => esc(fmtAgo(ts));
   const pill = (sid, name, inOk, player) => inOk
     ? `<span class="wl-in">✅ ${esc(name)}</span>`

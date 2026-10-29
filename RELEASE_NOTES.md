@@ -1,5 +1,6 @@
 # Solstone 1.12.2
 
+- **Asks to join on your name:** for admins, the number on your name at the top now also counts asks to join that are still waiting (not yet let in on every server they asked for). **✅ Whitelist** in Manage shows how many, and the number goes down as you let people in.
 - **An invitation to make a website account, for players who don't have one:**
   - **When:** when they join the game, a line in chat (after the welcome message) says they can make a free account to vote, see what's coming up and say they're coming, and how to do it.
   - **Who gets it:** only players whose Minecraft name isn't on an account yet, and only while sign-up is open on the website. Nobody has to make one.

@@ -10,11 +10,12 @@ async function cmRefreshUnread() {
   if (!me.user) return;
   try {
     const n = await api("/api/community/unread");
-    const total = n.mine + (n.admin || 0);
+    const total = n.mine + (n.admin || 0) + (n.requests || 0);
     const badge = (el, count) => { if (el) { el.textContent = count ? String(count) : ""; el.hidden = !count; } };
     badge($("#account-unread"), total);
     badge($("#menu-unread"), n.mine);
     badge($("#menu-admin-unread"), n.admin);
+    badge($("#menu-requests"), n.requests);
     const cur = $("#manage-nav [aria-current]")?.dataset.m;
     if (cur) setManageNav(cur);                       // the phone dropdown's count too
   } catch { /* offline for a moment */ }

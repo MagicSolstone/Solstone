@@ -401,3 +401,15 @@ def test_letting_in_a_name_the_game_doesnt_know(client, sid, rcon):
     finally:
         site.settings_store.save_section("join_requests", [])
         site.settings_store.save_section("join_let_in", [])
+
+
+def test_asks_to_join_count_on_the_admins_name(client, viewer, sid):
+    """The number on an admin's name includes asks to join still waiting; others never see it."""
+    from app import site
+    before = client.get("/api/community/unread").json()["requests"]
+    site.add_join_request("Waiting_Kid", "", "", "")
+    try:
+        assert client.get("/api/community/unread").json()["requests"] == before + 1
+        assert viewer.get("/api/community/unread").json()["requests"] == 0
+    finally:
+        site.settings_store.save_section("join_requests", [])
