@@ -1,3 +1,9 @@
+# Solstone 1.9.7
+
+- **Your join firework, your pick:** Fireworks (the editor page) has **When you join the server**: pick one of your own fireworks, or anyone's, and it goes off in everyone's sky when you join. Or leave it on *A random firework*. It covers both your Java and Bedrock names. Admins can still set anyone's in the firework show settings.
+- **The Launch list is tidier:** **My fireworks** first, then **Made by players** as a row of names: pick someone to see theirs. Makers' names are only shown to people signed in; visitors get one plain list, so it's never a public list of players.
+- **Holidays are simpler to edit:** a day shows its name, date and message; its colours, favourite kinds and scheduled show are folded away under **Fireworks for this day**. Easter's date option says *Easter Sunday (worked out each year)*.
+
 # Solstone 1.9.6
 
 - **Fewer stalls when the server's disks are busy:** the players list, the leaderboards and the home page's live section (who played this week, where they were) read players' files away from the part of Solstone that answers pages, so a slow disk (the mover, a backup) no longer holds up the whole website. More room for background work too.

@@ -810,6 +810,12 @@ body.status-page { min-height: 100vh; }
 .fw-pick h5 { margin: 4px 0 0; font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .fwp-x { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 1rem; padding: 4px 8px; border-radius: 8px; }
 .fwp-surprise { border: 1px solid rgba(242, 193, 78, .5); background: rgba(242, 193, 78, .14); color: var(--bone); border-radius: 12px; padding: 10px; font-weight: 800; font-size: .95rem; cursor: pointer; }
+.fwp-makers { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.fwp-makers button { border: 1px solid var(--line); background: rgba(255,255,255,.04); color: inherit; border-radius: 999px; padding: 4px 10px; cursor: pointer; font: inherit; font-size: .85rem; }
+.fwp-makers button small { color: var(--muted); }
+.fwp-makers button[aria-pressed="true"] { background: var(--copper); border-color: var(--copper); color: #fff; }
+.fwp-makers button[aria-pressed="true"] small { color: inherit; }
+.fwp-hint { color: var(--muted); font-size: .85rem; margin: 0; }
 .fwp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .fwp-grid button { display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.04);
   color: var(--bone); cursor: pointer; font-size: .78rem; font-weight: 700; text-align: center; overflow-wrap: anywhere; }
@@ -1944,3 +1950,11 @@ a.glance-me:hover { border-color: var(--gold); }
 .ws-offline h3 { margin: 0 0 6px; }
 .ws-steps { margin: 10px 0; padding-left: 22px; display: grid; gap: 8px; }
 .ws-steps code { word-break: break-all; }
+
+/* Manage → Holidays: a day's fireworks folded away under its name, date and message */
+.fws-more { margin: 10px 0 4px; border-top: 1px solid var(--line); padding-top: 8px; }
+.fws-more > summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
+.fws-more[open] > summary { margin-bottom: 6px; }
+/* Fireworks editor: your join firework */
+.fwe-join { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; margin: 0 0 12px; }
+.fwe-join select { max-width: 320px; }

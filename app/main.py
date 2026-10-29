@@ -33,7 +33,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.9.6"
+VERSION = "1.9.7"
 
 
 @asynccontextmanager
@@ -1186,10 +1186,53 @@ def _show_designs() -> list[dict]:
     return out
 
 
+def _with_makers(designs: list[dict], user: auth.User | None) -> list[dict]:
+    """Who made each firework, by the name the site shows for them, and which are yours. Never for visitors who
+    aren't signed in: makers' names would be a public list of players."""
+    if user is None:
+        return [{k: v for k, v in d.items() if k != "author"} for d in designs]
+    names = auth.shown_names()
+    return [{**d, "maker": names.get(str(d.get("author", "")).lower(), d.get("author", "")), "mine": d.get("author") == user.username}
+            for d in designs]
+
+
 @app.get("/api/public/fireworks")
 async def public_fireworks(request: Request):
-    return JSONResponse({**_fireworks_cfg(), "custom": _show_designs(), **fwshow.today_state(), "base_shows": fwshow.base_shows_resolved()},
+    custom = await asyncio.to_thread(_with_makers, _show_designs(), request.state.user)
+    return JSONResponse({**_fireworks_cfg(), "custom": custom, **fwshow.today_state(), "base_shows": fwshow.base_shows_resolved()},
                         headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/fireworks/my-join")
+async def my_join_firework(request: Request):
+    """The firework that goes off when you join the server (your join firework), if join fireworks are on."""
+    user = auth.require_user(request)
+    sigs = fwshow.signatures()
+    cfg = fwshow.events_cfg()["join"]
+    mine = next((sigs[p["name"].lower()] for p in user.players if p["name"].lower() in sigs), "")
+    return {"firework": mine, "players": [p["name"] for p in user.players],
+            "active": bool(cfg["on"] and cfg["firework"] == "signature")}
+
+
+@app.put("/api/fireworks/my-join")
+async def set_my_join_firework(request: Request):
+    """Pick your own join firework (any firework made in the editor), for each of your Minecraft accounts; empty
+    goes back to a random one. An admin can still set anyone's in the firework show settings."""
+    user = auth.require_user(request)
+    if not user.players:
+        raise HTTPException(400, "Link your Minecraft account first (My Minecraft accounts, in the menu under your name)")
+    fid = str((await _body(request)).get("firework") or "")
+    if fid and not fireworks.get(fid):
+        raise HTTPException(404, "That firework doesn't exist any more")
+    sigs = fwshow.signatures()
+    for p in user.players:
+        if fid:
+            sigs[p["name"].lower()] = fid
+        else:
+            sigs.pop(p["name"].lower(), None)
+    fwshow.save_signatures(sigs)
+    auth.audit(user, None, "my_join_firework", fid or "random")
+    return await my_join_firework(request)
 
 
 @app.get("/api/public/fireworks/feed")
@@ -1346,7 +1389,9 @@ async def get_upcoming(request: Request):
 @app.get("/api/fireworks")
 async def list_fireworks(request: Request):
     user = request.state.user
-    return [{**d, "mine": d.get("author") == user.username, "can_edit": _can_edit(user, d)} for d in fireworks.all_designs()]
+    names = await asyncio.to_thread(auth.shown_names)
+    return [{**d, "mine": d.get("author") == user.username, "can_edit": _can_edit(user, d),
+             "maker": names.get(str(d.get("author", "")).lower(), d.get("author", ""))} for d in fireworks.all_designs()]
 
 
 @app.get("/api/sounds")

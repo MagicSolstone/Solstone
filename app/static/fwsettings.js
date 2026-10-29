@@ -251,7 +251,7 @@ function calEditHtml(e, i) {
     <div class="fws-grid">
       <label>Name<input class="input" name="name" maxlength="40" value="${esc(e.name)}"></label>
       <label>Emoji<input class="input" name="emoji" maxlength="4" value="${esc(e.emoji)}" style="width:70px"></label>
-      <label>When${sel("dtype", [["fixed", "Same date every year"], ["nth", "A weekday in a month"], ["easter", "Easter"], ["weekly", "Every week"], ["once", "Just once"]], d.type)}</label>
+      <label>When${sel("dtype", [["fixed", "Same date every year"], ["nth", "A weekday in a month"], ["easter", "Easter Sunday (worked out each year)"], ["weekly", "Every week"], ["once", "Just once"]], d.type)}</label>
       <label class="fws-when">${d.type === "fixed" ? `${sel("month", FWS_MONTHS.map((m, k) => [k + 1, m]), d.month)} ${num("day", d.day, 1, 31)}`
         : d.type === "nth" ? `${sel("n", [[1, "1st"], [2, "2nd"], [3, "3rd"], [4, "4th"], [-1, "Last"]], d.n)} ${sel("weekday", FWS_WEEKDAYS.map((w, k) => [k, w]), d.weekday)} of ${sel("month", FWS_MONTHS.map((m, k) => [k + 1, m]), d.month)}`
         : d.type === "weekly" ? sel("weekday", FWS_WEEKDAYS.map((w, k) => [k, w]), d.weekday)
@@ -259,6 +259,7 @@ function calEditHtml(e, i) {
       <label class="inl">Lasts ${num("days", e.days, 1, 14)} day(s)</label>
       <label class="wide">Message<input class="input" name="message" maxlength="80" value="${esc(e.message)}" placeholder="Shown on every page that day"></label>
     </div>
+    <details class="fws-more" ${fws.moreOpen ? "open" : ""}><summary>Fireworks for this day <span class="muted small">colours, favourite kinds and a scheduled show</span></summary>
     <div class="fws-sub">Colours <span class="muted small">(leave none for the usual colours)</span></div>
     <div class="fwe-colors" data-cal-colors>${e.colors.map((c, k) => `<span class="fwe-color"><input type="color" value="${c}" data-cc="${k}"><button type="button" class="chip-x" data-rmcc="${k}" aria-label="Remove">×</button></span>`).join("")}
       ${e.colors.length < 6 ? `<button type="button" class="btn sm" data-addcc>+ Colour</button>` : ""}</div>
@@ -273,7 +274,7 @@ function calEditHtml(e, i) {
       <label class="inl">for ${num("fmin", e.finale.minutes, 1, 30)} minutes</label>
       <label class="check"><input type="checkbox" name="fcount" ${e.finale.countdown ? "checked" : ""}> Count down from 10</label>
       <label class="inl">playing <select class="input sm" name="fshow"><option value="">a lively random mix</option>${(fws.data.shows || []).map((x) => `<option value="${esc(x.id)}" ${e.finale.show === x.id ? "selected" : ""}>🎬 ${esc(x.name)}</option>`).join("")}</select></label>
-    </div>
+    </div></details>
     <div class="btn-row"><button class="btn primary" type="submit">Save</button><button type="button" class="btn" data-cancel>Cancel</button>
       <button type="button" class="btn" data-preview>Preview</button><button type="button" class="btn danger" data-del>Delete</button></div>
   </form>`;
@@ -296,7 +297,7 @@ function wireCalEdit(el, i) {
     draft.kinds = [...form.querySelectorAll("[data-kind]:checked")].map((c) => c.value);
     draft.finale = { on: !!f.get("fon"), day: Math.max(0, (+f.get("fday") || 1) - 1), time: f.get("ftime") || "20:00", minutes: +f.get("fmin") || 5, countdown: !!f.get("fcount"), show: f.get("fshow") || "" };
   };
-  const redraw = () => { read(); fws.data.calendar[i] = draft; renderCalendar(el); };
+  const redraw = () => { read(); fws.moreOpen = !!form.querySelector(".fws-more")?.open; fws.data.calendar[i] = draft; renderCalendar(el); };
   form.querySelector('[name="dtype"]').addEventListener("change", redraw);
   form.querySelector('[name="days"]').addEventListener("change", redraw);
   form.querySelectorAll("[data-kind]").forEach((c) => c.addEventListener("change", () => c.closest(".chip").classList.toggle("on", c.checked)));

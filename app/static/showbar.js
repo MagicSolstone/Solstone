@@ -354,13 +354,27 @@ function startShowBar(scene, opts = {}) {
     pop.className = "fw-pick glass"; pop.hidden = true; pop.setAttribute("role", "dialog"); pop.setAttribute("aria-label", "Launch a firework");
     document.body.append(pop); els.push(pop);
     const fire = (what) => { if (FWAudio.on) FWAudio.ensure(); scene.launch(what || undefined); };
+    // Fireworks people made: yours first, then everyone else's one maker at a time (pick a name), so the list stays
+    // short however many there are. Signed out, makers' names aren't sent, so it's one plain list.
+    let maker = null;
+    const madeBtn = (d) => `<button type="button" data-made="${(FW.custom || []).indexOf(d)}"><span aria-hidden="true">🎇</span>${esc(d.name || "Firework")}</button>`;
     const renderPop = () => {
       const kinds = [...FW_SHAPES.filter((k, i, a) => a.indexOf(k) === i), ...FW_SPECIALS].filter((k) => fwOn(k) && FW_KIND_NAMES[k]);
-      const made = (FW.custom || []).slice(0, 60);
+      const made = FW.custom || [];
+      const mine = made.filter((d) => d.mine), others = made.filter((d) => !d.mine);
+      const byMaker = {};
+      for (const d of others) if (d.maker) (byMaker[d.maker] ||= []).push(d);
+      const makers = Object.keys(byMaker).sort((a, b) => a.localeCompare(b));
+      if (maker && !byMaker[maker]) maker = null;
+      const theirs = makers.length
+        ? `<h5>Made by players</h5><div class="fwp-makers" role="group" aria-label="Whose fireworks">${makers.map((n) => `<button type="button" data-maker="${esc(n)}" aria-pressed="${n === maker}">${esc(n)} <small>${byMaker[n].length}</small></button>`).join("")}</div>
+          ${maker ? `<div class="fwp-grid">${byMaker[maker].slice(0, 60).map(madeBtn).join("")}</div>` : '<p class="fwp-hint">Pick someone to see their fireworks.</p>'}`
+        : others.length ? `<h5>Made by players</h5><div class="fwp-grid">${others.slice(0, 60).map(madeBtn).join("")}</div>` : "";
       pop.innerHTML = `<div class="fwp-head"><h4>Launch a firework</h4><button type="button" class="fwp-x" data-close aria-label="Close">✕</button></div>
         <button type="button" class="fwp-surprise" data-fire="">🎲 Surprise me</button>
         <div class="fwp-grid">${kinds.map((k) => `<button type="button" data-fire="${k}"><span aria-hidden="true">${FW_KIND_NAMES[k][0]}</span>${FW_KIND_NAMES[k][1]}</button>`).join("")}</div>
-        ${made.length ? `<h5>Made by players</h5><div class="fwp-grid">${made.map((d, i) => `<button type="button" data-made="${i}" title="${esc(d.author ? `By ${d.author}` : "")}"><span aria-hidden="true">🎇</span>${esc(d.name || "Firework")}</button>`).join("")}</div>` : ""}`;
+        ${mine.length ? `<h5>My fireworks</h5><div class="fwp-grid">${mine.slice(0, 60).map(madeBtn).join("")}</div>` : ""}
+        ${theirs}`;
     };
     const place = () => {
       if (pop.hidden) return;
@@ -375,6 +389,7 @@ function startShowBar(scene, opts = {}) {
       if (b.dataset.close != null) setPop(false);
       else if (b.dataset.fire != null) fire(b.dataset.fire);
       else if (b.dataset.made != null) fire((FW.custom || [])[+b.dataset.made]);
+      else if (b.dataset.maker != null) { maker = maker === b.dataset.maker ? null : b.dataset.maker; renderPop(); place(); }
     });
     const closePop = (e) => { if (!pop.hidden && !pop.contains(e.target) && !bar.contains(e.target)) setPop(false); };
     const escPop = (e) => { if (e.key === "Escape" && !pop.hidden) setPop(false); };

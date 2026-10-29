@@ -141,6 +141,25 @@ function fweSetPicture(grid, f = ed.frame) {
 }
 
 // Fireworks in one place: the editor for everyone, and for admins the show (what the sky does by itself).
+// Your join firework: what goes off in everyone's sky when you join the server. Yours or anyone's, or random.
+async function fweJoinPanel() {
+  const el = $("#fwe-join");
+  const j = el && await api("/api/fireworks/my-join").catch(() => null);
+  if (!j || !j.players.length || !el.isConnected) return;
+  const opt = (d) => `<option value="${esc(d.id)}" ${d.id === j.firework ? "selected" : ""}>${esc(d.name || "Firework")}</option>`;
+  const mine = ed.list.filter((d) => d.mine), groups = {};
+  for (const d of ed.list.filter((x) => !x.mine)) (groups[d.maker || "Someone"] ||= []).push(d);
+  el.innerHTML = `<b>🎆 When you join the server</b>
+    <select class="input sm" id="fwe-join-pick" aria-label="Your join firework"><option value="">A random firework</option>
+      ${mine.length ? `<optgroup label="My fireworks">${mine.map(opt).join("")}</optgroup>` : ""}
+      ${Object.keys(groups).sort((a, b) => a.localeCompare(b)).map((n) => `<optgroup label="${esc(n)}">${groups[n].map(opt).join("")}</optgroup>`).join("")}</select>
+    <span class="muted small">${j.active ? `It goes off in everyone's sky when ${esc(j.players.join(" or "))} joins.` : "Join fireworks are switched off on this server right now."}</span>`;
+  el.hidden = false;
+  $("#fwe-join-pick").addEventListener("change", async (e) => {
+    try { await post("/api/fireworks/my-join", { firework: e.target.value }, "PUT"); showToast(e.target.value ? "That's your join firework now" : "Back to a random one", 2500); }
+    catch (err) { showError(esc(err.message), 4000); }
+  });
+}
 function fireworksTabs(on) {
   if (!isAdmin()) return "";
   return `<nav class="tabs" aria-label="Fireworks"><a href="#/fireworks" ${on === "editor" ? 'aria-current="page"' : ""}>🎨 Editor</a><a href="#/fireworks/show" ${on === "show" ? 'aria-current="page"' : ""}>🎆 Firework show</a></nav>`;
@@ -168,6 +187,7 @@ async function viewFireworkEditor(editId) {
   setView(`<div class="fwe-head"><h1>Fireworks</h1>
       ${fireworksTabs("editor")}
       <p class="muted">Design a firework, watch it go off, and save it. Fireworks marked <b>In the show</b> join the sky on every page of the site, including the home and sign-in pages.</p></div>
+    <div class="panel fwe-join" id="fwe-join" hidden></div>
     <div class="fwe-mode" id="fwe-mode" aria-live="polite"></div>
     <div class="fwe">
       <div class="fwe-left">
@@ -194,6 +214,7 @@ async function viewFireworkEditor(editId) {
   state.cleanups.push(() => { ed.scene?.stop(); ed.scene = null; FWAudio.solo = false; document.body.classList.remove("on-editor"); });
   renderControls();
   renderGallery();
+  fweJoinPanel();
   $("#fwe-launch")?.addEventListener("click", () => fweLaunch());
   $("#fwe-loop")?.addEventListener("change", (e) => { ed.loop = e.target.checked; });
   $("#fwe-sound")?.addEventListener("click", (e) => {

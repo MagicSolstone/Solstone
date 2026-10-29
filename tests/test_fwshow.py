@@ -156,3 +156,36 @@ def test_ground_sounds_and_sound_library(client, viewer, anon):
     assert viewer.delete(f"/api/sounds/{s['id']}").json() == {"ok": True}
     assert client.delete(f"/api/sounds/{other['id']}").json() == {"ok": True}
     assert client.get("/api/sounds").json() == []
+
+
+def test_makers_only_for_people_signed_in(client, anon):
+    d = client.post("/api/fireworks", json={"name": "Maker test", "in_show": True}).json()
+    try:
+        pub = next(x for x in anon.get("/api/public/fireworks").json()["custom"] if x["id"] == d["id"])
+        assert "author" not in pub and "maker" not in pub                 # no public list of who's on the server
+        mine = next(x for x in client.get("/api/public/fireworks").json()["custom"] if x["id"] == d["id"])
+        assert mine["mine"] is True and mine["maker"]
+    finally:
+        client.delete(f"/api/fireworks/{d['id']}")
+
+
+def test_players_pick_their_own_join_firework(client):
+    from fastapi.testclient import TestClient
+
+    from app import fwshow, main
+    u = client.post("/api/users", json={"username": "fw_player", "password": "player-pass-1", "role": "player"}).json()
+    d = client.post("/api/fireworks", json={"name": "My entrance", "in_show": True}).json()
+    try:
+        c = TestClient(main.app, headers={"X-Solstone": "1"})
+        c.post("/api/auth/login", json={"username": "fw_player", "password": "player-pass-1"})
+        assert c.put("/api/fireworks/my-join", json={"firework": d["id"]}).status_code == 400    # no Minecraft account yet
+        client.patch(f"/api/users/{u['id']}", json={"player": "Tyler"})
+        assert c.put("/api/fireworks/my-join", json={"firework": "nope"}).status_code == 404
+        r = c.put("/api/fireworks/my-join", json={"firework": d["id"]}).json()
+        assert r["firework"] == d["id"] and r["players"] == ["Tyler"]
+        assert fwshow.signatures()["tyler"] == d["id"]
+        assert c.put("/api/fireworks/my-join", json={"firework": ""}).json()["firework"] == ""   # back to random
+        assert "tyler" not in fwshow.signatures()
+    finally:
+        client.delete(f"/api/users/{u['id']}")
+        client.delete(f"/api/fireworks/{d['id']}")

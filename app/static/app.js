@@ -134,6 +134,7 @@ async function signedIn(user) {
   document.body.classList.remove("logged-out");
   document.body.classList.toggle("is-admin", user.role === "admin");
   showNavFor(user);
+  fwLoaded = null; loadFireworkSettings();            // signed in: whose fireworks are whose, and which are yours
   stopLoginScene();
   clearInterval(state.loginRefresh);
   if (!appSky.scene && $("#app-sky")) {

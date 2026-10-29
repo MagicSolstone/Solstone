@@ -298,6 +298,8 @@ def main() -> int:
                 pg.locator('.fws-cal-row:has-text("Halloween") [data-edit]').click(); pg.wait_for_timeout(300)
                 if not pg.locator(".fws-cal-edit").count():
                     problems.append("manage: a holiday doesn't open for editing")
+                elif pg.locator(".fws-cal-edit .fws-more[open]").count() or not pg.locator(".fws-cal-edit .fws-more").count():
+                    problems.append("manage: a holiday's fireworks details aren't folded away to start")
 
             # fireworks settings: every tab, then edit a show (copy a step)
             pg.goto(f"{base}/app#/fireworks/settings"); pg.wait_for_timeout(1200)

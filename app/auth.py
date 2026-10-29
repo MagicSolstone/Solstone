@@ -279,6 +279,12 @@ def create_user(username: str, password: str, role: str, check: bool = True,
     return get_user(uid)
 
 
+def shown_names() -> dict[str, str]:
+    """Each login (lowercased) -> the name shown for it on the site (see User.shown)."""
+    _init()
+    return {r["username"].lower(): _row_user(r).shown for r in db.q("SELECT * FROM users")}
+
+
 def username_taken(name: str) -> bool:
     _init()
     return bool(db.q("SELECT 1 FROM users WHERE username=? COLLATE NOCASE", (name,)))
