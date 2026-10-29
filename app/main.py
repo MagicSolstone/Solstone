@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, welcome, worldmap
+from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, webmap, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -33,7 +33,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.9.4"
+VERSION = "1.9.5"
 
 
 @asynccontextmanager
@@ -116,6 +116,7 @@ PLAYER_ROUTES: dict[str, set[str]] = {
     "/api/servers/{sid}/players/{uuid}": {"GET"},       # their own page only
     "/api/servers/{sid}/players/{uuid}/history": {"GET"},
     "/api/servers/{sid}/leaderboard": {"GET"},
+    "/api/servers/{sid}/webmap": {"GET"},               # the web map through Solstone, if players may see the map
     "/api/servers/{sid}/adventures": {"GET"},             # only the sessions they played in (see adventures_list)
     "/api/servers/{sid}/adventures/timeline": {"GET"},    # their own trail; others' only with the map on for players
     "/api/servers/{sid}/icon.png": {"GET"},
@@ -215,7 +216,9 @@ def _for_player(summary: dict) -> dict:
         return summary
     out = {k: summary[k] for k in _SUMMARY_FOR_PLAYERS if k in summary} | {"folder_found": True}
     if _players_see_map():
-        out |= {"player_map": True, "map_url": summary.get("map_url")}
+        # the map's own address only when it isn't shown through Solstone (then nobody needs it)
+        out |= {"player_map": True, "map_url": None if summary.get("map_proxy") else summary.get("map_url"),
+                "map_proxy": bool(summary.get("map_proxy") and summary.get("map_url"))}
     return out
 
 
@@ -1972,6 +1975,13 @@ async def put_settings(sid: str, request: Request):
             raise HTTPException(400, "Bedtime needs times like 21:00") from e
     if "join_mods" in body:
         body["join_mods"] = True if body["join_mods"] else ""
+    if "map_proxy" in body:                  # the web map through Solstone (webmap.py)
+        body["map_proxy"] = True if body["map_proxy"] else ""
+    if "map_url" in body:
+        u = str(body["map_url"] or "").strip()
+        if u and not re.fullmatch(r"https?://[^\s/]+(/\S*)?", u):
+            raise HTTPException(400, "The map address starts with http:// or https://")
+        body["map_url"] = u
     if "join_color" in body:                 # a border colour for its card: #rrggbb, or nothing
         c = str(body["join_color"] or "").strip().lower()
         body["join_color"] = c if re.fullmatch(r"#[0-9a-f]{6}", c) else ""
@@ -2836,6 +2846,46 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 async def status_page(sid: str = ""):
     """The live status is on the home page now; old links and wall screens land there."""
     return RedirectResponse("/#live", status_code=301)
+
+
+# ---- the web map (BlueMap etc.) through Solstone: see webmap.py
+def _may_see_web_map(user: auth.User | None, srv: S.Server | None) -> bool:
+    if user is None or srv is None or not srv.settings.get("map_url") or not srv.settings.get("map_proxy"):
+        return False
+    if srv.settings.get("hidden") or (_private(srv) and not user.is_admin):
+        return False
+    token = _viewer.set(user)
+    try:
+        allowed = _allowed(srv)
+    finally:
+        _viewer.reset(token)
+    return allowed and (not user.is_player or _players_see_map())
+
+
+@app.get("/api/servers/{sid}/webmap")
+async def web_map_pass(sid: str, request: Request):
+    """Where to open this server's web map through Solstone: an address with a pass for whoever's asking."""
+    user = auth.require_user(request)
+    srv = await _server(sid)
+    if not _may_see_web_map(user, srv):
+        raise HTTPException(404, "No web map here")
+    return {"url": f"/map/{quote(srv.id)}/{webmap.make_pass(user.id, srv.id)}/"}
+
+
+@app.api_route("/map/{sid}/{token}", methods=["GET", "HEAD"], include_in_schema=False)
+async def web_map_root(sid: str, token: str):
+    return RedirectResponse(f"/map/{quote(sid)}/{quote(token)}/", status_code=307)
+
+
+@app.api_route("/map/{sid}/{token}/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
+async def web_map(sid: str, token: str, path: str, request: Request):
+    uid = webmap.read_pass(token, sid)
+    user = await asyncio.to_thread(auth.get_user, uid) if uid is not None else None
+    srv = await S.registry.get(sid)
+    if not _may_see_web_map(user, srv):
+        return Response("This map link has run out, or isn't yours. Open the map again from the World tab.",
+                        status_code=403, media_type="text/plain", headers={"Content-Security-Policy": webmap.SANDBOX_CSP})
+    return await webmap.proxy(srv.settings["map_url"], path, request, f"/map/{quote(sid)}/{quote(token)}/")
 
 
 @app.get("/", include_in_schema=False)

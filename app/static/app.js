@@ -1261,7 +1261,10 @@ async function viewWorld(sid) {
   // Two maps: Solstone's own (drawn from the world files, with everyone's last spot) and a web map (BlueMap...) if set
   // The web map's frame goes in only when it's picked (a hidden frame still loads, and one at a home-network
   // address makes the browser ask for local network access); from outside the home, a home address can't load at all.
-  const webMap = () => s.map_url
+  // Through Solstone (map_proxy): a sandboxed frame with a pass in its address (webmap.py), from anywhere.
+  const hasWeb = !!(s.map_url || s.map_proxy);
+  const webMap = () => s.map_proxy ? '<div id="wm-proxy"><p class="muted">Opening the map…</p></div>'
+    : s.map_url
     ? isHomeNetwork(s.map_url) && !isHomeNetwork(location.href)
       ? `<div class="empty"><p>This map is at a home-network address (<code>${esc(s.map_url)}</code>), so it only opens on the same Wi-Fi as the server. <a href="${esc(s.map_url)}" target="_blank" rel="noopener">Open it</a></p>${isAdmin() ? `<p class="muted small">To show it to everyone, give it a public address (a Cloudflare tunnel to it, for example) in this server's ⚙ settings.</p>` : ""}</div>`
       : `<iframe class="map-frame" src="${esc(s.map_url)}" title="World map" loading="lazy"></iframe><p class="muted" style="margin-top:8px;font-size:.9rem"><a href="${esc(s.map_url)}" target="_blank" rel="noopener">Open the map full screen</a></p>`
@@ -1270,8 +1273,8 @@ async function viewWorld(sid) {
   const mapDims = w.dimensions.filter((d) => d.chunks > 0).map((d) => d.id)
     .sort((a, b) => ((DIM_ORDER.indexOf(a) + 1 || 9) - (DIM_ORDER.indexOf(b) + 1 || 9)));
   let pick = "own";
-  try { if (localStorage.getItem("solstone-world-map") === "web" && s.map_url) pick = "web"; } catch { /* private window */ }
-  const map = `<div class="world-map-pick">${isPlayer() && !s.map_url ? "" : `<span class="seg" role="group" aria-label="Which map"><button type="button" data-wm="own" aria-pressed="${pick === "own"}">🗺️ Top-down map</button><button type="button" data-wm="web" aria-pressed="${pick === "web"}">${s.map_url ? "🧊 Web map" : "＋ Web map"}</button></span>`}
+  try { if (localStorage.getItem("solstone-world-map") === "web" && hasWeb) pick = "web"; } catch { /* private window */ }
+  const map = `<div class="world-map-pick">${isPlayer() && !hasWeb ? "" : `<span class="seg" role="group" aria-label="Which map"><button type="button" data-wm="own" aria-pressed="${pick === "own"}">🗺️ Top-down map</button><button type="button" data-wm="web" aria-pressed="${pick === "web"}">${hasWeb ? "🧊 Web map" : "＋ Web map"}</button></span>`}
       ${mapDims.length > 1 ? `<select class="input sm" id="wm-dim" aria-label="Dimension">${mapDims.map((d) => `<option value="${esc(d)}">${esc(dimName(d))}</option>`).join("")}</select>` : ""}</div>
     <div id="wm-own" class="world-own-map" ${pick === "own" ? "" : "hidden"}></div><div id="wm-web" ${pick === "web" ? "" : "hidden"}>${pick === "web" ? webMap() : ""}</div>`;
   setView(serverHeader(s, "world") + `
@@ -1341,13 +1344,23 @@ async function viewWorld(sid) {
     if (here.length > 1) ownMap.fit(here.map((p) => ({ x: p.position.x, z: p.position.z })));
   };
   if (pick === "own") mountOwn(mapDims[0] || "minecraft:overworld");
+  const openProxied = async () => {
+    const box = $("#wm-proxy");
+    if (!box) return;
+    try {
+      const { url } = await api(`/api/servers/${encodeURIComponent(sid)}/webmap`);
+      box.innerHTML = `<iframe class="map-frame" src="${esc(url)}" title="World map" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads" referrerpolicy="no-referrer"></iframe>
+        <p class="muted" style="margin-top:8px;font-size:.9rem"><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open the map full screen</a></p>`;
+    } catch (err) { box.innerHTML = `<div class="empty"><p>The web map couldn't be opened: ${esc(err.message)}</p></div>`; }
+  };
+  if (pick === "web") openProxied();
   $("#wm-dim")?.addEventListener("change", (e) => mountOwn(e.target.value));
   document.querySelectorAll("[data-wm]").forEach((b) => b.addEventListener("click", () => {
     const which = b.dataset.wm;
     try { localStorage.setItem("solstone-world-map", which); } catch { /* private window */ }
     document.querySelectorAll("[data-wm]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
     $("#wm-own").hidden = which !== "own"; $("#wm-web").hidden = which !== "web";
-    if (which === "web" && !$("#wm-web").innerHTML) { $("#wm-web").innerHTML = webMap(); $("#btn-map")?.addEventListener("click", () => openSettings(s)); }
+    if (which === "web" && !$("#wm-web").innerHTML) { $("#wm-web").innerHTML = webMap(); $("#btn-map")?.addEventListener("click", () => openSettings(s)); openProxied(); }
     if (which === "own" && !ownMap) mountOwn($("#wm-dim")?.value || mapDims[0] || "minecraft:overworld");
   }));
   // The clock moves on its own (20 ticks a second while people play) and checks back with
@@ -1525,6 +1538,7 @@ async function openSettings(s) {
     <form id="settings-form">
       <label>Display name<input class="input" name="display_name" value="${esc(cur.display_name || "")}" placeholder="${esc(s.name)}"></label>
       <label>Map address <small>BlueMap, squaremap or Dynmap web address shown on the World tab</small><input class="input" name="map_url" value="${esc(cur.map_url || "")}" placeholder="http://192.168.1.10:8100"></label>
+      <label class="check"><input type="checkbox" name="map_proxy" ${cur.map_proxy ? "checked" : ""}> Show the map through Solstone <small>It then opens from anywhere, not just at home, and only for people signed in who may see the map (Players only with <i>Players can see the map</i> on). The map itself stays off the internet: use its home-network address above.</small></label>
       <p class="muted small">How to join this server (its addresses, a note, the mods) is set in Manage → Website → Site details.</p>
       <label>RCON host <small>Used for live inventories. Leave blank to use ${esc(s.rcon?.host || "the Crafty host")}.</small><input class="input" name="rcon_host" value="${esc(cur.rcon_host || "")}"></label>
       <label>RCON port <small>Leave blank to use rcon.port from server.properties</small><input class="input" name="rcon_port" inputmode="numeric" value="${esc(cur.rcon_port || "")}"></label>
@@ -1537,7 +1551,8 @@ async function openSettings(s) {
       e.preventDefault();
       const f = new FormData(e.target);
       const body = { display_name: f.get("display_name"), map_url: f.get("map_url"), rcon_host: f.get("rcon_host"),
-        rcon_port: f.get("rcon_port") ? Number(f.get("rcon_port")) : "", hidden: f.get("hidden") ? true : "", private: f.get("private") ? true : "" };
+        rcon_port: f.get("rcon_port") ? Number(f.get("rcon_port")) : "", hidden: f.get("hidden") ? true : "", private: f.get("private") ? true : "",
+        map_proxy: f.get("map_proxy") ? true : "" };
       if (f.get("rcon_password")) body.rcon_password = f.get("rcon_password");
       try {
         await post(`/api/servers/${encodeURIComponent(s.id)}/settings`, body, "PUT");

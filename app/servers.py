@@ -381,6 +381,7 @@ async def server_summary(srv: Server) -> dict:
         "rcon": {"configured": rcon is not None, "host": rcon[0] if rcon else None,
                  "port": rcon[1] if rcon else None, "error": srv.rcon_error},
         "map_url": srv.settings.get("map_url"),
+        "map_proxy": bool(srv.settings.get("map_proxy")),
         "private": bool(srv.settings.get("private")),
         "loader": detect_loader(srv) if srv.is_java else None,
         "game": srv.game,

@@ -12,8 +12,11 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.request
+import functools
+import http.server
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -255,6 +258,30 @@ def main() -> int:
                 problems.append("banners: an announcement doesn't show on the app's pages")
             pg.request.put(f"{base}/api/board", data={"items": []}, headers=H)
             pg.set_viewport_size({"width": 1280, "height": 860})
+            # the web map through Solstone: in a walled-off frame, where a map's own code still has storage and its
+            # files, but no reach into Solstone (a claim name on the map could be anything)
+            mapdir = Path(tempfile.mkdtemp(prefix="smoke-map-"))
+            (mapdir / "settings.json").write_text('{"maps":["world"]}')
+            (mapdir / "index.html").write_text("""<!doctype html><html><head><title>map</title></head><body><div id="out">starting</div><script>
+              (async () => { const o = [];
+                try { localStorage.setItem("k", "1"); o.push("storage:" + localStorage.getItem("k")); } catch (e) { o.push("storage:" + e.name); }
+                try { o.push("files:" + (await (await fetch("settings.json")).json()).maps[0]); } catch (e) { o.push("files:failed"); }
+                try { o.push("solstone:" + (parent.document.title ? "reached" : "reached") + document.cookie); } catch (e) { o.push("solstone:blocked"); }
+                document.getElementById("out").textContent = o.join(" "); })();</script></body></html>""")
+            map_srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(mapdir)))
+            threading.Thread(target=map_srv.serve_forever, daemon=True).start()
+            pg.request.put(f"{base}/api/servers/{sid}/settings", data={"map_url": f"http://127.0.0.1:{map_srv.server_address[1]}", "map_proxy": True}, headers=H)
+            pg.goto(f"{base}/app#/s/{sid}/world"); pg.wait_for_timeout(1200)
+            pg.click('[data-wm="web"]'); pg.wait_for_timeout(2500)
+            frame = next((f for f in pg.frames if "/map/" in f.url), None)
+            got = (frame.locator("#out").text_content() or "") if frame else ""
+            if got != "storage:1 files:world solstone:blocked":
+                problems.append(f"web map: the map through Solstone isn't walled off and working ({got or 'no frame'})")
+            check(pg, "world-web-map")
+            pg.click('[data-wm="own"]')
+            pg.request.put(f"{base}/api/servers/{sid}/settings", data={"map_url": "", "map_proxy": ""}, headers=H)
+            map_srv.shutdown()
+
             # Manage → Notifications is a page (not a popup), Manage → Holidays switches days on and off
             pg.goto(f"{base}/app#/manage/notifications"); pg.wait_for_timeout(1200)
             if not pg.locator("#notify-form").count() or pg.locator("#modal-root .modal").count():

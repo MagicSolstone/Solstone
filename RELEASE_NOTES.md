@@ -1,3 +1,16 @@
+# Solstone 1.9.5
+
+## One name per player
+- **Your Minecraft name is your login:** making an account no longer asks for a username. You sign in with your Minecraft name (Java, or Bedrock with its dot) and the password you pick. Accounts made before keep their login.
+- **Sign in with any of your Minecraft names:** with a Java and a Bedrock account linked, either name works, with the one password. The sign-in page says *Minecraft name or username*.
+- **Players are shown by their Minecraft name:** on the website a player is always their in-game name, never a made-up one. With two linked, **My Minecraft accounts** (it was *My Minecraft players*) marks one **⭐ Main**, and **Make main** switches. Admins and Trusted accounts keep a display name of their own.
+- The account menu says which login you're signed in with, and the guide to making an account explains linking Java and Bedrock.
+
+## The web map from anywhere
+- **Show the map through Solstone** (a server's ⚙ settings, under the map address): BlueMap, squaremap or Dynmap opens on the World tab from anywhere, not just at home, and only for people signed in who may see the map (Players only with *Players can see the map* on). The map itself stays on your home network: give its home address (like `http://192.168.1.10:8100`).
+- **Walled off from the website:** the map runs in a sandbox, so nothing on it (a claim name, say) can reach anyone's account. Links to it carry a pass that runs out after 12 hours and stops at once if the map or a player's access is switched off.
+- **Claims on the map:** with Flan's `bluemapIntegration` set to `true`, everyone's claims show on BlueMap.
+
 # Solstone 1.9.4
 
 - **Picture sizes in posts:** click on a picture's line in the text and pick **Picture size**: *Small*, *Medium*, *Large* or *Full width*. It's written into the text as `![Our castle|small](…)`, and the live view, Preview and the post all show it that size.

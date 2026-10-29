@@ -56,6 +56,7 @@ Every file starts with a docstring saying what it's for. The main ones:
 | Announcements and birthdays | `board.py` |
 | Daily recaps, "on this day" | `recap.py` |
 | Top-down map pictures | `worldmap.py`; item icons and names: `assets.py` |
+| The web map (BlueMap...) through Solstone, sandboxed, with a pass in its address | `webmap.py` (routes `/map/...` in `main.py`) |
 | Adventures (trails, "what happened", "lately") | `adventures.py` |
 | Contests, races, games | `challenges.py`, `races.py`, `games.py`, `spleef.py`, `gather.py`, `hotzone.py`; on-screen bits: `hud.py`, `bossbar.py` |
 | Fishing | `tide.py` (the Tide+ mod), `fishing.py` + `fishpack.py` (the data pack) |
