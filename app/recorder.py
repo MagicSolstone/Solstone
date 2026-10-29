@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, notify, nudge, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome
+from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -165,8 +165,8 @@ class Recorder:
 
     async def race_tick(self) -> None:
         """Races need a once-a-second look at where everyone is; nothing happens otherwise."""
-        race, game, contest, moving = races.busy(), games.busy(), challenges.busy(), gather.busy()
-        if not (race or game or contest or moving):
+        race, game, contest, moving, joining = races.busy(), games.busy(), challenges.busy(), gather.busy(), optin.busy()
+        if not (race or game or contest or moving or joining):
             return
         await S.registry.refresh()
         visible = [s for s in S.registry.servers.values() if not s.settings.get("hidden")]
@@ -178,6 +178,8 @@ class Recorder:
             await challenges.tick(visible)
         if moving:
             await gather.tick(visible)
+        if joining:
+            await optin.tick(visible)                  # /trigger join, countdown alerts
 
     async def track(self) -> None:
         """Where everyone is, every few seconds while anyone's on (the Adventures replay)."""
@@ -338,6 +340,7 @@ class Recorder:
                 await gather.on_join(srv, n)            # back from an event they were taken to
                 welcome.on_join(srv, n)                 # the server's welcome message, if it has one
                 nudge.on_join(srv, n)                   # what's waiting for them on the website
+                optin.on_join(srv, n)                   # an event coming up they can join
                 if not fwshow.pushed_recently(srv.id, "join", n):
                     fwshow.push(srv.id, srv.display_name, "join", n, f"{n} joined the game")
 

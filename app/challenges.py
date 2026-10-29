@@ -21,7 +21,7 @@ import secrets
 import time
 from datetime import datetime
 
-from . import bossbar, db, fwshow, hotzone, hud, settings_store
+from . import bossbar, db, fwshow, hotzone, hud, optin, settings_store
 from . import servers as S
 from .control import ITEM_RE, clean_text, component
 from .rcon import RconError
@@ -125,6 +125,8 @@ def clean(body: dict, server: str) -> dict:
             "lure": int(body.get("lure") or 0) if kind in ROD_KINDS and str(body.get("lure") or 0) in ("0", "3", "5") else 0,
             # Tide: everyone fishes at the same (baseline) level for the contest, whatever their own
             "fair": bool(body.get("fair", True)) and kind in ROD_KINDS,
+            # players choose to join (/trigger join, or "I'm coming!" on the website); off: everyone online is in
+            "optin": bool(body.get("optin")),
             # "daily" / "weekly": when it's over, the same contest is put on again a day / a week after it started
             "repeat": body.get("repeat") if body.get("repeat") in REPEATS else ""}
 
@@ -222,9 +224,8 @@ async def _give_rod(srv, c: dict, player: str) -> None:
         await _rcon(srv, f"tellraw {player} {component([('★ ', 'gold'), (note, 'yellow')])}")
 
 
-async def _fair(srv, c: dict, who: str) -> None:
-    """Tide's fair play for this contest: `who` (a name, or @a) fishes at the baseline level."""
-    names = [n for n in (await S.online_players(srv))[0]] if who == "@a" else [who]
+async def _fair(srv, c: dict, names: list[str]) -> None:
+    """Tide's fair play for this contest: these players fish at the baseline level."""
     for n in names:
         if n.lower() in {x.lower() for x in c.setdefault("faired", [])}:
             continue
@@ -233,10 +234,17 @@ async def _fair(srv, c: dict, who: str) -> None:
             c["faired"].append(n)
 
 
+async def _in(srv, c: dict) -> tuple[list[str], list[str]]:
+    """(who's taking part, everyone online)."""
+    online = (await S.online_players(srv))[0]
+    return optin.players("contest", c, online), online
+
+
 async def _start(srv, c: dict) -> None:
     from . import gather
-    if c.get("gather"):                                  # everyone to the event's spot first (and home afterwards)
-        c["gathered"] = await gather.send(srv, c["gather"])
+    names, online = await _in(srv, c)
+    if c.get("gather"):                                  # everyone in it to the event's spot first (and home afterwards)
+        c["gathered"] = await gather.send(srv, c["gather"], names)
     label, _emoji, unit, criteria, _div = KINDS[c["kind"]]
     made = []
     from . import tide
@@ -248,7 +256,7 @@ async def _start(srv, c: dict) -> None:
         await _rcon(srv, f"scoreboard players reset * {made[0]}")
         c["best"] = {}
     if c["tide"] and c.get("fair"):
-        await _fair(srv, c, "@a")
+        await _fair(srv, c, names)
     for obj, crit in zip(_objectives(c) if c["kind"] not in FISH_KINDS else [], criteria, strict=True):
         out = await _rcon(srv, f"scoreboard objectives add {obj} {crit}")
         if out and ("unknown" in out.lower() or "invalid" in out.lower() or "error" in out.lower()):
@@ -257,7 +265,8 @@ async def _start(srv, c: dict) -> None:
     # One statistic counted as-is: the sidebar shows that objective itself, so the game keeps it
     # up to date instantly and Solstone doesn't have to send anything. Otherwise (several added
     # up, or shown as pounds) a total that Solstone writes when it changes.
-    direct = made[0] if len(made) == 1 and KINDS[c["kind"]][4] == 1 and c["kind"] != "fish_heaviest" else None
+    # (Not when players choose to join: the game would count everyone, so Solstone writes the joined players' totals.)
+    direct = made[0] if len(made) == 1 and KINDS[c["kind"]][4] == 1 and c["kind"] != "fish_heaviest" and not c.get("optin") else None
     c["direct"] = direct
     if direct:
         await _rcon(srv, f"scoreboard objectives modify {direct} displayname {json.dumps(c['name'])}")
@@ -269,8 +278,9 @@ async def _start(srv, c: dict) -> None:
     c["shown"] = {}
     c["state"], c["started_at"] = "running", time.time()
     c["ends_at"] = c["started_at"] + c["minutes"] * 60
+    c["players"] = sorted(names, key=str.lower)
     if c.get("lure"):
-        for n in (await S.online_players(srv))[0]:
+        for n in names:
             await _give_rod(srv, c, n)
     if c["say"]:
         prize = f"{c['prize']['count']} × {c['prize'].get('name') or c['prize']['item'].split(':')[1].replace('_', ' ')}"
@@ -279,19 +289,24 @@ async def _start(srv, c: dict) -> None:
         if c["tide"] and c.get("fair"):
             rules += " Fair play: everyone fishes at the same level."
         await _rcon(srv, f"tellraw @a {component([('★ ', 'gold'), (c['name'], 'yellow'), (rules, None)])}")
-        await _rcon(srv, "title @a times 10 60 20")
-        await _rcon(srv, f"title @a title {component([('Go!', 'gold')])}")
-        await _rcon(srv, f"title @a subtitle {component([(c['name'], 'yellow')])}")
+        for who in (names if c.get("optin") else ["@a"]):
+            await _rcon(srv, f"title {who} times 10 60 20")
+            await _rcon(srv, f"title {who} title {component([('Go!', 'gold')])}")
+            await _rcon(srv, f"title {who} subtitle {component([(c['name'], 'yellow')])}")
+        await optin.started(srv, "contest", c, online)
     db.add_event(srv.id, time.time(), "challenge", f"{c['name']} started ({c['minutes']} minutes)")
 
 
 async def _read_scores(srv, c: dict) -> None:
-    names, _src = await S.online_players(srv)
+    names, _online = await _in(srv, c)
     c["players"] = sorted({*c.get("players", []), *names}, key=str.lower)
     div = KINDS[c["kind"]][4]
     tscore = c.get("tscore")
     if tscore is not None:                                       # Tide: scored from the catches themselves
         c["players"] = sorted({*c["players"], *tscore}, key=str.lower)
+    if c.get("optin"):                                           # left with /trigger leave: out of the scores
+        c["players"] = [p for p in c["players"] if optin.is_in("contest", c, p)]
+        c["scores"] = {p: v for p, v in c["scores"].items() if p in c["players"]}
     for p in c["players"]:
         total = 0
         if tscore is not None:
@@ -437,7 +452,7 @@ async def _fish_hot(srv, c: dict, now: float) -> None:
     from .races import _pos
 
     async def pick():
-        names = (await S.online_players(srv))[0]
+        names = (await _in(srv, c))[0]
         random.shuffle(names)
         for n in names[:2]:
             q = await _pos(srv, n)
@@ -461,7 +476,7 @@ async def _fish_hot(srv, c: dict, now: float) -> None:
 
     await hotzone.tick(srv, c, now, c["started_at"], c["ends_at"], FISH_HOT_R, "Fish hooked inside", pick)
     if c.get("hot_zone", {}).get("on"):
-        for n in (await S.online_players(srv))[0]:
+        for n in (await _in(srv, c))[0]:
             text, in_it = hotzone.bar(c, await _pos(srv, n), FISH_HOT_R)
             await _rcon(srv, f"title {n} actionbar {component([(text.rstrip(' ·') + ' (cast into it)' if not in_it else text.rstrip(' ·'), 'red' if in_it else 'gold')])}")
 
@@ -489,10 +504,9 @@ async def _tick(servers: list) -> None:
                 changed = True
             elif srv and srv.rcon_conf() and 0 < c["start"] - now <= LEAD_SECS:
                 from . import gather
-                await gather.lead_in(srv, c, now, c["name"], "you'll be teleported there" if c.get("gather") else "")
+                who = (await _in(srv, c))[0] if c.get("optin") else None
+                await gather.lead_in(srv, c, now, c["name"], "you'll be teleported there" if c.get("gather") else "", who)
                 changed = True
-            elif srv and srv.rcon_conf() and c["say"] and 0 < c["start"] - now <= 60 and db.alert_once(f"ch-soon:{c['id']}"):
-                await _rcon(srv, f"tellraw @a {component([('★ ', 'gold'), (c['name'] + ' starts in 1 minute!', 'yellow')])}")
         elif c["state"] == "running" and srv:
             if now >= c["ends_at"]:
                 await _finish(srv, c, d)
@@ -528,7 +542,7 @@ async def on_catch(srv, player: str, catch: dict) -> bool:
 async def _on_catch(srv, player: str, catch: dict) -> bool:
     d = _load()
     c = next((x for x in d["items"] if x["server"] == srv.id and x["state"] == "running" and x["kind"] in FISH_KINDS), None)
-    if not c:
+    if not c or not optin.is_in("contest", c, player):
         return False
     best = c.setdefault("best", {})
     if player not in best or catch["weight"] > best[player]["weight"]:
@@ -567,14 +581,15 @@ async def on_join(srv, player: str) -> None:
     for c in d["items"]:
         if c["server"] != srv.id:
             continue
-        if c["state"] == "running" and c.get("tide") and c.get("fair"):
-            await _fair(srv, c, player)
+        mine = optin.is_in("contest", c, player)
+        if c["state"] == "running" and c.get("tide") and c.get("fair") and mine:
+            await _fair(srv, c, [player])
             _save(d)
         elif player.lower() in (c.get("fair_owed") or []):
             await _rcon(srv, f"fishinglevel fair {player} false")
             c["fair_owed"].remove(player.lower())
             _save(d)
-        if c["state"] == "running" and c.get("lure"):
+        if c["state"] == "running" and c.get("lure") and mine:
             await _give_rod(srv, c, player)
             _save(d)
         elif player.lower() in (c.get("rod_owed") or []):
@@ -591,6 +606,31 @@ async def on_join(srv, player: str) -> None:
             note = f"A prize for you: you {g['why']}!"
             await _rcon(srv, f"tellraw {player} {component([('★ ', 'gold'), (note, 'yellow')])}")
     _save(d)
+
+
+async def late_join(srv, cid: str, player: str) -> None:
+    """Joined a contest that's already on: their score counts from now (anything before is cleared), the
+    contest rod and fair level, and to the contest's spot if everyone else was taken there."""
+    async with _lock:
+        d = _load()
+        c = next((x for x in d["items"] if x["id"] == cid and x["state"] == "running"), None)
+        if not c:
+            return
+        for obj in c.get("objectives") or []:
+            await _rcon(srv, f"scoreboard players reset {player} {obj}")
+        if c.get("tscore") is not None:
+            c["tscore"].pop(player, None)
+        (c.get("best") or {}).pop(player, None)
+        c["players"] = sorted({*c.get("players", []), player}, key=str.lower)
+        c.setdefault("scores", {})[player] = 0
+        if c.get("tide") and c.get("fair"):
+            await _fair(srv, c, [player])
+        if c.get("lure"):
+            await _give_rod(srv, c, player)
+        if c.get("gather") and c.get("gathered") is not None and player not in c["gathered"]:
+            from . import gather
+            c["gathered"].update(await gather.send(srv, c["gather"], [player]))
+        _save(d)
 
 
 # ------------------------------------------------------------------ pages

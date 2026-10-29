@@ -58,19 +58,21 @@ def clean_spot(v) -> dict | None:
 
 
 # ------------------------------------------------------------------ before
-async def lead_in(srv, item: dict, now: float, title: str, sub: str = "") -> None:
-    """Big numbers on everyone's screen for the last 10 seconds before `item["start"]`."""
+async def lead_in(srv, item: dict, now: float, title: str, sub: str = "", who: list[str] | None = None) -> None:
+    """Big numbers on screen for the last 10 seconds before `item["start"]`: everyone's, or just `who` (those
+    who joined an event players choose to take part in)."""
     left = math.ceil(item["start"] - now)
     said = item.setdefault("lead_said", [])
     if left not in SAY_AT or left in said:
         return
     said.append(left)
-    if left == LEAD:
-        await _rcon(srv, f"tellraw @a {component([('★ ', 'gold'), (title, 'yellow'), (f' starts in {LEAD} seconds! ', None), (sub, 'gray')])}")
-    await _rcon(srv, "title @a times 0 25 5")
-    await _rcon(srv, f"title @a subtitle {component([(title + (' · ' + sub if sub else ''), 'yellow')])}")
-    await _rcon(srv, f"title @a title {component([(str(left), 'gold')])}")
-    await _rcon(srv, "execute as @a at @s run playsound minecraft:block.note_block.hat master @s ~ ~ ~ 1 1.2")
+    for t in (["@a"] if who is None else who):
+        if left == LEAD:
+            await _rcon(srv, f"tellraw {t} {component([('★ ', 'gold'), (title, 'yellow'), (f' starts in {LEAD} seconds! ', None), (sub, 'gray')])}")
+        await _rcon(srv, f"title {t} times 0 25 5")
+        await _rcon(srv, f"title {t} subtitle {component([(title + (' · ' + sub if sub else ''), 'yellow')])}")
+        await _rcon(srv, f"title {t} title {component([(str(left), 'gold')])}")
+        await _rcon(srv, f"execute as {t} at @s run playsound minecraft:block.note_block.hat master @s ~ ~ ~ 1 1.2")
 
 
 async def _dim(srv, n: str) -> str:

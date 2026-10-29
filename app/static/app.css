@@ -1464,6 +1464,9 @@ body.on-editor:not(.ui-hidden) .fwbar .fwb-launch, body.on-editor:not(.ui-hidden
 .up-item { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-top: 1px solid rgba(255, 255, 255, .06); }
 .up-item:first-child { border-top: 0; }
 .up-item.live { background: rgba(80, 200, 120, .08); }
+/* the next event of a night of back-to-back ones: tucked under the one before */
+.up-item.up-then { border-top: 0; padding-top: 2px; padding-left: 40px; }
+.up-item.up-then .up-emoji::before { content: "↪ "; opacity: .5; font-size: .8em; }
 .up-emoji { font-size: 1.5rem; width: 1.6em; text-align: center; flex: none; }
 .up-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .up-main b a { color: inherit; text-decoration: none; }
@@ -2046,3 +2049,12 @@ a.glance-me:hover { border-color: var(--gold); }
 .ws-kind small { font-weight: normal; font-size: .8rem; }
 .ws-date .input { max-width: 180px; }
 .up-who { color: var(--muted); display: block; margin-top: 2px; }
+
+/* joining events: who's in, back-to-back contests, the Joining tab */
+.ch-joined { margin: 6px 0 0; }
+.ch-joined code, .ch-optin code { font-size: .9em; }
+.ch-after { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: .92em; }
+.oi-alerts { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin: 8px 0; }
+.oi-alerts .lbl { flex-basis: 100%; }
+.oi-text { display: block; margin-top: 12px; }
+.oi-text .lbl { display: block; margin-bottom: 4px; }

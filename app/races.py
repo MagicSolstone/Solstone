@@ -116,7 +116,8 @@ def schedule(server: str, body: dict) -> dict:
     r = {"id": secrets.token_hex(4), "server": server, "course": course["id"], "name": course["name"],
          "points": course["points"], "dim": course.get("dim", "minecraft:overworld"),
          "start": start, "minutes": int(_num(body.get("minutes"), 2, 60, 15)), "teleport": bool(body.get("teleport", True)),
-         "prizes": prizes, "state": "scheduled", "racers": {}, "results": [], "said": []}
+         "prizes": prizes, "state": "scheduled", "racers": {}, "results": [], "said": [],
+         "optin": bool(body.get("optin"))}          # players choose to join; off: everyone online races
     d["runs"].append(r)
     _save(d)
     return r
@@ -209,23 +210,35 @@ def _fmt(sec: float) -> str:
     return f"{sec // 60}:{sec % 60:02d}"
 
 
+def _screens(r: dict) -> list[str]:
+    """Whose screen the big titles go on: everyone, or those racing when players chose to join."""
+    return ["@a"] if not r.get("optin") else list(r.get("entrants") or [])
+
+
 async def _say(srv, r: dict, parts, title: str = "", sub: str = "") -> None:
     await _rcon(srv, f"tellraw @a {component(parts)}")
     if title:
-        await _rcon(srv, "title @a times 5 30 10")
-        if sub:
-            await _rcon(srv, f"title @a subtitle {component([(sub, 'yellow')])}")
-        await _rcon(srv, f"title @a title {component([(title, 'gold')])}")
+        for who in _screens(r):
+            await _rcon(srv, f"title {who} times 5 30 10")
+            if sub:
+                await _rcon(srv, f"title {who} subtitle {component([(sub, 'yellow')])}")
+            await _rcon(srv, f"title {who} title {component([(title, 'gold')])}")
 
 
 async def _begin_countdown(srv, r: dict) -> None:
-    from . import gather
+    from . import gather, optin
     await _place_markers(srv, r)
     s = r["points"][0]
+    names = optin.players("race", r, (await S.online_players(srv))[0])
+    r["entrants"] = names
+    if r.get("optin") and not names:
+        await _remove_markers(srv, r)
+        r["state"], r["result"] = "skipped", "Nobody joined"
+        await _say(srv, r, [("★ ", "gold"), (f"Nobody joined {r['name']}, so it's off this time.", "yellow")])
+        return
     if r["teleport"]:
         # side by side on the start line, facing the first checkpoint, held still until GO;
         # everyone goes back where they were once it's over
-        names, _src = await S.online_players(srv)
         r["gathered"] = await gather.line_up(srv, s, r["points"][1], r.get("dim") or "minecraft:overworld", names)
         await gather.freeze(srv, list(r["gathered"]), COUNTDOWN)
     r["state"], r["go_at"] = "countdown", time.time() + COUNTDOWN
@@ -237,19 +250,21 @@ async def _go(srv, r: dict) -> None:
     from . import gather
     if r.get("gathered"):
         await gather.unfreeze(srv, list(r["gathered"]))
-    names, _src = await S.online_players(srv)
+    online, _src = await S.online_players(srv)
+    names = [n for n in online if n in r["entrants"]] if r.get("optin") else online
     r["state"], r["started_at"] = "running", time.time()
     r["ends_at"] = r["started_at"] + r["minutes"] * 60
     r["racers"] = {n: {"next": 1, "splits": [], "finished": None} for n in names}
     await _say(srv, r, [("★ ", "gold"), ("GO!", "gold")], "GO!")
-    await _rcon(srv, "execute as @a at @s run playsound minecraft:block.note_block.bell master @s ~ ~ ~ 1 1.4")
+    for who in _screens(r):
+        await _rcon(srv, f"execute as {who} at @s run playsound minecraft:block.note_block.bell master @s ~ ~ ~ 1 1.4")
     db.add_event(srv.id, time.time(), "race", f"{r['name']} started")
 
 
 async def _track(srv, r: dict) -> None:
     pts, last = r["points"], len(r["points"]) - 1
     online, _src = await S.online_players(srv)
-    for n in online:                                   # joined mid-race: in, from the start
+    for n in online if not r.get("optin") else []:      # joined mid-race: in, from the start
         r["racers"].setdefault(n, {"next": 1, "splits": [], "finished": None})
     now = time.time()
     for n, st in r["racers"].items():
@@ -378,19 +393,16 @@ async def tick(servers: list) -> None:
             elif srv and srv.rcon_conf() and now >= r["start"]:
                 await _begin_countdown(srv, r)
                 changed = True
-            elif srv and srv.rcon_conf() and 0 < r["start"] - now <= 60 and "1min" not in r["said"]:
-                r["said"].append("1min")
-                await _say(srv, r, [("★ ", "gold"), (f"{r['name']} starts in 1 minute!", "yellow")])
-                changed = True
         elif r["state"] == "countdown" and srv:
             left = int(math.ceil(r["go_at"] - now))
             if left <= 0:
                 await _go(srv, r)
             elif left <= 3 and f"cd{left}" not in r["said"]:
                 r["said"].append(f"cd{left}")
-                await _rcon(srv, "title @a times 0 20 0")
-                await _rcon(srv, f"title @a title {component([(str(left), 'gold')])}")
-                await _rcon(srv, "execute as @a at @s run playsound minecraft:block.note_block.hat master @s")
+                for who in _screens(r):
+                    await _rcon(srv, f"title {who} times 0 20 0")
+                    await _rcon(srv, f"title {who} title {component([(str(left), 'gold')])}")
+                    await _rcon(srv, f"execute as {who} at @s run playsound minecraft:block.note_block.hat master @s")
             changed = True
         elif r["state"] == "running" and srv:
             await _track(srv, r)

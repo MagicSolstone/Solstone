@@ -1650,6 +1650,7 @@ async function route() {
       else if (parts[2] === "adventures") await viewAdventures(sid, parts[3]);
       else if (parts[2] === "challenges" && parts[3] === "races") await viewRaces(sid);
       else if (parts[2] === "challenges" && parts[3] === "games") await viewGames(sid);
+      else if (parts[2] === "challenges" && parts[3] === "joining") await viewJoining(sid);
       else if (parts[2] === "challenges") await viewChallenges(sid);
       else if (parts[2] === "performance") await viewPerformance(sid);
       else if (parts[2] === "leaderboards") await viewLeaderboards(sid);

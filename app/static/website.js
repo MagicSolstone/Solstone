@@ -401,7 +401,7 @@ const WELCOME_START = "&6&lWelcome to {server}, {player}!&r\n&7Please read the r
 function welcomePreview(text, sid) {
   const srv = (state.servers || []).find((x) => x.id === sid);
   const base = location.origin;
-  const vals = { player: "Steve", server: srv?.name || "the server", site: base, rules: `${base}/guides/rules`, contact: ws.data.site.contact || "an admin" };
+  const vals = { player: "Steve", server: srv?.name || "the server", site: base, rules: `${base}/guides/rules`, contact: ws.data?.site?.contact || "an admin" };
   const filled = text.replace(/\{(\w+)\}/g, (m, k) => (k.toLowerCase() in vals ? vals[k.toLowerCase()] : m));
   const colour = Object.fromEntries(WELCOME_COLOURS.map(([c, hex]) => [c, hex]));
   return filled.split("\n").map((line) => {
@@ -412,12 +412,13 @@ function welcomePreview(text, sid) {
         st.n || extra ? "text-decoration:underline" : "", st.m ? "text-decoration:line-through" : ""].filter(Boolean).join(";");
       out += `<span style="${css}${extra && !st.c ? ";color:#55ffff" : ""}">${esc(t)}</span>`;
     };
-    const re = /&([0-9a-fklmnor])|(https?:\/\/[^\s<>"']+)/gi;
+    const re = /&([0-9a-fklmnor])|(https?:\/\/[^\s<>"']+)|(\/trigger [a-z_]+)/gi;
     let pos = 0, m;
     while ((m = re.exec(line))) {
       span(line.slice(pos, m.index));
       pos = re.lastIndex;
       if (m[2]) { span(m[2], "link"); continue; }
+      if (m[3]) { const was = st; if (!st.c) st = { ...st, c: "#55ff55" }; span(m[3], "link"); st = was; continue; }
       const c = m[1].toLowerCase();
       if (c === "r") st = {}; else if (colour[c]) st = { c: colour[c] }; else st = { ...st, [c]: true };
     }

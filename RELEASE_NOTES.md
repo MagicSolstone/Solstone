@@ -1,3 +1,24 @@
+# Solstone 1.11.0
+
+Includes everything in 1.10.6 (not released on its own), plus:
+
+- **Players choose to join:** contests, races and games have a new switch, **Players choose to join**. It's on for new ones; untick it and everyone online takes part, as before.
+  - **In the game:** players type `/trigger join`. Any player can, no operator needed, and nobody else sees it. On Java they can also click it in the messages; on Bedrock they type it. `/trigger leave` takes them out again.
+  - **On the website:** *I'm coming!* counts as joining once they're on the server.
+  - **When:** joining opens an hour before the start (you can change that). Races and games close when they start. Contests can still be joined until they end, and only what's caught (or counted) after joining scores.
+  - **What joining means:** only players who joined are teleported, get the contest rod and the fair fishing level, see the countdown and *Go!* on their screen, are scored, show on the sidebar and can win prizes.
+  - **Who's in:** each event's card shows who has joined so far. A race or game nobody joined is called off, with a line in chat.
+- **Countdown alerts:** before every event, a line in chat at 10, 5, 2 and 1 minutes, and at 30 seconds. Players who haven't joined get the join command; those who have get *You're in!*. Choose the times (anywhere from 30 minutes to 15 seconds) on the new tab. Players who come online while an event is coming up, or while a contest they could still join is on, are told about it.
+- **Back-to-back nights:** **＋ Next** on a scheduled contest sets up another one straight after it, with a break you choose (0 to 30 minutes).
+  - Each event is joined on its own: `/trigger join` joins the next event you're not in yet. Someone can play the first two and skip the rest.
+  - Set each one to repeat weekly and the whole night comes back every week.
+  - The Events page tucks each event of the night under the one before it.
+- **Every message is yours to write:** **Play → Challenges → 📣 Joining** has every line Solstone sends about joining: the alerts (for players who haven't joined, players who have, and events everyone is in), what players see after joining, joining late, joining from the website, leaving, already in, too late, nothing to join, and *it has started, still time to join*.
+  - They use the welcome message's & colour codes.
+  - Fill-ins: `{event}`, `{left}` (like *5 minutes*), `{time}`, `{count}` (how many have joined), `{join}` and `{leave}` (the commands, clickable on Java), `{player}`, `{site}`.
+  - A live preview shows each message as it will look, and **Back to Solstone's wording** puts the original text back.
+  - Typing `/trigger join` into any welcome or reminder message makes it clickable on Java too.
+
 # Solstone 1.10.6
 
 - **Contests that repeat:** a contest's **Repeats** can be *every week* or *every day*. When it's over, the same contest (kind, length, prizes, everything) is put on again a week (or a day) after it started, so *Fishing night, Tuesdays 7:00* is set up once. Cancel it to stop. The Contests page marks them 🔁, and Events shows the next few.

@@ -124,9 +124,9 @@ async def _pack_version(srv) -> int:
 async def start(srv, r: dict) -> None:
     from .games import _gamemode, _say
     from .hotzone import surface
-    names, _src = await S.online_players(srv)
+    names = r.get("entrants") or (await S.online_players(srv))[0]
     if len(names) < 2:
-        r["state"], r["result"] = "skipped", "Spleef needs at least two players online"
+        r["state"], r["result"] = "skipped", "Spleef needs at least two players" + (" to join" if r.get("optin") else " online")
         return
     if await _pack_version(srv) < NEED_PACK:
         r["state"], r["result"] = "skipped", f"Spleef needs the Solstone data pack version {NEED_PACK} or newer (it holds the safety net)"

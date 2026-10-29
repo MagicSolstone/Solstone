@@ -86,7 +86,8 @@ def create(server: str, body: dict) -> dict:
     r = {"id": secrets.token_hex(4), "server": server, "game": kind, "name": KINDS[kind][0], "start": start, "state": "scheduled",
          "dim": "minecraft:overworld", "prizes": prizes, "players": {}, "said": [], "result": "", "log": [],
          # treasure and archery can gather everyone at a spot first (hide and seek always gathers at its area)
-         "gather": gather.clean_spot(body.get("gather")) if kind in ("treasure", "archery") else None}
+         "gather": gather.clean_spot(body.get("gather")) if kind in ("treasure", "archery") else None,
+         "optin": bool(body.get("optin"))}          # players choose to join; off: everyone online plays
     if kind == "hideseek":
         r.update(area={**_point(body.get("center"), "middle of the area"), "r": round(_num(body.get("radius"), 10, 200, 40))},
                  hide_secs=int(_num(body.get("hide_secs"), 15, 300, 60)), minutes=int(_num(body.get("minutes"), 2, 30, 6)),
@@ -147,6 +148,17 @@ async def _say(srv, parts, title: str = "", sub: str = "", who: str = "@a") -> N
         await _rcon(srv, f"title {who} title {component([(title, 'gold')])}")
 
 
+async def entrants(srv, r: dict) -> list[str]:
+    """Who's playing, of those online: everyone, or those who joined (when players choose to)."""
+    from . import optin
+    online = (await S.online_players(srv))[0]
+    if not r.get("optin"):
+        return online
+    if r["state"] == "scheduled":
+        return optin.players("game", r, online)
+    return [n for n in online if n in (r.get("entrants") or [])]
+
+
 async def _bar(srv, who: str, text: str, color: str = "yellow") -> None:
     await _rcon(srv, f"title {who} actionbar {component([(text, color)])}")
 
@@ -196,9 +208,9 @@ def _finish(srv, r: dict, result: str) -> None:
 
 # ------------------------------------------------------------------ hide and seek
 async def _hs_start(srv, r: dict) -> None:
-    names, _src = await S.online_players(srv)
+    names = r["entrants"]
     if len(names) < 2:
-        r["state"], r["result"] = "skipped", "Hide and seek needs at least two players online"
+        r["state"], r["result"] = "skipped", "Hide and seek needs at least two players" + (" to join" if r.get("optin") else " online")
         return
     seeker = r["seeker"] if r["seeker"] in names else random.choice(names)
     a, dim = r["area"], r["dim"]
@@ -490,7 +502,7 @@ async def _th_start(srv, r: dict) -> None:
 
 async def _th_tick(srv, r: dict) -> None:
     now, c = time.time(), r["chest"]
-    online, _src = await S.online_players(srv)
+    online = await entrants(srv, r)
     hint = now - r["started"] >= r["hint_after"] * 60 if r.get("started") else False
     near = {}
     for n in online:
@@ -631,14 +643,15 @@ async def _ar_start(srv, r: dict) -> None:
     tx, ty, tz = int(math.floor(t["x"])), int(math.floor(t["y"])), int(math.floor(t["z"]))
     if r["place_target"]:
         await _rcon(srv, f"execute in {dim} run setblock {tx} {ty} {tz} minecraft:target")
-    names, _src = await S.online_players(srv)
+    names = r["entrants"]
     r["players"] = {n: {"letters": "", "best": 0.0, "points": 0, "hits": 0, "shots": 0} for n in names}
     r["target_c"] = [tx + 0.5, ty + 0.5, tz + 0.5]
     if r["give_bow"]:
         # a match bow with Infinity and one arrow: endless shots, nothing to pick up, and both
         # (tagged) are taken back at the end without touching anyone's own bows and arrows
-        await _rcon(srv, f"give @a {_match_item(srv, 'bow')}")
-        await _rcon(srv, f"give @a {_match_item(srv, 'arrow')}")
+        for n in (names if r.get("optin") else ["@a"]):
+            await _rcon(srv, f"give {n} {_match_item(srv, 'bow')}")
+            await _rcon(srv, f"give {n} {_match_item(srv, 'arrow')}")
     log_ = await _rcon(srv, "data get storage solstone:games log")
     from .fishpack import parse_game_log
     seen = parse_game_log(log_)
@@ -690,6 +703,8 @@ async def _ar_tick(srv, r: dict) -> None:
     names = {u.lower(): p["name"] for u, p in S.known_players(srv).items()}
     now = time.time()
     for who, pos, ring, d in await _ar_events(srv, r, names):
+        if r.get("optin") and who not in r["players"]:      # didn't join: their arrows don't count
+            continue
         st = r["players"].setdefault(who, {"letters": "", "best": 0.0, "points": 0, "hits": 0, "shots": 0})
         if r["mode"] == "horse":
             await _horse_shot(srv, r, who, pos, ring, d)
@@ -912,12 +927,19 @@ async def _tick(servers: list) -> None:
                 r["state"], r["result"] = "skipped", "The server wasn't running with RCON at the start time"
             elif srv and srv.rcon_conf() and now >= r["start"]:
                 r["started"] = now
+                r["entrants"] = await entrants(srv, r)
+                if r.get("optin") and not r["entrants"]:
+                    r["state"], r["result"] = "skipped", "Nobody joined"
+                    await _say(srv, [("★ ", "gold"), (f"Nobody joined {r['name']}, so it's off this time.", "yellow")])
+                    changed = True
+                    continue
                 if r.get("gather"):
-                    r["gathered"] = await gather.send(srv, r["gather"])
+                    r["gathered"] = await gather.send(srv, r["gather"], r["entrants"])
                 await {"hideseek": _hs_start, "treasure": _th_start, "archery": _ar_start, "spleef": spleef.start}[r["game"]](srv, r)
             elif srv and srv.rcon_conf() and 0 < r["start"] - now <= gather.LEAD:
                 moved = r.get("gather") or r["game"] in ("hideseek", "spleef")
-                await gather.lead_in(srv, r, now, r["name"], "you'll be teleported there" if moved else "")
+                who = await entrants(srv, r) if r.get("optin") else None
+                await gather.lead_in(srv, r, now, r["name"], "you'll be teleported there" if moved else "", who)
             else:
                 continue
             changed = True

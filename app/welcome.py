@@ -4,6 +4,7 @@ The text is plain, with a few extras that work the same on Java and Bedrock:
   - colours and styles with the game's own & codes: &a green, &6 gold, &l bold, &o italic, &n underline, &r back to plain
   - {player}, {server}, {site} (the website's address), {rules} (the rules page's address) and {contact} (the contact email)
   - a web address (https://…) can be clicked on Java; Bedrock players see it written out
+  - so can /trigger join (and /trigger leave), for events players choose to join
 It's sent with tellraw only to the player who joined: on their first time, every time, or not at all.
 """
 from __future__ import annotations
@@ -28,7 +29,7 @@ COLOURS = {"0": "black", "1": "dark_blue", "2": "dark_green", "3": "dark_aqua", 
            "6": "gold", "7": "gray", "8": "dark_gray", "9": "blue", "a": "green", "b": "aqua", "c": "red",
            "d": "light_purple", "e": "yellow", "f": "white"}
 STYLES = {"l": "bold", "o": "italic", "n": "underlined", "m": "strikethrough"}
-_TOKEN = re.compile(r"&([0-9a-fklmnor])|(https?://[^\s<>\"']+)", re.I)
+_TOKEN = re.compile(r"&([0-9a-fklmnor])|(https?://[^\s<>\"']+)|(/trigger [a-z_]+)", re.I)
 _recent: dict[tuple[str, str], float] = {}
 
 
@@ -62,7 +63,11 @@ def components(text: str) -> list[dict]:
     for m in _TOKEN.finditer(text):
         add(text[pos:m.start()])
         pos = m.end()
-        code, url = m.group(1), m.group(2)
+        code, url, cmd = m.group(1), m.group(2), m.group(3)
+        if cmd:                                  # /trigger join: clicked on Java, typed on Bedrock
+            add(cmd, {"underlined": True, **({} if "color" in style else {"color": "green"}),
+                      "clickEvent": {"action": "run_command", "value": cmd}, "click_event": {"action": "run_command", "command": cmd}})
+            continue
         if url:
             url = url.rstrip(".,!?;:)")
             pos = m.start() + len(url)

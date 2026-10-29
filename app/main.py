@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, board, challenges, community, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
+from . import adventures, auth, backups, board, challenges, community, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.10.6"
+VERSION = "1.11.0"
 
 
 @asynccontextmanager
@@ -2600,6 +2600,22 @@ async def get_nudge(request: Request):
     return {**nudge.config(), "defaults": nudge.DEFAULTS}
 
 
+@app.get("/api/settings/optin")
+async def get_optin(request: Request):
+    """Admins: joining events in the game, the countdown alerts, and every message about them (optin.py)."""
+    auth.require_admin(request)
+    return {**optin.config(), "defaults": optin.DEFAULTS, "labels": optin.LABELS, "choices": optin.ALERT_CHOICES}
+
+
+@app.put("/api/settings/optin")
+async def put_optin(request: Request):
+    user = auth.require_admin(request)
+    cfg = optin.save(await _body(request))
+    settings_store.save_section("welcome_site", _public_base(request))      # for {site} in the game
+    auth.audit(user, None, "optin_settings", "")
+    return {**cfg, "defaults": optin.DEFAULTS, "labels": optin.LABELS, "choices": optin.ALERT_CHOICES}
+
+
 @app.put("/api/settings/nudge")
 async def put_nudge(request: Request):
     user = auth.require_admin(request)
@@ -2834,7 +2850,7 @@ async def get_challenges(sid: str, request: Request):
         spawn = (await asyncio.to_thread(S.world_info, srv, False)).get("spawn")
     except Exception:
         spawn = None
-    return {"kinds": challenges.kinds(), "items": challenges.list_for(srv.id), "gifts": challenges.gifts_for(srv.id),
+    return {"kinds": challenges.kinds(), "items": optin.annotate("contest", challenges.list_for(srv.id)), "gifts": challenges.gifts_for(srv.id),
             "rcon": bool(srv.rcon_conf()), "now": time.time(), "rcon_echo": _rcon_echo(srv), "spawn": spawn}
 
 
@@ -3072,7 +3088,7 @@ async def get_games(sid: str, request: Request):
         except Exception:
             pack = None
     w = await asyncio.to_thread(S.world_info, srv, False) if srv.is_java else {}
-    return {"runs": games.runs_for(srv.id), "rcon": bool(srv.rcon_conf()), "pack": pack, "pack_needed": 2, "pack_needed_spleef": 10,
+    return {"runs": optin.annotate("game", games.runs_for(srv.id)), "rcon": bool(srv.rcon_conf()), "pack": pack, "pack_needed": 2, "pack_needed_spleef": 10,
             "spawn": w.get("spawn"), "now": time.time(), "rcon_echo": _rcon_echo(srv)}
 
 
@@ -3112,7 +3128,7 @@ async def game_target(sid: str, request: Request, player: str):
 async def get_races(sid: str, request: Request):
     auth.require_admin(request)
     srv = await _server(sid)
-    runs = races.runs_for(srv.id)
+    runs = optin.annotate("race", races.runs_for(srv.id))
     for r in runs:
         r["standings"] = races.standings(r)
     w = await asyncio.to_thread(S.world_info, srv, False) if srv.is_java else {}

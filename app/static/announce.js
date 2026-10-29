@@ -207,7 +207,7 @@ async function viewUpcoming() {
     const name = day.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
     return diff === 0 ? `Today · ${name}` : diff === 1 ? `Tomorrow · ${name}` : diff < 7 ? name : diff < 14 ? `Next week · ${name}` : name;
   };
-  const row = (it) => `<li class="up-item ${it.live ? "live" : ""} up-${esc(it.kind)}">
+  const row = (it) => `<li class="up-item ${it.live ? "live" : ""} up-${esc(it.kind)} ${it.then ? "up-then" : ""}">
       <span class="up-emoji" aria-hidden="true">${esc(it.emoji || "•")}</span>
       <div class="up-main"><b>${it.link ? `<a href="${esc(it.link)}">${esc(it.title)}</a>` : esc(it.title)}</b>
         <span class="muted small">${esc([UP_KIND[it.kind], it.server, it.detail, it.days > 1 ? `${it.days} days` : ""].filter(Boolean).join(" · "))}</span>

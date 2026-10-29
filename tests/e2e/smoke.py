@@ -156,7 +156,7 @@ def main() -> int:
                 "home": "#/", "overview": f"#/s/{sid}", "player": f"#/s/{sid}/p/{puuid}",
                 "player-stats": f"#/s/{sid}/p/{puuid}/stats", "player-history": f"#/s/{sid}/p/{puuid}/history", "player-fishing": f"#/s/{sid}/p/{puuid}/fishing",
                 "player-advancements": f"#/s/{sid}/p/{puuid}/advancements", "world": f"#/s/{sid}/world",
-                "control": f"#/s/{sid}/control", "check": f"#/s/{sid}/check", "chat": f"#/s/{sid}/chat", "challenges": f"#/s/{sid}/challenges", "races": f"#/s/{sid}/challenges/races", "games": f"#/s/{sid}/challenges/games", "performance": f"#/s/{sid}/performance",
+                "control": f"#/s/{sid}/control", "check": f"#/s/{sid}/check", "chat": f"#/s/{sid}/chat", "challenges": f"#/s/{sid}/challenges", "races": f"#/s/{sid}/challenges/races", "games": f"#/s/{sid}/challenges/games", "joining": f"#/s/{sid}/challenges/joining", "performance": f"#/s/{sid}/performance",
                 "leaderboards": f"#/s/{sid}/leaderboards", "fishing": f"#/s/{sid}/fishing", "fishing-player": f"#/s/{sid}/fishing/Tyler", "mods": f"#/s/{sid}/mods", "adventures": f"#/s/{sid}/adventures", "events": "#/events",
                 "fireworks-editor": "#/fireworks", "fireworks-settings": "#/fireworks/show",
                 "announcements": "#/manage/announcements", "admin": "#/manage/users", "manage-servers": "#/manage/servers",
@@ -167,6 +167,18 @@ def main() -> int:
             for name, hash_ in routes.items():
                 pg.goto(f"{base}/app{hash_}"); pg.wait_for_timeout(1300)
                 check(pg, name)
+
+            # joining events: messages with a preview, saved; new contests are joined by choice
+            pg.goto(f"{base}/app#/s/{sid}/challenges/joining"); pg.wait_for_timeout(1300)
+            if "/trigger join" not in (pg.locator('.wel-preview[data-for="alert_text"]').text_content() or ""):
+                problems.append("joining: the alert's preview doesn't show /trigger join")
+            pg.fill('#oi-form [name="joined_text"]', "&aYou're in {event}, {player}!")
+            pg.click('#oi-form [type="submit"]'); pg.wait_for_timeout(800)
+            if pg.request.get(f"{base}/api/settings/optin", headers=H).json().get("joined_text") != "&aYou're in {event}, {player}!":
+                problems.append("joining: the message didn't save")
+            pg.goto(f"{base}/app#/s/{sid}/challenges"); pg.wait_for_timeout(1300)
+            if not pg.locator('#ch-form [name="optin"]:checked').count():
+                problems.append("contests: 'Players choose to join' isn't on for a new contest")
 
             # a draft, previewed before anyone else can see it
             pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(1200)

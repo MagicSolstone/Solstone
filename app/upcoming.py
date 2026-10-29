@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from . import community, board, challenges, db, fwshow, games, races
 
 DAYS = 90
+NIGHT_GAP = 45 * 60            # seconds between one event's end and the next one's start that still make one night
 
 
 def _clock(ts: float) -> str:
@@ -22,8 +23,10 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
     out: list[dict] = []
 
     def add(at: float, kind: str, emoji: str, title: str, detail: str = "", *, all_day: bool = False, server: str | None = None,
-            link: str | None = None, live: bool = False, length: int = 1) -> None:
-        out.append({"at": at, "date": datetime.fromtimestamp(at, zone).date().isoformat(), "time": None if all_day else _clock(at),
+            link: str | None = None, live: bool = False, length: int = 1, ends: float | None = None, optin: bool = False) -> None:
+        if optin and not live:
+            detail = f"{detail} · join in the game with /trigger join" if detail else "Join in the game with /trigger join"
+        out.append({"ends": ends, "at": at, "date": datetime.fromtimestamp(at, zone).date().isoformat(), "time": None if all_day else _clock(at),
                     "kind": kind, "emoji": emoji, "title": title, "detail": detail, "server": server_names.get(server or "", None) if server else None,
                     "link": link, "live": live, "days": length, "key": community.event_key(kind, title, at)})
 
@@ -37,12 +40,14 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
             add(c.get("started_at") or c["start"], "contest", emoji, c["name"], f"On now · ends at {_clock(c['ends_at'])}", server=c["server"], link=link, live=True)
         elif c["state"] == "scheduled" and c["start"] <= until:
             again = {"weekly": " · every week", "daily": " · every day"}.get(c.get("repeat") or "", "")
-            add(c["start"], "contest", emoji, c["name"], f"{label} · {c['minutes']} minutes{again}", server=c["server"], link=link)
+            add(c["start"], "contest", emoji, c["name"], f"{label} · {c['minutes']} minutes{again}", server=c["server"], link=link,
+                ends=c["start"] + c["minutes"] * 60, optin=bool(c.get("optin")))
             step = challenges.REPEATS.get(c.get("repeat") or "")
             at = c["start"] + step if step else until + 1
             ahead = 28 * 86400 if c.get("repeat") == "weekly" else 6 * 86400     # a repeating one: the next few as well
             while step and at <= until and at - c["start"] <= ahead:
-                add(at, "contest", emoji, c["name"], f"{label} · {c['minutes']} minutes{again}", server=c["server"], link=link)
+                add(at, "contest", emoji, c["name"], f"{label} · {c['minutes']} minutes{again}", server=c["server"], link=link,
+                    ends=at + c["minutes"] * 60, optin=bool(c.get("optin")))
                 at += step
     for r in races._load()["runs"]:
         if r["server"] not in server_names:
@@ -51,7 +56,8 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
         if r["state"] in ("countdown", "running"):
             add(r["start"], "race", "🏁", f"{r['name']} race", "On now", server=r["server"], link=link, live=True)
         elif r["state"] == "scheduled" and r["start"] <= until:
-            add(r["start"], "race", "🏁", f"{r['name']} race", f"{len(r['points']) - 2} checkpoints · {r['minutes']} minutes", server=r["server"], link=link)
+            add(r["start"], "race", "🏁", f"{r['name']} race", f"{len(r['points']) - 2} checkpoints · {r['minutes']} minutes", server=r["server"], link=link,
+                ends=r["start"] + r["minutes"] * 60, optin=bool(r.get("optin")))
     for r in games._load()["runs"]:
         if r["server"] not in server_names:
             continue
@@ -60,7 +66,8 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
         if r["state"] in games.ACTIVE:
             add(r.get("started") or r["start"], "game", emoji, r["name"] or name, "On now", server=r["server"], link=link, live=True)
         elif r["state"] == "scheduled" and r["start"] <= until:
-            add(r["start"], "game", emoji, r["name"] or name, name if (r["name"] or name) != name else "", server=r["server"], link=link)
+            add(r["start"], "game", emoji, r["name"] or name, name if (r["name"] or name) != name else "", server=r["server"], link=link,
+                ends=r["start"] + float(r.get("minutes") or 10) * 60, optin=bool(r.get("optin")))
 
     cfg = board.config()
     # birthdays
@@ -101,6 +108,13 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
             add(when, "note", it["emoji"] or "📣", it["text"], it["detail"], server=it["server"] or None,
                 live=bool(cd and cd <= t), link="#/announcements")
 
+    # a night of back-to-back events: each one that starts soon after the one before (same server) follows on from it
+    last: dict[str, float] = {}
+    for it in sorted(out, key=lambda x: x["at"]):
+        if it["kind"] in ("contest", "race", "game") and not it["live"]:
+            prev = last.get(it["server"] or "")
+            it["then"] = prev is not None and 0 <= it["at"] - prev <= NIGHT_GAP
+            last[it["server"] or ""] = it["ends"] or it["at"]
     out.sort(key=lambda x: (not x["live"], x["at"]))
     return out
 

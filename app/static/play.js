@@ -75,7 +75,7 @@ async function viewChallenges(sid) {
   const base = `/api/servers/${encodeURIComponent(sid)}/challenges`;
   let [d, fish] = await Promise.all([api(base), api(`/api/servers/${encodeURIComponent(sid)}/fishing`).catch(() => null)]);
   const fishOn = () => !!fish?.status?.version || !!fish?.tide;        // the fishing pack, or the Tide mod
-  const draft = { kind: "fish", name: "", when: "now", at: "", minutes: 10, prize: null, second: null, say: true, lure: 0, fair: true, hot: false, hot_bonus: 2, hot_on: 60, hot_off: 30, hot_far: 40, g: { on: false, spot: null, r: 4 }, repeat: "" };
+  const draft = { kind: "fish", name: "", when: "now", at: "", minutes: 10, prize: null, second: null, say: true, lure: 0, fair: true, hot: false, hot_bonus: 2, hot_on: 60, hot_off: 30, hot_far: 40, g: { on: false, spot: null, r: 4 }, repeat: "", optin: true, after: null, gap: 5 };
   const ROD_KINDS = ["fish", "fish_points", "fish_heaviest"];
   // default time for "later": the next 8 PM, or the next hour if that's already past today
   const next8 = () => { const t = new Date(); t.setHours(20, 0, 0, 0); if (t < new Date()) { t.setTime(Date.now() + 3600e3); t.setMinutes(0, 0, 0); } return t; };
@@ -99,11 +99,22 @@ async function viewChallenges(sid) {
       : `<span class="muted">${esc({ done: "Finished", skipped: "Didn't run", cancelled: "Called off" }[c.state] || c.state)} · ${esc(fmtWhen(c.start))}</span>`;
     return `<div class="ch-card panel ch-${c.state}" data-cid="${esc(c.id)}">
       <div class="ch-head"><span class="ch-emoji">${k.emoji}</span><div><h3>${esc(c.name)}</h3>${status}</div>
-        <div class="ch-acts">${c.state === "scheduled" || c.state === "running" ? `<button class="btn sm danger" type="button" data-cancel>${c.state === "running" ? "Stop" : "Cancel"}</button>` : `<button class="btn sm" type="button" data-again title="Set up the same challenge again">Run again</button><button class="icon-btn" type="button" data-cancel title="Remove from the list" aria-label="Remove">✕</button>`}</div></div>
+        <div class="ch-acts">${c.state === "scheduled" ? `<button class="btn sm" type="button" data-next title="Another contest straight after this one (a night of back-to-back contests)">＋ Next</button>` : ""}${c.state === "scheduled" || c.state === "running" ? `<button class="btn sm danger" type="button" data-cancel>${c.state === "running" ? "Stop" : "Cancel"}</button>` : `<button class="btn sm" type="button" data-again title="Set up the same challenge again">Run again</button><button class="icon-btn" type="button" data-cancel title="Remove from the list" aria-label="Remove">✕</button>`}</div></div>
       <div class="ch-prize">🏆 ${prizeHtml({ ...c.prize, label: c.prize.name })}${c.second ? ` <span class="muted">· 2nd:</span> ${prizeHtml({ ...c.second, label: c.second.name })}` : ""}</div>
       ${c.result ? `<p class="ch-result">${esc(c.result)}</p>` : ""}
+      ${joinedLine(c)}
       ${c.state === "running" || c.state === "done" ? scoresHtml(c) : ""}
     </div>`;
+  };
+  // back to back: right after another contest, with a break between
+  const afterOf = () => d.items.find((x) => x.id === draft.after && x.state === "scheduled");
+  const afterAt = () => { const a = afterOf(); return a ? localInput(new Date((a.start + a.minutes * 60 + draft.gap * 60) * 1000)) : draft.at; };
+  const afterRow = () => {
+    const a = afterOf();
+    if (!a) return "";
+    return `<span class="ch-after">↪ After <b>${esc(a.name)}</b> (ends ${esc(new Date((a.start + a.minutes * 60) * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }))}) with a break of
+      <select class="input sm" name="gap">${[0, 2, 5, 10, 15, 30].map((m) => `<option value="${m}" ${draft.gap === m ? "selected" : ""}>${m} min</option>`).join("")}</select>
+      <button type="button" class="icon-btn" data-no-after aria-label="Not after it">✕</button></span>`;
   };
   const formHtml = () => `<form class="panel ch-form" id="ch-form">
       <h3>New challenge</h3>
@@ -117,7 +128,8 @@ async function viewChallenges(sid) {
         <label>How long <select class="input" name="minutes">${[5, 10, 15, 20, 30, 45, 60].map((m) => `<option value="${m}" ${draft.minutes === m ? "selected" : ""}>${m} minutes</option>`).join("")}</select></label>
         <div class="ch-when"><span class="lbl">When</span>
           <label class="check"><input type="radio" name="when" value="now" ${draft.when === "now" ? "checked" : ""}> Right now</label>
-          <label class="check"><input type="radio" name="when" value="later" ${draft.when === "later" ? "checked" : ""}> At <input class="input sm" type="datetime-local" name="at" value="${esc(draft.at)}"></label></div>
+          <label class="check"><input type="radio" name="when" value="later" ${draft.when === "later" ? "checked" : ""}> At <input class="input sm" type="datetime-local" name="at" value="${esc(draft.at)}"></label>
+          ${afterRow()}</div>
         <label>Repeats <select class="input" name="repeat">${[["", "Just once"], ["weekly", "Every week, same day and time"], ["daily", "Every day, same time"]].map(([v, l]) => `<option value="${v}" ${draft.repeat === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         <div class="ch-prizes"><span class="lbl">Prize for the winner</span><button type="button" class="btn ch-pick" data-pick="prize">${prizeHtml(draft.prize)}</button>
           <span class="lbl">Second place <small class="muted">(optional)</small></span><span class="ch-second"><button type="button" class="btn ch-pick" data-pick="second">${prizeHtml(draft.second)}</button>${draft.second ? `<button type="button" class="icon-btn" data-clear-second aria-label="No second prize">✕</button>` : ""}</span></div>
@@ -136,7 +148,8 @@ async function viewChallenges(sid) {
         <option value="5" ${draft.lure === 5 ? "selected" : ""}>Contest Rod with Lure V (bites within ~5 s)</option></select>
         <small class="muted">Each player gets one when it starts (or when they join); it's taken back at the end.</small></label>
       ${fish?.tide ? `<label class="check ch-fair" ${ROD_KINDS.includes(draft.kind) ? "" : "hidden"}><input type="checkbox" name="fair" ${draft.fair ? "checked" : ""}> Fair play: everyone fishes at the same level for the contest (Tide levels are switched off until it ends)</label>` : ""}
-      <label class="check"><input type="checkbox" name="say" ${draft.say ? "checked" : ""}> Announce it in the game (start, last minute, winner) and show the scores on everyone's screen</label>
+      <label class="check"><input type="checkbox" name="say" ${draft.say ? "checked" : ""}> Announce it in the game (countdown alerts, start, winner) and show the scores on everyone's screen</label>
+      ${optinField(draft.optin)}
       ${d.rcon ? "" : `<p class="notice">This server needs RCON turned on for challenges (⚙ settings).</p>`}
       <div class="btn-row"><button class="btn primary" type="submit" ${d.rcon ? "" : "disabled"}>${draft.when === "now" ? "Start the challenge" : "Schedule it"}</button></div>
     </form>`;
@@ -219,12 +232,14 @@ async function viewChallenges(sid) {
   }));
   const wire = () => {
     const form = $("#ch-form");
-    const sync = () => { const f = new FormData(form); draft.kind = f.get("kind"); draft.name = f.get("name"); draft.minutes = +f.get("minutes"); draft.when = f.get("when"); draft.at = f.get("at"); draft.say = !!f.get("say"); draft.repeat = f.get("repeat") || ""; draft.lure = +(f.get("lure") || 0); draft.fair = !!f.get("fair");
+    const sync = () => { const f = new FormData(form); draft.kind = f.get("kind"); draft.name = f.get("name"); draft.minutes = +f.get("minutes"); draft.when = f.get("when"); draft.at = f.get("at"); draft.say = !!f.get("say"); draft.repeat = f.get("repeat") || ""; draft.lure = +(f.get("lure") || 0); draft.fair = !!f.get("fair"); draft.optin = !!f.get("optin");
+      if (f.get("gap") != null) draft.gap = +f.get("gap");
       draft.hot = !!f.get("hot"); for (const k of ["hot_bonus", "hot_on", "hot_off", "hot_far"]) if (f.get(k)) draft[k] = +f.get(k); };
     form.addEventListener("change", (e) => {
       sync();
       if (e.target.name === "kind") { form.querySelectorAll(".ch-kind").forEach((l) => l.classList.toggle("on", l.querySelector("input").checked)); form.name.placeholder = kind(draft.kind).label; form.querySelector(".ch-lure").hidden = !ROD_KINDS.includes(draft.kind); if (form.querySelector(".ch-fair")) form.querySelector(".ch-fair").hidden = !ROD_KINDS.includes(draft.kind); form.querySelector(".ch-hot").hidden = draft.kind !== "fish_points"; }
-      if (e.target.name === "at") { draft.when = "later"; form.querySelector('[name=when][value=later]').checked = true; }
+      if (e.target.name === "gap") { draft.at = afterAt(); form.at.value = draft.at; }
+      if (e.target.name === "at") { draft.when = "later"; form.querySelector('[name=when][value=later]').checked = true; if (draft.after) { draft.after = null; render(); return; } }
       form.querySelector("[type=submit]").textContent = draft.when === "now" ? "Start the challenge" : "Schedule it";
     });
     form.querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", () => {
@@ -233,6 +248,7 @@ async function viewChallenges(sid) {
       openGiveItem(sid, "", { title: which === "prize" ? "Prize for the winner" : "Prize for second place", count: draft[which]?.count || (which === "prize" ? 1 : 1),
         pick: (item, count) => { draft[which] = { item: item.id, count, label: item.name }; render(); } });
     }));
+    form.querySelector("[data-no-after]")?.addEventListener("click", () => { sync(); draft.after = null; render(); });
     form.querySelector("[data-clear-second]")?.addEventListener("click", () => { sync(); draft.second = null; render(); });
     wireGather(form, sid, draft.g, () => { sync(); render(); }, d.spawn);
     form.addEventListener("submit", async (e) => {
@@ -241,12 +257,12 @@ async function viewChallenges(sid) {
       if (draft.g.on && !draft.g.spot) { showToast("Pick the spot to teleport everyone to (or untick teleporting)", 3000); return; }
       const start = draft.when === "now" ? Date.now() / 1000 : new Date(draft.at).getTime() / 1000;
       try {
-        const c = await post(base, { kind: draft.kind, name: draft.name, start, minutes: draft.minutes, say: draft.say, repeat: draft.repeat, lure: ROD_KINDS.includes(draft.kind) ? draft.lure : 0, fair: ROD_KINDS.includes(draft.kind) && !!fish?.tide && draft.fair,
+        const c = await post(base, { kind: draft.kind, name: draft.name, start, minutes: draft.minutes, say: draft.say, repeat: draft.repeat, optin: draft.optin, lure: ROD_KINDS.includes(draft.kind) ? draft.lure : 0, fair: ROD_KINDS.includes(draft.kind) && !!fish?.tide && draft.fair,
           gather: gatherBody(draft.g),
           hot: draft.kind === "fish_points" && draft.hot, hot_bonus: draft.hot_bonus, hot_on: draft.hot_on, hot_off: draft.hot_off, hot_far: draft.hot_far,
           prize: { item: draft.prize.item, count: draft.prize.count, name: draft.prize.label }, second: draft.second ? { item: draft.second.item, count: draft.second.count, name: draft.second.label } : null });
         showToast(draft.when === "now" ? `${esc(c.name)} starts in a few seconds` : `${esc(c.name)} is scheduled`, 3000);
-        draft.name = ""; await reload();
+        draft.name = ""; draft.after = null; await reload();
       } catch (err) { showError(esc(err.message), 4000); }
     });
     $$(".ch-card").forEach((el) => {
@@ -255,8 +271,14 @@ async function viewChallenges(sid) {
         if ((c.state === "running" || c.state === "scheduled") && !(await confirmBox(c.state === "running" ? `Stop ${c.name}?` : `Cancel ${c.name}?`, c.state === "running" ? "Nobody wins and the scores are cleared from the game." : "It won't start.", c.state === "running" ? "Stop it" : "Cancel it"))) return;
         try { await api(`${base}/${encodeURIComponent(c.id)}`, { method: "DELETE" }); await reload(); } catch (err) { showError(esc(err.message), 4000); }
       });
+      el.querySelector("[data-next]")?.addEventListener("click", () => {
+        Object.assign(draft, { kind: c.kind, name: "", minutes: c.minutes, say: c.say, optin: !!c.optin, repeat: c.repeat || "", lure: c.lure || 0, fair: c.fair !== false, when: "later",
+          after: c.id, prize: { ...c.prize, label: c.prize.name }, second: c.second ? { ...c.second, label: c.second.name } : null });
+        draft.at = afterAt();
+        render(); $("#ch-form").scrollIntoView({ behavior: "smooth", block: "center" });
+      });
       el.querySelector("[data-again]")?.addEventListener("click", () => {
-        Object.assign(draft, { kind: c.kind, name: c.name, minutes: c.minutes, say: c.say, lure: c.lure || 0, fair: c.fair !== false, hot: !!c.hot, hot_bonus: c.hot_bonus || 2, hot_on: c.hot_on || 60, hot_off: c.hot_off || 30, hot_far: c.hot_far || 40, when: "now",
+        Object.assign(draft, { kind: c.kind, name: c.name, minutes: c.minutes, say: c.say, optin: !!c.optin, after: null, lure: c.lure || 0, fair: c.fair !== false, hot: !!c.hot, hot_bonus: c.hot_bonus || 2, hot_on: c.hot_on || 60, hot_off: c.hot_off || 30, hot_far: c.hot_far || 40, when: "now",
           prize: { ...c.prize, label: c.prize.name }, second: c.second ? { ...c.second, label: c.second.name } : null });
         render(); $("#ch-form").scrollIntoView({ behavior: "smooth", block: "center" });
       });
@@ -320,7 +342,64 @@ function rconEchoNote(d) {
 // Contests and races share the Challenges tab.
 function playSwitch(sid, on) {
   const base = `#/s/${encodeURIComponent(sid)}/challenges`;
-  return `<nav class="seg play-switch" aria-label="Kind of challenge"><a href="${base}" ${on === "contests" ? 'aria-current="page"' : ""}>🏆 Contests</a><a href="${base}/races" ${on === "races" ? 'aria-current="page"' : ""}>🏁 Races</a><a href="${base}/games" ${on === "games" ? 'aria-current="page"' : ""}>🎲 Games</a></nav>`;
+  return `<nav class="seg play-switch" aria-label="Kind of challenge"><a href="${base}" ${on === "contests" ? 'aria-current="page"' : ""}>🏆 Contests</a><a href="${base}/races" ${on === "races" ? 'aria-current="page"' : ""}>🏁 Races</a><a href="${base}/games" ${on === "games" ? 'aria-current="page"' : ""}>🎲 Games</a><a href="${base}/joining" ${on === "joining" ? 'aria-current="page"' : ""}>📣 Joining</a></nav>`;
+}
+
+// "Who's in" on an event's card: everyone online, or those who joined so far.
+function joinedLine(it) {
+  if (!["scheduled", "running", "countdown", "hiding"].includes(it.state)) return "";
+  if (!it.optin) return `<p class="muted small ch-joined">👥 Everyone online takes part</p>`;
+  const who = it.joined || [];
+  return `<p class="muted small ch-joined">✋ Players join with <code>/trigger join</code> · ${who.length ? `${who.length} in: ${who.map(esc).join(", ")}` : "nobody yet"}</p>`;
+}
+
+// The switch on every event form: players choose to join, or everyone online is in.
+function optinField(on) {
+  return `<label class="check ch-optin"><input type="checkbox" name="optin" ${on ? "checked" : ""}> <b>Players choose to join</b> (<code>/trigger join</code> in the game, or “I'm coming!” on the website). Untick: everyone online takes part.</label>`;
+}
+
+// ---------------------------------------------------------------- joining events, alerts and their messages
+async function viewJoining(sid) {
+  if (!isAdmin()) { location.replace(`#/s/${encodeURIComponent(sid)}`); return; }
+  const s = await serverFrame(sid, "challenges");
+  let cfg = await api("/api/settings/optin");
+  const when = (a) => (a >= 60 ? `${a / 60} min` : `${a} s`);
+  const sample = (t) => t.replace(/\{event\}/g, "Fishing night").replace(/\{left\}/g, "5 minutes").replace(/\{time\}/g, "7:00 PM")
+    .replace(/\{count\}/g, "3").replace(/\{join\}/g, "/trigger join").replace(/\{leave\}/g, "/trigger leave");
+  const keys = Object.keys(cfg.labels);
+  setView(serverHeader(s, "challenges") + playSwitch(sid, "joining") + `
+    <form class="panel ws-nudge" id="oi-form">
+      <div class="section-head"><h2>📣 Joining events</h2></div>
+      <p class="muted small">For contests, races and games set to <b>Players choose to join</b>: players type <code>/trigger join</code> in the game (no operator needed, and nobody else sees it).
+        On Java they can click it in the messages below; on Bedrock they type it. <code>/trigger join</code> again joins the next event after that one, so a night of back-to-back events is joined one at a time.
+        <code>/trigger leave</code> takes them out. “I'm coming!” on the website counts as joining once they're on. Contests can be joined until they end; races and games until they start.</p>
+      <label class="check">Joining opens <input class="input sm" type="number" name="open_minutes" min="5" max="1440" step="5" style="width:80px"> minutes before the start</label>
+      <label class="check"><input type="checkbox" name="on_join"> Tell players who come online about an event they can still join</label>
+      <div class="oi-alerts"><span class="lbl">Countdown alerts in chat, before every event</span>
+        ${cfg.choices.map((a) => `<label class="check"><input type="checkbox" name="alert" value="${a}"> ${when(a)}</label>`).join("")}</div>
+      <p class="muted small">Messages use the welcome message's colour codes (<code>&amp;a</code> green, <code>&amp;6</code> gold, <code>&amp;e</code> yellow, <code>&amp;7</code> grey, <code>&amp;l</code> bold, <code>&amp;r</code> plain) and fill-ins:
+        <code>{event}</code>, <code>{left}</code> (like “5 minutes”), <code>{time}</code>, <code>{count}</code> (how many have joined), <code>{join}</code> and <code>{leave}</code> (the commands, clickable on Java), <code>{player}</code>, <code>{site}</code>. A message can be up to 8 lines.</p>
+      ${keys.map((k) => `<label class="oi-text"><span class="lbl">${esc(cfg.labels[k])}</span>
+        <textarea class="input ws-text" name="${k}" rows="2" maxlength="400"></textarea></label><div class="wel-preview" data-for="${k}"></div>`).join("")}
+      <div class="btn-row"><button class="btn sm primary" type="submit">Save</button><button class="btn sm" type="button" data-oi-reset>Back to Solstone's wording</button></div>
+    </form>`);
+  const form = $("#oi-form");
+  const show = () => $$(".wel-preview", form).forEach((pv) => { pv.innerHTML = welcomePreview(sample(form[pv.dataset.for].value), sid) || ""; });
+  const fillIn = () => {
+    form.open_minutes.value = cfg.open_minutes; form.on_join.checked = cfg.on_join;
+    $$("[name=alert]", form).forEach((b) => { b.checked = cfg.alerts.includes(+b.value); });
+    for (const k of keys) form[k].value = cfg[k];
+    show();
+  };
+  fillIn();
+  form.addEventListener("input", show);
+  $("[data-oi-reset]", form).addEventListener("click", () => { for (const k of keys) form[k].value = cfg.defaults[k]; show(); });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = { open_minutes: +form.open_minutes.value || 60, on_join: form.on_join.checked, alerts: $$("[name=alert]", form).filter((b) => b.checked).map((b) => +b.value) };
+    for (const k of keys) body[k] = form[k].value;
+    try { cfg = await post("/api/settings/optin", body, "PUT"); fillIn(); showToast("Saved", 2000); } catch (err) { showError(esc(err.message), 5000); }
+  });
 }
 
 // ---------------------------------------------------------------- a small world map (course editor)
@@ -497,7 +576,7 @@ async function viewRaces(sid) {
         <div class="ch-acts">${["scheduled", "countdown", "running"].includes(r.state) ? `<button class="btn sm danger" type="button" data-stop>${r.state === "scheduled" ? "Cancel" : "Stop"}</button>` : `<button class="icon-btn" type="button" data-stop title="Remove from the list" aria-label="Remove">✕</button>`}</div></div>
       ${r.prizes?.some(Boolean) ? `<div class="ch-prize">${r.prizes.map((p, i) => (p ? `<span class="muted">${["🥇", "🥈", "🥉"][i]}</span> ${itemIcon({ id: p.item })}<span>${p.count} × ${esc(p.name || itemName({ id: p.item }))}</span>` : "")).join(" ")}</div>` : ""}
       ${r.marker_error ? `<p class="notice small">The markers didn't place: ${esc(r.marker_error)}</p>` : ""}
-      ${r.result ? `<p class="ch-result">${esc(r.result)}</p>` : ""}
+      ${joinedLine(r)}${r.result ? `<p class="ch-result">${esc(r.result)}</p>` : ""}
       ${rows ? `<ol class="ch-scores">${rows}</ol>` : live ? `<p class="muted small">Waiting for racers…</p>` : ""}
     </div>`;
   };
@@ -613,6 +692,7 @@ async function viewRaces(sid) {
           <label class="check"><input type="radio" name="when" value="later"> At <input class="input sm" type="datetime-local" name="at" value="${at}"></label></div>
         <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30].map((m) => `<option value="${m}" ${m === 15 ? "selected" : ""}>${m} minutes</option>`).join("")}</select></label>
         <label class="check"><input type="checkbox" name="teleport" checked> Line everyone up at the start, held still until GO, and send them back where they were afterwards</label>
+        ${optinField(true)}
         <div class="rs-prizes">${["🥇 1st", "🥈 2nd", "🥉 3rd"].map((l, i) => `<span class="lbl">${l}</span><span id="rs-p${i}">${prizeBtn(i)}</span>`).join("")}</div>
         <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Start</button></div>
       </form>`;
@@ -626,7 +706,7 @@ async function viewRaces(sid) {
       }));
       const restore = (m2, keep) => {
         const f = $("#rs-form", m2);
-        f.when.value = keep.when.value; f.at.value = keep.at.value; f.minutes.value = keep.minutes.value; f.teleport.checked = keep.teleport.checked;
+        f.when.value = keep.when.value; f.at.value = keep.at.value; f.minutes.value = keep.minutes.value; f.teleport.checked = keep.teleport.checked; f.optin.checked = keep.optin.checked;
       };
       const wireAll = (mm) => {
         m = mm; wire();
@@ -635,7 +715,7 @@ async function viewRaces(sid) {
           const f = e.target;
           const start = f.when.value === "now" ? Date.now() / 1000 : new Date(f.at.value).getTime() / 1000;
           try {
-            await post(`${base}/runs`, { course: c.id, start, minutes: +f.minutes.value, teleport: f.teleport.checked, prizes });
+            await post(`${base}/runs`, { course: c.id, start, minutes: +f.minutes.value, teleport: f.teleport.checked, optin: f.optin.checked, prizes });
             closeModal(); showToast(f.when.value === "now" ? "Race starting: 10-second countdown in the game" : "Race scheduled", 3000); await reload();
           } catch (err) { showError(esc(err.message), 4000); }
         });
@@ -690,7 +770,7 @@ async function viewGames(sid) {
     return `<div class="ch-card panel ch-${live ? "running" : r.state}" data-gid="${esc(r.id)}">
       <div class="ch-head"><span class="ch-emoji">${emoji}</span><div><h3>${esc(r.name)}</h3>${status}</div>
         <div class="ch-acts">${live || r.state === "scheduled" ? `<button class="btn sm danger" type="button" data-stop>${live ? "Stop" : "Cancel"}</button>` : `<button class="icon-btn" type="button" data-stop aria-label="Remove">✕</button>`}</div></div>
-      ${r.result ? `<p class="ch-result">${esc(r.result)}</p>` : ""}${r.chest_error ? `<p class="notice small">The chest didn't place: ${esc(r.chest_error)}</p>` : ""}${body}</div>`;
+      ${joinedLine(r)}${r.result ? `<p class="ch-result">${esc(r.result)}</p>` : ""}${r.chest_error ? `<p class="notice small">The chest didn't place: ${esc(r.chest_error)}</p>` : ""}${body}</div>`;
   };
   const render = () => {
     const live = d.runs.filter((r) => ["countdown", "hiding", "running"].includes(r.state)), soon = d.runs.filter((r) => r.state === "scheduled"), past = d.runs.filter((r) => !["countdown", "hiding", "running", "scheduled"].includes(r.state));
@@ -724,7 +804,7 @@ async function viewGames(sid) {
       hide_secs: 60, minutes: game === "treasure" ? 15 : game === "archery" ? 10 : 6, seeker: "", no_dig: true, marco: true, infect: true,
       mode: "bullseye", word: "HORSE", give_bow: true, hint_after: 5, items: [], prize: null, hot: false, hot_bonus: 2, hot_far: 40, hot_on: 45, hot_off: 20,
       underwater: false, g: { on: false, spot: null, r: 4 }, layers: 1, best_of: 3, teams: false, snowballs: false, shrink: true, shrink_after: 60,
-      seconds: 120, rounds: 1, peaceful: true };
+      seconds: 120, rounds: 1, peaceful: true, optin: true };
     if (game === "spleef") f.radius = 10;
     const at = (() => { const t = new Date(Date.now() + 15 * 60e3); t.setSeconds(0, 0); return new Date(t.getTime() - t.getTimezoneOffset() * 60e3).toISOString().slice(0, 16); })();
     f.at = at;
@@ -788,13 +868,14 @@ async function viewGames(sid) {
         <div class="ch-when"><span class="lbl">When</span>
           <label class="check"><input type="radio" name="when" value="now" ${f.when === "now" ? "checked" : ""}> Right now</label>
           <label class="check"><input type="radio" name="when" value="later" ${f.when === "later" ? "checked" : ""}> At <input class="input sm" type="datetime-local" name="at" value="${esc(f.at)}"></label></div>
+        ${optinField(f.optin)}
         <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Start</button></div>
       </form>`;
     const sync = (m) => {
       const fm = $("#gm-form", m);
       for (const k of ["seeker", "mode", "word"]) if (fm[k]) f[k] = fm[k].value;
       for (const k of ["hide_secs", "minutes", "seconds", "rounds", "hint_after", "radius", "hot_bonus", "hot_far", "hot_on", "hot_off", "layers", "best_of", "shrink_after"]) if (fm[k]) f[k] = +fm[k].value;
-      for (const k of ["no_dig", "marco", "infect", "give_bow", "hot", "teams", "snowballs", "shrink", "underwater", "peaceful"]) if (fm[k]) f[k] = fm[k].checked;
+      for (const k of ["no_dig", "marco", "infect", "give_bow", "hot", "teams", "snowballs", "shrink", "underwater", "peaceful", "optin"]) if (fm[k]) f[k] = fm[k].checked;
       f.when = fm.when.value; f.at = fm.at.value;
     };
     const show = () => openModal(body(), (m) => {
