@@ -349,3 +349,35 @@ def test_newest_first_and_the_rest_in_the_background(tmp_path, monkeypatch):
             break
         time.sleep(0.05)
     assert all(worldmap._tile_path("q", "minecraft:overworld", x, 0).is_file() for x in (0, 2))   # drawn in the background
+
+
+def test_zoomed_out_overview_pictures(tmp_path, monkeypatch):
+    import time
+
+    from app import worldmap
+    from app.config import config
+    monkeypatch.setattr(config, "data_dir", tmp_path / "data")
+    monkeypatch.setattr(worldmap, "FILL_PAUSE", 0)
+    world = tmp_path / "world"
+    (world / "region").mkdir(parents=True)
+    for x, z in [(0, 0), (1, 1), (2, 0)]:
+        _region(world / "region" / f"r.{x}.{z}.mca", {(x * 32, z * 32): _chunk(x * 32, z * 32, _land)})
+    assert worldmap.overview("o", world, "minecraft:overworld", 1, 5, 5, None) == ("none", None)      # no world there
+    for _ in range(200):                                       # asking draws the parts; then the picture is ready
+        state, path = worldmap.overview("o", world, "minecraft:overworld", 1, 0, 0, None)
+        if state == "ready" and not worldmap._overview_pending.get(path):
+            break
+        time.sleep(0.05)
+    img = Image.open(path)
+    assert img.size == (512, 512)
+    # each test region has one chunk, in its corner: (0,0) and (1,1) drawn, (1,0) has no region
+    assert img.getpixel((2, 2))[3] > 0 and img.getpixel((258, 258))[3] > 0 and img.getpixel((258, 2))[3] == 0
+    for _ in range(200):
+        state, top = worldmap.overview("o", world, "minecraft:overworld", 2, 0, 0, None)              # 4x4 regions: (2,0) is in it too
+        if state == "ready" and not worldmap._overview_pending.get(top):
+            break
+        time.sleep(0.05)
+    big = Image.open(top)
+    assert big.getpixel((1, 1))[3] > 0 and big.getpixel((257, 1))[3] > 0                              # region (2,0) at the right place
+    first = top.stat().st_mtime
+    assert worldmap.overview("o", world, "minecraft:overworld", 2, 0, 0, None) == ("ready", top) and top.stat().st_mtime == first   # kept

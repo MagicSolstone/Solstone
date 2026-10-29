@@ -1,5 +1,8 @@
 # Solstone 1.10.1
 
+## 🗺️ The top-down map zoomed out
+- **Zooming out is quick now:** zoomed out, each picture covers 2×2, 4×4 and up to 32×32 regions instead of one, so a wide view of a big (Chunky-generated) world is a handful of pictures, not hundreds of full-size ones. They're made from the region pictures already drawn, kept, and made again only when a part of them changes. The same on the home page's *Where everyone is*.
+
 ## 🎣 Fishing stays vanilla with the Solstone pack
 - **The pack no longer changes fishing:** no species, no renamed or described fish, no different odds. Cod, salmon, tropical fish and pufferfish are the game's own, and nothing extra is said in chat. Bedrock players (Geyser) fish exactly as before.
 - **It just gives each fish a weight**, behind the scenes: a size for its kind (cod 1–12 lb, salmon 2–20 lb, tropical fish 0.2–1.5 lb, pufferfish 0.5–3 lb), big ones rarer, and a point a pound. Nothing is written on the item.

@@ -1029,8 +1029,16 @@ async def map_regions(sid: str, request: Request, dim: str = "minecraft:overworl
 
 
 @app.get("/api/public/map/{sid}/tile")
-async def map_tile(sid: str, request: Request, x: int, z: int, dim: str = "minecraft:overworld"):
+async def map_tile(sid: str, request: Request, x: int, z: int, dim: str = "minecraft:overworld", lod: int = 0):
+    """One region's picture, or zoomed out (lod 1..5) one picture for 2**lod x 2**lod regions."""
     srv = await _map_server(request, sid)
+    if lod:
+        state, path = await asyncio.to_thread(worldmap.overview, srv.id, srv.world_dir, dim, lod, x, z, _assets(srv))
+        if state == "none":
+            raise HTTPException(404)
+        if state == "working":
+            return Response(status_code=202, headers={"Retry-After": "3", "Cache-Control": "no-store"})
+        return FileResponse(path, media_type="image/png", headers={"Cache-Control": "max-age=60"})
     state, path = await asyncio.to_thread(worldmap.tile, srv.id, srv.world_dir, dim, x, z, _assets(srv))
     if state == "none":
         raise HTTPException(404)

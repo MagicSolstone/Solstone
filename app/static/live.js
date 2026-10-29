@@ -340,13 +340,13 @@ function mountMap(el, b, prev) {
     fetch(`/api/public/map/${encodeURIComponent(b.id)}/regions?dim=${encodeURIComponent(dimId)}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null)).then((d) => { if (d) { map.regionSets[dimId] = { at: Date.now(), set: new Set(d.regions.map(([x, z]) => `${x},${z}`)) }; map.redraw?.(); } else map.regionSets[dimId].failed = true; }).catch(() => { map.regionSets[dimId].failed = true; });
   }
-  const tileFor = (rx, rz) => {
-    const key = `${dimId}|${rx},${rz}`;
+  const tileFor = (rx, rz, lod = 0) => {
+    const key = `${dimId}|${lod}:${rx},${rz}`;
     let t = map.tiles[key];
     if (t && (t.state === "loading" || t.state === "none" || (t.state === "wait" && Date.now() < t.retry))) return t;
     if (t && t.state === "ready" && Date.now() - t.at < 180000) return t;            // fresh enough; redrawn every few minutes
     t = map.tiles[key] = { ...(t || {}), state: t?.img ? "ready" : "loading", loading: true };
-    fetch(`/api/public/map/${encodeURIComponent(b.id)}/tile?dim=${encodeURIComponent(dimId)}&x=${rx}&z=${rz}&t=${Math.floor(Date.now() / 60000)}`, { cache: "no-store" })
+    fetch(`/api/public/map/${encodeURIComponent(b.id)}/tile?dim=${encodeURIComponent(dimId)}&x=${rx}&z=${rz}${lod ? `&lod=${lod}` : ""}&t=${Math.floor(Date.now() / 60000)}`, { cache: "no-store" })
       .then(async (r) => {
         if (r.status === 202) { t.state = t.img ? "ready" : "wait"; t.retry = Date.now() + 3000; t.at = t.img ? Date.now() - 170000 : 0; setTimeout(() => map.redraw?.(), 3100); return; }
         if (!r.ok) { t.state = "none"; return; }
@@ -393,14 +393,26 @@ function mountMap(el, b, prev) {
       const x0 = bnd.cx - w / 2 / scale, x1 = bnd.cx + w / 2 / scale, z0 = bnd.cz - h / 2 / scale, z1 = bnd.cz + h / 2 / scale;
       let n = 0, waiting = 0, empty = null, drawn = 0;
       ctx.imageSmoothingEnabled = scale < 1;
-      for (let rx = Math.floor(x0 / 512); rx <= Math.floor(x1 / 512) && n < 36; rx++) {
-        for (let rz = Math.floor(z0 / 512); rz <= Math.floor(z1 / 512) && n < 36; rz++) {
-          if (!set.has(`${rx},${rz}`)) continue;
+      // zoomed out, one picture covers 2x2, 4x4 ... regions, so a wide view is a handful of pictures
+      const lod = Math.max(0, Math.min(5, Math.floor(Math.log2(1 / (scale * dpr)))));
+      const size = 512 * 2 ** lod;
+      map.lodSets ||= {};
+      const has = (x, z) => {
+        if (!lod) return set.has(`${x},${z}`);
+        const k = `${dimId}|${lod}`;
+        if (!map.lodSets[k] || map.lodSets[k].from !== set) {
+          map.lodSets[k] = { from: set, set: new Set([...set].map((r) => { const [a, c] = r.split(",").map(Number); return `${Math.floor(a / 2 ** lod)},${Math.floor(c / 2 ** lod)}`; })) };
+        }
+        return map.lodSets[k].set.has(`${x},${z}`);
+      };
+      for (let rx = Math.floor(x0 / size); rx <= Math.floor(x1 / size) && n < 36; rx++) {
+        for (let rz = Math.floor(z0 / size); rz <= Math.floor(z1 / size) && n < 36; rz++) {
+          if (!has(rx, rz)) continue;
           n++;
-          const t = tileFor(rx, rz);
+          const t = tileFor(rx, rz, lod);
           if (!t.img && t.state !== "none") waiting++;
           if (t.img && t.empty) empty = t.empty; else if (t.img) drawn++;
-          if (t.img) ctx.drawImage(t.img, Math.round(sx(rx * 512)), Math.round(sz(rz * 512)), Math.ceil(512 * scale) + 1, Math.ceil(512 * scale) + 1);
+          if (t.img) ctx.drawImage(t.img, Math.round(sx(rx * size)), Math.round(sz(rz * size)), Math.ceil(size * scale) + 1, Math.ceil(size * scale) + 1);
         }
       }
       ctx.fillStyle = "rgba(6, 10, 18, .18)"; ctx.fillRect(0, 0, w, h);          // a touch darker, so names and heads stand out

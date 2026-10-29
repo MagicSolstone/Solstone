@@ -879,6 +879,59 @@ def tile(sid: str, world: Path, dim: str, rx: int, rz: int, assets) -> tuple[str
     return ("ready", dst) if dst_m else ("working", None)
 
 
+OVERVIEW_LEVELS = 5                     # zoomed out: one picture for 2x2 regions, 4x4, ... 32x32
+OVERVIEW_RECHECK = 20                   # seconds: a picture still missing some parts is built again at most this often
+
+
+def overview(sid: str, world: Path, dim: str, level: int, x: int, z: int, assets) -> tuple[str, Path | None]:
+    """A zoomed-out picture (still 512 x 512): 2**level x 2**level regions, made by shrinking the region pictures
+    (or the level below) and kept until one of them changes. ('ready', path), ('working', None) while none of
+    its parts is drawn yet, or ('none', None) when there's no world there."""
+    d = region_dir(world, dim)
+    if not d or not 1 <= level <= OVERVIEW_LEVELS:
+        return "none", None
+    dst = _tile_path(sid, dim, x, z).parent / f"L{level}" / f"{x}.{z}.png"
+    parts, pending, sig = [], False, []
+    for i, (cx, cz) in enumerate(((2 * x, 2 * z), (2 * x + 1, 2 * z), (2 * x, 2 * z + 1), (2 * x + 1, 2 * z + 1))):
+        state, path = tile(sid, world, dim, cx, cz, assets) if level == 1 else overview(sid, world, dim, level - 1, cx, cz, assets)
+        pending |= state == "working" or (level > 1 and path is not None and _overview_pending.get(path, False))
+        if path is not None:
+            try:
+                st = path.stat()
+            except OSError:
+                continue
+            parts.append((i, path))
+            sig.append((i, st.st_mtime_ns, st.st_size))
+    if not parts:
+        return ("working", None) if pending else ("none", None)
+    # Built from exactly these parts already? (Compared by what they were, not by times: a part can be finished
+    # just before this picture is made and land on disk just after.)
+    made = _overview_made.get(dst)
+    if made and dst.is_file() and made[0] == sig and (not pending or time.time() - made[1] < OVERVIEW_RECHECK):
+        return "ready", dst
+    img = Image.new("RGBA", (TILE, TILE), (0, 0, 0, 0))
+    half = TILE // 2
+    for i, path in parts:
+        try:
+            with Image.open(path) as part:
+                if part.width <= 1:                       # a region with nothing to draw
+                    continue
+                img.paste(part.convert("RGBA").resize((half, half), Image.Resampling.BOX), ((i % 2) * half, (i // 2) * half))
+        except OSError:
+            continue
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_suffix(f".{threading.get_ident()}.tmp")
+    img.save(tmp, "PNG", compress_level=6)
+    tmp.replace(dst)
+    _overview_pending[dst] = pending
+    _overview_made[dst] = (sig, time.time())
+    return "ready", dst
+
+
+_overview_pending: dict[Path, bool] = {}
+_overview_made: dict[Path, tuple[list, float]] = {}    # each picture: the parts it was made from (once per start)
+
+
 def _fill_jobs(sid: str, d: Path, dim: str, rx: int, rz: int, assets) -> list[tuple]:
     """Every region of this map with no picture yet, nearest to where someone is looking first."""
     jobs = []

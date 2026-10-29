@@ -335,12 +335,19 @@ function worldMapCanvas(el, sid, o) {
   const loadRegions = () => fetch(`/api/public/map/${encodeURIComponent(sid)}/regions?dim=${encodeURIComponent(dim)}`, { credentials: "same-origin" })
     .then((r) => (r.ok ? r.json() : null)).then((d) => { regions = new Set((d?.regions || []).map(([x, z]) => `${x},${z}`)); draw(); }).catch(() => { regions = new Set(); draw(); });
   loadRegions();
-  const tile = (rx, rz) => {
-    const k = `${rx},${rz}`;
+  // Zoomed out, one picture covers 2x2, 4x4 ... regions (lod), so a wide view is a handful of pictures, not hundreds.
+  const lodSets = {};
+  const lodHas = (lod, x, z) => {
+    if (!lod) return regions.has(`${x},${z}`);
+    lodSets[lod] ||= new Set([...regions].map((k) => { const [a, b] = k.split(",").map(Number); return `${Math.floor(a / 2 ** lod)},${Math.floor(b / 2 ** lod)}`; }));
+    return lodSets[lod].has(`${x},${z}`);
+  };
+  const tile = (rx, rz, lod = 0) => {
+    const k = `${lod}:${rx},${rz}`;
     let t = tiles[k];
     if (t && (t.img || t.loading || (t.retry && Date.now() < t.retry))) return t;
     t = tiles[k] = { loading: true };
-    fetch(`/api/public/map/${encodeURIComponent(sid)}/tile?dim=${encodeURIComponent(dim)}&x=${rx}&z=${rz}`, { credentials: "same-origin" })
+    fetch(`/api/public/map/${encodeURIComponent(sid)}/tile?dim=${encodeURIComponent(dim)}&x=${rx}&z=${rz}${lod ? `&lod=${lod}` : ""}`, { credentials: "same-origin" })
       .then(async (r) => {
         t.loading = false;
         if (r.status === 202) { t.retry = Date.now() + 3000; setTimeout(draw, 3100); return; }
@@ -360,11 +367,13 @@ function worldMapCanvas(el, sid, o) {
     if (regions) {
       const [x0, z0] = toWorld(0, 0), [x1, z1] = toWorld(w, h);
       ctx.imageSmoothingEnabled = view.scale < 1;
-      for (let rx = Math.floor(x0 / 512); rx <= Math.floor(x1 / 512); rx++) {
-        for (let rz = Math.floor(z0 / 512); rz <= Math.floor(z1 / 512); rz++) {
-          if (!regions.has(`${rx},${rz}`)) continue;
-          const t = tile(rx, rz);
-          if (t.img) { const [sx, sy] = toScreen(rx * 512, rz * 512); ctx.drawImage(t.img, Math.round(sx), Math.round(sy), Math.ceil(512 * view.scale) + 1, Math.ceil(512 * view.scale) + 1); }
+      const lod = Math.max(0, Math.min(5, Math.floor(Math.log2(1 / (view.scale * dpr)))));
+      const size = 512 * 2 ** lod;                          // blocks across one picture
+      for (let rx = Math.floor(x0 / size); rx <= Math.floor(x1 / size); rx++) {
+        for (let rz = Math.floor(z0 / size); rz <= Math.floor(z1 / size); rz++) {
+          if (!lodHas(lod, rx, rz)) continue;
+          const t = tile(rx, rz, lod);
+          if (t.img) { const [sx, sy] = toScreen(rx * size, rz * size); ctx.drawImage(t.img, Math.round(sx), Math.round(sy), Math.ceil(size * view.scale) + 1, Math.ceil(size * view.scale) + 1); }
           else waiting++;
         }
       }
@@ -401,7 +410,7 @@ function worldMapCanvas(el, sid, o) {
   const ro = new ResizeObserver(() => draw()); ro.observe(cv);
   return {
     draw, view,
-    setDim(d) { if (d === dim) return; dim = d; tiles = {}; regions = null; loadRegions(); },
+    setDim(d) { if (d === dim) return; dim = d; tiles = {}; regions = null; Object.keys(lodSets).forEach((k) => delete lodSets[k]); loadRegions(); },
     fit(points) {
       if (!points.length) return;
       const xs = points.map((p) => p.x), zs = points.map((p) => p.z);
