@@ -257,3 +257,28 @@ def test_display_name_is_used_in_chat(client, viewer, sid):
         assert viewer.post("/api/auth/profile", json={"display_name": ""}).json()["user"]["display_name"] is None
     finally:
         mp.undo()
+
+
+def test_rounds_back_to_back_and_changing_them(fake):
+    challenges, srv, _ = fake
+    t = time.time() + 3600
+    first = challenges.create(srv.id, {"kind": "fish", "name": "Fishing", "start": t, "minutes": 5, "rounds": 5, "gap": 2,
+                                       "prize": {"item": "diamond", "count": 1}, "repeat": "weekly"})
+    items = sorted(challenges.list_for(srv.id), key=lambda c: c["start"])
+    assert first["made"] == 5 and len(items) == 5 and len({c["series"] for c in items}) == 1
+    assert [round(c["start"] - t) for c in items] == [0, 420, 840, 1260, 1680]                # 7:00, 7:07, 7:14…
+    assert items[1]["name"] == "Fishing · round 2 of 5" and all(c["repeat"] == "weekly" for c in items)
+    # a new prize for round 2 and every round after it still to come; times stay put
+    items[0]["state"] = "done"
+    d = challenges._load()
+    next(x for x in d["items"] if x["id"] == items[0]["id"])["state"] = "done"
+    challenges._save(d)
+    challenges.update(srv.id, items[1]["id"], {"prize": {"item": "emerald", "count": 3}, "minutes": 6, "all_rounds": True})
+    got = {c["id"]: c for c in challenges.list_for(srv.id)}
+    assert got[items[0]["id"]]["prize"]["item"] == "minecraft:diamond"                        # already over: untouched
+    assert all(got[c["id"]]["prize"] == {"item": "minecraft:emerald", "count": 3, "name": ""} for c in items[1:])
+    assert got[items[1]["id"]]["minutes"] == 6 and got[items[2]["id"]]["minutes"] == 5
+    assert [got[c["id"]]["start"] for c in items[1:]] == [c["start"] for c in items[1:]]
+    assert got[items[3]["id"]]["name"] == "Fishing · round 4 of 5" and got[items[3]["id"]]["config"]["series"]
+    with pytest.raises(ValueError):
+        challenges.create(srv.id, {"kind": "fish", "rounds": "lots", "prize": {"item": "diamond"}})

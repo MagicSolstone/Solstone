@@ -1,5 +1,14 @@
 # Solstone 1.11.1
 
+- **Change a scheduled contest:** **✏️ Edit** on a contest that hasn't started puts it back in the form. You can change the time, the prizes, its length or anything else, then **Save the changes**.
+  - For a contest that's one round of several, tick **Change every round still to come** to give the rest the same prizes and settings. Each round keeps its own time.
+- **Several contests in a row, in one go:** in the new contest form, **Back to back** sets how many contests in a row (up to 10) and the break between them (0 to 15 minutes).
+  - For example, *5 contests in a row with a 2 minute break* at 7:00, each 5 minutes long, makes rounds at 7:00, 7:07, 7:14, 7:21 and 7:28. The form shows that plan before you save.
+  - Each round is its own contest, named *Fishing · round 2 of 5*. Players join each one on its own, and each has its own winner and prizes.
+  - Weekly repeats bring the whole set back every week.
+- **Events page, tidier:**
+  - Each event after the first in a back-to-back run is a single short line under the one before (↪ name, time, *I'm coming!*), with no repeated description.
+  - On phones, the name gets the whole width and the time and *I'm coming!* go on the line below, so nothing gets squeezed into a narrow column.
 - **Birthdays are gone:**
   - **Sign-up** no longer asks for a birthday.
   - **Announcements** has no Birthdays tab: no birthday banners, no "birthday in 3 days", no birthday show, and no "Happy birthday" in the game.

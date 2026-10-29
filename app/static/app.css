@@ -1462,13 +1462,23 @@ body.on-editor:not(.ui-hidden) .fwbar .fwb-launch, body.on-editor:not(.ui-hidden
 .up-item:first-child { border-top: 0; }
 .up-item.live { background: rgba(80, 200, 120, .08); }
 /* the next event of a night of back-to-back ones: tucked under the one before */
-.up-item.up-then { border-top: 0; padding-top: 2px; padding-left: 40px; }
+.up-item.up-then { border-top: 0; padding-top: 0; padding-left: 40px; }
+.up-item.up-then .up-emoji { font-size: 1.1rem; }
 .up-item.up-then .up-emoji::before { content: "↪ "; opacity: .5; font-size: .8em; }
+.up-item.up-then .up-main b { font-weight: 600; }
 .up-emoji { font-size: 1.5rem; width: 1.6em; text-align: center; flex: none; }
 .up-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .up-main b a { color: inherit; text-decoration: none; }
 .up-main b a:hover { text-decoration: underline; }
-.up-when { flex: none; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.up-when { flex: none; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; display: flex; align-items: center; gap: 10px; }
+/* phones: the name gets the whole width; the time and "I'm coming" go on the line under it */
+@media (max-width: 600px) {
+  .up-item { flex-wrap: wrap; gap: 4px 10px; padding: 10px 12px; }
+  .up-main { flex: 1 1 calc(100% - 3em); }
+  .up-when { flex-basis: 100%; padding-left: calc(1.6em + 10px); justify-content: space-between; }
+  .up-item.up-then { padding-left: 24px; }
+  .up-item.up-then .up-when { padding-left: calc(1.6em + 10px); }
+}
 .up-day .section-head h2 { font-size: 1.05rem; }
 
 /* Saved fireworks: filters and collections */
@@ -2059,3 +2069,7 @@ a.glance-me:hover { border-color: var(--gold); }
 .audit-filters .audit-date { display: flex; align-items: center; gap: 6px; font-size: .9em; }
 .audit-pager { justify-content: center; align-items: center; margin-top: 12px; }
 .audit-keep { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, .08); }
+.ch-rounds { display: grid; gap: 6px; }
+.ch-rounds-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ch-rounds-row [hidden] { display: none; }
+.ch-form .section-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }

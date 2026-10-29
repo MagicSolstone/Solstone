@@ -153,14 +153,33 @@ def list_for(server: str) -> list[dict]:
     return sorted(items, key=lambda c: (order.get(c["state"], 2), c["start"] if c["state"] != "done" else -c["start"]))
 
 
+MAX_ROUNDS = 10
+
+
 def create(server: str, body: dict) -> dict:
+    """One contest, or several back to back ("rounds": 5, "gap": 2 minutes between): each its own contest
+    (joined, scored and won on its own), named "… · round 2 of 5". Returns the first."""
     d = _load()
     conf = clean(body, server)
-    c = {**conf, "id": secrets.token_hex(4), "state": "scheduled", "scores": {}, "players": [],
-         "winners": [], "seconds": [], "objectives": [], "config": dict(conf)}
-    d["items"].append(c)
+    try:
+        rounds = max(1, min(MAX_ROUNDS, int(body.get("rounds") or 1)))
+        gap = max(0, min(60, int(body.get("gap") or 0)))
+    except (TypeError, ValueError) as e:
+        raise ValueError("Rounds and the break between them need to be numbers") from e
+    series = secrets.token_hex(4) if rounds > 1 else ""
+    made = []
+    for i in range(rounds):
+        one = dict(conf)
+        if rounds > 1:
+            one["start"] = conf["start"] + i * (conf["minutes"] + gap) * 60
+            one["name"] = f"{conf['name'][:24]} · round {i + 1} of {rounds}"
+            one.update(series=series, round=i + 1, rounds=rounds)
+        c = {**one, "id": secrets.token_hex(4), "state": "scheduled", "scores": {}, "players": [],
+             "winners": [], "seconds": [], "objectives": [], "config": dict(one)}
+        d["items"].append(c)
+        made.append(c)
     _save(d)
-    return c
+    return {**made[0], "made": len(made)}
 
 
 def update(server: str, cid: str, body: dict) -> dict:
@@ -170,9 +189,18 @@ def update(server: str, cid: str, body: dict) -> dict:
         raise KeyError(cid)
     if c["state"] != "scheduled":
         raise ValueError("Only a challenge that hasn't started can be changed")
+    keep = ("series", "round", "rounds")
     conf = clean({**c.get("config", c), **body}, server)
     c.update(conf)
-    c["config"] = dict(conf)
+    c["config"] = {**conf, **{k: c[k] for k in keep if k in c}}
+    if body.get("all_rounds") and c.get("series"):
+        # the rest of its rounds still to come get the same changes (each keeps its own name and start)
+        for o in d["items"]:
+            if o is c or o.get("series") != c["series"] or o["state"] != "scheduled" or o["server"] != server:
+                continue
+            same = {k: v for k, v in conf.items() if k not in ("start", "name", "minutes")}     # times stay as they are
+            o.update(same)
+            o["config"] = {**o.get("config", {}), **same, **{k: o[k] for k in keep if k in o}}
     _save(d)
     return c
 
