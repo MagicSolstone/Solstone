@@ -2058,3 +2058,10 @@ a.glance-me:hover { border-color: var(--gold); }
 .oi-alerts .lbl { flex-basis: 100%; }
 .oi-text { display: block; margin-top: 12px; }
 .oi-text .lbl { display: block; margin-bottom: 4px; }
+
+/* Manage → Activity: filters, pages, how long it's kept */
+.audit-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.audit-filters input[type="search"] { flex: 1 1 220px; min-width: 0; }
+.audit-filters .audit-date { display: flex; align-items: center; gap: 6px; font-size: .9em; }
+.audit-pager { justify-content: center; align-items: center; margin-top: 12px; }
+.audit-keep { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, .08); }

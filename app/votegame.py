@@ -85,6 +85,8 @@ async def tick(servers: list[S.Server]) -> None:
     for p in community.close_due():
         await closed(p, servers)
     community.tidy()                                  # old notices go after a month
+    from . import auth
+    auth.audit_tidy_now_and_then()                    # the admin activity log, if it's kept for a set time
 
 
 async def closed(p: dict, servers: list[S.Server]) -> None:

@@ -168,6 +168,14 @@ def main() -> int:
                 pg.goto(f"{base}/app{hash_}"); pg.wait_for_timeout(1300)
                 check(pg, name)
 
+            # Manage → Activity: filters and a page count
+            pg.goto(f"{base}/app#/manage/activity"); pg.wait_for_timeout(1300)
+            if not pg.locator("#audit-filters [name=action]").count() or not pg.locator("#audit-keep").count():
+                problems.append("activity: no filters or keep setting")
+            pg.select_option("#audit-filters [name=oldest]", "1"); pg.wait_for_timeout(700)
+            if "of" not in (pg.locator("#audit-count").text_content() or ""):
+                problems.append("activity: no count after sorting")
+
             # joining events: messages with a preview, saved; new contests are joined by choice
             pg.goto(f"{base}/app#/s/{sid}/challenges/joining"); pg.wait_for_timeout(1300)
             if "/trigger join" not in (pg.locator('.wel-preview[data-for="alert_text"]').text_content() or ""):

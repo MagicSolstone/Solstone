@@ -1849,6 +1849,32 @@ async def audit_all(request: Request, limit: int = 200):
     return auth.audit_log(None, max(1, min(limit, 1000)))
 
 
+@app.get("/api/audit/search")
+async def audit_search(request: Request, server: str = "", action: str = "", who: str = "", q: str = "", since: float = 0,
+                       until: float = 0, failed: bool = False, oldest: bool = False, offset: int = 0, limit: int = 50):
+    """Manage → Activity: filtered by server, kind, person, words and dates; newest or oldest first; a page at a time."""
+    auth.require_admin(request)
+    return auth.audit_search(server_id=server or None, action=action or None, who=who or None, text=q.strip()[:100] or None,
+                             since=since or None, until=until or None, failed=failed, oldest_first=oldest, offset=offset, limit=limit)
+
+
+@app.get("/api/audit/facets")
+async def audit_facets(request: Request):
+    auth.require_admin(request)
+    return auth.audit_facets()
+
+
+@app.put("/api/audit/keep")
+async def audit_keep(request: Request):
+    user = auth.require_admin(request)
+    try:
+        days = auth.set_audit_keep_days(int((await _body(request)).get("days")))
+    except (TypeError, ValueError) as e:
+        raise HTTPException(400, "Pick how long to keep it") from e
+    auth.audit(user, None, "audit_keep", "forever" if not days else f"{days} days")
+    return auth.audit_facets()
+
+
 @app.get("/api/servers")
 async def list_servers():
     await S.registry.refresh()

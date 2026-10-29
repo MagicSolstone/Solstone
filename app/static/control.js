@@ -61,6 +61,72 @@ function auditHtml(rows, showServer = false) {
   }).join("")}</ul>`;
 }
 
+// Manage → Activity: the admin activity log, filtered and a page at a time.
+const AUDIT_PAGE = 50;
+async function mountAuditBrowser(el) {
+  let facets = await api("/api/audit/facets");
+  const f = { server: "", action: "", who: "", q: "", from: "", to: "", failed: false, oldest: false, offset: 0 };
+  const label = (a) => ACTION_LABELS[a] || humanize(a);
+  // actions like "player:bring" and "player:message" are offered one by one, and as one group ("Player: all")
+  const kinds = () => {
+    const groups = [...new Set(facets.actions.filter((a) => a.includes(":")).map((a) => a.split(":")[0]))];
+    return [...facets.actions.map((a) => [a, label(a)]), ...groups.map((g) => [g, `${humanize(g)}: all`])].sort((x, y) => x[1].localeCompare(y[1]));
+  };
+  const keepText = (d) => (d ? (d % 365 === 0 ? `${d / 365} year${d > 365 ? "s" : ""}` : `${d} days`) : "Forever");
+  const dayStart = (v) => (v ? new Date(`${v}T00:00`).getTime() / 1000 : 0);
+  el.innerHTML = `<form class="audit-filters" id="audit-filters" autocomplete="off">
+      <input class="input sm" type="search" name="q" placeholder="Search (a command, a player's name…)" aria-label="Search">
+      <select class="input sm" name="action" aria-label="Kind"><option value="">Everything</option>${kinds().map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select>
+      <select class="input sm" name="who" aria-label="Who"><option value="">Anyone</option>${facets.people.map((p) => `<option>${esc(p)}</option>`).join("")}</select>
+      <select class="input sm" name="server" aria-label="Server"><option value="">All servers</option>${(state.servers || []).map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}</select>
+      <label class="audit-date">From <input class="input sm" type="date" name="from"></label>
+      <label class="audit-date">To <input class="input sm" type="date" name="to"></label>
+      <label class="check"><input type="checkbox" name="failed"> Only failures</label>
+      <select class="input sm" name="oldest" aria-label="Order"><option value="">Newest first</option><option value="1">Oldest first</option></select>
+      <button class="btn sm" type="reset">Clear filters</button>
+    </form>
+    <p class="muted small audit-count" id="audit-count"></p>
+    <div id="audit-rows"></div>
+    <div class="btn-row audit-pager" id="audit-pager"></div>
+    <div class="audit-keep">
+      <label>Keep the log for <select class="input sm" id="audit-keep">${facets.keep_choices.map((d) => `<option value="${d}" ${d === facets.keep_days ? "selected" : ""}>${keepText(d)}</option>`).join("")}</select></label>
+      <span class="muted small" id="audit-since"></span></div>`;
+  const since = () => { $("#audit-since", el).textContent = facets.count ? `${facets.count.toLocaleString()} entries, the first from ${new Date(facets.first * 1000).toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" })}.` : ""; };
+  since();
+  const load = async () => {
+    const qs = new URLSearchParams({ offset: f.offset, limit: AUDIT_PAGE });
+    for (const k of ["server", "action", "who", "q"]) if (f[k]) qs.set(k, f[k]);
+    if (f.from) qs.set("since", dayStart(f.from));
+    if (f.to) qs.set("until", dayStart(f.to) + 86400);
+    if (f.failed) qs.set("failed", "true");
+    if (f.oldest) qs.set("oldest", "true");
+    const d = await api(`/api/audit/search?${qs}`);
+    $("#audit-rows", el).innerHTML = auditHtml(d.rows, true);
+    const end = Math.min(d.total, d.offset + d.rows.length);
+    $("#audit-count", el).textContent = d.total ? `${d.offset + 1}–${end} of ${d.total.toLocaleString()}` : "";
+    const page = Math.floor(d.offset / AUDIT_PAGE) + 1, pages = Math.max(1, Math.ceil(d.total / AUDIT_PAGE));
+    $("#audit-pager", el).innerHTML = pages > 1 ? `<button class="btn sm" type="button" data-page="0" ${page === 1 ? "disabled" : ""}>« First</button>
+      <button class="btn sm" type="button" data-page="${(page - 2) * AUDIT_PAGE}" ${page === 1 ? "disabled" : ""}>‹ ${f.oldest ? "Older" : "Newer"}</button>
+      <span class="muted small">Page ${page} of ${pages}</span>
+      <button class="btn sm" type="button" data-page="${page * AUDIT_PAGE}" ${page === pages ? "disabled" : ""}>${f.oldest ? "Newer" : "Older"} ›</button>
+      <button class="btn sm" type="button" data-page="${(pages - 1) * AUDIT_PAGE}" ${page === pages ? "disabled" : ""}>Last »</button>` : "";
+  };
+  const form = $("#audit-filters", el);
+  const read = () => { const v = new FormData(form); for (const k of ["server", "action", "who", "q", "from", "to"]) f[k] = (v.get(k) || "").trim(); f.failed = !!v.get("failed"); f.oldest = !!v.get("oldest"); f.offset = 0; };
+  let typing;
+  form.addEventListener("input", (e) => { clearTimeout(typing); typing = setTimeout(() => { read(); load(); }, e.target.name === "q" ? 300 : 0); });
+  form.addEventListener("reset", () => setTimeout(() => { read(); load(); }, 0));
+  form.addEventListener("submit", (e) => e.preventDefault());
+  $("#audit-pager", el).addEventListener("click", (e) => { const b = e.target.closest("[data-page]"); if (!b) return; f.offset = +b.dataset.page; load(); el.scrollIntoView({ block: "start", behavior: "smooth" }); });
+  $("#audit-keep", el).addEventListener("change", async (e) => {
+    const days = +e.target.value;
+    if (days && !(await confirmBox(`Keep the log for ${keepText(days)}?`, `Entries older than that are deleted now, and from then on.`, "Keep it that long"))) { e.target.value = facets.keep_days; return; }
+    try { facets = await post("/api/audit/keep", { days }, "PUT"); since(); showToast(days ? `Kept for ${keepText(days)}` : "Kept forever", 2500); await load(); }
+    catch (err) { showError(esc(err.message), 4000); e.target.value = facets.keep_days; }
+  });
+  await load();
+}
+
 // ================================================================ Control tab
 async function viewControl(sid) {
   if (!isAdmin()) { location.replace(`#/s/${encodeURIComponent(sid)}`); return; }
@@ -362,7 +428,7 @@ async function viewAdmin(section = "users") {
   curSid = null;
   document.title = `${{ users: "Users", servers: "Servers & live info", activity: "Activity log" }[section] || "Manage"} · ${SITE_NAME}`;
   fillServersMenu(state.servers, null);
-  const [users, audit, lp, hiddenSrv, siteCfg, playerCfg, ptCfg] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/status"), api("/api/servers-hidden").catch(() => []), api("/api/posts").then((d) => d.site).catch(() => ({})), api("/api/settings/players").catch(() => ({})), section === "users" ? api("/api/settings/playtime").catch(() => null) : null]);
+  const [users, lp, hiddenSrv, siteCfg, playerCfg, ptCfg] = await Promise.all([api("/api/users"), api("/api/settings/status"), api("/api/servers-hidden").catch(() => []), api("/api/posts").then((d) => d.site).catch(() => ({})), api("/api/settings/players").catch(() => ({})), section === "users" ? api("/api/settings/playtime").catch(() => null) : null]);
   const roleOpts = (cur) => ROLE_NAMES.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("");
   const fmtWhen = (ts) => ts ? fmtAgo(ts) : "never";
   const srvName = (id) => state.servers.find((x) => x.id === id)?.name || id;
@@ -408,8 +474,9 @@ async function viewAdmin(section = "users") {
         ${CLEAR_KINDS.map(([k, t, d]) => `<label class="check"><input type="checkbox" name="what" value="${k}"> <span><b>${t}</b><br><small class="muted">${d}</small></span></label>`).join("")}
         <div class="btn-row"><button class="btn sm" type="button" data-new-world>Tick what a new world needs</button><button class="btn danger" type="submit">Clear</button></div></form></section>`;
   const activityHtml = `<section class="section"><div class="section-head"><h2>Admin activity</h2><span class="muted">Commands, changes and sign-in failures across all servers</span></div>
-      <div class="panel">${auditHtml(audit, true)}</div></section>`;
+      <div class="panel" id="audit-browse"><p class="muted">Loading…</p></div></section>`;
   setView({ users: usersHtml, servers: serversHtml, activity: activityHtml }[section] || usersHtml);
+  if ($("#audit-browse")) mountAuditBrowser($("#audit-browse"));
 
   $("#status-page-settings")?.addEventListener("change", async () => {
     const body = {};

@@ -18,6 +18,10 @@ Includes everything in 1.10.6 (not released on its own), plus:
   - Fill-ins: `{event}`, `{left}` (like *5 minutes*), `{time}`, `{count}` (how many have joined), `{join}` and `{leave}` (the commands, clickable on Java), `{player}`, `{site}`.
   - A live preview shows each message as it will look, and **Back to Solstone's wording** puts the original text back.
   - Typing `/trigger join` into any welcome or reminder message makes it clickable on Java too.
+- **The activity log can be searched and filtered:** **Manage → Activity log**.
+  - **Filters:** search words (a command, a player's name), the kind of action (each one, or a whole group like *Player: all*), who did it, which server, a date range, and only failures. Newest or oldest first.
+  - **Pages:** it shows 50 entries at a time with First, Newer/Older and Last buttons, so the page stays quick however long the log gets. Before, it showed only the newest 200.
+  - **How long it's kept:** it has always kept everything. Now you choose: **Forever** (still the default), or 30 days, 90 days, 180 days, 1 year or 2 years. Older entries are deleted when you choose, and every hour after that. It says how many entries there are and the date of the first one.
 
 # Solstone 1.10.6
 

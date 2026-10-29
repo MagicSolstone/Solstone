@@ -555,6 +555,86 @@ def audit(user: User | str | None, server_id: str | None, action: str, detail: s
          (time.time(), who, server_id, action, (detail or "")[:500], (result or "")[:500]))
 
 
+AUDIT_KEEP_CHOICES = (0, 30, 90, 180, 365, 730)          # days; 0: forever
+
+
+def audit_keep_days() -> int:
+    from . import settings_store
+    v = (settings_store.load().get("audit") or {}).get("keep_days", 0)
+    return v if v in AUDIT_KEEP_CHOICES else 0
+
+
+def set_audit_keep_days(days: int) -> int:
+    from . import settings_store
+    if days not in AUDIT_KEEP_CHOICES:
+        raise ValueError("Pick how long to keep it")
+    settings_store.save_section("audit", {"keep_days": days})
+    audit_tidy()
+    return days
+
+
+_audit_tidied = 0.0
+
+
+def audit_tidy_now_and_then() -> None:
+    """From the recorder: an hourly look for entries past their time."""
+    global _audit_tidied
+    if time.time() - _audit_tidied >= 3600:
+        _audit_tidied = time.time()
+        audit_tidy()
+
+
+def audit_tidy(now: float | None = None) -> int:
+    """Entries older than the chosen number of days go (nothing goes when it's kept forever)."""
+    _init()
+    days = audit_keep_days()
+    if not days:
+        return 0
+    cut = (now or time.time()) - days * 86400
+    n = db.q("SELECT COUNT(*) AS n FROM audit WHERE ts < ?", (cut,))[0]["n"]
+    if n:
+        db.x("DELETE FROM audit WHERE ts < ?", (cut,))
+    return n
+
+
+def audit_search(*, server_id: str | None = None, action: str | None = None, who: str | None = None, text: str | None = None,
+                 since: float | None = None, until: float | None = None, failed: bool = False, oldest_first: bool = False,
+                 offset: int = 0, limit: int = 50) -> dict:
+    """Manage → Activity: filtered, a page at a time. `action` matches an action or a group ("player" for player:*)."""
+    _init()
+    where, args = [], []
+    if server_id:
+        where.append("server_id=?"); args.append(server_id)
+    if action:
+        where.append("(action=? OR action LIKE ?)"); args += [action, action + ":%"]
+    if who:
+        where.append("username=?"); args.append(who)
+    if text:
+        like = "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        where.append("(detail LIKE ? ESCAPE '\\' OR result LIKE ? ESCAPE '\\' OR username LIKE ? ESCAPE '\\')"); args += [like, like, like]
+    if since:
+        where.append("ts >= ?"); args.append(since)
+    if until:
+        where.append("ts < ?"); args.append(until)
+    if failed:
+        where.append("(result LIKE 'failed%' OR result='denied')")
+    w = (" WHERE " + " AND ".join(where)) if where else ""
+    total = db.q(f"SELECT COUNT(*) AS n FROM audit{w}", tuple(args))[0]["n"]
+    rows = db.q(f"SELECT * FROM audit{w} ORDER BY ts {'ASC' if oldest_first else 'DESC'}, id {'ASC' if oldest_first else 'DESC'} LIMIT ? OFFSET ?",
+                (*args, max(1, min(limit, 200)), max(0, offset)))
+    return {"rows": [dict(r) for r in rows], "total": total, "offset": max(0, offset)}
+
+
+def audit_facets() -> dict:
+    """What there is to filter by: the actions and people in the log, and its first entry."""
+    _init()
+    first = db.q("SELECT MIN(ts) AS t, COUNT(*) AS n FROM audit")[0]
+    return {"actions": [r["action"] for r in db.q("SELECT DISTINCT action FROM audit ORDER BY action")],
+            "people": [r["username"] for r in db.q("SELECT DISTINCT username FROM audit WHERE username IS NOT NULL ORDER BY username COLLATE NOCASE")],
+            "servers": [r["server_id"] for r in db.q("SELECT DISTINCT server_id FROM audit WHERE server_id IS NOT NULL")],
+            "first": first["t"], "count": first["n"], "keep_days": audit_keep_days(), "keep_choices": list(AUDIT_KEEP_CHOICES)}
+
+
 def audit_log(server_id: str | None = None, limit: int = 100) -> list[dict]:
     _init()
     if server_id:
