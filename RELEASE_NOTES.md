@@ -1,5 +1,12 @@
 # Solstone 1.10.1
 
+## 🎣 Fishing stays vanilla with the Solstone pack
+- **The pack no longer changes fishing:** no species, no renamed or described fish, no different odds. Cod, salmon, tropical fish and pufferfish are the game's own, and nothing extra is said in chat. Bedrock players (Geyser) fish exactly as before.
+- **It just gives each fish a weight**, behind the scenes: a size for its kind (cod 1–12 lb, salmon 2–20 lb, tropical fish 0.2–1.5 lb, pufferfish 0.5–3 lb), big ones rarer, and a point a pound. Nothing is written on the item.
+- **Contests use it:** during a *Fishing tournament* or *Biggest catch* you start, every catch is announced to everyone in chat with its weight (*≫ Tyler caught a Salmon · 15.5 lb · +16 points*), with the scoreboard on the side. Outside a contest, fishing is plain vanilla. The fishing journal on the website keeps every catch and its weight.
+- **With the Tide mod installed**, the pack leaves fishing alone and contests use Tide's own catches (its fish, qualities and weights), as before.
+- The pack is **version 12**: if you'd added an older one, download it again (or press *Install it in the world*) and load it. The *Test a catch* button is gone with the old fish tables.
+
 - **Messages you've read stay read:** an admin opening a message now marks it read for the admins (a message an admin had sent to themselves kept its dot). Admins aren't offered *Write to the admins* any more: players' messages, and writing to them, are in Manage → Messages.
 - **Tidying messages:** players can **remove** a conversation from their list (the admins keep it, and it comes back if someone writes in it again). Admins can **archive** one (it moves to *Archived* at the bottom, and comes back out if someone writes) or **delete** it for everyone. Notices (a vote closed, you won) delete themselves after 30 days.
 - **Manage on phones is one dropdown** (*✉️ Messages (1)*) instead of rows of tabs.

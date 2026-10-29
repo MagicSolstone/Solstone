@@ -3018,13 +3018,11 @@ async def fishing_reset(sid: str, request: Request):
 async def fishing_action(sid: str, action: str, request: Request):
     user = auth.require_admin(request)
     srv = await _server(sid)
-    if action not in ("install", "reload", "test"):
+    if action not in ("install", "reload"):
         raise HTTPException(404)
     if not srv.rcon_conf():
         raise HTTPException(409, "Turn on RCON for this server first")
     try:
-        if action == "test":
-            return await fishing.test_catch(srv)
         st = await (fishing.install(srv) if action == "install" else fishing.reload(srv))
     except RuntimeError as e:
         raise HTTPException(502, f"The server didn't answer: {e}") from e

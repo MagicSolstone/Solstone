@@ -10,27 +10,26 @@ import pytest
 
 
 def test_pack_contents():
+    """Fishing stays vanilla: no loot tables at all, just noticing catches and giving them a weight."""
     from app import fishpack
     z = zipfile.ZipFile(io.BytesIO(fishpack.build_zip()))
     names = set(z.namelist())
-    assert {"pack.mcmeta", "data/minecraft/loot_table/gameplay/fishing/fish.json", "data/minecraft/tags/function/load.json",
-            "data/solfish/advancement/hooked.json", "data/solfish/function/record.mcfunction"} <= names
+    assert {"pack.mcmeta", "data/minecraft/tags/function/load.json", "data/solfish/advancement/hooked.json",
+            "data/solfish/function/record.mcfunction", "data/solfish/function/size.mcfunction", "data/solfish/tags/item/fish.json"} <= names
+    assert not [n for n in names if "/loot_table/" in n and "solfish" in n or "gameplay/fishing" in n]     # vanilla fish, vanilla odds
     meta = json.loads(z.read("pack.mcmeta"))["pack"]
     assert meta["min_format"] == 48 and meta["max_format"] >= 101 and meta["supported_formats"]["min_inclusive"] == 48   # 1.21 .. 26.x
-    loot = json.loads(z.read("data/minecraft/loot_table/gameplay/fishing/fish.json"))
-    entries = loot["pools"][0]["entries"]
-    assert len(entries) == len(fishpack.SPECIES) * len(fishpack.QUALITIES) * len(fishpack.STEPS)
-    assert all(isinstance(e["weight"], int) and e["weight"] > 0 for e in entries)
-    assert len({e["functions"][2]["tag"] for e in entries}) == len(entries)                  # every catch distinct
-    koi = [e for e in entries if '"koi"' in e["functions"][2]["tag"]]
-    assert koi and all("conditions" not in e for e in koi)                                  # koi anywhere: never an empty table
+    assert json.loads(z.read("data/solfish/tags/item/fish.json"))["values"] == ["minecraft:cod", "minecraft:salmon", "minecraft:tropical_fish", "minecraft:pufferfish"]
     adv = json.loads(z.read("data/solfish/advancement/hooked.json"))
     assert adv["criteria"]["hooked"]["trigger"] == "minecraft:fishing_rod_hooked" and adv["rewards"]["function"] == "solfish:hooked"
-    rec = z.read("data/solfish/function/check_item.mcfunction").decode()
-    assert "matches 5.. run return 0" in rec                                                # old (dropped) fish never count
+    assert "matches 5.. run return 0" in z.read("data/solfish/function/check_item.mcfunction").decode()   # old (dropped) fish never count
+    rec = z.read("data/solfish/function/record.mcfunction").decode()
+    assert "contents minecraft:salmon run function solfish:size {lo:20,hi:200}" in rec and "set_name" not in rec
+    assert "random value $(lo)..$(hi)" in z.read("data/solfish/function/size.mcfunction").decode()
+    assert "tellraw" not in "".join(z.read(n).decode() for n in names if n.startswith("data/solfish/"))       # nothing said in the game
     g = {x["key"]: x for x in fishpack.guide()}
-    assert g["koi"]["rarity"] == "very rare" and g["bluegill"]["max_lb"] < g["sturgeon"]["min_lb"]
-    assert sum(q["chance"] for q in fishpack.qualities()) == 100
+    assert set(g) == {"cod", "salmon", "tropical_fish", "pufferfish"} and g["salmon"]["max_lb"] == 20 and g["cod"]["min_points"] == 2
+    assert fishpack.qualities() == []
 
 
 def test_parse_catches():
@@ -41,6 +40,10 @@ def test_parse_catches():
     assert c["name"] == "Rainbow Trout" and c["weight"] == 4.7 and c["points"] == 42 and c["i"] == 7 and c["quality_name"] == "Prime"
     assert c["uuid"] == "069a79f4-44e9-4726-a5be-fca90e38aaf5"                # Notch: a known UUID / int array pair
     assert fishpack.parse_catches("Found no elements matching catches") == []
+    plain = fishpack.parse_catches('Storage solstone:fish has the following contents: [{s: "minecraft:tropical_fish", w: 7, p: 1, '
+                                   'u: [I; 1, 2, 3, 4], i: 3, t: 5L}]')[0]
+    assert plain["basic"] and plain["species"] == "tropical_fish" and plain["name"] == "Tropical Fish" and plain["lb"] == "0.7"
+    assert plain["quality"] == 1 and plain["points"] == 1
 
 
 class FakeServer:
@@ -57,7 +60,8 @@ class FakeServer:
         if cmd == "data get storage solstone:fish pack":
             return "Storage solstone:fish has the following contents: {version: 1}"
         if cmd == "data get storage solstone:fish catches":
-            body = ", ".join(f'{{s: "{c[0]}", n: "{c[1]}", q: {c[2]}, ql: "{c[3]}", w: {c[4]}, lb: "{c[4] / 10}", p: {c[5]}, u: [I; 1, 2, 3, 4], i: {i + 1}}}'
+            body = ", ".join((f'{{s: "{c[0]}", w: {c[4]}, p: {c[5]}, u: [I; 1, 2, 3, 4], i: {i + 1}}}' if c[1] is None else
+                              f'{{s: "{c[0]}", n: "{c[1]}", q: {c[2]}, ql: "{c[3]}", w: {c[4]}, lb: "{c[4] / 10}", p: {c[5]}, u: [I; 1, 2, 3, 4], i: {i + 1}}}')
                              for i, c in enumerate(self.catches))
             return f"Storage solstone:fish has the following contents: [{body}]"
         m = re.match(r"scoreboard players get (\S+) (\S+)", cmd)
@@ -105,11 +109,35 @@ def test_catches_recorded_and_big_ones_announced(pond):
     to_all = [x for x in srv.said if x.startswith("tellraw @a")]
     assert len(to_all) == 1 and "Exquisite Golden Koi" in to_all[0]                         # only the big one, outside a contest
     journal = [x for x in srv.said if "fishing journal" in x]
-    assert len(journal) == 2 and all(x.startswith("tellraw Gimli_Jr") for x in journal) and "(2 of 22 species)" in journal[-1]
+    assert len(journal) == 2 and all(x.startswith("tellraw Gimli_Jr") for x in journal) and "(2 of 4 species)" in journal[-1]
     assert [c["species"] for c in db.fish_catches(srv.id, "Gimli_Jr")] == ["bass", "koi"]
     asyncio.run(fishing.poll([srv]))
     assert len(db.events(srv.id, ["fish", "bigfish"], None, 10)) == 2                     # nothing twice
     assert len(db.fish_catches(srv.id)) == 2
+
+
+def test_vanilla_catches_are_quiet(pond):
+    """With the vanilla pack nothing is said in the game outside a contest; the catch is still kept."""
+    from app import db
+    fishing, _ch, srv = pond
+    srv.basic = True
+    srv.catches = [("minecraft:cod", None, 1, None, 40, 5)]
+    asyncio.run(fishing.poll([srv]))
+    srv.catches += [("minecraft:salmon", None, 1, None, 155, 16)]
+    asyncio.run(fishing.poll([srv]))
+    assert srv.said == []
+    assert [(c["species"], c["name"], c["weight"]) for c in db.fish_catches(srv.id, "Gimli_Jr")][-1] == ("salmon", "Salmon", 15.5)
+    assert db.events(srv.id, ["fish"], None, 1)[0]["message"] == "Gimli_Jr caught a Salmon · 15.5 lb · 16 points"
+
+
+def test_vanilla_catches_in_a_contest_go_in_chat(pond):
+    fishing, challenges, srv = pond
+    challenges.create(srv.id, {"kind": "fish_heaviest", "start": time.time(), "minutes": 10, "prize": {"item": "diamond", "count": 1}})
+    asyncio.run(challenges.tick([srv]))
+    srv.said.clear()
+    asyncio.run(challenges.on_catch(srv, "Tyler", {"name": "Salmon", "lb": "15.5", "weight": 15.5, "quality": 1, "quality_name": "Normal",
+                                                   "points": 16, "basic": True}))
+    assert any(x.startswith("tellraw @a") and "Salmon" in x and "15.5 lb" in x for x in srv.said)
 
 
 def test_biggest_catch_contest(pond):
@@ -133,7 +161,7 @@ def test_biggest_catch_contest(pond):
 def test_fishing_api(client, viewer, sid):
     assert viewer.get(f"/api/servers/{sid}/fishing").status_code == 403
     d = client.get(f"/api/servers/{sid}/fishing").json()
-    assert len(d["guide"]) >= 20 and d["status"]["current"] >= 1 and "writable" in d["status"]
+    assert len(d["guide"]) == 4 and d["status"]["current"] >= 1 and "writable" in d["status"]
     r = client.get("/api/fishing/solstone-pack.zip")
     assert r.status_code == 200 and r.headers["content-type"] == "application/zip" and r.content[:2] == b"PK"
     assert viewer.get("/api/fishing/solstone-pack.zip").status_code == 403
@@ -155,7 +183,7 @@ def test_datapack_folder_listing_finds_copies(tmp_path):
     (dp / "solstone-pack (1).zip").write_bytes(old.getvalue())
     (dp / "other").mkdir()
     rows = {r["name"]: r for r in fishing.files(SimpleNamespace(world_dir=tmp_path))}
-    assert rows["solstone-pack.zip"]["version"] == fishpack.VERSION and rows["solstone-pack.zip"]["fish_table"] and not rows["solstone-pack.zip"]["nested"]
+    assert rows["solstone-pack.zip"]["version"] == fishpack.VERSION and not rows["solstone-pack.zip"]["nested"]
     assert rows["solstone-pack (1).zip"]["version"] == 2 and rows["solstone-pack (1).zip"]["nested"]
     assert rows["other"]["version"] is None
 
@@ -171,29 +199,11 @@ def test_reading_a_barrel_slot():
     assert fishing._read_item("0, 319, 0 has the following block data: []")["item"] is None
 
 
-def test_pack_written_for_26_3():
-    """26.3 renamed loot table fields (functions -> modifier, function/condition -> type) and
-    silently ignores the old names, so a 26.3 server gets the new spelling."""
-    import io
-    import json
-    import zipfile
-
+def test_new_loot_format_detected():
+    """26.3 renamed loot table fields; the pack itself has no fishing loot tables any more, but still knows."""
     from app import fishpack
     assert fishpack.new_loot_format("26.3") and fishpack.new_loot_format("26.4") and not fishpack.new_loot_format("26.1")
     assert not fishpack.new_loot_format("1.21.11") and fishpack.new_loot_format(None, 5023) and not fishpack.new_loot_format(None, 4440)
-    z = zipfile.ZipFile(io.BytesIO(fishpack.build_zip(True)))
-    tables = {n: z.read(n).decode() for n in z.namelist() if "/loot_table/" in n}
-    assert set(tables) >= {"data/minecraft/loot_table/gameplay/fishing/fish.json", "data/solfish/loot_table/fish.json",
-                           "data/minecraft/loot_table/gameplay/fishing.json", "data/solfish/loot_table/probe.json"}
-    for body in tables.values():
-        assert '"functions"' not in body and '"conditions"' not in body and '"function"' not in body and '"type_specific"' not in body
-    fish = json.loads(tables["data/solfish/loot_table/fish.json"])["pools"][0]["entries"]
-    assert all(e["modifier"][0]["type"] == "minecraft:set_name" for e in fish)
-    assert any(e.get("condition", {}).get("type") in ("minecraft:location_check", "minecraft:inverted", "minecraft:any_of") for e in fish)
-    rod = json.loads(tables["data/minecraft/loot_table/gameplay/fishing.json"])
-    assert rod["pools"][0]["entries"][2]["value"] == "solfish:fish"
-    old = zipfile.ZipFile(io.BytesIO(fishpack.build_zip(False)))
-    assert '"functions"' in old.read("data/solfish/loot_table/fish.json").decode()
 
 
 def test_catch_position_read_back():
@@ -207,12 +217,12 @@ def test_catch_position_read_back():
 def test_journal_and_backfill_from_old_feed():
     from app import db, fishing
     sid = "journal-srv"
-    db.add_event(sid, 100.0, "bigfish", "Gimli_Jr caught a Prime Rainbow Trout · 4.7 lb · 42 points", "Gimli_Jr")
-    db.add_event(sid, 101.0, "fish", "Gimli_Jr caught a Bluegill · 0.5 lb · 5 points", "Gimli_Jr")
-    db.add_event(sid, 102.0, "fish", "Tyler caught a Bluegill · 0.9 lb · 7 points", "Tyler")
+    db.add_event(sid, 100.0, "fish", "Gimli_Jr caught a Salmon · 4.7 lb · 5 points", "Gimli_Jr")
+    db.add_event(sid, 101.0, "fish", "Gimli_Jr caught a Cod · 0.5 lb · 1 points", "Gimli_Jr")
+    db.add_event(sid, 102.0, "fish", "Tyler caught a Cod · 0.9 lb · 1 points", "Tyler")
     j = fishing.journal(sid)                                            # old catches read from the feed once
     g = next(p for p in j["players"] if p["name"] == "Gimli_Jr")
-    assert set(g["species"]) == {"trout", "bluegill"} and g["species"]["trout"]["best_quality"] == 3 and g["total"] == 2
-    assert j["records"]["bluegill"]["player"] == "Tyler" and j["records"]["bluegill"]["lb"] == 0.9
-    assert len(j["species"]) == 22 and j["qualities"][-1]["name"] == "Mythic" and j["qualities"][-1]["one_in"] == 1000
+    assert set(g["species"]) == {"salmon", "cod"} and g["total"] == 2
+    assert j["records"]["cod"]["player"] == "Tyler" and j["records"]["cod"]["lb"] == 0.9
+    assert len(j["species"]) == 4 and j["qualities"] == []
     assert len(fishing.journal(sid)["recent"]) == 3                     # not filled twice

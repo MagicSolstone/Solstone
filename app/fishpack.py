@@ -1,23 +1,16 @@
-"""Solstone Fishing: a data pack that turns fishing into a game of species, sizes and quality.
+"""Solstone's data pack: the archery and games half, and a light touch on fishing.
 
-Everything is generated here from the tables below, so the fish guide on the web pages and the
-pack in the game can never disagree. Minecraft 1.21+ (one pack.mcmeta covers 1.21 to 26.x).
-
-In the game
-- The fish loot table (gameplay/fishing/fish) is replaced: what you can catch depends on where
-  the bobber lands (rivers and lakes, oceans, warm or cold water, swamps, jungle rivers, deep
-  ocean) and every catch has a species, a weight and one of six qualities: Poor, Normal
-  (shown without a label), Fine, Trophy, Legendary, Mythic. Rarer quality = heavier fish = more points. The item keeps its
-  vanilla kind (cod, salmon, tropical fish, pufferfish), so it can still be cooked or eaten;
-  its name, colour and lore say what it is.
-- Scoring can't be gamed by dropping and picking up fish: an advancement fires when a fish is
-  hooked, and one tick later a function finds that freshly spawned fish (age a few ticks, not
-  seen before), records it, and adds its points to scoreboards:
-    solfish_points  lifetime points       solfish_count  fish caught
-    solfish_cp      points this challenge solfish_cb     heaviest this challenge (tenths of lb)
-- Each catch is appended to storage solstone:fish catches (with a sequence number and the
-  catcher's UUID) for Solstone to read over RCON: the web pages show catches, and during a
-  fishing challenge Solstone announces every catch to everyone.
+Fishing stays vanilla: the same items, odds, names and loot (nothing is written on the fish). The pack only notices
+each fish someone catches and gives it a weight, kept for Solstone (contests, the fishing journal on the website):
+- An advancement fires when a fish is hooked; one tick later a function finds that freshly spawned fish item (a few
+  ticks old, not seen before: dropping and picking up fish never counts) and records it with a weight: a random
+  size for its kind, big ones rarer. Points are a point per pound (and one for catching it).
+- Scoreboards: solfish_points lifetime points, solfish_count fish caught, solfish_cp points this contest,
+  solfish_cb heaviest this contest (tenths of lb). Only a contest shows them (and announces catches in chat).
+- Each catch is appended to storage solstone:fish catches (a sequence number, the catcher's UUID) for Solstone to
+  read over RCON.
+On a server with the Tide fishing mod the pack leaves fishing alone completely: Tide's own catches are used.
+Minecraft 1.21+ (one pack.mcmeta covers 1.21 to 26.x).
 """
 from __future__ import annotations
 
@@ -28,132 +21,36 @@ import zipfile
 
 PACK_ID = "solstone-pack"                     # one pack: fishing and the archery games
 PACK_FILE = f"{PACK_ID}.zip"
-VERSION = 11                                   # bump when the pack's content changes
+VERSION = 12                                   # bump when the pack's content changes
 
-# ------------------------------------------------------------------ the water
-_OCEAN = ["ocean", "deep_ocean", "cold_ocean", "deep_cold_ocean", "lukewarm_ocean", "deep_lukewarm_ocean",
-          "warm_ocean", "frozen_ocean", "deep_frozen_ocean"]
-WATERS = {
-    "fresh": ("Rivers & lakes", None),                                      # anywhere that isn't ocean
-    "river": ("Rivers", ["river", "frozen_river"]),
-    "ocean": ("Oceans", _OCEAN),
-    "deep": ("Deep ocean", ["deep_ocean", "deep_cold_ocean", "deep_lukewarm_ocean", "deep_frozen_ocean"]),
-    "warm": ("Warm water", ["warm_ocean", "lukewarm_ocean", "deep_lukewarm_ocean", "mangrove_swamp", "beach"]),
-    "cold": ("Cold water", ["cold_ocean", "deep_cold_ocean", "frozen_ocean", "deep_frozen_ocean", "frozen_river",
-                            "snowy_taiga", "snowy_plains", "snowy_beach", "ice_spikes", "grove", "taiga", "old_growth_pine_taiga",
-                            "old_growth_spruce_taiga"]),
-    "swamp": ("Swamps", ["swamp", "mangrove_swamp"]),
-    "jungle": ("Jungle", ["jungle", "sparse_jungle", "bamboo_jungle"]),
-    "any": ("Anywhere", None),
+# ------------------------------------------------------------------ the fish (vanilla)
+# key (the vanilla item): (name, smallest lb, biggest lb)
+SPECIES: dict[str, tuple[str, float, float]] = {
+    "cod": ("Cod", 1.0, 12.0),
+    "salmon": ("Salmon", 2.0, 20.0),
+    "tropical_fish": ("Tropical Fish", 0.2, 1.5),
+    "pufferfish": ("Pufferfish", 0.5, 3.0),
 }
-
-# key: (name, vanilla item, typical weight lb, base points, waters, how common 1-30)
-SPECIES: dict[str, tuple[str, str, float, int, list[str], int]] = {
-    "bluegill": ("Bluegill", "cod", 0.5, 5, ["fresh"], 30),
-    "perch": ("Yellow Perch", "cod", 1.0, 8, ["fresh"], 25),
-    "bass": ("Largemouth Bass", "cod", 3.0, 15, ["fresh"], 20),
-    "trout": ("Rainbow Trout", "salmon", 2.5, 15, ["fresh"], 18),
-    "carp": ("Common Carp", "cod", 8.0, 18, ["fresh"], 12),
-    "walleye": ("Walleye", "cod", 3.0, 20, ["river"], 12),
-    "pike": ("Northern Pike", "salmon", 6.0, 25, ["fresh", "cold"], 8),
-    "catfish": ("Channel Catfish", "cod", 10.0, 25, ["swamp", "river"], 14),
-    "salmon": ("Atlantic Salmon", "salmon", 8.0, 20, ["river", "cold"], 14),
-    "sturgeon": ("Lake Sturgeon", "salmon", 40.0, 60, ["river"], 2),
-    "cod": ("Atlantic Cod", "cod", 6.0, 10, ["ocean"], 30),
-    "mackerel": ("Mackerel", "cod", 1.5, 8, ["ocean"], 25),
-    "seabass": ("Sea Bass", "cod", 5.0, 15, ["ocean"], 18),
-    "halibut": ("Halibut", "cod", 25.0, 35, ["cold"], 6),
-    "char": ("Arctic Char", "salmon", 4.0, 20, ["cold"], 14),
-    "tuna": ("Bluefin Tuna", "salmon", 60.0, 50, ["deep"], 6),
-    "swordfish": ("Swordfish", "salmon", 120.0, 80, ["deep", "warm"], 2),
-    "clownfish": ("Clownfish", "tropical_fish", 0.3, 12, ["warm"], 20),
-    "angelfish": ("Angelfish", "tropical_fish", 0.6, 14, ["warm"], 15),
-    "puffer": ("Pufferfish", "pufferfish", 1.0, 12, ["warm", "ocean"], 8),
-    "arapaima": ("Arapaima", "salmon", 100.0, 90, ["jungle"], 3),
-    "koi": ("Golden Koi", "tropical_fish", 3.0, 120, ["any"], 1),
-}
-
-# (name, colour, size factor, points factor, how common)
-QUALITIES = [
-    ("Poor", "gray", 0.6, 0.5, 300),           # (name, colour, size, points factor, chance in 1000)
-    ("Normal", "white", 1.0, 1.0, 480),
-    ("Fine", "green", 1.3, 1.5, 170),
-    ("Trophy", "aqua", 1.7, 2.5, 40),          # 1 in 25: worth showing off
-    ("Legendary", "gold", 2.3, 4.0, 9),        # about 1 in 110
-    ("Mythic", "light_purple", 3.0, 8.0, 1),   # 1 in 1000
-]
-STEPS = (0.9, 1.0, 1.12)                       # a little spread inside each quality
+# Older catches (from the pack's fancier days) kept their quality; new ones are all "Normal" (index 1).
+QUALITIES = [("Poor", "gray"), ("Normal", "white"), ("Fine", "green"), ("Trophy", "aqua"), ("Legendary", "gold"), ("Mythic", "light_purple")]
 
 
 def fmt_lb(w: float) -> str:
     return f"{w:.2f}".rstrip("0").rstrip(".") if w < 1 else f"{w:.1f}"
 
 
-def variants():
-    """Every catch the pack can give: (species key, quality index, weight lb, points)."""
-    for key, (_n, _i, base, pts, _w, _c) in SPECIES.items():
-        for qi, (_q, _col, size, pf, _qc) in enumerate(QUALITIES):
-            for st in STEPS:
-                w = round(base * size * st, 2 if base * size * st < 1 else 1)
-                yield key, qi, w, max(1, round(pts * pf * st))
+def points(lb: float) -> int:
+    return int(lb) + 1
 
 
 def guide() -> list[dict]:
-    """For the web page: each species, where it lives, its size range and points range."""
-    out = []
-    for key, (name, item, _base, _pts, waters, common) in SPECIES.items():
-        ws = [w for k, qi, w, p in variants() if k == key]
-        ps = [p for k, qi, w, p in variants() if k == key]
-        out.append({"key": key, "name": name, "item": f"minecraft:{item}", "waters": [WATERS[w][0] for w in waters],
-                    "min_lb": min(ws), "max_lb": max(ws), "min_points": min(ps), "max_points": max(ps),
-                    "rarity": "very rare" if common <= 2 else "rare" if common <= 6 else "uncommon" if common <= 12 else "common"})
-    return out
+    """For the web page: each fish and its size range."""
+    return [{"key": k, "name": n, "item": f"minecraft:{k}", "waters": [], "min_lb": lo, "max_lb": hi,
+             "min_points": points(lo), "max_points": points(hi), "rarity": ""} for k, (n, lo, hi) in SPECIES.items()]
 
 
 def qualities() -> list[dict]:
-    total = sum(q[4] for q in QUALITIES)
-    return [{"name": n, "color": c, "chance": round(qc * 100 / total, 1), "one_in": round(total / qc)} for n, c, _s, _p, qc in QUALITIES]
-
-
-# ------------------------------------------------------------------ building the pack
-def _water_condition(waters: list[str]) -> list[dict]:
-    if "any" in waters:
-        return []
-    terms = []
-    for w in waters:
-        biomes = WATERS[w][1]
-        if biomes is None:                    # fresh water: anywhere that isn't an ocean
-            terms.append({"condition": "minecraft:inverted", "term": {"condition": "minecraft:location_check",
-                          "predicate": {"biomes": [f"minecraft:{b}" for b in _OCEAN]}}})
-        else:
-            terms.append({"condition": "minecraft:location_check", "predicate": {"biomes": [f"minecraft:{b}" for b in biomes]}})
-    return [terms[0]] if len(terms) == 1 else [{"condition": "minecraft:any_of", "terms": terms}]
-
-
-def _text(text: str, color: str, italic: bool = False) -> dict:
-    return {"text": text, "color": color, "italic": italic}
-
-
-def loot_table() -> dict:
-    entries = []
-    for key, qi, w, p in variants():
-        name, item, _b, _p, waters, common = SPECIES[key]
-        q, color, _s, _pf, qc = QUALITIES[qi]
-        tag = f'{{solfish:{{s:"{key}",n:"{name}",q:{qi},ql:"{q}",w:{int(round(w * 10))},lb:"{fmt_lb(w)}",p:{p}}}}}'
-        entries.append({
-            "type": "minecraft:item", "name": f"minecraft:{item}", "weight": common * qc,
-            "conditions": _water_condition(waters),
-            "functions": [
-                {"function": "minecraft:set_name", "target": "item_name", "name": _text(f"{q} {name}" if q != "Normal" else name, color)},
-                {"function": "minecraft:set_lore", "mode": "replace_all", "lore": [
-                    _text(f"{fmt_lb(w)} lb · {q}", color), _text(f"{p} points", "yellow"), _text("Solstone Fishing", "dark_gray", True)]},
-                {"function": "minecraft:set_custom_data", "tag": tag},
-            ],
-        })
-        if not entries[-1]["conditions"]:
-            del entries[-1]["conditions"]
-    return {"type": "minecraft:fishing", "pools": [{"rolls": 1, "entries": entries}],
-            "random_sequence": "minecraft:gameplay/fishing/fish"}
+    return []                                 # vanilla fish have no quality
 
 
 def new_loot_format(version: str | None, data_version: int | None = None) -> bool:
@@ -188,36 +85,19 @@ def to_263(o):
     return out
 
 
-def fishing_table_263() -> dict:
-    """26.3's own rod table (copied from the game's data), with the fish from solfish:fish."""
-    return {"type": "minecraft:fishing", "pools": [{"rolls": 1, "entries": [
-        {"type": "minecraft:loot_table", "quality": -2, "value": "minecraft:gameplay/fishing/junk", "weight": 10},
-        {"type": "minecraft:loot_table", "quality": 2, "value": "minecraft:gameplay/fishing/treasure", "weight": 5,
-         "condition": {"type": "minecraft:entity_properties", "entity": "this",
-                       "predicate": {"minecraft:type_specific/fishing_hook": {"in_open_water": True}}}},
-        {"type": "minecraft:loot_table", "quality": -1, "value": "solfish:fish", "weight": 85}]}],
-        "random_sequence": "minecraft:gameplay/fishing"}
-
-
-def fishing_table() -> dict:
-    """Vanilla's rod table (junk, treasure in open water, fish; luck shifts the odds), with the
-    fish coming from solfish:fish."""
-    return {"type": "minecraft:fishing", "pools": [{"rolls": 1, "bonus_rolls": 0, "entries": [
-        {"type": "minecraft:loot_table", "value": "minecraft:gameplay/fishing/junk", "weight": 10, "quality": -2},
-        {"type": "minecraft:loot_table", "value": "minecraft:gameplay/fishing/treasure", "weight": 5, "quality": 2,
-         "conditions": [{"condition": "minecraft:entity_properties", "entity": "this",
-                         "predicate": {"type_specific": {"type": "minecraft:fishing_hook", "in_open_water": True}}}]},
-        {"type": "minecraft:loot_table", "value": "solfish:fish", "weight": 85, "quality": -1}]}],
-        "random_sequence": "minecraft:gameplay/fishing"}
+def _size(item: str) -> str:
+    _n, lo, hi = SPECIES[item]
+    return f"execute if items entity @s contents minecraft:{item} run function solfish:size {{lo:{int(lo * 10)},hi:{int(hi * 10)}}}"
 
 
 FUNCTIONS = {
     "load": """
 scoreboard objectives add solfish_points dummy "Fishing points"
 scoreboard objectives add solfish_count dummy "Fish caught"
-scoreboard objectives add solfish_cp dummy "Challenge points"
+scoreboard objectives add solfish_cp dummy "Contest points"
 scoreboard objectives add solfish_cb dummy "Heaviest catch"
 scoreboard objectives add solfish_tmp dummy
+scoreboard players set #ten solfish_tmp 10
 execute unless data storage solstone:fish catches run data modify storage solstone:fish catches set value []
 data modify storage solstone:fish pack set value {version:%VERSION%}
 """,
@@ -235,7 +115,7 @@ tag @s remove solfish_pending
 tag @s add solfish_catcher
 data modify storage solstone:fish who set from entity @s UUID
 scoreboard players set #done solfish_tmp 0
-execute as @e[type=item,distance=..64,tag=!solfish_seen,sort=nearest,nbt={Item:{components:{"minecraft:custom_data":{solfish:{}}}}}] run function solfish:check_item
+execute as @e[type=item,distance=..64,tag=!solfish_seen,sort=nearest] if items entity @s contents #solfish:fish run function solfish:check_item
 tag @s remove solfish_catcher
 """,
     # Each hook claims one fish: the nearest that has only just appeared (a dropped fish is old,
@@ -248,21 +128,31 @@ execute if score #age solfish_tmp matches 5.. run return 0
 scoreboard players set #done solfish_tmp 1
 function solfish:record
 """,
-    "record": """
-data modify storage solstone:fish e set from entity @s Item.components."minecraft:custom_data".solfish
+    # A size for its kind (tenths of a pound): the smaller of two rolls, so big ones are rarer.
+    "size": """
+$execute store result score #w solfish_tmp run random value $(lo)..$(hi)
+$execute store result score #b solfish_tmp run random value $(lo)..$(hi)
+scoreboard players operation #w solfish_tmp < #b solfish_tmp
+""",
+    "record": "\n".join(["data modify storage solstone:fish e set value {}",
+                          "data modify storage solstone:fish e.s set from entity @s Item.id",
+                          *[_size(k) for k in SPECIES], """
+execute store result storage solstone:fish e.w int 1 run scoreboard players get #w solfish_tmp
+scoreboard players operation #p solfish_tmp = #w solfish_tmp
+scoreboard players operation #p solfish_tmp /= #ten solfish_tmp
+scoreboard players add #p solfish_tmp 1
+execute store result storage solstone:fish e.p int 1 run scoreboard players get #p solfish_tmp
 data modify storage solstone:fish e.u set from storage solstone:fish who
 data modify storage solstone:fish e.pos set from entity @s Pos
 execute store result storage solstone:fish e.i int 1 run scoreboard players add #seq solfish_tmp 1
 execute store result storage solstone:fish e.t long 1 run time query gametime
 data modify storage solstone:fish catches append from storage solstone:fish e
 execute if data storage solstone:fish catches[80] run data remove storage solstone:fish catches[0]
-execute store result score #p solfish_tmp run data get storage solstone:fish e.p
-execute store result score #w solfish_tmp run data get storage solstone:fish e.w
 scoreboard players operation @a[tag=solfish_catcher,limit=1] solfish_points += #p solfish_tmp
 scoreboard players operation @a[tag=solfish_catcher,limit=1] solfish_cp += #p solfish_tmp
 scoreboard players add @a[tag=solfish_catcher,limit=1] solfish_count 1
 scoreboard players operation @a[tag=solfish_catcher,limit=1] solfish_cb > #w solfish_tmp
-""",
+"""]),
 }
 
 
@@ -345,30 +235,20 @@ execute if data storage solstone:games log[150] run data remove storage solstone
 
 
 def pack_files(new: bool = False, fishing: bool = True) -> dict[str, str]:
-    """`new`: write loot tables the 26.3+ way (see new_loot_format). `fishing=False` (a server with
-    the Tide fishing mod, which does fishing its own way): just the archery and games half, plus
-    the version marker, and nothing that touches fishing loot or catches."""
-    lt = to_263 if new else (lambda t: t)
+    """`new`: the 26.3+ loot format (the games' tables). `fishing=False` (a server with the Tide fishing mod,
+    which does fishing its own way): just the archery and games half, plus the version marker."""
     files = {
         "pack.mcmeta": json.dumps({"pack": {
-            "description": "Solstone: fishing (species, sizes, quality) and archery games" if fishing else "Solstone: archery and games",
+            "description": "Solstone: archery games, and fish weights for contests" if fishing else "Solstone: archery and games",
             # 1.21 (48) up to anything newer; old fields for <1.21.9, min/max for 1.21.9+
             "pack_format": 48, "supported_formats": {"min_inclusive": 48, "max_inclusive": 999},
             "min_format": 48, "max_format": 999}}, indent=1),
         "data/minecraft/tags/function/load.json": json.dumps({"values": ["solfish:load", "solgames:load"]}),
         "data/minecraft/tags/function/tick.json": json.dumps({"values": ["solgames:tick"]}),
     }
-    if fishing:
+    if fishing:                                    # fishing itself stays vanilla: no loot tables, just noticing catches
         files.update({
-            "data/minecraft/loot_table/gameplay/fishing/fish.json": json.dumps(lt(loot_table())),
-            # The same fish under our own name, and the rod's table pointed at it: if something else
-            # (a mod) also replaces minecraft:gameplay/fishing/fish, the rod still lands our fish.
-            "data/solfish/loot_table/fish.json": json.dumps(lt(loot_table())),
-            # the smallest possible test: one stone, named and tagged (do loot functions work at all?)
-            "data/solfish/loot_table/probe.json": json.dumps(lt({"pools": [{"rolls": 1, "entries": [{"type": "minecraft:item", "name": "minecraft:stone", "functions": [
-                {"function": "minecraft:set_name", "target": "item_name", "name": {"text": "Solstone probe"}},
-                {"function": "minecraft:set_custom_data", "tag": "{solprobe:1b}"}]}]}]})),
-            "data/minecraft/loot_table/gameplay/fishing.json": json.dumps(fishing_table_263() if new else fishing_table()),
+            "data/solfish/tags/item/fish.json": json.dumps({"values": [f"minecraft:{k}" for k in SPECIES]}),
             "data/solfish/advancement/hooked.json": json.dumps({
                 "criteria": {"hooked": {"trigger": "minecraft:fishing_rod_hooked"}},
                 "rewards": {"function": "solfish:hooked"}}),
@@ -432,8 +312,12 @@ def parse_catches(reply: str) -> list[dict]:
             u = [int(x) & 0xFFFFFFFF for x in c.get("u", [])]
             uuid = "".join(f"{x:08x}" for x in u) if len(u) == 4 else ""
             uuid = f"{uuid[:8]}-{uuid[8:12]}-{uuid[12:16]}-{uuid[16:20]}-{uuid[20:]}" if uuid else ""
-            out.append({"i": int(c["i"]), "species": str(c["s"]), "name": str(c["n"]), "quality": int(c["q"]), "quality_name": str(c["ql"]),
-                        "weight": int(c["w"]) / 10, "lb": str(c["lb"]), "points": int(c["p"]), "uuid": uuid,
+            species = str(c["s"]).removeprefix("minecraft:")
+            w = int(c["w"]) / 10
+            basic = c.get("n") is None                     # a vanilla fish with a weight (pack v12+)
+            out.append({"i": int(c["i"]), "species": species, "name": str(c["n"]) if not basic else SPECIES.get(species, (species.replace("_", " ").title(),))[0],
+                        "quality": int(c.get("q", 1)), "quality_name": str(c.get("ql", "Normal")), "basic": basic,
+                        "weight": w, "lb": str(c["lb"]) if not basic else fmt_lb(w), "points": int(c["p"]), "uuid": uuid,
                         # where the fish came out of the water (a fresh catch is still at the bobber); pack v9+
                         "pos": [float(v) for v in c["pos"]] if c.get("pos") is not None and len(c["pos"]) == 3 else None})
         except (KeyError, ValueError, TypeError):

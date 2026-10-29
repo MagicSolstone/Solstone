@@ -14,7 +14,7 @@ import asyncio
 import re
 import time
 
-from . import fishing, fishpack, gather
+from . import fishpack, gather
 from . import servers as S
 from .control import _ERROR_HINTS
 from .rcon import RconError
@@ -203,12 +203,6 @@ async def run(srv, near: list[tuple[float, float]], assets) -> dict:
         pv = int((fish_v or game_v).group(1))
         c.add("Data pack", "Solstone data pack loaded", pv >= fishpack.VERSION, f"version {pv} (newest is {fishpack.VERSION})",
               "fishing, archery, spleef", "" if pv >= fishpack.VERSION else "Download the pack again from the Contests page, replace it, restart.")
-        want = "26.3" if fishing.new_format(srv) else "older"
-        files = [f for f in fishing.files(srv) if f.get("version") is not None]
-        fmt = next((f.get("loot_format") for f in files if f.get("loot_format")), None)
-        c.add("Data pack", "Pack written for this version", (fmt == want) if fmt else None,
-              f"pack: {fmt or 'unknown'}, server needs: {want}", "fishing",
-              "Download the pack again (it's built for the server it's going to) and replace it." if fmt and fmt != want else "")
         from . import tide
         if tide.installed(srv):                       # the Tide build of the pack has no fishing half
             await c.cmd("Data pack", "Archery triggers", [f"advancement revoke {NOBODY} only solgames:hit_15"], "archery hits")
@@ -219,16 +213,6 @@ async def run(srv, near: list[tuple[float, float]], assets) -> dict:
             await c.cmd("Data pack", "Spleef safety net", ["function solgames:spleef_back"], "spleef (cleans up if Solstone stops)")
         else:
             c.add("Data pack", "Spleef safety net", None, "a spleef game is on: not tested now", "spleef")
-        try:
-            t = await fishing.test_catch(srv)
-            n = sum(1 for r in t["rod"] if r.get("pack_fish"))
-            probe = t.get("probe", {}).get("probe")
-            ok = bool(n or t.get("pack_fish"))
-            c.add("Data pack", "Fish from the pack (test casts)", ok,
-                  f"{n} of {len(t['rod'])} rod casts were Solstone fish; probe {'tagged' if probe else 'NOT tagged'}", "every fishing feature",
-                  "" if ok else "The game is ignoring the pack's loot tables: Minecraft has probably changed their format. Use Test a catch on the Contests page for details.")
-        except Exception as e:
-            c.add("Data pack", "Fish from the pack (test casts)", False, str(e), "every fishing feature")
 
     # ------------------------------------------------------------ files Solstone reads
     try:

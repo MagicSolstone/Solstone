@@ -199,50 +199,6 @@ def _read_item(reply: str) -> dict:
     return res
 
 
-async def test_catch(srv) -> dict:
-    """Roll the tables into a barrel (put up at the top of the world for a moment, so there's
-    nothing to fall or get picked up) and read exactly what came out:
-    the vanilla-named fish table, the pack's own copy, a one-line probe table (do the pack's
-    loot functions work at all?), and the rod's whole table a few times."""
-    from .races import _pos
-    names, _src = await S.online_players(srv)
-    forced = None
-    q = await _pos(srv, names[0]) if names else None
-    if q:
-        pre, where = f"execute at {names[0]}", f"at {names[0]}"
-        x, y, z = int(q[0] // 1), int(q[1] // 1), int(q[2] // 1)
-    else:
-        w = await __import__("asyncio").to_thread(S.world_info, srv, False)
-        sp = w.get("spawn") or {"x": 0, "y": 64, "z": 0}
-        x, y, z = int(sp["x"]), int(sp.get("y", 64)), int(sp["z"])
-        forced = (x, z)
-        pre, where = "execute in minecraft:overworld", "at spawn"
-        await _rcon(srv, f"{pre} run forceload add {x} {z}")
-    top = 319
-    placed = await _rcon(srv, f"{pre} run setblock {x} {top} {z} minecraft:barrel")
-
-    async def roll(kind: str, table: str) -> dict:
-        src = f"fish {table} {x} {y} {z} minecraft:fishing_rod" if kind == "fish" else f"loot {table}"
-        out = await _rcon(srv, f"{pre} run loot replace block {x} {top} {z} container.0 {src}")
-        got = await _rcon(srv, f"{pre} run data get block {x} {top} {z} Items")
-        await _rcon(srv, f"{pre} run item replace block {x} {top} {z} container.0 with minecraft:air")
-        return {"table": table, "command_reply": out[:300], "item_reply": got[:600], **_read_item(got)}
-
-    try:
-        fish = await roll("fish", "minecraft:gameplay/fishing/fish")
-        own = await roll("fish", "solfish:fish")
-        probe = await roll("loot", "solfish:probe")
-        probes: dict = {}
-        rod = [await roll("fish", "minecraft:gameplay/fishing") for _ in range(4)]
-    finally:
-        await _rcon(srv, f"{pre} run setblock {x} {top} {z} minecraft:air")
-        if forced:
-            await _rcon(srv, f"{pre} run forceload remove {forced[0]} {forced[1]}")
-    packs = await _rcon(srv, "datapack list enabled")
-    return {**fish, "where": where, "barrel": placed[:200], "rod": rod, "own": own, "probe": probe, "probes": probes, "packs": packs[:1500],
-            "version": (await check(srv, force=True)).get("version"), "log": _log_mentions(srv)}
-
-
 def _log_mentions(srv) -> list[str]:
     """Every line in the game's current log about our pack or loot tables, at any level (startup
     errors scroll by unnoticed)."""
@@ -329,6 +285,8 @@ async def _celebrate(srv, who: str, c: dict, contest: bool) -> None:
 async def _journal(srv, who: str, c: dict) -> None:
     """Into the fishing journal; a new species or a personal best gets a line for that player."""
     j = db.add_catch(srv.id, time.time(), who, c)
+    if c.get("basic"):                                # vanilla fishing: kept quietly, nothing said in the game
+        return
     total, have, lb = len(fishpack.SPECIES), j["species_caught"], c["lb"]
     if j["new_species"]:
         line = component([("✎ ", "gold"), ("New in your fishing journal: ", "yellow"), (c["name"], "aqua"), (f" ({have} of {total} species)", "gray")])

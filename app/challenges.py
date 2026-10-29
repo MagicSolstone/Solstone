@@ -532,7 +532,7 @@ async def _on_catch(srv, player: str, catch: dict) -> bool:
     size = f" · {catch['lb']} lb" if tscore is None else f" · {_lb_oz(catch['lb'])}"
     # the catcher sees it above their hotbar; everyone hears about the good ones (the scores are on the sidebar)
     await hud.popup(srv, c, player, [(fish, colour), (size, "white"), (extra, "yellow")])
-    if catch["quality"] >= 3:
+    if catch["quality"] >= 3 or catch.get("basic"):    # vanilla fish (the pack's weights): every catch in chat
         await _rcon(srv, f"tellraw @a {component([('≫ ', 'aqua'), (player, 'aqua'), (' caught ', None), (fish, colour), (size, None), (extra, 'yellow')])}")
     return True
 

@@ -164,7 +164,7 @@ async function viewChallenges(sid) {
           <li>Put the file (still zipped) in this world's <code>datapacks</code> folder: <code>${esc(st.folder.replace(/^\/servers\//, "…/crafty-4/servers/"))}</code></li>
           <li><button class="btn sm primary" type="button" data-fish="reload">Load it</button> <span class="muted small">(runs /reload in the game and checks)</span></li></ol>`;
     const q = fish.qualities.map((x) => `<span class="fish-q fq-${x.color}">${esc(x.name)} <small>${x.one_in <= 2 ? `${x.chance}%` : `1 in ${x.one_in}`}</small></span>`).join("");
-    const rows = fish.guide.map((g) => `<tr><td>${itemIcon({ id: g.item })}<b>${esc(g.name)}</b></td><td>${esc(g.waters.join(", "))}</td><td>${g.min_lb}–${g.max_lb} lb</td><td>${g.min_points}–${g.max_points}</td><td class="muted">${esc(g.rarity)}</td></tr>`).join("");
+    const rows = fish.guide.map((g) => `<tr><td>${itemIcon({ id: g.item })}<b>${esc(g.name)}</b></td><td>${g.min_lb}–${g.max_lb} lb</td><td>${g.min_points}–${g.max_points}</td></tr>`).join("");
     const download = `<a class="link-btn" href="/api/fishing/${esc(st.file)}?server=${encodeURIComponent(sid)}" download>Download it again</a>`;
     if (fish.tide) {      // Tide does the fishing: the pack is only for archery and spleef here
       return `<section class="section" id="fish-sec"><div class="section-head"><h2>🎯 Solstone data pack</h2><span class="muted">${on ? `In the world${old ? " (an update is ready)" : " ✓"}` : "Not in this world yet"}</span></div>
@@ -179,14 +179,14 @@ async function viewChallenges(sid) {
     }
     return `<section class="section" id="fish-sec"><div class="section-head"><h2>🎣 Solstone data pack</h2><span class="muted">${on ? `In the world${old ? " (an update is ready)" : " ✓"}` : "Not in this world yet"}</span></div>
       <div class="panel fish-panel">
-        <p>One data pack for fishing and archery. Fishing: every catch is a species with a weight and a quality: <b>${fish.guide.length} kinds of fish</b> that depend on where you cast (rivers and lakes, oceans, warm or cold water, swamps, jungle rivers, the deep ocean). It unlocks the <b>Fishing tournament</b> (most points) and <b>Biggest catch</b> contests, and Trophy and Legendary catches are announced to everyone. Archery: it notes where each shot was taken from and how close to the centre it hit, for the archery games.</p>
-        ${!fish.rcon ? `<p class="notice">Needs RCON turned on for this server.</p>` : on && !old ? `<p class="muted small">Loaded (version ${st.version}). <button class="link-btn" type="button" data-fish="reload">Reload</button> · <button class="link-btn" type="button" data-fish="test">Test a catch</button> · ${download}</p>` : steps}
+        <p>One data pack for the archery games and fishing contests. <b>Fishing stays vanilla</b>: the same fish, odds and items, and nothing extra in chat. The pack just gives each fish caught a weight, which unlocks the <b>Fishing tournament</b> (most points: a point a pound) and <b>Biggest catch</b> contests: during a contest every catch is announced in chat with its weight, with a scoreboard. Archery: it notes where each shot was taken from and how close to the centre it hit, for the archery games.</p>
+        ${!fish.rcon ? `<p class="notice">Needs RCON turned on for this server.</p>` : on && !old ? `<p class="muted small">Loaded (version ${st.version}). <button class="link-btn" type="button" data-fish="reload">Reload</button> · ${download}</p>` : steps}
         <div id="fish-diag"></div>
         ${filesHtml(st)}
         ${old && !st.writable ? `<p class="muted small">Replace the old file with the new download, then load it.</p>` : ""}
         ${st.error ? `<p class="notice small">${esc(st.error)}</p>` : ""}
         <div class="fish-qs">${q}</div>
-        <details class="fish-guide"><summary>Fish guide</summary><div class="table-wrap"><table class="data"><thead><tr><th>Fish</th><th>Where</th><th>Size</th><th>Points</th><th>How often</th></tr></thead><tbody>${rows}</tbody></table></div></details>
+        <details class="fish-guide"><summary>Fish sizes</summary><div class="table-wrap"><table class="data"><thead><tr><th>Fish</th><th>Size</th><th>Points</th></tr></thead><tbody>${rows}</tbody></table></div></details>
         ${fish.recent.length ? `<h3>Recent catches</h3><ul class="fish-recent">${fish.recent.slice(0, 8).map((e) => `<li>${e.player ? faceHtml({ name: e.player }, 20) : ""}<span>${esc(e.message)}</span><time class="muted small">${esc(fmtAgo(e.ts))}</time></li>`).join("")}</ul>` : ""}
       </div></section>`;
   };
@@ -202,33 +202,12 @@ async function viewChallenges(sid) {
     if (ours.some((f) => f.loot_format && st.loot_format && f.loot_format !== st.loot_format)) warn.push(`The pack in the folder is written for ${ours.find((f) => f.loot_format !== st.loot_format).loot_format === "26.3" ? "Minecraft 26.3 and newer" : "Minecraft before 26.3"}, but this server is ${esc(st.mc_version || "?")}. Download it again from here: the download is made for this server.`);
     if (!ours.length && fl.length) warn.push(`No Solstone pack in this folder. Is it the right world? The game reads <code>${esc(st.folder)}</code>.`);
     if (!fl.length) return warn.length ? `<p class="notice small">${warn.join("<br>")}</p>` : "";
-    const fmt = (f) => `<li><code>${esc(f.name)}</code>${f.folder ? " (folder)" : ""} ${f.version != null ? `<b>Solstone v${f.version}</b>${f.fish_table ? "" : " · no fish table"}` : `<span class="muted">other pack</span>`}${f.modified ? ` <span class="muted small">${esc(fmtAgo(f.modified))}</span>` : ""}${f.error ? ` <span class="notice small">${esc(f.error)}</span>` : ""}</li>`;
+    const fmt = (f) => `<li><code>${esc(f.name)}</code>${f.folder ? " (folder)" : ""} ${f.version != null ? `<b>Solstone v${f.version}</b>` : `<span class="muted">other pack</span>`}${f.modified ? ` <span class="muted small">${esc(fmtAgo(f.modified))}</span>` : ""}${f.error ? ` <span class="notice small">${esc(f.error)}</span>` : ""}</li>`;
     return `${warn.length ? `<p class="notice small">${warn.join("<br>")}</p>` : ""}<details class="fish-files" ${warn.length ? "open" : ""}><summary>In the world's datapacks folder (${fl.length})</summary><ul>${fl.map(fmt).join("")}</ul></details>`;
   };
   const diag = (html) => { const el = $("#fish-diag"); if (el) el.innerHTML = html; };
   const wireFish = () => $$("[data-fish]").forEach((b) => b.addEventListener("click", async () => {
     b.disabled = true;
-    if (b.dataset.fish === "test") {
-      diag(`<p class="muted small">Casting a few test lines…</p>`);
-      try {
-        const t = await post(`/api/servers/${encodeURIComponent(sid)}/fishing/test`, {});
-        const what = (r) => r.pack_fish ? `${r.pack_fish.quality} ${r.pack_fish.name} (${r.pack_fish.lb} lb)`
-          : r.item ? `${r.named ? `"${r.named}" ` : "plain "}${r.item.replace("minecraft:", "")}${r.probe ? " (tagged)" : ""}` : `nothing (${r.command_reply || "no reply"})`;
-        const rodPack = t.rod.filter((r) => r.pack_fish).length;
-        const verdict = rodPack ? `<p class="fish-ok">✔ The pack's fish are working: ${rodPack} of ${t.rod.length} rod casts were Solstone fish (the rest are junk and treasure, as usual).</p>`
-          : t.pack_fish || t.own.pack_fish ? `<p class="notice small"><b>The pack's fish table works, but the rod's table doesn't use it.</b></p>`
-          : t.probe.probe ? `<p class="notice small"><b>The pack's loot functions work, but its fish tables aren't being used.</b></p>`
-          : `<p class="notice small"><b>The game isn't applying the pack's loot tables</b> (even the one-line probe).</p>`;
-        const lines = [`Tested ${t.where} · pack version ${t.version ?? "?"}${t.barrel && !/changed/i.test(t.barrel) ? ` · barrel: ${t.barrel}` : ""}`,
-          `fish table: ${what(t)}`, `solfish:fish: ${what(t.own)}`, `probe: ${what(t.probe)}`, ...t.rod.map((r, i) => `rod cast ${i + 1}: ${what(r)}`),
-          "", "probes (3 or 7 = that way works):", ...Object.entries(t.probes || {}).map(([k, v]) => `  ${k}: ${v}`),
-          "", "raw:", ...[t, t.own, t.probe].map((r) => `${r.table}: ${r.command_reply} | ${r.item_reply}`),
-          "", `packs: ${t.packs}`, ...(t.log?.length ? ["", "game log:", ...t.log] : [])];
-        diag(`${verdict}<pre class="mc-out">${esc(lines.join("\n"))}</pre><p class="muted small">Send this to get it fixed.</p>`);
-      } catch (e) { diag(`<p class="notice small">${esc(e.message)}</p>`); }
-      b.disabled = false;
-      return;
-    }
     try {
       const r = await post(`/api/servers/${encodeURIComponent(sid)}/fishing/${b.dataset.fish}`, {});
       if (r.problems?.length) { fish = await api(`/api/servers/${encodeURIComponent(sid)}/fishing`); render(); diag(`<div class="notice small"><b>The game reported problems loading data packs:</b><pre class="mc-out">${esc(r.problems.join("\n"))}</pre></div>`); return; }
@@ -913,19 +892,19 @@ async function viewFishingJournal(sid, who) {
     const total = d.species.length, have = p ? Object.keys(p.species).length : 0;
     const card = (sp) => {
       const mine = p?.species[sp.key], rec = d.records[sp.key];
-      const where = `${sp.waters.join(", ")} · ${sp.rarity}`;
+      const where = [sp.waters.join(", "), sp.rarity].filter(Boolean).join(" · ") || `${sp.min_lb}–${sp.max_lb} lb`;
       return mine
         ? `<div class="fj-card got"><div class="fj-top">${itemIcon({ id: sp.item })}<b>${esc(sp.name)}</b></div>
             <span class="fj-best">Best <b>${mine.best_lb} lb</b> · <span class="fq-${FQ[mine.best_quality]}">${esc(mine.best_quality === 1 ? "Normal" : qName(mine.best_quality))}</span></span>
             <span class="muted small">Caught ${mine.count}× · ${esc(where)}</span>
             ${rec ? `<span class="small ${rec.player === pick ? "fj-mine" : "muted"}">${rec.player === pick ? "🏆 Family record" : `Record: ${rec.lb} lb by ${esc(rec.player)}`}${rec.player === pick ? `: ${rec.lb} lb` : ""}</span>` : ""}</div>`
         : `<div class="fj-card"><div class="fj-top"><span class="fj-unknown" aria-hidden="true">?</span><b class="muted">???</b></div>
-            <span class="muted small">Not caught yet</span><span class="muted small">Look in: ${esc(where)}</span>
+            <span class="muted small">Not caught yet</span><span class="muted small">${esc(where)}</span>
             ${rec ? `<span class="muted small">${esc(rec.player)} has caught one</span>` : ""}</div>`;
     };
     setView(`${serverHeader(s, "fishing")}
-      <section class="section"><div class="section-head"><h2>🎣 Fishing journal</h2><span class="muted">Every fish from the Solstone data pack</span></div>
-        ${d.players.length ? `<div class="fj-players">${d.players.map((x) => `<button type="button" class="chip-btn ${x.name === pick ? "on" : ""}" data-fj="${esc(x.name)}">${faceHtml({ name: x.name }, 20)} ${esc(x.name)} <small>${Object.keys(x.species).length}/${total}</small></button>`).join("")}</div>` : `<p class="muted">Nobody has caught a Solstone fish yet.</p>`}
+      <section class="section"><div class="section-head"><h2>🎣 Fishing journal</h2><span class="muted">Every fish caught, with its weight</span></div>
+        ${d.players.length ? `<div class="fj-players">${d.players.map((x) => `<button type="button" class="chip-btn ${x.name === pick ? "on" : ""}" data-fj="${esc(x.name)}">${faceHtml({ name: x.name }, 20)} ${esc(x.name)} <small>${Object.keys(x.species).length}/${total}</small></button>`).join("")}</div>` : `<p class="muted">Nobody has caught a fish yet.</p>`}
         ${p ? `<div class="panel fj-head">
             <div class="fj-progress"><span><b>${have} of ${total}</b> kinds of fish</span><div class="fj-bar"><i style="width:${(have / total) * 100}%"></i></div></div>
             <div class="fj-stats"><span><b>${p.total}</b> caught</span><span><b>${p.points.toLocaleString()}</b> points</span></div>
@@ -933,7 +912,7 @@ async function viewFishingJournal(sid, who) {
         <div class="fj-grid">${d.species.map(card).join("")}</div></section>
       ${d.recent.length ? `<section class="section"><div class="section-head"><h2>Latest catches</h2></div><ul class="panel fj-recent">${d.recent.map((c) => `<li>${faceHtml({ name: c.player }, 20)}<b>${esc(c.player)}</b>
           <span class="fq-${FQ[c.quality]}">${esc(c.quality === 1 ? "" : `${qName(c.quality)} `)}${esc(c.name)}</span><span class="muted small">${c.lb} lb · ${c.points} pts · ${esc(fmtAgo(c.ts))}</span></li>`).join("")}</ul></section>` : ""}
-      <section class="section"><div class="section-head"><h2>How rare</h2></div><div class="fish-qs">${d.qualities.map((q) => `<span class="fish-q fq-${q.color}">${esc(q.name)} <small>${q.one_in <= 2 ? `${q.chance}%` : `1 in ${q.one_in}`}</small></span>`).join("")}</div></section>`);
+      ${d.qualities.length ? `<section class="section"><div class="section-head"><h2>How rare</h2></div><div class="fish-qs">${d.qualities.map((q) => `<span class="fish-q fq-${q.color}">${esc(q.name)} <small>${q.one_in <= 2 ? `${q.chance}%` : `1 in ${q.one_in}`}</small></span>`).join("")}</div></section>` : ""}`);
     wireHeader(s);
     $$("[data-fj]").forEach((b) => b.addEventListener("click", () => { pick = b.dataset.fj; render(); }));
   };

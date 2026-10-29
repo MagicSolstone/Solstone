@@ -49,9 +49,6 @@ def patched(monkeypatch, tmp_path):
     monkeypatch.setattr(S, "known_players", lambda srv: {})
     monkeypatch.setattr(fishing, "files", lambda srv: [])
 
-    async def catch(srv):
-        return {"rod": [{"pack_fish": {"name": "Bluegill"}}, {}], "probe": {"probe": True}}
-    monkeypatch.setattr(fishing, "test_catch", catch)
     monkeypatch.setattr(worldmap, "check", lambda *a: {"checked": [{"picture": "drawn"}], "regions": 4})
     return selfcheck
 
