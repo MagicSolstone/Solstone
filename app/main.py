@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.10.1"
+VERSION = "1.10.2"
 
 
 @asynccontextmanager
@@ -2444,8 +2444,6 @@ async def community_reply(tid: int, request: Request):
         raise HTTPException(400, str(e)) from None
     if not admin:
         votegame.new_message(user.shown, t["subject"])
-    else:
-        asyncio.get_running_loop().create_task(nudge.poke(t["user_id"]))
     return {"ok": True}
 
 
@@ -2549,8 +2547,6 @@ async def admin_message_send(request: Request):
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
     auth.audit(user, None, "message_send", f"{len(ids)} player(s): {community._line(body.get('subject'), 80)}")
-    for uid in ids:                                  # a heads-up in the game for those playing right now
-        asyncio.get_running_loop().create_task(nudge.poke(uid))
     return {"sent": len(ids)}
 
 

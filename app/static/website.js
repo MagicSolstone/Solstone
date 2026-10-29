@@ -412,7 +412,7 @@ async function wsNudge(form, sid) {
   const sample = (t) => t.replace(/\{waiting\}/g, "2 new messages and a vote").replace(/\{messages\}/g, "2").replace(/\{votes\}/g, "1");
   const show = () => $$(".wel-preview", form).forEach((pv) => { pv.innerHTML = welcomePreview(sample(form[pv.dataset.for].value), sid) || ""; });
   const fillIn = () => {
-    form.join.checked = cfg.join; form.live.checked = cfg.live; form.hours.value = cfg.hours;
+    form.join.checked = cfg.join; form.live.checked = cfg.live; form.repeat_minutes.value = cfg.repeat_minutes;
     form.join_text.value = cfg.join_text; form.live_text.value = cfg.live_text; show();
   };
   fillIn();
@@ -421,7 +421,7 @@ async function wsNudge(form, sid) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
-      cfg = await post("/api/settings/nudge", { join: form.join.checked, live: form.live.checked, hours: +form.hours.value || 12,
+      cfg = await post("/api/settings/nudge", { join: form.join.checked, live: form.live.checked, repeat_minutes: +form.repeat_minutes.value || 0,
         join_text: form.join_text.value, live_text: form.live_text.value }, "PUT");
       fillIn(); showToast("Saved", 2000);
     } catch (err) { showError(esc(err.message), 5000); }
@@ -436,11 +436,12 @@ async function wsWelcome(el) {
     <form class="panel ws-nudge" id="ws-nudge"><div class="section-head"><h2>✉️ Reminders about the website</h2></div>
       <p class="muted small">So the website isn't forgotten: a line in the game when something's waiting there for a player (new messages, a vote they haven't voted in). Nothing is sent when nothing's waiting.
         Fill-ins: <code>{waiting}</code> (like “2 new messages and a vote”), <code>{messages}</code>, <code>{votes}</code>, <code>{player}</code>, <code>{site}</code>. Colours like the welcome message.</p>
-      <label class="check"><input type="checkbox" name="join"> <b>When they join</b>, a few seconds after the welcome message, at most once every
-        <input class="input sm" type="number" name="hours" min="1" max="72" style="width:64px"> hours</label>
+      <label class="check"><input type="checkbox" name="join"> <b>When they join</b>, a few seconds after the welcome message (every time, if something's waiting)</label>
       <textarea class="input ws-text" name="join_text" rows="2" maxlength="400"></textarea>
       <div class="wel-preview" data-for="join_text"></div>
-      <label class="check"><input type="checkbox" name="live"> <b>When an admin writes to them</b> while they're playing (at most every half hour)</label>
+      <label class="check">While they play, if something's still waiting, the same again every
+        <input class="input sm" type="number" name="repeat_minutes" min="0" max="1440" step="15" style="width:72px"> minutes <small class="muted">(0: never)</small></label>
+      <label class="check"><input type="checkbox" name="live"> <b>When a new message reaches them</b> while they're playing (from an admin, or a notice like a vote's result)</label>
       <textarea class="input ws-text" name="live_text" rows="2" maxlength="400"></textarea>
       <div class="wel-preview" data-for="live_text"></div>
       <div class="btn-row"><button class="btn sm primary" type="submit">Save</button><button class="btn sm" type="button" data-nudge-reset>Back to Solstone's wording</button></div></form>

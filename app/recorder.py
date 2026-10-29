@@ -237,6 +237,7 @@ class Recorder:
 
         try:
             await votegame.tick(servers)                     # new votes announced, finished ones closed
+            await nudge.tick(servers)                        # new messages for those playing, and reminders
         except Exception:
             log.exception("votes")
         pt = playtime.config()

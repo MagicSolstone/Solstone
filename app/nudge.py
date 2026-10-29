@@ -1,8 +1,11 @@
 """Reminders in the game about the website, so it doesn't get forgotten: what's waiting there for a player (new
-messages, a vote they haven't voted in). Never spam: nothing is sent when nothing's waiting.
+messages, a vote they haven't voted in). Nothing is ever sent when nothing's waiting. Three moments, two texts:
 
-- When they join: one line, a few seconds after the welcome message, at most once every few hours (12 to start).
-- While they play: when an admin writes to them, a heads-up right away, at most once every half hour.
+- When they join (every time), if something's waiting: the "waiting" text, a few seconds after the welcome message.
+- While they play, when a new message reaches them (from an admin, or a notice like a vote's result): the "new
+  message" text, straight away.
+- While they keep playing with something still waiting: the "waiting" text again, every so often (an hour to start;
+  0 switches it off).
 
 Admins write both texts (Website → Welcome in the game), with the welcome message's & colour codes, clickable web
 addresses and fill-ins, plus {waiting} ("2 new messages and a vote"), {messages} and {votes}.
@@ -13,22 +16,23 @@ import asyncio
 import logging
 import time
 
-from . import auth, community, db, settings_store, welcome
+from . import auth, community, settings_store, welcome
 
 log = logging.getLogger("solstone.nudge")
 
 SECTION = "nudge"
-DEFAULTS = {"join": True, "live": True, "hours": 12,
+DEFAULTS = {"join": True, "live": True, "repeat_minutes": 60,
             "join_text": "&6✉ Waiting for you on the website:&r {waiting}. &7{site}",
-            "live_text": "&6✉ An admin sent you a message!&r Read it on the website: &7{site}"}
-LIVE_EVERY = 1800             # seconds: at most one heads-up per half hour
+            "live_text": "&6✉ You've got a new message on the website!&r Read it: &7{site}"}
 DELAY = 6.0                   # after the welcome message
+REJOIN = 120                  # seconds: joining again this soon (a dropped connection) doesn't repeat it
+CHECK_EVERY = 10              # seconds between looks at who's playing
 
 
 def config() -> dict:
     saved = settings_store.load().get(SECTION) or {}
     out = {**DEFAULTS, **{k: v for k, v in saved.items() if k in DEFAULTS}}
-    out["hours"] = max(1, min(72, int(out.get("hours") or 12)))
+    out["repeat_minutes"] = max(0, min(24 * 60, int(out.get("repeat_minutes") or 0)))
     return out
 
 
@@ -40,9 +44,9 @@ def save(body: dict) -> dict:
     for k in ("join_text", "live_text"):
         if k in body:
             cur[k] = welcome.clean(body[k])[:400] or DEFAULTS[k]
-    if "hours" in body:
+    if "repeat_minutes" in body:
         try:
-            cur["hours"] = max(1, min(72, int(body["hours"])))
+            cur["repeat_minutes"] = max(0, min(24 * 60, int(body["repeat_minutes"])))
         except (TypeError, ValueError):
             pass
     settings_store.save_section(SECTION, cur)
@@ -83,44 +87,65 @@ def lines(text: str, player: str, server: str, msgs: int = 0, votes: int = 0) ->
     return welcome.commands(player, welcome.fill(text, player, server))
 
 
+# what each player online has heard: name (lowercase) -> {"msgs": unread when last looked, "at": last reminder}
+_seen: dict[str, dict] = {}
+_checked = 0.0
+
+
 def on_join(srv, player: str) -> None:
-    """A player joined: tell them what's waiting, if anything, and not more often than every few hours."""
+    """A player joined: tell them what's waiting, if anything (every time they join)."""
     cfg = config()
-    if not cfg["join"] or not player:
+    if not player:
         return
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:                         # the log reader's thread: the online check sends it instead
+        return
+    key = player.lower()
+    if time.time() - _seen.get(key, {}).get("joined", 0) < REJOIN:
         return
     try:
         msgs, votes = waiting(player)
     except Exception:
         log.exception("reminder check failed for %s", player)
         return
-    if not (msgs or votes):
-        return
-    if not db.alert_once(f"nudge:{player.lower()}:{int(time.time() // (cfg['hours'] * 3600))}"):
-        return
-    loop.create_task(welcome.send(srv, lines(cfg["join_text"], player, srv.display_name, msgs, votes), DELAY))
+    _seen[key] = {"msgs": msgs, "at": time.time(), "joined": time.time()}
+    if cfg["join"] and (msgs or votes):
+        loop.create_task(welcome.send(srv, lines(cfg["join_text"], player, srv.display_name, msgs, votes), DELAY))
 
 
-async def poke(user_id: int) -> None:
-    """An admin just wrote to this player: if they're playing right now, a heads-up (at most every half hour)."""
+async def tick(servers: list) -> None:
+    """Every few seconds: a new message for someone playing gets a heads-up; something still waiting gets the
+    reminder again once the set time has gone by."""
     from . import servers as S
+    global _checked
     cfg = config()
-    u = auth.get_user(user_id)
-    if not cfg["live"] or not u or not u.players:
+    now = time.time()
+    if now - _checked < CHECK_EVERY or not (cfg["live"] or cfg["repeat_minutes"]):
         return
-    names = {p["name"].lower(): p["name"] for p in u.players}
-    for srv in [s for s in S.registry.servers.values() if s.is_java and s.rcon_conf()]:
+    _checked = now
+    online: set[str] = set()
+    for srv in [s for s in servers if s.is_java and s.rcon_conf()]:
         try:
-            online, _src = await S.online_players(srv)
+            names, src = await S.online_players(srv)
         except Exception:
             continue
-        here = [n for n in online if n.lower() in names]
-        if here:
-            if not db.alert_once(f"nudgelive:{user_id}:{int(time.time() // LIVE_EVERY)}"):
-                return
-            msgs, votes = await asyncio.to_thread(waiting, here[0])
-            await welcome.send(srv, lines(cfg["live_text"], here[0], srv.display_name, msgs, votes), 0)
-            return
+        if src != "rcon":
+            continue
+        for name in names:
+            key = name.lower()
+            online.add(key)
+            msgs, votes = await asyncio.to_thread(waiting, name)
+            seen = _seen.get(key)
+            if seen is None:                     # on before Solstone started, or the join was missed: start from now
+                _seen[key] = {"msgs": msgs, "at": now, "joined": now}
+                continue
+            if cfg["live"] and msgs > seen["msgs"]:
+                await welcome.send(srv, lines(cfg["live_text"], name, srv.display_name, msgs, votes), 0)
+                seen["at"] = now
+            elif cfg["repeat_minutes"] and (msgs or votes) and now - seen["at"] >= cfg["repeat_minutes"] * 60:
+                await welcome.send(srv, lines(cfg["join_text"], name, srv.display_name, msgs, votes), 0)
+                seen["at"] = now
+            seen["msgs"] = msgs
+    for key in [k for k in _seen if k not in online and now - _seen[k].get("joined", 0) > REJOIN]:
+        del _seen[key]                           # left: next time they join, it starts over

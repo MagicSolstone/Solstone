@@ -1,3 +1,11 @@
+# Solstone 1.10.2
+
+- **Reminders about the website, the way they should be** (Website → Welcome in the game → *Reminders about the website*):
+  - **Every time they join**, if something's waiting for them (new messages, a vote they haven't voted in), a few seconds after the welcome message. Nothing if nothing's waiting, and not twice for a dropped connection.
+  - **When a new message reaches them while they're playing**, straight away: from an admin, or a notice from Solstone (a vote's result, you won).
+  - **While they keep playing with something still waiting**, the same reminder again **every 60 minutes** (you choose; 0 switches it off).
+  - Two texts for those three: the *waiting* one (on joining, and the reminder) and the *new message* one.
+
 # Solstone 1.10.1
 
 ## 🗺️ The top-down map zoomed out
