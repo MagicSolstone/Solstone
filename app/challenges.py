@@ -124,7 +124,25 @@ def clean(body: dict, server: str) -> dict:
             "hot_far": int(max(16, min(96, float(body.get("hot_far") or 40)))),
             "lure": int(body.get("lure") or 0) if kind in ROD_KINDS and str(body.get("lure") or 0) in ("0", "3", "5") else 0,
             # Tide: everyone fishes at the same (baseline) level for the contest, whatever their own
-            "fair": bool(body.get("fair", True)) and kind in ROD_KINDS}
+            "fair": bool(body.get("fair", True)) and kind in ROD_KINDS,
+            # "daily" / "weekly": when it's over, the same contest is put on again a day / a week after it started
+            "repeat": body.get("repeat") if body.get("repeat") in REPEATS else ""}
+
+
+REPEATS = {"daily": 86400, "weekly": 7 * 86400}
+
+
+def _again(c: dict, d: dict, now: float) -> None:
+    """A repeating contest is over (or was skipped): the same one again, a day or a week on from its start."""
+    if not c.get("repeat") or c.get("repeated") or not c.get("config"):
+        return
+    c["repeated"] = True
+    step = REPEATS[c["repeat"]]
+    start = c["start"] + step
+    while start <= now + 60:
+        start += step
+    d["items"].append({**c["config"], "start": start, "id": secrets.token_hex(4), "state": "scheduled", "scores": {}, "players": [],
+                       "winners": [], "seconds": [], "objectives": [], "config": {**c["config"], "start": start}})
 
 
 def list_for(server: str) -> list[dict]:
@@ -135,8 +153,9 @@ def list_for(server: str) -> list[dict]:
 
 def create(server: str, body: dict) -> dict:
     d = _load()
-    c = {**clean(body, server), "id": secrets.token_hex(4), "state": "scheduled", "scores": {}, "players": [],
-         "winners": [], "seconds": [], "objectives": []}
+    conf = clean(body, server)
+    c = {**conf, "id": secrets.token_hex(4), "state": "scheduled", "scores": {}, "players": [],
+         "winners": [], "seconds": [], "objectives": [], "config": dict(conf)}
     d["items"].append(c)
     _save(d)
     return c
@@ -149,7 +168,9 @@ def update(server: str, cid: str, body: dict) -> dict:
         raise KeyError(cid)
     if c["state"] != "scheduled":
         raise ValueError("Only a challenge that hasn't started can be changed")
-    c.update(clean({**c, **body}, server))
+    conf = clean({**c.get("config", c), **body}, server)
+    c.update(conf)
+    c["config"] = dict(conf)
     _save(d)
     return c
 
@@ -488,6 +509,9 @@ async def _tick(servers: list) -> None:
                     await _fish_hot(srv, c, now)
                 except Exception:
                     log.exception("fishing hot zone failed")
+            changed = True
+        if c["state"] in ("done", "skipped") and c.get("repeat") and not c.get("repeated"):
+            _again(c, d, now)                                # the next one (weekly fishing night, say)
             changed = True
     if changed:
         _save(d)

@@ -170,3 +170,44 @@ def test_reading_removing_archiving_and_old_notices(client):
         assert community.tidy() >= 1 and community.thread(n) is None
     finally:
         auth.delete_user(a.id)
+
+
+def test_events_public_without_names_and_who_is_coming(client, anon, sid):
+    import datetime as dt
+
+    from app import board, challenges, db
+    a, ca = _player("cm_hank", "HankMC")
+    soon = time.time() + 3600
+    c = challenges.create(sid, {"kind": "fish", "name": "Fishing night", "start": soon, "minutes": 30, "prize": {"item": "diamond", "count": 1},
+                                "repeat": "weekly"})
+    today = dt.date.fromtimestamp(time.time())
+    keep = board.config()
+    client.put("/api/board", json={"birthdays": [{"player": "HankMC", "month": today.month, "day": today.day}]})
+    try:
+        pub = anon.get("/api/public/upcoming").json()["items"]
+        nights = [i for i in pub if i["title"] == "Fishing night"]
+        assert len(nights) >= 4 and "every week" in nights[0]["detail"]                    # the next few Tuesdays, say
+        assert all(i["kind"] != "birthday" for i in pub) and "HankMC" not in str(pub)    # no names in public
+        assert all("key" not in i and "who" not in i for i in pub)
+        key = next(i for i in ca.get("/api/upcoming").json()["items"] if i["title"] == "Fishing night")["key"]
+        ca.post("/api/community/signup", json={"event": key, "coming": True})
+        mine = next(i for i in ca.get("/api/upcoming").json()["items"] if i["key"] == key)
+        assert mine["who"] == ["HankMC"] and mine["me"]                                  # players see who's coming
+        assert "Events" in anon.get("/").text and 'href="/events" data-nav="events" data-signed-out>' in anon.get("/").text
+        assert 'data-signed-out hidden>' in client.get("/").text
+        assert anon.get("/events").status_code == 200
+        # when it's over, the same one again a week on
+        d = challenges._load()
+        x = next(i for i in d["items"] if i["id"] == c["id"])
+        x["state"] = "done"
+        challenges._save(d)
+        asyncio.run(challenges.tick([]))
+        nxt = [i for i in challenges._load()["items"] if i["name"] == "Fishing night" and i["state"] == "scheduled"]
+        assert len(nxt) == 1 and abs(nxt[0]["start"] - (soon + 7 * 86400)) < 1 and nxt[0]["repeat"] == "weekly"
+        assert nxt[0]["prize"]["item"] == "minecraft:diamond" and db is not None
+    finally:
+        client.put("/api/board", json={"birthdays": keep["birthdays"]})
+        d = challenges._load()
+        d["items"] = [i for i in d["items"] if i["name"] != "Fishing night"]
+        challenges._save(d)
+        auth.delete_user(a.id)

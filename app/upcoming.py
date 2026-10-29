@@ -36,7 +36,14 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
         if c["state"] == "running":
             add(c.get("started_at") or c["start"], "contest", emoji, c["name"], f"On now · ends at {_clock(c['ends_at'])}", server=c["server"], link=link, live=True)
         elif c["state"] == "scheduled" and c["start"] <= until:
-            add(c["start"], "contest", emoji, c["name"], f"{label} · {c['minutes']} minutes", server=c["server"], link=link)
+            again = {"weekly": " · every week", "daily": " · every day"}.get(c.get("repeat") or "", "")
+            add(c["start"], "contest", emoji, c["name"], f"{label} · {c['minutes']} minutes{again}", server=c["server"], link=link)
+            step = challenges.REPEATS.get(c.get("repeat") or "")
+            at = c["start"] + step if step else until + 1
+            ahead = 28 * 86400 if c.get("repeat") == "weekly" else 6 * 86400     # a repeating one: the next few as well
+            while step and at <= until and at - c["start"] <= ahead:
+                add(at, "contest", emoji, c["name"], f"{label} · {c['minutes']} minutes{again}", server=c["server"], link=link)
+                at += step
     for r in races._load()["runs"]:
         if r["server"] not in server_names:
             continue

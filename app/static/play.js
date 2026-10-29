@@ -75,7 +75,7 @@ async function viewChallenges(sid) {
   const base = `/api/servers/${encodeURIComponent(sid)}/challenges`;
   let [d, fish] = await Promise.all([api(base), api(`/api/servers/${encodeURIComponent(sid)}/fishing`).catch(() => null)]);
   const fishOn = () => !!fish?.status?.version || !!fish?.tide;        // the fishing pack, or the Tide mod
-  const draft = { kind: "fish", name: "", when: "now", at: "", minutes: 10, prize: null, second: null, say: true, lure: 0, fair: true, hot: false, hot_bonus: 2, hot_on: 60, hot_off: 30, hot_far: 40, g: { on: false, spot: null, r: 4 } };
+  const draft = { kind: "fish", name: "", when: "now", at: "", minutes: 10, prize: null, second: null, say: true, lure: 0, fair: true, hot: false, hot_bonus: 2, hot_on: 60, hot_off: 30, hot_far: 40, g: { on: false, spot: null, r: 4 }, repeat: "" };
   const ROD_KINDS = ["fish", "fish_points", "fish_heaviest"];
   // default time for "later": the next 8 PM, or the next hour if that's already past today
   const next8 = () => { const t = new Date(); t.setHours(20, 0, 0, 0); if (t < new Date()) { t.setTime(Date.now() + 3600e3); t.setMinutes(0, 0, 0); } return t; };
@@ -95,7 +95,7 @@ async function viewChallenges(sid) {
   const card = (c) => {
     const k = kind(c.kind);
     const status = c.state === "running" ? `<span class="ch-live">● Live · <span data-left="${c.ends_at}">${left(c.ends_at)}</span> left</span>`
-      : c.state === "scheduled" ? `<span class="muted">${esc(fmtWhen(c.start))} · ${c.minutes} min</span>`
+      : c.state === "scheduled" ? `<span class="muted">${esc(fmtWhen(c.start))} · ${c.minutes} min${c.repeat ? ` · 🔁 ${c.repeat === "weekly" ? "every week" : "every day"}` : ""}</span>`
       : `<span class="muted">${esc({ done: "Finished", skipped: "Didn't run", cancelled: "Called off" }[c.state] || c.state)} · ${esc(fmtWhen(c.start))}</span>`;
     return `<div class="ch-card panel ch-${c.state}" data-cid="${esc(c.id)}">
       <div class="ch-head"><span class="ch-emoji">${k.emoji}</span><div><h3>${esc(c.name)}</h3>${status}</div>
@@ -118,6 +118,7 @@ async function viewChallenges(sid) {
         <div class="ch-when"><span class="lbl">When</span>
           <label class="check"><input type="radio" name="when" value="now" ${draft.when === "now" ? "checked" : ""}> Right now</label>
           <label class="check"><input type="radio" name="when" value="later" ${draft.when === "later" ? "checked" : ""}> At <input class="input sm" type="datetime-local" name="at" value="${esc(draft.at)}"></label></div>
+        <label>Repeats <select class="input" name="repeat">${[["", "Just once"], ["weekly", "Every week, same day and time"], ["daily", "Every day, same time"]].map(([v, l]) => `<option value="${v}" ${draft.repeat === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         <div class="ch-prizes"><span class="lbl">Prize for the winner</span><button type="button" class="btn ch-pick" data-pick="prize">${prizeHtml(draft.prize)}</button>
           <span class="lbl">Second place <small class="muted">(optional)</small></span><span class="ch-second"><button type="button" class="btn ch-pick" data-pick="second">${prizeHtml(draft.second)}</button>${draft.second ? `<button type="button" class="icon-btn" data-clear-second aria-label="No second prize">✕</button>` : ""}</span></div>
       </div>
@@ -218,7 +219,7 @@ async function viewChallenges(sid) {
   }));
   const wire = () => {
     const form = $("#ch-form");
-    const sync = () => { const f = new FormData(form); draft.kind = f.get("kind"); draft.name = f.get("name"); draft.minutes = +f.get("minutes"); draft.when = f.get("when"); draft.at = f.get("at"); draft.say = !!f.get("say"); draft.lure = +(f.get("lure") || 0); draft.fair = !!f.get("fair");
+    const sync = () => { const f = new FormData(form); draft.kind = f.get("kind"); draft.name = f.get("name"); draft.minutes = +f.get("minutes"); draft.when = f.get("when"); draft.at = f.get("at"); draft.say = !!f.get("say"); draft.repeat = f.get("repeat") || ""; draft.lure = +(f.get("lure") || 0); draft.fair = !!f.get("fair");
       draft.hot = !!f.get("hot"); for (const k of ["hot_bonus", "hot_on", "hot_off", "hot_far"]) if (f.get(k)) draft[k] = +f.get(k); };
     form.addEventListener("change", (e) => {
       sync();
@@ -240,7 +241,7 @@ async function viewChallenges(sid) {
       if (draft.g.on && !draft.g.spot) { showToast("Pick the spot to teleport everyone to (or untick teleporting)", 3000); return; }
       const start = draft.when === "now" ? Date.now() / 1000 : new Date(draft.at).getTime() / 1000;
       try {
-        const c = await post(base, { kind: draft.kind, name: draft.name, start, minutes: draft.minutes, say: draft.say, lure: ROD_KINDS.includes(draft.kind) ? draft.lure : 0, fair: ROD_KINDS.includes(draft.kind) && !!fish?.tide && draft.fair,
+        const c = await post(base, { kind: draft.kind, name: draft.name, start, minutes: draft.minutes, say: draft.say, repeat: draft.repeat, lure: ROD_KINDS.includes(draft.kind) ? draft.lure : 0, fair: ROD_KINDS.includes(draft.kind) && !!fish?.tide && draft.fair,
           gather: gatherBody(draft.g),
           hot: draft.kind === "fish_points" && draft.hot, hot_bonus: draft.hot_bonus, hot_on: draft.hot_on, hot_off: draft.hot_off, hot_far: draft.hot_far,
           prize: { item: draft.prize.item, count: draft.prize.count, name: draft.prize.label }, second: draft.second ? { item: draft.second.item, count: draft.second.count, name: draft.second.label } : null });

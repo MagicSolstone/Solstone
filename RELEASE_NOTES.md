@@ -1,3 +1,9 @@
+# Solstone 1.10.6
+
+- **Contests that repeat:** a contest's **Repeats** can be *every week* or *every day*. When it's over, the same contest (kind, length, prizes, everything) is put on again a week (or a day) after it started, so *Fishing night, Tuesdays 7:00* is set up once. Cancel it to stop. The Contests page marks them 🔁, and Events shows the next few.
+- **Events is open to everyone:** visitors get an **Events** page in the top bar (contests, races, holidays, fireworks shows, announcements). Nothing with a player's name is on it: no birthdays, and no sign-ups.
+- **See who's coming:** signed in, each event lists who has said *I'm coming!* under it (it was only a number, and names for admins).
+
 # Solstone 1.10.5
 
 - **Put posts in the order you want:** Website → Posts lists them by kind: **News**, **Guides** and **Questions**.

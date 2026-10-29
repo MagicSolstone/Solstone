@@ -210,10 +210,11 @@ async function viewUpcoming() {
   const row = (it) => `<li class="up-item ${it.live ? "live" : ""} up-${esc(it.kind)}">
       <span class="up-emoji" aria-hidden="true">${esc(it.emoji || "•")}</span>
       <div class="up-main"><b>${it.link ? `<a href="${esc(it.link)}">${esc(it.title)}</a>` : esc(it.title)}</b>
-        <span class="muted small">${esc([UP_KIND[it.kind], it.server, it.detail, it.days > 1 ? `${it.days} days` : ""].filter(Boolean).join(" · "))}</span></div>
+        <span class="muted small">${esc([UP_KIND[it.kind], it.server, it.detail, it.days > 1 ? `${it.days} days` : ""].filter(Boolean).join(" · "))}</span>
+        ${it.who?.length ? `<span class="small up-who">🙋 ${esc(it.who.join(", "))}</span>` : ""}</div>
       <span class="up-when">${it.live ? '<span class="state-pill live"><span class="status-dot on"></span>On now</span>' : it.time ? esc(it.time) : '<span class="muted small">All day</span>'}
         ${UP_SIGNUP.has(it.kind) ? `<button type="button" class="btn sm up-coming ${it.me ? "on" : ""}" data-coming="${esc(it.key)}" aria-pressed="${it.me}"
-          ${it.who?.length ? `title="${esc(it.who.join(", "))}"` : ""}>${it.me ? "✅ I'm coming" : "🙋 I'm coming!"}${it.coming ? ` · ${it.coming}` : ""}</button>` : ""}</span></li>`;
+>${it.me ? "✅ I'm coming" : "🙋 I'm coming!"}${it.coming ? ` · ${it.coming}` : ""}</button>` : ""}</span></li>`;
   const live = d.items.filter((x) => x.live), ahead = d.items.filter((x) => !x.live);
   const groups = [];
   for (const it of ahead) { const g = groups[groups.length - 1]; if (g && g.date === it.date) g.items.push(it); else groups.push({ date: it.date, items: [it] }); }
@@ -228,9 +229,8 @@ async function viewUpcoming() {
     const it = d.items.find((x) => x.key === b.dataset.coming);
     try {
       await post("/api/community/signup", { event: it.key, coming: !it.me });
-      it.coming += it.me ? -1 : 1; it.me = !it.me;
-      b.classList.toggle("on", it.me); b.setAttribute("aria-pressed", it.me);
-      b.textContent = `${it.me ? "✅ I'm coming" : "🙋 I'm coming!"}${it.coming ? ` · ${it.coming}` : ""}`;
+      const y = scrollY;
+      await viewUpcoming(); scrollTo(0, y);                // the names under it change too
     } catch (err) { showError(esc(err.message), 4000); }
   }));
 }

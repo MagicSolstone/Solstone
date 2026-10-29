@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.10.5"
+VERSION = "1.10.6"
 
 
 @asynccontextmanager
@@ -1440,13 +1440,23 @@ async def get_upcoming(request: Request):
     items = upcoming.items(names)
     user = request.state.user
     signed = await asyncio.to_thread(community.signups, [i["key"] for i in items])
-    shown = await asyncio.to_thread(lambda: {u["id"]: u["shown"] for u in auth.list_users()}) if user.role == "admin" else {}
-    for i in items:                                  # who's coming: a count for everyone, names for admins
+    shown = await asyncio.to_thread(lambda: {u["id"]: u["shown"] for u in auth.list_users()})
+    for i in items:                                  # who's coming: names for everyone signed in (never on the public page)
         ids = signed.get(i["key"], [])
         i["coming"], i["me"] = len(ids), user.id in ids
         if shown:
             i["who"] = sorted((shown.get(x, "?") for x in ids), key=str.lower)
     return {"items": items, "days": upcoming.DAYS, "now": time.time()}
+
+
+@app.get("/api/public/upcoming")
+async def public_upcoming():
+    """What's planned, for the public Events page: no player's name anywhere (no birthdays, nobody's sign-up)."""
+    await S.registry.refresh()
+    names = {sid: srv.display_name for sid, srv in S.registry.servers.items() if _visible(srv) and not _private(srv)}
+    items = [{k: v for k, v in i.items() if k not in ("link", "key")} for i in upcoming.items(names)
+             if i["kind"] not in ("birthday",) and (i.get("server") is None or i["server"] in names.values())]
+    return JSONResponse({"items": items, "days": upcoming.DAYS, "now": time.time()}, headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/fireworks")
@@ -3298,6 +3308,7 @@ async def web_map(sid: str, token: str, path: str, request: Request):
 @app.get("/guides/{slug}", include_in_schema=False)
 @app.get("/faq", include_in_schema=False)
 @app.get("/help", include_in_schema=False)
+@app.get("/events", include_in_schema=False)
 @app.get("/post/{slug}", include_in_schema=False)
 async def home_page(request: Request, slug: str = ""):
     """The public website: home, news, guides, FAQ and posts. No sign-in."""
@@ -3352,7 +3363,7 @@ async def _page_for(name: str, request: Request) -> str:
     html, user = await asyncio.to_thread(lambda: (_page(name), auth.user_from_request(request)))   # off the main loop
     if not user:
         return html
-    html = html.replace(" data-signed-in hidden", " data-signed-in")
+    html = html.replace(" data-signed-in hidden", " data-signed-in").replace(" data-signed-out>", " data-signed-out hidden>")
     if user.role == "admin":
         html = html.replace(" data-admin hidden", " data-admin")
     return html.replace('<a class="btn sm" href="/app" id="hp-signin">Sign in</a>',       # the home page's corner

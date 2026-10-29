@@ -6,7 +6,7 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const hp = { site: null };
 // Two kinds of page: News (what's happening) and Help (guides, then questions and answers).
-const SECTIONS = { news: ["News", "news"], help: ["Help", "help"] };
+const SECTIONS = { news: ["News", "news"], help: ["Help", "help"], events: ["Events", "events"] };
 
 // Old bookmarks into the app (/#/s/...) still work: the app lives at /app now.
 if (location.hash.startsWith("#/")) location.replace(`/app${location.hash}`);
@@ -141,7 +141,22 @@ async function home() {
     ${s.about ? `<section class="hp-about glass"><h2>About</h2><div class="hp-body">${markdown(s.about)}</div></section>` : ""}`;
 }
 
+// What's planned, for everyone (no names: no birthdays, nobody's sign-up). Signed in, the app's Events page has more.
+async function eventsPage() {
+  const d = await getJSON("/api/public/upcoming");
+  const day = (iso) => { const [y, m, dd] = iso.split("-").map(Number); return new Date(y, m - 1, dd).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" }); };
+  const row = (it) => `<li class="up-item ${it.live ? "live" : ""}"><span class="up-emoji" aria-hidden="true">${esc(it.emoji || "•")}</span>
+    <div class="up-main"><b>${esc(it.title)}</b><span class="muted small">${esc([it.server, it.detail, it.days > 1 ? `${it.days} days` : ""].filter(Boolean).join(" · "))}</span></div>
+    <span class="up-when">${it.live ? "On now" : it.time ? esc(it.time) : '<span class="muted small">All day</span>'}</span></li>`;
+  const groups = [];
+  for (const it of d.items) { const g = groups[groups.length - 1]; if (g && g.date === it.date && !it.live) g.items.push(it); else groups.push({ date: it.date, live: it.live, items: [it] }); }
+  return `<section><h1>Events</h1><p class="muted">Contests, races, holidays and fireworks shows coming up. <a href="/app#/events">Sign in</a> to say you're coming and see who else is.</p></section>
+    ${groups.length ? groups.map((g) => `<section><h2>${g.live ? "Happening now" : esc(day(g.date))}</h2><ul class="up-list glass">${g.items.map(row).join("")}</ul></section>`).join("")
+      : '<section class="glass hp-empty"><p class="muted">Nothing planned yet. Check back soon!</p></section>'}`;
+}
+
 async function section(key) {
+  if (key === "events") return eventsPage();
   if (key === "help") {
     const [guides, faq] = await Promise.all([getJSON("/api/public/posts?category=guide&limit=100"), getJSON("/api/public/posts?category=faq&limit=100")]);
     return `<section><h1>Help</h1><p class="muted">How to join, how things work here, and answers to common questions.</p></section>

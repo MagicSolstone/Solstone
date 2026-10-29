@@ -172,6 +172,7 @@ function wireDropMenu(btn, menu) {
 // Signed in, the links for signed-in people (and admins) appear.
 function showNavFor(user) {
   document.querySelectorAll("[data-signed-in]").forEach((el) => { el.hidden = !user; });
+  document.querySelectorAll("[data-signed-out]").forEach((el) => { el.hidden = !!user; });
   document.querySelectorAll("[data-admin]").forEach((el) => { el.hidden = user?.role !== "admin"; });
   wireServersMenu();
 }
