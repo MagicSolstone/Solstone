@@ -498,7 +498,7 @@ async function viewNotifications() {
   curSid = null;
   document.title = `Notifications · ${SITE_NAME}`;
   fillServersMenu(state.servers, null);
-  const [c, everyone] = await Promise.all([api("/api/settings/notifications").catch(() => null), api("/api/players/all").catch(() => [])]);
+  const c = await api("/api/settings/notifications").catch(() => null);
   if (!c) { setView('<div class="panel"><p>Couldn\'t load the notification settings.</p></div>'); return; }
   const labels = { join: "Someone joins", leave: "Someone leaves", death: "Someone dies", advancement: "Advancements",
     server: "Server starts, stops or crashes", backup: "Backups are overdue", blocked: "Someone the whitelist turned away (with their exact name, to let them in from Control)",
@@ -514,15 +514,7 @@ async function viewNotifications() {
       <fieldset class="checks"><legend>Send a notification when</legend>
         ${c.event_types.map((t) => `<label class="check"><input type="checkbox" name="ev" value="${t}" ${c.events.includes(t) ? "checked" : ""}> ${esc(labels[t] || t)}</label>`).join("")}
       </fieldset>
-      <fieldset class="checks"><legend>Daily screen-time limits</legend>
-        <p class="muted" style="font-size:.85rem;margin:0 0 8px">Get one notification a day when someone passes their limit, counting all servers. Leave blank for no limit.</p>
-        <label>When someone passes their limit
-          <select class="input" name="limit_action">
-            <option value="notify" ${c.limit_action !== "kick" ? "selected" : ""}>Just notify me</option>
-            <option value="kick" ${c.limit_action === "kick" ? "selected" : ""}>Notify me, warn them in-game, then disconnect them after ${c.limit_grace_minutes} minutes</option>
-          </select></label>
-        ${everyone.length ? `<div class="limits">${everyone.map((n) => `<label class="limit-row"><span>${esc(n)}</span><input class="input" type="number" min="0" max="1440" step="15" name="limit" data-player="${esc(n)}" value="${esc(c.limits[n.toLowerCase()] || "")}" placeholder="No limit"><span class="muted">min</span></label>`).join("")}</div>` : '<p class="muted">Players appear here once they have joined a server.</p>'}
-      </fieldset>
+      <p class="muted small">Daily screen-time limits and bedtimes are in <a href="#/manage/playtime">Manage → Play time</a>. You're notified here when someone reaches their limit.</p>
       <fieldset class="checks"><legend>Weekly digest</legend>
         <label class="check"><input type="checkbox" name="digest_enabled" ${c.digest_enabled ? "checked" : ""}> Send a weekly summary of who played, deaths and advancements</label>
         <div class="row2">
@@ -558,10 +550,8 @@ async function viewNotifications() {
     $$("[data-ns-mode]", form).forEach((sel) => sel.addEventListener("change", () => { sel.closest(".ns-server").querySelector(".ns-own").hidden = sel.value !== "own"; }));
     const body = () => {
       const f = new FormData(form);
-      const limits = {};
-      $$('input[name="limit"]', form).forEach((i) => { if (i.value) limits[i.dataset.player] = Number(i.value); });
       const b = { ntfy_url: f.get("ntfy_url"), events: f.getAll("ev"), quiet_enabled: !!f.get("quiet_enabled"), quiet_start: form.quiet_start.value, quiet_end: form.quiet_end.value,
-        limits, limit_action: f.get("limit_action"), digest_enabled: !!f.get("digest_enabled"), digest_day: Number(f.get("digest_day")), digest_hour: Number(f.get("digest_hour")) };
+        digest_enabled: !!f.get("digest_enabled"), digest_day: Number(f.get("digest_day")), digest_hour: Number(f.get("digest_hour")) };
       b.servers = {};
       $$(".ns-server", form).forEach((el) => {
         const mode = $("[data-ns-mode]", el).value;

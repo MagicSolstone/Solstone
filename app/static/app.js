@@ -1611,6 +1611,7 @@ async function route() {
       else if (tab === "whitelist") await viewWhitelist();
       else if (tab === "notifications") await viewNotifications();
       else if (tab === "holidays") await viewHolidays();
+      else if (tab === "playtime") await viewPlaytime();
       else await viewAdmin(tab);
       return;
     }

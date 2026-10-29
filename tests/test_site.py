@@ -382,7 +382,7 @@ def test_top_bar_ready_for_who_is_signed_in(client, viewer, anon):
         v = viewer.get(path).text
         assert 'data-nav="events" data-signed-in>' in v and 'data-nav="manage" data-admin hidden' in v
         c = client.get(path).text
-        assert 'data-nav="events" data-signed-in>' in c and 'data-nav="manage" data-admin>' in c
+        assert 'data-nav="events" data-signed-in>' in c and 'data-nav="manage" data-admin aria-label' in c
     assert 'id="hp-signin">Sign in</a>' in anon.get("/").text and 'id="hp-signin">Sign in</a>' not in client.get("/").text
 
 

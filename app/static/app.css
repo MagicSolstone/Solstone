@@ -1959,3 +1959,27 @@ a.glance-me:hover { border-color: var(--gold); }
 /* Fireworks editor: your join firework */
 .fwe-join { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; margin: 0 0 12px; }
 .fwe-join select { max-width: 320px; }
+
+/* Manage in the bar: just ⚙ on phones, so the bar stays on one line */
+@media (max-width: 700px) { .hp-nav .nav-label { display: none; } }
+
+/* Manage → Play time */
+.pt-page { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+.pt-page > * { min-width: 0; }
+.pt-page .section-head { margin-bottom: 4px; }
+.pt-rule { border: 1px solid rgba(255,255,255,.12); border-radius: var(--radius-m); padding: 10px 12px; margin: 10px 0; display: grid; gap: 8px; }
+.pt-rule.off { opacity: .6; }
+.pt-rule-head, .pt-rule-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.pt-rule-head .input { max-width: 220px; font-weight: 600; }
+.pt-rule-row label:not(.check) { display: flex; gap: 6px; align-items: center; }
+.pt-days, .pt-servers { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.pt-covers { margin: 10px 0; padding-left: 18px; font-size: .9rem; }
+.pt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 10px 16px; margin: 10px 0; }
+.pt-grid > label, .pt-grid .input { min-width: 0; max-width: 100%; }
+.pt-banner { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pt-grid small { display: block; color: var(--muted); font-weight: normal; }
+.pt-people { width: 100%; border-collapse: collapse; }
+.pt-people th, .pt-people td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.08); vertical-align: middle; }
+.pt-people .input.sm { width: 84px; }
+.pt-save { position: sticky; bottom: 10px; justify-content: flex-end; }
+@media (max-width: 700px) { .pt-save { position: static; } .pt-rule-head .input { max-width: 100%; flex: 1 1 140px; } }

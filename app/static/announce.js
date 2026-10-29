@@ -1,8 +1,8 @@
-/* Solstone — Announcements (admins): banners with countdowns, birthdays and the bedtime
-   countdown. Loaded after app.js. */
+/* Solstone — Announcements (admins): banners with countdowns and birthdays (the bedtime countdown is in
+   Manage → Play time). Loaded after app.js. */
 "use strict";
 
-const ANN_TABS = [["banners", "Banners"], ["birthdays", "Birthdays"], ["bedtime", "Bedtime"]];
+const ANN_TABS = [["banners", "Banners"], ["birthdays", "Birthdays"]];   // bedtime banners: Manage → Play time
 const ANN_STYLES = [["info", "Info"], ["party", "Celebration"], ["heads", "Heads-up"]];
 const ANN_WHERE = [["home", "Home page"], ["app", "Signed-in pages"], ["login", "Sign-in page"]];
 const ANN_EMOJI = ["📣", "🎉", "🏗️", "🏆", "⚠️", "🎂", "🌙", "🎃", "🎄", "⛏️", "🐉", "🎬"];
@@ -29,7 +29,7 @@ async function viewAnnouncements() {
 function renderAnn() {
   const el = $("#ann-body");
   if (!el) return;
-  ({ banners: annBanners, birthdays: annBirthdays, bedtime: annBedtime })[ann.tab](el);
+  ({ banners: annBanners, birthdays: annBirthdays })[ann.tab]?.(el) ?? annBanners(el);
 }
 async function annSave(part, msg = "Saved") {
   try { ann.data = await post("/api/board", part, "PUT"); showToast(msg, 2000); appSky.board?.refresh(); return true; }
@@ -188,17 +188,6 @@ function annBirthdays(el) {
   });
 }
 
-// ---------------------------------------------------------------- bedtime
-function annBedtime(el) {
-  const d = ann.data, b = d.bedtime;
-  el.innerHTML = `<section class="panel" style="max-width:720px">
-    <label class="switch-row"><span><b>Count down to bedtime</b><br><small class="muted">A banner on the home page and the signed-in pages before a server's bedtime, then “asleep until…” overnight.</small></span><input type="checkbox" role="switch" id="ann-bt-on" ${b.show ? "checked" : ""}></label>
-    <div class="fw-row" style="margin-top:10px"><span>Starts</span><span><input class="input sm" type="number" min="5" max="180" id="ann-bt-min" value="${b.minutes}" style="width:76px"> minutes before bedtime</span></div>
-    <h3 class="fws-sub" style="margin-top:16px">Servers</h3>
-    <ul class="ann-bt-list">${d.servers.map((s) => `<li><b>${esc(s.name)}</b> <span class="muted">${s.bedtime ? "Bedtime is on" : "No bedtime set"}</span> <a href="#/s/${encodeURIComponent(s.id)}/control">Set it in Control</a></li>`).join("")}</ul>
-    <div class="actions" style="justify-content:flex-start;margin-top:12px"><button class="btn primary" id="ann-bt-save" type="button">Save</button></div></section>`;
-  $("#ann-bt-save").addEventListener("click", () => annSave({ bedtime: { show: $("#ann-bt-on").checked, minutes: +$("#ann-bt-min").value || 30 } }));
-}
 
 // ================================================================ events
 // Everything with a date ahead, in one list: contests, races, games, birthdays, holidays and

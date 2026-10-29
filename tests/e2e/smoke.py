@@ -746,6 +746,24 @@ def main() -> int:
             bars = m.evaluate("() => [...document.querySelectorAll('.tabs, .subtabs')].filter(t => t.offsetHeight - t.clientHeight > 2 || t.offsetWidth - t.clientWidth > 2).length")
             if bars:
                 problems.append(f"manage: {bars} tab rows show a scrollbar")
+            if m.viewport_size["width"] <= 700 and m.locator(".app-nav [data-nav=manage] .nav-label").is_visible():
+                problems.append("phone: Manage in the bar still has its word (it should be just ⚙)")
+            # Manage → Play time: bedtimes with their own days and servers, and each player's row
+            m.goto(f"{base}/app#/manage/playtime"); m.wait_for_timeout(1200)
+            if not m.locator(".pt-people tr[data-key]").count():
+                problems.append("play time: no player rows")
+            m.locator("#pt-add").click(); m.wait_for_timeout(200)
+            if not m.locator(".pt-rule").count():
+                problems.append("play time: + Add a bedtime added nothing")
+            m.locator(".pt-people tr[data-key] [name=limit]").first.fill("90")
+            m.locator(".pt-save button").click(); m.wait_for_timeout(1000)
+            if "Play time saved" not in (m.locator("#toast").inner_text() or ""):
+                problems.append("play time: saving didn't say saved")
+            check(m, "playtime")
+            m.reload(); m.wait_for_timeout(1200)
+            if m.locator(".pt-people tr[data-key] [name=limit]").first.input_value() != "90" or not m.locator(".pt-rule").count():
+                problems.append("play time: the bedtime or limit wasn't kept")
+            m.goto(f"{base}/app#/manage/users"); m.wait_for_timeout(1000)
             # A slow answer shows "Loading…" instead of a blank page, and the page once it comes
             held = []
             m.route("**/api/users", lambda r: held.append(r))

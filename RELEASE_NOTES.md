@@ -1,5 +1,17 @@
-# Solstone 1.9.11
+# Solstone 1.10.0
 
+## ⏰ Play time: bedtimes and screen time in one place
+- **Manage → Play time** has everything about when the servers can be played, instead of bits in each server's Control, Announcements and Notifications.
+- **Bedtime schedules:** each has its days, bedtime and wake-up time, and the servers it covers (tick **All servers**, or pick them). So school nights and weekends can be different: *School nights, Sun–Thu, 9 PM to 7 AM* and *Weekends, Fri–Sat, 10:30 PM to 8 AM*. A bedtime can be switched off without losing it. Under them it says which bedtimes each server has.
+- The in-game warnings, the goodbye message and the countdown on the website are set there too.
+- **Daily screen time:** what happens at the limit (warn them and notify you, or warn them then disconnect them after a few minutes), and **new: warnings before the limit** in the game (*Screen time: 15 minutes left today.*).
+- **Each player** has one row: whether bedtime applies to them (or they stay up), a **daily limit** and a **weekend limit**, and how long they've played today (only admins see that).
+- **One limit per person:** an account's Java and Bedrock names count together, so having both no longer means twice the time.
+- Your settings move over by themselves: each server's bedtime becomes a schedule (servers with the same times share one), the stay-up lists and the limits from Notifications go into the players' rows.
+- A server's Control shows its bedtimes with a link to Play time, the Users page shows each player's (*90 min a day · bedtime applies*), and Notifications points there for limits.
+
+## Smaller things
+- **Manage on phones** is just ⚙ in the bar, so the bar stays on one line. It's in the account menu too.
 - **The map drawing check says when the world isn't finished:** for each region it checks, it counts the chunks the game only started (just the outline of the land, all air) and never finished, and says so: *r.-2.1.mca: 126 of 132 chunks were only started, never finished by the game. Run Chunky over this area again: it finishes them.* Those are black on every map, BlueMap's too.
 
 # Solstone 1.9.10

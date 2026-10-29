@@ -9,7 +9,7 @@ from datetime import datetime
 import pytest
 
 import helpers
-from app import auth, control, db, guard
+from app import auth, control, db, guard, playtime
 
 RCON_PORT = 25998  # matches tests/helpers.py server.properties
 
@@ -223,16 +223,17 @@ def test_bedtime_kicks_everyone_but_exempt(client, sid, rcon):
     srv = S.registry.servers[sid]
     rcon["replies"]["list"] = "There are 2 of a max of 10 players online: Tyler, Gimli_Jr"
     rcon["cmds"].clear()
-    cfg = guard.validate_bedtime({"enabled": True, "start": "21:00", "end": "07:00", "exempt": ["Tyler"]})
+    cfg = playtime.clean({"people": {"p:tyler": {"bedtime": False}}})            # Tyler stays up
+    rule = {"id": "t", "start": "21:00", "end": "07:00"}
     night = datetime.now().date()
-    asyncio.run(guard._bedtime(_fresh(srv), cfg, ("active", 0, night), ["Tyler", "Gimli_Jr"]))
+    asyncio.run(guard._bedtime(_fresh(srv), cfg, ("active", 0, night, rule), ["Tyler", "Gimli_Jr"]))
     assert "save-all" in rcon["cmds"]
     assert any(c.startswith("kick Gimli_Jr ") for c in rcon["cmds"])
     assert not any(c.startswith("kick Tyler") for c in rcon["cmds"])
     # Warnings only fire once each
     rcon["cmds"].clear()
-    asyncio.run(guard._bedtime(_fresh(srv), cfg, ("before", 290, night), ["Gimli_Jr"]))
-    asyncio.run(guard._bedtime(_fresh(srv), cfg, ("before", 280, night), ["Gimli_Jr"]))
+    asyncio.run(guard._bedtime(_fresh(srv), cfg, ("before", 290, night, rule), ["Gimli_Jr"]))
+    asyncio.run(guard._bedtime(_fresh(srv), cfg, ("before", 280, night, rule), ["Gimli_Jr"]))
     assert sum(c.startswith("tellraw @a") for c in rcon["cmds"]) == 1
 
 
@@ -240,12 +241,12 @@ def test_screen_time_warn_then_kick(client, sid, rcon):
     from app import servers as S
     srv = S.registry.servers[sid]
     rcon["cmds"].clear()
-    ncfg = {"limits": {"gimli_jr": 60}, "limit_action": "kick", "limit_grace_minutes": 5}
+    cfg = playtime.clean({"people": {"p:gimli_jr": {"limit": 60, "weekend_limit": 60}}, "limit_action": "kick", "grace_minutes": 5})
     now = datetime.now(db.tz())
-    asyncio.run(guard._limits(_fresh(srv), ncfg, {"gimli_jr": 3700}, ["Gimli_Jr"], now))
+    asyncio.run(guard._limits(_fresh(srv), cfg, {"gimli_jr": 3700}, ["Gimli_Jr"], now))
     assert any(c.startswith("tellraw Gimli_Jr") for c in rcon["cmds"]) and not any(c.startswith("kick") for c in rcon["cmds"])
-    db.x("UPDATE alerts SET ts=? WHERE key LIKE 'limitwarn:gimli_jr:%'", (time.time() - 400,))
-    asyncio.run(guard._limits(_fresh(srv), ncfg, {"gimli_jr": 3700}, ["Gimli_Jr"], now))
+    db.x("UPDATE alerts SET ts=? WHERE key LIKE 'limitwarn:%'", (time.time() - 400,))
+    asyncio.run(guard._limits(_fresh(srv), cfg, {"gimli_jr": 3700}, ["Gimli_Jr"], now))
     assert any(c.startswith("kick Gimli_Jr") for c in rcon["cmds"])
 
 

@@ -27,13 +27,14 @@
         <span class="nav-drop" data-signed-in hidden><button type="button" class="nav-drop-btn" id="btn-servers" data-nav="servers"
             aria-haspopup="true" aria-expanded="false" aria-controls="rail-servers">Servers<span class="caret" aria-hidden="true"> ▾</span></button>
           <span class="drop-panel rail-servers glass" id="rail-servers" hidden></span></span>
-        <a href="/app#/manage" data-nav="manage" data-admin hidden>⚙ Manage</a>
+        <a href="/app#/manage" data-nav="manage" data-admin hidden aria-label="Manage">⚙<span class="nav-label"> Manage</span></a>
       </nav>
       <div class="account">
         <button class="btn sm" id="btn-account" type="button" aria-haspopup="menu" aria-expanded="false">👤 <span id="account-name"></span></button>
         <div class="account-menu" id="account-menu" role="menu" hidden>
           <div class="account-role" id="account-role"></div>
           <a role="menuitem" href="#/fireworks" id="btn-fwe">🎆 Fireworks</a>
+          <a role="menuitem" href="#/manage" data-admin hidden>⚙ Manage</a>
           <button type="button" role="menuitem" id="btn-display-name">Display name</button>
           <button type="button" role="menuitem" id="btn-my-players">🎮 My Minecraft accounts</button>
           <button type="button" role="menuitem" id="btn-password">Change password</button>
@@ -50,6 +51,7 @@
       <a href="#/manage/whitelist" data-m="whitelist">✅ Whitelist</a>
       <a href="#/manage/servers" data-m="servers">🖥 Servers &amp; live info</a>
       <a href="#/manage/activity" data-m="activity">📜 Activity log</a>
+      <a href="#/manage/playtime" data-m="playtime">⏰ Play time</a>
       <a href="#/manage/holidays" data-m="holidays">📅 Holidays</a>
       <a href="#/manage/notifications" data-m="notifications">🔔 Notifications</a>
     </nav>
@@ -76,5 +78,6 @@
   <script src="/static/postfmt.js" defer></script>
   <script src="/static/guides.js" defer></script>
   <script src="/static/website.js" defer></script>
+  <script src="/static/playtime.js" defer></script>
 </body>
 </html>

@@ -1,19 +1,19 @@
-"""Bedtime mode and screen-time enforcement (runs every few seconds in the recorder).
+"""Bedtime and screen-time enforcement in the game (runs every few seconds in the recorder). What to enforce is
+set in Manage → Play time (playtime.py).
 
-Bedtime (per server): in-game warnings before bedtime, then save and disconnect
-everyone not on the exempt list. Anyone who joins before wake-up time is
-disconnected again within seconds.
+Bedtime: the bedtime schedules covering a server give in-game warnings before, then save and disconnect everyone
+it applies to. Anyone who joins before wake-up time is disconnected again within seconds.
 
-Screen time (all servers): when a player's daily limit is set to "warn then
-disconnect", they get an in-game warning when they pass it, then are
-disconnected after a grace period, and again if they rejoin that day.
+Screen time (all servers and all of a person's names together): warnings in the game before their limit, then,
+with "warn, then disconnect", a last warning when they reach it and a disconnect after a grace period, and again
+if they rejoin that day.
 """
 from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta
 
-from . import auth, db, mcname, notify
+from . import auth, db, mcname, playtime
 from . import servers as S
 from .control import component
 from .rcon import RconError
@@ -78,20 +78,14 @@ async def _say(srv: S.Server, who: str, parts: list[tuple[str, str | None]]) -> 
 
 async def tick(servers: list[S.Server]) -> None:
     now = datetime.now(db.tz())
-    ncfg = notify.get_config()
-    enforce_limits = ncfg.get("limit_action") == "kick" and ncfg["limits"]
-    totals: dict[str, int] = {}
-    if enforce_limits:
-        for srv in servers:
-            for name, secs in db.daily_playtime(srv.id, 1)[0]["players"].items():
-                totals[name.lower()] = totals.get(name.lower(), 0) + secs
-
+    cfg = playtime.config()
+    any_limits = any(r.get("limit") or r.get("weekend_limit") for r in cfg["people"].values())
+    totals = playtime.today_totals([s.id for s in servers]) if any_limits else {}
     for srv in servers:
         if not srv.is_java or not srv.rcon_conf():
             continue
-        cfg = bedtime_config(srv)
-        st = bedtime_state(cfg, now) if cfg["enabled"] else None
-        if not st and not enforce_limits:
+        st = playtime.server_state(cfg, srv.id, now)
+        if not st and not any_limits:
             continue
         try:
             online, source = await S.online_players(srv)
@@ -99,42 +93,53 @@ async def tick(servers: list[S.Server]) -> None:
                 continue
             if st:
                 await _bedtime(srv, cfg, st, online)
-            if enforce_limits and online:
-                await _limits(srv, ncfg, totals, online, now)
+            if any_limits and online:
+                await _limits(srv, cfg, totals, online, now)
         except RconError as e:
             log.debug("guard skipped %s: %s", srv.id, e)
 
 
 async def _bedtime(srv: S.Server, cfg: dict, st: tuple, online: list[str]) -> None:
-    kind, secs_left, night = st
-    exempt = {n.lower() for n in cfg["exempt"]}
+    kind, secs_left, night, rule = st
     if kind == "before":
         due = [w for w in cfg["warn_minutes"] if secs_left <= w * 60]
         if due and online:
             w = min(due)
             # Mark this and any larger warnings as sent so a late start doesn't fire them all at once.
-            fresh = [db.alert_once(f"bed:{srv.id}:{night}:{m}") for m in due]
+            fresh = [db.alert_once(f"bed:{srv.id}:{rule['id']}:{night}:{m}") for m in due]
             if fresh[due.index(w)]:
                 await _say(srv, "@a", [("Bedtime ", "gold"), (f"in {w} minute{'s' if w != 1 else ''}. Find a safe spot!", None)])
         return
-    targets = [n for n in online if n.lower() not in exempt]
+    targets = [n for n in online if not playtime.stays_up(cfg, n)]
     if db.alert_once(f"bedsave:{srv.id}:{night}"):
         if online:
             await _say(srv, "@a", [("Bedtime! ", "gold"), ("Saving the world. Good night!", None)])
         await srv.rcon("save-all")
-    message = cfg["message"] or f"Bedtime! The server opens again at {_fmt_clock(cfg['end'])}."
+    message = cfg["message"] or f"Bedtime! The server opens again at {_fmt_clock(rule['end'])}."
     for name in targets:
         await srv.rcon(f"kick {name} {message}")
         auth.audit("Bedtime", srv.id, "kick", name, message)
 
 
-async def _limits(srv: S.Server, ncfg: dict, totals: dict[str, int], online: list[str], now: datetime) -> None:
-    grace = int(ncfg.get("limit_grace_minutes", 5))
+async def _limits(srv: S.Server, cfg: dict, totals: dict[str, int], online: list[str], now: datetime) -> None:
+    grace = cfg["grace_minutes"]
     today = now.date().isoformat()
+    played = playtime.totals_by_person(cfg, totals)
     for name in online:
-        key = name.lower()
-        limit = ncfg["limits"].get(key)
-        if not limit or totals.get(key, 0) < limit * 60:
+        key, row = playtime.person_of(cfg, name)
+        limit = playtime.limit_for(row, now.date())
+        if not limit:
+            continue
+        left = limit * 60 - played.get(key, 0)
+        if left > 0:                                      # warnings on the way: 15 minutes left, 5 minutes left
+            due = [w for w in cfg["limit_warn"] if left <= w * 60]
+            if due:
+                w = min(due)
+                fresh = [db.alert_once(f"limitsoon:{key}:{today}:{m}") for m in due]
+                if fresh[due.index(w)]:
+                    await _say(srv, name, [("Screen time: ", "gold"), (f"{w} minute{'s' if w != 1 else ''} left today.", None)])
+            continue
+        if cfg["limit_action"] != "kick":
             continue
         warn_key = f"limitwarn:{key}:{today}"
         if db.alert_once(warn_key):

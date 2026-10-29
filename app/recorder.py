@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, notify, races, modupdates, recap, selfbackup, skins, tide, welcome
+from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, notify, playtime, races, modupdates, recap, selfbackup, skins, tide, welcome
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -235,17 +235,17 @@ class Recorder:
         now = datetime.now(zone)
         today = now.date().isoformat()
 
-        if c["limits"] and channels:
+        pt = playtime.config()
+        if channels and any(r.get("limit") or r.get("weekend_limit") for r in pt["people"].values()):
             totals: dict[str, int] = {}
             display: dict[str, str] = {}
             for srv in servers:
-                for row in db.daily_playtime(srv.id, 1)[0]["players"].items():
-                    name, secs = row
+                for name, secs in db.daily_playtime(srv.id, 1)[0]["players"].items():
                     totals[name.lower()] = totals.get(name.lower(), 0) + secs
-                    display.setdefault(name.lower(), name)
-            for key, secs, limit in notify.screen_time_due(totals, c["limits"]):
+                    display.setdefault(f"p:{name.lower()}", name)
+            for key, secs, limit in playtime.over_limit(pt, totals, now.date()):      # each person, all their names
                 if db.alert_once(f"limit:{key}:{today}"):
-                    name = display.get(key, key)
+                    name = display.get(key) or playtime.label(key)
                     await notify.send("Screen time", f"{name} has played {notify._fmt(secs)} today "
                                       f"(daily limit {notify._fmt(limit * 60)})", notify.TAGS["screen_time"])
 

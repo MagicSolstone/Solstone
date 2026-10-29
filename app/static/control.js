@@ -313,27 +313,12 @@ async function viewControl(sid) {
   function renderBedtime() {
     const el = $("#ctl-bedtime");
     if (!el) return;
-    const b = info.bedtime;
-    const players = [...new Set([...info.known_players, ...b.exempt])].sort((x, y) => x.localeCompare(y));
-    $("#bed-status").textContent = b.enabled ? `On · ${fmtClock(b.start)} to ${fmtClock(b.end)}` : "Off";
-    el.innerHTML = `<form id="bed-form" class="bed-form">
-      <label class="check"><input type="checkbox" name="enabled" ${b.enabled ? "checked" : ""}> Turn on bedtime for this server</label>
-      <p class="muted small">Players get in-game warnings, then the world is saved and everyone is disconnected. Anyone who joins before wake-up time is disconnected again.${info.can_rcon ? "" : " <b>Needs RCON.</b>"}</p>
-      <div class="row2"><label>Bedtime<input class="input" type="time" name="start" value="${esc(b.start)}" required></label>
-        <label>Wake-up<input class="input" type="time" name="end" value="${esc(b.end)}" required></label></div>
-      <fieldset class="checks"><legend>On these nights</legend><div class="day-checks">${DAY_NAMES.map((d, i) => `<label class="check"><input type="checkbox" name="day" value="${i}" ${b.days.includes(i) ? "checked" : ""}> ${d}</label>`).join("")}</div></fieldset>
-      <label>Warn players this many minutes before <small>Separate with commas</small><input class="input" name="warn" value="${esc(b.warn_minutes.join(", "))}"></label>
-      <label>Disconnect message <small>Optional</small><input class="input" name="message" maxlength="120" value="${esc(b.message)}" placeholder="Bedtime! The server opens again at ${esc(fmtClock(b.end))}."></label>
-      ${players.length ? `<fieldset class="checks"><legend>Can stay on after bedtime</legend><div class="day-checks">${players.map((n) => `<label class="check"><input type="checkbox" name="exempt" value="${esc(n)}" ${b.exempt.includes(n) ? "checked" : ""}> ${esc(n)}</label>`).join("")}</div></fieldset>` : ""}
-      <div class="actions"><button class="btn primary" type="submit">Save bedtime</button></div></form>`;
-    $("#bed-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const f = new FormData(e.target);
-      const bedtime = { enabled: !!f.get("enabled"), start: f.get("start"), end: f.get("end"), days: f.getAll("day").map(Number),
-        warn_minutes: String(f.get("warn")).split(/[,\s]+/).filter(Boolean).map(Number).filter((n) => n > 0), exempt: f.getAll("exempt"), message: f.get("message") };
-      try { const r = await post(`${base}/settings`, { bedtime }, "PUT"); info.bedtime = r.bedtime; renderBedtime(); showToast("Bedtime saved", 2500); refreshInfo(); }
-      catch (err) { showError(esc(err.message), 5000); }
-    });
+    const rules = info.bedtime || [];
+    const dayList = (days) => days.length === 7 ? "every night" : days.map((d) => DAY_NAMES[d].slice(0, 3)).join(", ");
+    $("#bed-status").textContent = rules.length ? "On" : "Off";
+    el.innerHTML = `${rules.length ? `<ul class="pt-covers">${rules.map((r) => `<li><b>${esc(r.name)}</b>: ${esc(dayList(r.days))}, ${esc(fmtClock(r.start))} to ${esc(fmtClock(r.end))}</li>`).join("")}</ul>`
+      : '<p class="muted">No bedtime for this server.</p>'}${info.can_rcon ? "" : '<p class="muted small"><b>Bedtime needs RCON.</b></p>'}
+      <p><a class="btn sm" href="#/manage/playtime">⏰ Bedtimes and screen time: Manage → Play time</a></p>`;
   }
 
   if (info.is_java) { renderPlayers(); renderLists(); renderBedtime(); }
@@ -377,7 +362,7 @@ async function viewAdmin(section = "users") {
   curSid = null;
   document.title = `${{ users: "Users", servers: "Servers & live info", activity: "Activity log" }[section] || "Manage"} · ${SITE_NAME}`;
   fillServersMenu(state.servers, null);
-  const [users, audit, lp, hiddenSrv, siteCfg, playerCfg] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/status"), api("/api/servers-hidden").catch(() => []), api("/api/posts").then((d) => d.site).catch(() => ({})), api("/api/settings/players").catch(() => ({}))]);
+  const [users, audit, lp, hiddenSrv, siteCfg, playerCfg, ptCfg] = await Promise.all([api("/api/users"), api("/api/audit?limit=200"), api("/api/settings/status"), api("/api/servers-hidden").catch(() => []), api("/api/posts").then((d) => d.site).catch(() => ({})), api("/api/settings/players").catch(() => ({})), section === "users" ? api("/api/settings/playtime").catch(() => null) : null]);
   const roleOpts = (cur) => ROLE_NAMES.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("");
   const fmtWhen = (ts) => ts ? fmtAgo(ts) : "never";
   const srvName = (id) => state.servers.find((x) => x.id === id)?.name || id;
@@ -388,7 +373,7 @@ async function viewAdmin(section = "users") {
       <div class="table-wrap"><table class="data users-table"><thead><tr><th>Username</th><th>Level</th><th>Minecraft player</th><th>Servers</th><th>Last signed in</th><th></th></tr></thead><tbody>
       ${users.map((u) => `<tr data-uid="${u.id}"><td><b>${esc(u.username)}</b>${u.shown && u.shown !== u.username ? ` <span class="muted">shown as ${esc(u.shown)}</span>` : ""}${u.real_name ? `<br><small class="muted" title="Their real name: only admins see it">👤 ${esc(u.real_name)}</small>` : ""}${u.id === me.user.id ? ' <span class="muted">(you)</span>' : ""}</td>
         <td><select class="input sm" data-role ${u.id === me.user.id ? "disabled" : ""} aria-label="Level for ${esc(u.username)}">${roleOpts(u.role)}</select></td>
-        <td><button class="btn sm" type="button" data-link title="Link this account to the people they play as (Java and Bedrock)">${(u.players || []).length ? esc(u.players.map((p) => p.name).join(", ")) : "Link…"}</button></td>
+        <td><button class="btn sm" type="button" data-link title="Link this account to the people they play as (Java and Bedrock)">${(u.players || []).length ? esc(u.players.map((p) => p.name).join(", ")) : "Link…"}</button>${ptCfg && (u.players || []).length ? `<br><a class="small muted" href="#/manage/playtime" title="Bedtime and screen time: Manage → Play time">⏰ ${esc(ptSummary(ptCfg.rows.find((r) => r.key === `u${u.id}`)))}</a>` : ""}</td>
         <td>${u.role === "admin" ? '<span class="muted">All</span>' : `<button class="btn sm" type="button" data-srv title="Which servers they see">${u.servers ? esc(u.servers.length === 1 ? srvName(u.servers[0]) : `${u.servers.length} servers`) : "All"}</button>`}</td>
         <td>${esc(fmtWhen(u.last_login))}</td>
         <td class="row-actions"><button class="btn sm" data-reset>Set password</button>${u.id === me.user.id ? "" : `<button class="btn sm danger" data-del>Remove</button>`}</td></tr>`).join("")}

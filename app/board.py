@@ -11,7 +11,7 @@ import re
 import secrets
 from datetime import date, datetime
 
-from . import db, fwshow, guard, mcname, settings_store
+from . import db, fwshow, mcname, playtime, settings_store
 from . import servers as S
 from .control import clean_text, component
 from .rcon import RconError
@@ -162,21 +162,21 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
                             "text": f"{b['player']}'s birthday is {'tomorrow' if days == 1 else f'in {days} days'}",
                             "detail": bd.strftime("%A %d %B").replace(" 0", " "), "player": b["player"], "countdown": None})
     if cfg["bedtime"]["show"] and where in ("home", "status", "app") and servers:
+        pt = playtime.config()
         for srv in servers:
             if sid and srv.id != sid:
                 continue
-            bcfg = guard.bedtime_config(srv)
-            st = guard.bedtime_state(bcfg, now) if bcfg["enabled"] else None
+            st = playtime.server_state(pt, srv.id, now)
             if not st:
                 continue
-            kind, left, _night = st
+            kind, left, _night, bcfg = st
             if kind == "before" and left <= cfg["bedtime"]["minutes"] * 60:
                 out.append({"id": f"bt-{srv.id}-{now.date()}", "kind": "bedtime", "emoji": "🌙", "style": "heads",
-                            "text": f"Bedtime on {srv.display_name}", "detail": f"The server closes at {guard._fmt_clock(bcfg['start'])}",
+                            "text": f"Bedtime on {srv.display_name}", "detail": f"The server closes at {playtime.fmt_clock(bcfg['start'])}",
                             "countdown": t + left, "done_text": "Time for bed. Good night!"})
             elif kind == "active":
                 out.append({"id": f"bta-{srv.id}", "kind": "bedtime", "emoji": "😴", "style": "info",
-                            "text": f"{srv.display_name} is asleep", "detail": f"Back at {guard._fmt_clock(bcfg['end'])}", "countdown": None})
+                            "text": f"{srv.display_name} is asleep", "detail": f"Back at {playtime.fmt_clock(bcfg['end'])}", "countdown": None})
     # a holiday coming up: a countdown banner from as many days before as it asks (Manage → Holidays)
     today = now.date()
     for e in fwshow.calendar():

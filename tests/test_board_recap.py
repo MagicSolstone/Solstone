@@ -112,13 +112,21 @@ def test_announcements_birthdays_bedtime(client, viewer, anon, sid):
     srv = Srv()
     now = datetime(2026, 6, 1, 18, 0, tzinfo=zone)
     start = (now + timedelta(minutes=20)).strftime("%H:%M")
-    srv.settings = {"bedtime": {"enabled": True, "start": start, "end": (now + timedelta(hours=8)).strftime("%H:%M"), "days": list(range(7))}}
-    got = [i for i in board.active("status", None, True, now, [srv]) if i["kind"] == "bedtime"]
-    assert got and got[0]["text"] == "Bedtime on Family" and 0 < got[0]["countdown"] - now.timestamp() <= 20 * 60
-    srv.settings["bedtime"]["start"] = (now - timedelta(minutes=5)).strftime("%H:%M")
-    assert board.active("status", None, True, now, [srv])[0]["text"] == "Family is asleep"
-    srv.settings["bedtime"]["start"] = (now + timedelta(hours=3)).strftime("%H:%M")
-    assert not [i for i in board.active("status", None, True, now, [srv]) if i["kind"] == "bedtime"]
+    from app import playtime
+    keep = playtime.config()
+    rule = {"id": "t", "start": start, "end": (now + timedelta(hours=8)).strftime("%H:%M"), "days": list(range(7)), "servers": ["x"]}
+    try:
+        playtime.save({**keep, "bedtimes": [rule]})
+        got = [i for i in board.active("status", None, True, now, [srv]) if i["kind"] == "bedtime"]
+        assert got and got[0]["text"] == "Bedtime on Family" and 0 < got[0]["countdown"] - now.timestamp() <= 20 * 60
+        playtime.save({**keep, "bedtimes": [{**rule, "start": (now - timedelta(minutes=5)).strftime("%H:%M")}]})
+        assert board.active("status", None, True, now, [srv])[0]["text"] == "Family is asleep"
+        playtime.save({**keep, "bedtimes": [{**rule, "start": (now + timedelta(hours=3)).strftime("%H:%M")}]})
+        assert not [i for i in board.active("status", None, True, now, [srv]) if i["kind"] == "bedtime"]
+        playtime.save({**keep, "bedtimes": [{**rule, "servers": ["another"], "start": start}]})       # not this server's
+        assert not [i for i in board.active("status", None, True, now, [srv]) if i["kind"] == "bedtime"]
+    finally:
+        playtime.save(keep)
     client.put("/api/board", json={"items": [], "birthdays": []})
 
 

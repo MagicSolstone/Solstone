@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, watchdog, maintenance, webmap, welcome, worldmap
+from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, watchdog, maintenance, webmap, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.9.11"
+VERSION = "1.10.0"
 
 
 @asynccontextmanager
@@ -996,7 +996,7 @@ async def get_board(request: Request):
             players.setdefault(p["name"].lower(), p["name"])
             uuids.setdefault(p["name"].lower(), u)
     return {**board.config(), "players": sorted(players.values(), key=str.lower), "uuids": uuids,
-            "servers": [{"id": x.id, "name": x.display_name, "bedtime": guard.bedtime_config(x)["enabled"]} for x in _board_servers()],
+            "servers": [{"id": x.id, "name": x.display_name, "bedtime": bool(playtime.rules_for(playtime.config(), x.id))} for x in _board_servers()],
             "shows": [{"id": x["id"], "name": x["name"]} for x in fwshow.shows()], "now": time.time(),
             "status_enabled": _status_cfg()["enabled"]}
 
@@ -2324,6 +2324,46 @@ async def put_notifications(request: Request):
     return notify.save_config(body)
 
 
+# ------------------------------------------------------------------ play time (bedtimes and screen time)
+def _playtime_view() -> dict:
+    cfg = playtime.config()
+    servers = list(S.registry.servers.values())
+    known: dict[str, str] = {}
+    for srv in servers:
+        for pl in S.known_players(srv).values():
+            known.setdefault(pl["name"].lower(), pl["name"])
+    played = playtime.totals_by_person(cfg, playtime.today_totals([x.id for x in servers]))
+    rows = []
+    for person in playtime.people(list(known.values())):
+        r = playtime.row_for(cfg, person["key"], person["names"]) or {"bedtime": True, "limit": 0, "weekend_limit": 0}
+        rows.append({**person, **r, "today": played.get(person["key"], 0)})
+    return {**cfg, "rows": rows, "servers": [{"id": x.id, "name": x.display_name, "java": x.is_java} for x in servers],
+            "banner": board.config()["bedtime"], "notify_set": playtime.notify_channels()}
+
+
+@app.get("/api/settings/playtime")
+async def get_playtime(request: Request):
+    """Admins: bedtimes, screen-time limits and each person's settings (with today's time played)."""
+    auth.require_admin(request)
+    await S.registry.refresh()
+    return await asyncio.to_thread(_playtime_view)
+
+
+@app.put("/api/settings/playtime")
+async def put_playtime(request: Request):
+    user = auth.require_admin(request)
+    body = await _body(request)
+    cur = playtime.config()
+    if isinstance(body.get("people"), dict):          # the rows sent replace those people's settings
+        body["people"] = {**cur["people"], **body["people"]}
+    await asyncio.to_thread(playtime.save, {**cur, **{k: v for k, v in body.items() if k != "banner"}})
+    if isinstance(body.get("banner"), dict):
+        board.save({"bedtime": body["banner"]})
+    auth.audit(user, None, "playtime_settings", ", ".join(sorted(body)))
+    await S.registry.refresh()
+    return await asyncio.to_thread(_playtime_view)
+
+
 @app.post("/api/settings/notifications/digest")
 async def digest_preview(request: Request, send: bool = False):
     auth.require_admin(request)
@@ -2461,7 +2501,7 @@ async def control_info(sid: str, request: Request):
         "blocked": _turned_away(srv),
         "asked": [r for r in site.join_requests()[::-1] if site.wants(r, srv.id) and srv.id not in (r.get("done") or [])
                   and not S.whitelisted(srv, None, r["player"])] if srv.is_java else [],
-        "bedtime": guard.bedtime_config(srv),
+        "bedtime": playtime.rules_for(playtime.config(), srv.id),
         "audit": auth.audit_log(srv.id, 40),
     }
 
@@ -3022,7 +3062,7 @@ async def not_found_page(full_path: str):
     return HTMLResponse(_page("home.html"), status_code=404, headers={"Cache-Control": "no-cache"})
 
 
-ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "live.js", "home.js", "postfmt.js", "guides.js", "website.js")
+ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "live.js", "home.js", "postfmt.js", "guides.js", "website.js", "adventures.js", "playtime.js")
 
 
 @functools.cache
