@@ -1,5 +1,6 @@
 # Solstone 1.12.1
 
+- **Weekly and daily repeats keep their time across daylight saving:** a contest or event set for 5:00 PM every Friday stays at 5:00 PM after the clocks change. Before, the next ones showed (and would have run) at 4:00 PM, because each repeat was exactly 7 × 24 hours later. This applies to the Events page and to when they actually run.
 - **The Solstone data pack starts even when another mod or pack breaks the game's start-up list:**
   - **The problem:** every data pack and mod adds to the game's shared list of things to run when the world loads. One entry pointing at something missing can make the game drop the whole list. Then the Solstone pack never started: Solstone couldn't see its version, and Fishing tournament, Biggest catch, Archery and Spleef stayed unavailable.
   - **The fix:** when the pack is loaded but hasn't started, Solstone now starts it itself. This happens on **Load it**, on the server check, and every few minutes.

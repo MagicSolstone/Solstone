@@ -389,10 +389,7 @@ def tick(now: float | None = None) -> None:
         if state == "done" and g["repeat"]:
             nxt = {**g, "id": secrets.token_hex(4), "refs": {}, "ended": {}, "state": "scheduled",
                    "items": [{**i} for i in g["items"]]}
-            step = challenges.REPEATS[g["repeat"]]
-            nxt["start"] = g["start"] + step
-            while nxt["start"] <= now + 60:
-                nxt["start"] += step
+            nxt["start"] = challenges.next_after(g["start"], g["repeat"], now)    # same time on the clock
             g["repeat"] = ""                          # this one's over; the next one carries on repeating
             d["groups"].append(nxt)
             try:

@@ -37,7 +37,7 @@ def test_lineup_made_in_order_and_shown_as_one_event():
     assert not [i for i in items if i["kind"] == "contest"]
     assert ev[0]["title"] == "Fishing Fridays" and ev[0]["detail"] == "Bring a rod!" and len(ev[0]["parts"]) == 3 and len(ev) >= 4
     assert ev[0]["parts"][1]["key"] == community.item_key("contest", "x", cs[1])      # "I'm coming!" matches the game's joining
-    assert ev[1]["parts"][1]["key"] != ev[0]["parts"][1]["key"] and abs(ev[1]["at"] - t - 7 * 86400) < 1
+    assert ev[1]["parts"][1]["key"] != ev[0]["parts"][1]["key"] and abs(ev[1]["at"] - challenges.later(t, "weekly")) < 1
 
 
 def test_changing_the_lineup_and_the_event():
@@ -93,8 +93,32 @@ def test_a_weekly_event_comes_back_when_its_over(client, sid):
     challenges._save(d)
     eventgroups.tick()
     gs = eventgroups._load()["groups"]
-    assert [x["state"] for x in gs] == ["done", "scheduled"] and abs(gs[1]["start"] - t - 7 * 86400) < 1
+    assert [x["state"] for x in gs] == ["done", "scheduled"] and abs(gs[1]["start"] - challenges.later(t, "weekly")) < 1
     nxt = [c for c in challenges._load()["items"] if c["state"] == "scheduled"]
     assert len(nxt) == 2 and all(c["group"] == gs[1]["id"] for c in nxt)
     assert client.delete(f"/api/servers/{sid}/eventgroups/{gs[1]['id']}").json() == {"ok": True}
     assert client.post(f"/api/servers/{sid}/eventgroups", json={"title": ""}).status_code == 400
+
+
+def test_weekly_stays_at_the_same_clock_time_across_daylight_saving(monkeypatch):
+    """5:00 PM on the Friday before the clocks go back is still 5:00 PM the Friday after (not 4:00)."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from app import db
+    zone = ZoneInfo("America/Chicago")
+    monkeypatch.setattr(db, "tz", lambda: zone)
+    fri = datetime(2026, 10, 30, 17, 0, tzinfo=zone).timestamp()                     # clocks go back Sunday 1 November
+    nxt = datetime.fromtimestamp(challenges.later(fri, "weekly"), zone)
+    assert (nxt.month, nxt.day, nxt.hour, nxt.minute) == (11, 6, 17, 0)
+    assert datetime.fromtimestamp(challenges.next_after(fri, "weekly", fri + 8 * 86400), zone).day == 13
+    assert datetime.fromtimestamp(challenges.later(fri, "daily", 3), zone).hour == 17
+    # the Events list shows the next Fridays at 5:00 PM too
+    monkeypatch.setattr(challenges.time, "time", lambda: fri - 3600)
+    monkeypatch.setattr(eventgroups.time, "time", lambda: fri - 3600)
+    eventgroups.create("s1", {"title": "Fishing Fridays", "start": fri, "gap": 2, "repeat": "weekly", "items": [{"type": "contest", "body": FISH}]})
+    challenges.create("s1", {**FISH, "name": "Solo", "start": fri, "repeat": "weekly"})
+    items = upcoming.items({"s1": "Family"}, now=datetime.fromtimestamp(fri - 3600, zone))
+    for kind in ("event", "contest"):
+        hours = {datetime.fromtimestamp(i["at"], zone).hour for i in items if i["kind"] == kind}
+        assert hours == {17}, (kind, hours)

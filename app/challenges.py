@@ -19,7 +19,7 @@ import random
 import re
 import secrets
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from . import bossbar, db, fwshow, hotzone, hud, optin, settings_store
 from . import servers as S
@@ -134,15 +134,27 @@ def clean(body: dict, server: str) -> dict:
 REPEATS = {"daily": 86400, "weekly": 7 * 86400}
 
 
+def later(ts: float, repeat: str, n: int = 1) -> float:
+    """`n` days (or weeks) on from `ts`, at the same time on the clock: 5:00 PM stays 5:00 PM when the clocks
+    change for daylight saving (adding 7 × 24 hours wouldn't)."""
+    dt = datetime.fromtimestamp(ts, db.tz()) + timedelta(days=REPEATS[repeat] // 86400 * n)
+    return dt.timestamp()
+
+
+def next_after(ts: float, repeat: str, now: float) -> float:
+    """The first time it comes round again after `now` (a minute's margin), at least once on from `ts`."""
+    n = 1
+    while later(ts, repeat, n) <= now + 60:
+        n += 1
+    return later(ts, repeat, n)
+
+
 def _again(c: dict, d: dict, now: float) -> None:
     """A repeating contest is over (or was skipped): the same one again, a day or a week on from its start."""
     if not c.get("repeat") or c.get("repeated") or not c.get("config"):
         return
     c["repeated"] = True
-    step = REPEATS[c["repeat"]]
-    start = c["start"] + step
-    while start <= now + 60:
-        start += step
+    start = next_after(c["start"], c["repeat"], now)
     d["items"].append({**c["config"], "start": start, "id": secrets.token_hex(4), "state": "scheduled", "scores": {}, "players": [],
                        "winners": [], "seconds": [], "objectives": [], "config": {**c["config"], "start": start}})
 

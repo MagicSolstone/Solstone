@@ -199,7 +199,7 @@ def test_events_public_without_names_and_who_is_coming(client, anon, sid):
         challenges._save(d)
         asyncio.run(challenges.tick([]))
         nxt = [i for i in challenges._load()["items"] if i["name"] == "Fishing night" and i["state"] == "scheduled"]
-        assert len(nxt) == 1 and abs(nxt[0]["start"] - (soon + 7 * 86400)) < 1 and nxt[0]["repeat"] == "weekly"
+        assert len(nxt) == 1 and abs(nxt[0]["start"] - challenges.later(soon, "weekly")) < 1 and nxt[0]["repeat"] == "weekly"
         assert nxt[0]["prize"]["item"] == "minecraft:diamond" and db is not None
     finally:
         d = challenges._load()

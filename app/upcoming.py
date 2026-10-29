@@ -42,13 +42,13 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
             again = {"weekly": " · every week", "daily": " · every day"}.get(c.get("repeat") or "", "")
             add(c["start"], "contest", emoji, c["name"], f"{label} · {c['minutes']} minutes{again}", server=c["server"], link=link,
                 ends=c["start"] + c["minutes"] * 60, optin=bool(c.get("optin")))
-            step = challenges.REPEATS.get(c.get("repeat") or "")
-            at = c["start"] + step if step else until + 1
-            ahead = 28 * 86400 if c.get("repeat") == "weekly" else 6 * 86400     # a repeating one: the next few as well
-            while step and at <= until and at - c["start"] <= ahead:
+            rep = c.get("repeat") or ""
+            ahead = 28 * 86400 if rep == "weekly" else 6 * 86400     # a repeating one: the next few as well
+            n = 1
+            while rep in challenges.REPEATS and (at := challenges.later(c["start"], rep, n)) <= until and at - c["start"] <= ahead + 7200:
                 add(at, "contest", emoji, c["name"], f"{label} · {c['minutes']} minutes{again}", server=c["server"], link=link,
                     ends=at + c["minutes"] * 60, optin=bool(c.get("optin")))
-                at += step
+                n += 1
     for r in races._load()["runs"]:
         if r["server"] not in server_names or r.get("group"):
             continue
@@ -74,11 +74,14 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
         if g["server"] not in server_names or g["state"] in eventgroups.FINISHED or not g["items"]:
             continue
         v = eventgroups.view(g, t)
-        step = challenges.REPEATS.get(g.get("repeat") or "")
-        ahead = 28 * 86400 if g.get("repeat") == "weekly" else 6 * 86400
+        rep = g.get("repeat") or ""
+        ahead = 28 * 86400 if rep == "weekly" else 6 * 86400
         k = 0
-        while v["start"] + k * (step or 0) <= until and (k == 0 or (step and k * step <= ahead)):
-            shift = k * (step or 0)
+        # each time it comes round: the same times on the clock (daylight saving or not)
+        while True:
+            shift = challenges.later(g["start"], rep, k) - g["start"] if rep in challenges.REPEATS else 0
+            if v["start"] + shift > until or (k and shift > ahead + 7200):
+                break
             first = {**g, "start": g["start"] + shift}
             parts = [{"id": p["id"], "kind": p["type"], "title": p["title"], "emoji": p["emoji"], "note": p["note"],
                       "at": p["start"] + shift, "time": _clock(p["start"] + shift), "approx": not p["exact"],
@@ -92,7 +95,7 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
                         "link": f"#/s/{g['server']}/challenges", "live": live, "days": 1, "key": None, "parts": parts,
                         "optin": g["optin"], "repeat": g.get("repeat") or "", "then": False})
             k += 1
-            if not step:
+            if rep not in challenges.REPEATS:
                 break
 
     cfg = board.config()
