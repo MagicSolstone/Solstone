@@ -20,6 +20,7 @@ ROLES = {"join": "How to join the server", "account": "Making an account on this
 DEFAULTS = {"name": "Solstone", "tagline": "", "java_address": "", "bedrock_address": "", "bedrock_port": 19132,
             "discord": "", "contact": "", "about": "", "home_live": True, "signup": False,
             "home_title": False,          # the name and tagline big at the top of the home page (the bar already has them)
+            "home_news": 3, "home_guides": 4,     # how many posts the home page shows of each (then a "More" button)
             # the two built-in guides, in the admin's own words (empty: Solstone's wording); {java_address} and the
             # like are filled in from the details above, so the guides stay right when an address or port changes
             "guide_join": "", "guide_account": "", "guide_rules": "",
@@ -150,6 +151,12 @@ def clean_config(body: dict) -> dict:
             pass
     if "main_server" in body:
         out["main_server"] = re.sub(r"[^A-Za-z0-9_.\-]", "", str(body["main_server"] or ""))[:64]
+    for k in ("home_news", "home_guides"):            # 0 leaves that part off the home page
+        if k in body:
+            try:
+                out[k] = max(0, min(12, int(body[k])))
+            except (TypeError, ValueError):
+                pass
     for k in ("home_live", "signup", "join_requests", "home_title"):
         if k in body:
             out[k] = bool(body[k])

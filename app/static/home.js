@@ -126,12 +126,17 @@ function builtinCards() {
 // ------------------------------------------------------------------ pages
 async function home() {
   const s = hp.site;
-  const [news, guides] = await Promise.all([getJSON("/api/public/posts?category=news&limit=3"), getJSON("/api/public/posts?category=guide&limit=4")]);
+  // a few of each (Site details says how many), and a button to the rest when there are more
+  const nNews = s.home_news ?? 3, nGuides = s.home_guides ?? 4;
+  const [news, guides] = await Promise.all([nNews ? getJSON(`/api/public/posts?category=news&limit=${nNews + 1}`) : [],
+    nGuides ? getJSON(`/api/public/posts?category=guide&limit=${nGuides + 1}`) : []]);
+  const help = [...builtinCards(), ...guides];
+  const more = (list, n, href, label) => (list.length > n ? `<div class="hp-more"><a class="btn" href="${href}">${label} →</a></div>` : "");
   return `${s.home_title ? `<section class="hp-hero"><h1>${esc(s.name)}</h1>${s.tagline ? `<p class="hp-tagline">${esc(s.tagline)}</p>` : ""}</section>` : ""}
     <p class="hp-ask-status" id="ask-status" hidden></p>
     ${joinCard(s) || serversCard(s)}
-    <section><div class="hp-head"><h2>News</h2><a href="/news">All news →</a></div>${postCards(news, "No news yet.")}</section>
-    <section><div class="hp-head"><h2>Help</h2><a href="/help">All guides and questions →</a></div>${postCards([...builtinCards(), ...guides].slice(0, 4), "")}</section>
+    ${nNews ? `<section><div class="hp-head"><h2>News</h2><a href="/news">All news →</a></div>${postCards(news.slice(0, nNews), "No news yet.")}${more(news, nNews, "/news", "More news")}</section>` : ""}
+    ${nGuides ? `<section><div class="hp-head"><h2>Help</h2><a href="/help">All guides and questions →</a></div>${postCards(help.slice(0, nGuides), "")}${more(help, nGuides, "/help", "More guides and questions")}</section>` : ""}
     ${s.live ? liveSection() : ""}
     ${s.about ? `<section class="hp-about glass"><h2>About</h2><div class="hp-body">${markdown(s.about)}</div></section>` : ""}`;
 }

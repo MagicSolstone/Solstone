@@ -2039,3 +2039,5 @@ a.glance-me:hover { border-color: var(--gold); }
 }
 .cm-new[hidden], .cmv-form[hidden] { display: none; }
 .cm-new label:not(.check) { display: grid; gap: 4px; }
+.hp-more { display: flex; justify-content: center; margin-top: 12px; }
+.app-foot { text-align: center; font-size: .78rem; padding: 18px 0 70px; opacity: .7; }

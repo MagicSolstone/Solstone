@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.10.2"
+VERSION = "1.10.3"
 
 
 @asynccontextmanager
@@ -3326,7 +3326,7 @@ def _html_escape(s: str) -> str:
 
 def _page(name: str) -> str:
     """An HTML page with ?v= on the CSS/JS links so browsers pick up new versions after an update."""
-    return _template(name).replace("{{SITE_NAME}}", _html_escape(site.config()["name"])).replace("{{SITE_LOGO}}", _html_escape(site.logo_url()))
+    return _template(name).replace("{{VERSION}}", VERSION).replace("{{SITE_NAME}}", _html_escape(site.config()["name"])).replace("{{SITE_LOGO}}", _html_escape(site.logo_url()))
 
 
 async def _page_for(name: str, request: Request) -> str:

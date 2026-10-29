@@ -1,3 +1,8 @@
+# Solstone 1.10.3
+
+- **The home page stays tidy however many posts there are:** it shows the newest **3 news posts** and **4 guides**, then a **More news →** / **More guides and questions →** button to the full pages when there are more. Change how many (up to 12, or 0 to leave that part off) in Website → Site details.
+- **The version at the bottom of every page:** *Made with Solstone 1.10.3* on the website, and *Solstone 1.10.3* under the signed-in pages, so you can see at a glance which version is running.
+
 # Solstone 1.10.2
 
 - **Reminders about the website, the way they should be** (Website → Welcome in the game → *Reminders about the website*):
