@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, board, challenges, community, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
+from . import adventures, auth, backups, board, challenges, community, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -2432,6 +2432,8 @@ async def community_reply(tid: int, request: Request):
         raise HTTPException(400, str(e)) from None
     if not admin:
         votegame.new_message(user.shown, t["subject"])
+    else:
+        asyncio.get_running_loop().create_task(nudge.poke(t["user_id"]))
     return {"ok": True}
 
 
@@ -2512,6 +2514,8 @@ async def admin_message_send(request: Request):
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
     auth.audit(user, None, "message_send", f"{len(ids)} player(s): {community._line(body.get('subject'), 80)}")
+    for uid in ids:                                  # a heads-up in the game for those playing right now
+        asyncio.get_running_loop().create_task(nudge.poke(uid))
     return {"sent": len(ids)}
 
 
@@ -2530,6 +2534,22 @@ def _playtime_view() -> dict:
         rows.append({**person, **r, "today": played.get(person["key"], 0)})
     return {**cfg, "rows": rows, "servers": [{"id": x.id, "name": x.display_name, "java": x.is_java} for x in servers],
             "banner": board.config()["bedtime"], "notify_set": playtime.notify_channels()}
+
+
+@app.get("/api/settings/nudge")
+async def get_nudge(request: Request):
+    """Admins: the reminders in the game about what's waiting on the website (nudge.py)."""
+    auth.require_admin(request)
+    return {**nudge.config(), "defaults": nudge.DEFAULTS}
+
+
+@app.put("/api/settings/nudge")
+async def put_nudge(request: Request):
+    user = auth.require_admin(request)
+    cfg = nudge.save(await _body(request))
+    settings_store.save_section("welcome_site", _public_base(request))      # for {site} in the game
+    auth.audit(user, None, "nudge_settings", "")
+    return {**cfg, "defaults": nudge.DEFAULTS}
 
 
 @app.get("/api/settings/playtime")

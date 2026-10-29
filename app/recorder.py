@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, notify, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome
+from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, notify, nudge, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -336,6 +336,7 @@ class Recorder:
                 await games.on_join(srv, n)             # back from a game that ended while they were away
                 await gather.on_join(srv, n)            # back from an event they were taken to
                 welcome.on_join(srv, n)                 # the server's welcome message, if it has one
+                nudge.on_join(srv, n)                   # what's waiting for them on the website
                 if not fwshow.pushed_recently(srv.id, "join", n):
                     fwshow.push(srv.id, srv.display_name, "join", n, f"{n} joined the game")
 

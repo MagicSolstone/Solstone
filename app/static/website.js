@@ -407,11 +407,43 @@ function welcomePreview(text, sid) {
   }).join("");
 }
 
+async function wsNudge(form, sid) {
+  let cfg = await api("/api/settings/nudge");
+  const sample = (t) => t.replace(/\{waiting\}/g, "2 new messages and a vote").replace(/\{messages\}/g, "2").replace(/\{votes\}/g, "1");
+  const show = () => $$(".wel-preview", form).forEach((pv) => { pv.innerHTML = welcomePreview(sample(form[pv.dataset.for].value), sid) || ""; });
+  const fillIn = () => {
+    form.join.checked = cfg.join; form.live.checked = cfg.live; form.hours.value = cfg.hours;
+    form.join_text.value = cfg.join_text; form.live_text.value = cfg.live_text; show();
+  };
+  fillIn();
+  form.addEventListener("input", show);
+  $("[data-nudge-reset]", form).addEventListener("click", () => { form.join_text.value = cfg.defaults.join_text; form.live_text.value = cfg.defaults.live_text; show(); });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      cfg = await post("/api/settings/nudge", { join: form.join.checked, live: form.live.checked, hours: +form.hours.value || 12,
+        join_text: form.join_text.value, live_text: form.live_text.value }, "PUT");
+      fillIn(); showToast("Saved", 2000);
+    } catch (err) { showError(esc(err.message), 5000); }
+  });
+}
+
 async function wsWelcome(el) {
   const servers = (state.servers || []).filter((x) => x.type !== "bedrock");
   if (!servers.length) { el.innerHTML = `<p class="muted">No Java servers yet.</p>`; return; }
   el.innerHTML = `<div class="ws-welcome">
     <p class="muted">A message in the game's chat, just for the player who joined: on their first time, or every time. Only they see it. Web addresses can be clicked on Java; Bedrock players see them written out.</p>
+    <form class="panel ws-nudge" id="ws-nudge"><div class="section-head"><h2>✉️ Reminders about the website</h2></div>
+      <p class="muted small">So the website isn't forgotten: a line in the game when something's waiting there for a player (new messages, a vote they haven't voted in). Nothing is sent when nothing's waiting.
+        Fill-ins: <code>{waiting}</code> (like “2 new messages and a vote”), <code>{messages}</code>, <code>{votes}</code>, <code>{player}</code>, <code>{site}</code>. Colours like the welcome message.</p>
+      <label class="check"><input type="checkbox" name="join"> <b>When they join</b>, a few seconds after the welcome message, at most once every
+        <input class="input sm" type="number" name="hours" min="1" max="72" style="width:64px"> hours</label>
+      <textarea class="input ws-text" name="join_text" rows="2" maxlength="400"></textarea>
+      <div class="wel-preview" data-for="join_text"></div>
+      <label class="check"><input type="checkbox" name="live"> <b>When an admin writes to them</b> while they're playing (at most every half hour)</label>
+      <textarea class="input ws-text" name="live_text" rows="2" maxlength="400"></textarea>
+      <div class="wel-preview" data-for="live_text"></div>
+      <div class="btn-row"><button class="btn sm primary" type="submit">Save</button><button class="btn sm" type="button" data-nudge-reset>Back to Solstone's wording</button></div></form>
     ${servers.map((x) => `<form class="panel ws-wel" data-sid="${esc(x.id)}"><div class="section-head"><h2>${esc(x.name)}</h2>
         <select class="input sm" name="when"><option value="off">Off</option><option value="first">First time they join</option><option value="every">Every time they join</option></select></div>
       <div class="wel-tools" role="toolbar" aria-label="Colours and styles">
@@ -424,6 +456,7 @@ async function wsWelcome(el) {
       <div class="btn-row"><button class="btn sm primary" type="submit">Save</button>
         <button class="btn sm" type="button" data-start>Start from an example</button>
         <span class="wel-try"><select class="input sm" name="try"></select><button class="btn sm" type="button" data-try>Send it to them now</button></span></div></form>`).join("")}</div>`;
+  wsNudge($("#ws-nudge", el), servers[0].id);
   for (const form of $$(".ws-wel", el)) {
     const sid = form.dataset.sid, ta = form.text, pv = $(".wel-preview", form);
     const cur = await api(`/api/servers/${encodeURIComponent(sid)}/settings`).catch(() => ({}));

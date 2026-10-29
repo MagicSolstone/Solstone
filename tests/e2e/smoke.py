@@ -586,6 +586,13 @@ def main() -> int:
                 if saved.get("welcome_when") != "first" or "&cred bit" not in (saved.get("welcome") or ""):
                     problems.append("website: the welcome message didn't save")
                 check(pg, "website-welcome")
+            nf = pg.locator("#ws-nudge")
+            if not nf.count() or "2 new messages and a vote" not in (nf.locator(".wel-preview").first.text_content() or ""):
+                problems.append("website: the reminder about the website isn't there, or its preview doesn't fill in {waiting}")
+            else:
+                nf.locator("[name=hours]").fill("8"); nf.locator("button[type=submit]").click(); pg.wait_for_timeout(600)
+                if pg.request.get(f"{base}/api/settings/nudge", headers=H).json().get("hours") != 8:
+                    problems.append("website: the reminder settings didn't save")
             # sign-up from the sign-in page, and what a player account sees
             pg.request.put(f"{base}/api/settings/site", data={"signup": True}, headers=H)
             anon.goto(f"{base}/app"); anon.wait_for_timeout(1000)
