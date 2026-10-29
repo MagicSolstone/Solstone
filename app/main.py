@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.12.0"
+VERSION = "1.12.1"
 
 
 @asynccontextmanager
@@ -3170,7 +3170,8 @@ async def fishing_action(sid: str, action: str, request: Request):
     except RuntimeError as e:
         raise HTTPException(502, f"The server didn't answer: {e}") from e
     auth.audit(user, srv.id, f"fishing:{action}", f"pack version {st.get('version')}")
-    return {**fishing.status(srv), "listed": st.get("listed"), "reload_reply": st.get("reload_reply", ""), "problems": st.get("problems", [])}
+    return {**fishing.status(srv), "listed": st.get("listed"), "reload_reply": st.get("reload_reply", ""), "problems": st.get("problems", []),
+            "started_by_solstone": st.get("started_by_solstone", False), "load_reply": st.get("load_reply", "")}
 
 
 # ---- games: hide and seek, treasure hunt, archery

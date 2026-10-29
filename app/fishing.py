@@ -35,6 +35,14 @@ async def check(srv, force: bool = False) -> dict:
     try:
         out = await _rcon(srv, "data get storage solstone:fish pack")
         m = re.search(r"version:\s*(\d+)", out)
+        if not m:
+            # Loaded but never started? The game's shared start-up list (#minecraft:load) can be dropped whole when
+            # another pack or mod's entry in it is broken: start the pack ourselves. "Unknown function": not loaded.
+            replies = [await _rcon(srv, f"function {ns}:load") for ns in ("solfish", "solgames")]
+            st["load_reply"] = " / ".join(r.strip()[:120] for r in replies if r)
+            out = await _rcon(srv, "data get storage solstone:fish pack")
+            m = re.search(r"version:\s*(\d+)", out)
+            st["started_by_solstone"] = bool(m)
         st.update(version=int(m.group(1)) if m else None, error="")
     except RuntimeError as e:
         st["error"] = str(e)
@@ -149,7 +157,9 @@ def _log_problems(srv, since: int) -> list[str]:
             text = fh.read(400_000).decode("utf-8", "replace")
     except OSError:
         return []
-    keys = ("solstone", "solfish", "solgames", "loot_table", "loot table", "gameplay/fishing", "couldn't parse", "failed to", "error")
+    # only what's about this pack, or the game's shared start-up/tick lists it relies on (other mods' and packs'
+    # own errors, Flan's compatibility files for mods that aren't installed say, aren't ours to show)
+    keys = ("solstone", "solfish", "solgames", "minecraft:load", "minecraft:tick")
     out = []
     for line in text.splitlines():
         low = line.lower()

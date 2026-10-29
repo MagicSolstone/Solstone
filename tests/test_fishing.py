@@ -30,6 +30,10 @@ def test_pack_contents():
     g = {x["key"]: x for x in fishpack.guide()}
     assert set(g) == {"cod", "salmon", "tropical_fish", "pufferfish"} and g["salmon"]["max_lb"] == 20 and g["cod"]["min_points"] == 2
     assert fishpack.qualities() == []
+    # the games' tick keeps itself going, not on the shared #minecraft:tick list (which other packs can break)
+    assert "data/minecraft/tags/function/tick.json" not in names
+    assert z.read("data/solgames/function/tick.mcfunction").decode().strip().endswith("schedule function solgames:tick 1t replace")
+    assert "schedule function solgames:tick 1t replace" in z.read("data/solgames/function/load.mcfunction").decode()
 
 
 def test_parse_catches():
@@ -226,3 +230,34 @@ def test_journal_and_backfill_from_old_feed():
     assert j["records"]["cod"]["player"] == "Tyler" and j["records"]["cod"]["lb"] == 0.9
     assert len(j["species"]) == 4 and j["qualities"] == []
     assert len(fishing.journal(sid)["recent"]) == 3                     # not filled twice
+
+
+def test_pack_started_by_solstone_when_the_load_list_didnt_run(monkeypatch):
+    """Another pack's broken entry in #minecraft:load can stop the game running ours: Solstone starts it itself."""
+    import asyncio
+
+    from app import fishing
+    started = {"on": False}
+    said = []
+
+    class Srv:
+        id = "pk-srv"
+
+        def rcon_conf(self):
+            return {"port": 1}
+
+    async def rcon(_srv, cmd):
+        said.append(cmd)
+        if cmd.startswith("function solfish:load"):
+            started["on"] = True
+            return "Running function solfish:load"
+        if cmd.startswith("data get storage solstone:fish pack"):
+            return "Storage solstone:fish has the following contents: {version: 13}" if started["on"] else "Found no elements matching pack"
+        return ""
+    monkeypatch.setattr(fishing, "_rcon", rcon)
+    fishing._state.pop("pk-srv", None)
+    st = asyncio.run(fishing.check(Srv(), force=True))
+    assert st["version"] == 13 and st["started_by_solstone"] and "function solgames:load" in said
+    said.clear()
+    asyncio.run(fishing.check(Srv(), force=True))
+    assert not any(c.startswith("function") for c in said)                   # running: nothing to start

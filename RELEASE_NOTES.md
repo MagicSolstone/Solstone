@@ -1,3 +1,16 @@
+# Solstone 1.12.1
+
+- **The Solstone data pack starts even when another mod or pack breaks the game's start-up list:**
+  - **The problem:** every data pack and mod adds to the game's shared list of things to run when the world loads. One entry pointing at something missing can make the game drop the whole list. Then the Solstone pack never started: Solstone couldn't see its version, and Fishing tournament, Biggest catch, Archery and Spleef stayed unavailable.
+  - **The fix:** when the pack is loaded but hasn't started, Solstone now starts it itself. This happens on **Load it**, on the server check, and every few minutes.
+  - **The tick:** the pack's every-tick part (archery shots, spleef's safety net) keeps itself going instead of relying on the game's shared tick list.
+  - **Update the pack:** the pack is now **version 13**. Press **Load it** on Play → Fishing to put it in the world.
+- **Load it shows what matters:**
+  - Only problems with the Solstone pack itself, not other mods' unrelated errors (like Flan's files for mods you don't have).
+  - Whether Solstone had to start the pack.
+  - What the game answered if it couldn't start.
+  - What the game says it has, in a fold-out.
+
 # Solstone 1.12.0
 
 - **Events: a lineup of challenges under one name.** Play → Challenges has a new first tab, **🗓️ Events**.

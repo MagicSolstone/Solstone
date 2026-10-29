@@ -241,10 +241,14 @@ async function viewChallenges(sid) {
     b.disabled = true;
     try {
       const r = await post(`/api/servers/${encodeURIComponent(sid)}/fishing/${b.dataset.fish}`, {});
-      if (r.problems?.length) { fish = await api(`/api/servers/${encodeURIComponent(sid)}/fishing`); render(); diag(`<div class="notice small"><b>The game reported problems loading data packs:</b><pre class="mc-out">${esc(r.problems.join("\n"))}</pre></div>`); return; }
-      showToast(r.version ? `Solstone Fishing is loaded (version ${r.version})` : r.listed === false ? "The game didn't load it. Is the file in the world's datapacks folder?" : "Reloaded, but the pack didn't start. Check the server log for errors.", 5000);
+      showToast(r.version ? `The Solstone pack is loaded (version ${r.version})` : r.listed === false ? "The game didn't load it. Is the file in the world's datapacks folder?" : "Reloaded, but the pack didn't start. See below.", 5000);
       fish = await api(`/api/servers/${encodeURIComponent(sid)}/fishing`); render();
-      if (r.packs) diag(`<details class="fish-files" open><summary>What the game says it has</summary><pre class="mc-out">${esc(r.packs)}</pre></details>`);
+      const notes = [];
+      if (r.started_by_solstone) notes.push(`<div class="notice small">The pack is loaded, but the game's start-up list didn't run it (usually another mod or pack's entry in that list is broken). Solstone started it itself, and does again after every restart, so everything works.</div>`);
+      if (!r.version && r.load_reply) notes.push(`<div class="notice small"><b>What the game said when Solstone tried to start it:</b><pre class="mc-out">${esc(r.load_reply)}</pre></div>`);
+      if (r.problems?.length) notes.push(`<div class="notice small"><b>Problems the game reported with this pack:</b><pre class="mc-out">${esc(r.problems.join("\n"))}</pre></div>`);
+      if (r.packs) notes.push(`<details class="fish-files" ${r.version ? "" : "open"}><summary>What the game says it has</summary><pre class="mc-out">${esc(r.packs)}</pre></details>`);
+      diag(notes.join(""));
     } catch (e) { showError(esc(e.message), 5000); b.disabled = false; }
   }));
   const wire = () => {

@@ -11,6 +11,11 @@ each fish someone catches and gives it a weight, kept for Solstone (contests, th
   read over RCON.
 On a server with the Tide fishing mod the pack leaves fishing alone completely: Tide's own catches are used.
 Minecraft 1.21+ (one pack.mcmeta covers 1.21 to 26.x).
+
+The pack doesn't depend on the game's shared #minecraft:load / #minecraft:tick lists working: every pack and mod adds
+to them, and one entry pointing at something missing can make the game drop a whole list. Solstone runs the load
+functions itself when it can't see the version marker (fishing.check), and the games' tick keeps itself going with
+`schedule` instead of being on the tick list.
 """
 from __future__ import annotations
 
@@ -21,7 +26,7 @@ import zipfile
 
 PACK_ID = "solstone-pack"                     # one pack: fishing and the archery games
 PACK_FILE = f"{PACK_ID}.zip"
-VERSION = 12                                   # bump when the pack's content changes
+VERSION = 13                                   # bump when the pack's content changes
 
 # ------------------------------------------------------------------ the fish (vanilla)
 # key (the vanilla item): (name, smallest lb, biggest lb)
@@ -168,13 +173,16 @@ scoreboard objectives add solg_xbow minecraft.used:minecraft.crossbow
 scoreboard objectives add solg_tmp dummy
 execute unless data storage solstone:games log run data modify storage solstone:games log set value []
 data modify storage solstone:games pack set value {version:%VERSION%}
+schedule function solgames:tick 1t replace
 """,
+    # every tick, by scheduling itself again (not on #minecraft:tick: see the top of this file)
     "tick": """
 execute as @a[scores={solg_bow=1..}] at @s run function solgames:shot
 execute as @a[scores={solg_xbow=1..}] at @s run function solgames:shot
 execute if score #spleef_hb solg_tmp matches 1.. run scoreboard players remove #spleef_hb solg_tmp 1
 execute if score #spleef_hb solg_tmp matches ..0 if data storage solstone:games spleef.arena run function solgames:spleef_failsafe
 execute if score #spleef_hb solg_tmp matches ..0 if data storage solstone:games spleef.zone run function solgames:spleef_guard with storage solstone:games spleef.zone
+schedule function solgames:tick 1t replace
 """,
     # Spleef's safety net. Solstone sets #spleef_hb every few seconds while a game is on; if that
     # stops for two minutes (Solstone down), everyone goes back and the arena comes down, here.
@@ -244,7 +252,6 @@ def pack_files(new: bool = False, fishing: bool = True) -> dict[str, str]:
             "pack_format": 48, "supported_formats": {"min_inclusive": 48, "max_inclusive": 999},
             "min_format": 48, "max_format": 999}}, indent=1),
         "data/minecraft/tags/function/load.json": json.dumps({"values": ["solfish:load", "solgames:load"]}),
-        "data/minecraft/tags/function/tick.json": json.dumps({"values": ["solgames:tick"]}),
     }
     if fishing:                                    # fishing itself stays vanilla: no loot tables, just noticing catches
         files.update({
