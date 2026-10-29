@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, notify, playtime, races, modupdates, recap, selfbackup, skins, tide, welcome
+from . import adventures, backups, board, challenges, db, fishing, fwshow, games, gather, guard, notify, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -235,6 +235,10 @@ class Recorder:
         now = datetime.now(zone)
         today = now.date().isoformat()
 
+        try:
+            await votegame.tick(servers)                     # new votes announced, finished ones closed
+        except Exception:
+            log.exception("votes")
         pt = playtime.config()
         if channels and any(r.get("limit") or r.get("weekend_limit") for r in pt["people"].values()):
             totals: dict[str, int] = {}
@@ -398,6 +402,7 @@ class Recorder:
                         await board.greet(srv, message.split(" ", 1)[0])
                 for player, text in self._chat.pop(srv.id, []):
                     await games.on_chat(srv, player, text)
+                    await votegame.on_chat(srv, player, text)       # "!vote 2"
                 for player, catch in self._catches.pop(srv.id, []):
                     await challenges.on_catch(srv, player, catch)
             except Exception:

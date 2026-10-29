@@ -502,7 +502,8 @@ async function viewNotifications() {
   if (!c) { setView('<div class="panel"><p>Couldn\'t load the notification settings.</p></div>'); return; }
   const labels = { join: "Someone joins", leave: "Someone leaves", death: "Someone dies", advancement: "Advancements",
     server: "Server starts, stops or crashes", backup: "Backups are overdue", blocked: "Someone the whitelist turned away (with their exact name, to let them in from Control)",
-    updates: "New builds of the server's mods (Geyser and Floodgate first: Bedrock players need them up to date)" };
+    updates: "New builds of the server's mods (Geyser and Floodgate first: Bedrock players need them up to date)",
+    messages: "A player sends a message (Manage → Messages)" };
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const hourLabel = (h) => new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: "numeric" });
   setView(`<div class="fwe-head"><h1>Notifications</h1>

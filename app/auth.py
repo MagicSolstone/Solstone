@@ -402,6 +402,8 @@ def delete_user(uid: int) -> None:
     db.x("DELETE FROM sessions_auth WHERE user_id=?", (uid,))
     db.x("DELETE FROM user_players WHERE user_id=?", (uid,))
     db.x("DELETE FROM users WHERE id=?", (uid,))
+    from . import community                   # their messages, votes and sign-ups go with them
+    community.forget_user(uid)
 
 
 def bootstrap() -> None:

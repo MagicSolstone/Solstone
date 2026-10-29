@@ -764,6 +764,32 @@ def main() -> int:
             if m.locator(".pt-people tr[data-key] [name=limit]").first.input_value() != "90" or not m.locator(".pt-rule").count():
                 problems.append("play time: the bedtime or limit wasn't kept")
             m.goto(f"{base}/app#/manage/users"); m.wait_for_timeout(1000)
+            # Votes: an admin starts one in Manage → Votes, then votes on the Votes page
+            m.goto(f"{base}/app#/manage/votes"); m.wait_for_timeout(1000)
+            m.locator("#cmv-new").click()
+            m.locator("#cmv-f [name=question]").fill("What should we build next?")
+            m.locator("#cmv-f .cmv-opt [name=text]").nth(0).fill("Castle")
+            m.locator("#cmv-f .cmv-opt [name=text]").nth(1).fill("Theme park")
+            m.locator("#cmv-f button[type=submit]").click(); m.wait_for_timeout(1000)
+            if not m.locator("#cmv-list .cm-vote").count():
+                problems.append("votes: starting a vote didn't list it")
+            m.goto(f"{base}/app#/votes"); m.wait_for_timeout(1000)
+            m.locator("[data-vote]").first.click(); m.wait_for_timeout(1000)
+            if "1 vote" not in m.locator("#cm-votes").inner_text():
+                problems.append("votes: voting didn't count")
+            check(m, "votes")
+            # Messages: write to the admins, and it's in Manage → Messages
+            m.goto(f"{base}/app#/messages"); m.wait_for_timeout(800)
+            m.locator("#cm-new").click()
+            m.locator("#cm-new-form [name=body]").fill("Can we have a zoo?")
+            m.locator("#cm-new-form button[type=submit]").click(); m.wait_for_timeout(1000)
+            if "Can we have a zoo?" not in m.locator("#view").inner_text():
+                problems.append("messages: the sent message isn't shown")
+            m.goto(f"{base}/app#/manage/messages"); m.wait_for_timeout(1000)
+            if not m.locator(".cm-threads li").count():
+                problems.append("messages: Manage → Messages is empty after a message")
+            check(m, "messages")
+            m.goto(f"{base}/app#/manage/users"); m.wait_for_timeout(800)
             # A slow answer shows "Loading…" instead of a blank page, and the page once it comes
             held = []
             m.route("**/api/users", lambda r: held.append(r))

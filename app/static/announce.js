@@ -192,6 +192,7 @@ function annBirthdays(el) {
 // ================================================================ events
 // Everything with a date ahead, in one list: contests, races, games, birthdays, holidays and
 // their shows, announcements counting down.
+const UP_SIGNUP = new Set(["contest", "race", "game", "show"]);      // things people can say they're coming to
 const UP_KIND = { contest: "Contest", race: "Race", game: "Game", birthday: "Birthday", holiday: "Holiday", show: "Fireworks", note: "Announcement" };
 async function viewUpcoming() {
   curSid = null;
@@ -210,7 +211,9 @@ async function viewUpcoming() {
       <span class="up-emoji" aria-hidden="true">${esc(it.emoji || "•")}</span>
       <div class="up-main"><b>${it.link ? `<a href="${esc(it.link)}">${esc(it.title)}</a>` : esc(it.title)}</b>
         <span class="muted small">${esc([UP_KIND[it.kind], it.server, it.detail, it.days > 1 ? `${it.days} days` : ""].filter(Boolean).join(" · "))}</span></div>
-      <span class="up-when">${it.live ? '<span class="state-pill live"><span class="status-dot on"></span>On now</span>' : it.time ? esc(it.time) : '<span class="muted small">All day</span>'}</span></li>`;
+      <span class="up-when">${it.live ? '<span class="state-pill live"><span class="status-dot on"></span>On now</span>' : it.time ? esc(it.time) : '<span class="muted small">All day</span>'}
+        ${UP_SIGNUP.has(it.kind) ? `<button type="button" class="btn sm up-coming ${it.me ? "on" : ""}" data-coming="${esc(it.key)}" aria-pressed="${it.me}"
+          ${it.who?.length ? `title="${esc(it.who.join(", "))}"` : ""}>${it.me ? "✅ I'm coming" : "🙋 I'm coming!"}${it.coming ? ` · ${it.coming}` : ""}</button>` : ""}</span></li>`;
   const live = d.items.filter((x) => x.live), ahead = d.items.filter((x) => !x.live);
   const groups = [];
   for (const it of ahead) { const g = groups[groups.length - 1]; if (g && g.date === it.date) g.items.push(it); else groups.push({ date: it.date, items: [it] }); }
@@ -221,4 +224,13 @@ async function viewUpcoming() {
       : live.length ? "" : `<div class="panel up-empty"><span class="up-empty-emoji" aria-hidden="true">🗓️</span><h2>No events scheduled</h2>
           <p class="muted">Nothing's planned for the next ${Math.round(d.days / 30)} months yet. Contests, races, birthdays and holidays show up here when they're added.</p>
           ${isAdmin() ? `<p class="muted small">Add a contest from a server's <b>Contests</b> page, a holiday on <a href="#/manage/holidays">Holidays</a>, or a countdown in <a href="#/manage/announcements">Announcements</a>.</p>` : ""}</div>`}`);
+  $$("[data-coming]", view()).forEach((b) => b.addEventListener("click", async () => {
+    const it = d.items.find((x) => x.key === b.dataset.coming);
+    try {
+      await post("/api/community/signup", { event: it.key, coming: !it.me });
+      it.coming += it.me ? -1 : 1; it.me = !it.me;
+      b.classList.toggle("on", it.me); b.setAttribute("aria-pressed", it.me);
+      b.textContent = `${it.me ? "✅ I'm coming" : "🙋 I'm coming!"}${it.coming ? ` · ${it.coming}` : ""}`;
+    } catch (err) { showError(esc(err.message), 4000); }
+  }));
 }

@@ -30,9 +30,11 @@
         <a href="/app#/manage" data-nav="manage" data-admin hidden aria-label="Manage">⚙<span class="nav-label"> Manage</span></a>
       </nav>
       <div class="account">
-        <button class="btn sm" id="btn-account" type="button" aria-haspopup="menu" aria-expanded="false">👤 <span id="account-name"></span></button>
+        <button class="btn sm" id="btn-account" type="button" aria-haspopup="menu" aria-expanded="false">👤 <span id="account-name"></span><span class="cm-badge" id="account-unread" hidden aria-label="unread messages"></span></button>
         <div class="account-menu" id="account-menu" role="menu" hidden>
           <div class="account-role" id="account-role"></div>
+          <a role="menuitem" href="#/messages">✉️ Messages <span class="cm-badge" id="menu-unread" hidden></span></a>
+          <a role="menuitem" href="#/votes">🗳️ Votes</a>
           <a role="menuitem" href="#/fireworks" id="btn-fwe">🎆 Fireworks</a>
           <a role="menuitem" href="#/manage" data-admin hidden>⚙ Manage</a>
           <button type="button" role="menuitem" id="btn-display-name">Display name</button>
@@ -51,6 +53,8 @@
       <a href="#/manage/whitelist" data-m="whitelist">✅ Whitelist</a>
       <a href="#/manage/servers" data-m="servers">🖥 Servers &amp; live info</a>
       <a href="#/manage/activity" data-m="activity">📜 Activity log</a>
+      <a href="#/manage/votes" data-m="votes">🗳️ Votes</a>
+      <a href="#/manage/messages" data-m="messages">✉️ Messages <span class="cm-badge" id="menu-admin-unread" hidden></span></a>
       <a href="#/manage/playtime" data-m="playtime">⏰ Play time</a>
       <a href="#/manage/holidays" data-m="holidays">📅 Holidays</a>
       <a href="#/manage/notifications" data-m="notifications">🔔 Notifications</a>
@@ -79,5 +83,6 @@
   <script src="/static/guides.js" defer></script>
   <script src="/static/website.js" defer></script>
   <script src="/static/playtime.js" defer></script>
+  <script src="/static/community.js" defer></script>
 </body>
 </html>

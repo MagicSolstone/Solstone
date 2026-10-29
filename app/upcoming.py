@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from . import board, challenges, db, fwshow, games, races
+from . import community, board, challenges, db, fwshow, games, races
 
 DAYS = 90
 
@@ -25,7 +25,7 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
             link: str | None = None, live: bool = False, length: int = 1) -> None:
         out.append({"at": at, "date": datetime.fromtimestamp(at, zone).date().isoformat(), "time": None if all_day else _clock(at),
                     "kind": kind, "emoji": emoji, "title": title, "detail": detail, "server": server_names.get(server or "", None) if server else None,
-                    "link": link, "live": live, "days": length})
+                    "link": link, "live": live, "days": length, "key": community.event_key(kind, title, at)})
 
     # contests, races, games: on now, or scheduled ahead
     for c in challenges._load()["items"]:

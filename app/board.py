@@ -177,6 +177,12 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
             elif kind == "active":
                 out.append({"id": f"bta-{srv.id}", "kind": "bedtime", "emoji": "😴", "style": "info",
                             "text": f"{srv.display_name} is asleep", "detail": f"Back at {playtime.fmt_clock(bcfg['end'])}", "countdown": None})
+    if where == "app":                              # a vote open: a banner for those signed in, to go and vote
+        from . import community
+        for p in community.open_polls()[:2]:
+            out.append({"id": f"vote-{p['id']}", "kind": "vote", "emoji": "🏆" if p["kind"] == "build" else "🗳️", "style": "info",
+                        "text": p["question"], "detail": "Vote now: Votes, or !vote in the game", "link": "/app#/votes",
+                        "countdown": p["closes"], "done_text": "Voting has closed!"})
     # a holiday coming up: a countdown banner from as many days before as it asks (Manage → Holidays)
     today = now.date()
     for e in fwshow.calendar():
@@ -196,7 +202,7 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
         from . import challenges, games, races
         for one in ([sid] if sid or allowed is None else sorted(allowed)):
             out += challenges.banners(one) + races.banners(one) + games.banners(one)
-    order = {"bedtime": 0, "challenge": 0.5, "note": 1, "birthday": 2, "holiday": 3, "birthday-soon": 4, "holiday-soon": 4}
+    order = {"bedtime": 0, "challenge": 0.5, "note": 1, "birthday": 2, "holiday": 3, "birthday-soon": 4, "holiday-soon": 4, "vote": 1.5}
     out.sort(key=lambda x: (order.get(x["kind"], 5), x.get("countdown") or 1e12))
     return out
 

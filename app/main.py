@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, watchdog, maintenance, webmap, welcome, worldmap
+from . import adventures, auth, backups, board, challenges, community, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -155,6 +155,8 @@ def _player_may(method: str, path: str) -> bool:
     if not path.startswith("/api/") or path.startswith(("/api/public/", "/api/auth/")):
         return True
     if path.startswith("/api/fireworks"):                      # fireworks are for everyone
+        return True
+    if path.startswith("/api/community/") and not path.startswith("/api/community/admin/"):   # votes, sign-ups, messages
         return True
     if method in PLAYER_MAP_ROUTES.get(path, ()) and _players_see_map():
         return True
@@ -1411,7 +1413,16 @@ async def get_upcoming(request: Request):
     """Everything coming up, for the Coming up page (anyone signed in)."""
     await S.registry.refresh()
     names = {sid: srv.display_name for sid, srv in S.registry.servers.items() if _visible(srv)}
-    return {"items": upcoming.items(names), "days": upcoming.DAYS, "now": time.time()}
+    items = upcoming.items(names)
+    user = request.state.user
+    signed = await asyncio.to_thread(community.signups, [i["key"] for i in items])
+    shown = await asyncio.to_thread(lambda: {u["id"]: u["shown"] for u in auth.list_users()}) if user.role == "admin" else {}
+    for i in items:                                  # who's coming: a count for everyone, names for admins
+        ids = signed.get(i["key"], [])
+        i["coming"], i["me"] = len(ids), user.id in ids
+        if shown:
+            i["who"] = sorted((shown.get(x, "?") for x in ids), key=str.lower)
+    return {"items": items, "days": upcoming.DAYS, "now": time.time()}
 
 
 @app.get("/api/fireworks")
@@ -2324,6 +2335,186 @@ async def put_notifications(request: Request):
     return notify.save_config(body)
 
 
+# ------------------------------------------------------------------ votes, event sign-ups, messages (community.py)
+@app.get("/api/community/votes")
+async def community_votes(request: Request):
+    user = request.state.user
+    me = community.voter_key(user)
+    def build():
+        ps = community.polls(40)
+        return {"open": [community.view(p, me, user.role == "admin") for p in ps if community.is_open(p)],
+                "closed": [community.view(p, me, user.role == "admin") for p in ps if not community.is_open(p)][:10]}
+    return await asyncio.to_thread(build)
+
+
+@app.post("/api/community/votes/{pid}")
+async def community_vote(pid: int, request: Request):
+    user = request.state.user
+    body = await _body(request)
+    try:
+        p = await asyncio.to_thread(community.vote, pid, community.voter_key(user), str(body.get("option") or ""))
+    except KeyError:
+        raise HTTPException(404, "No such vote") from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    return await asyncio.to_thread(community.view, p, community.voter_key(user), user.role == "admin")
+
+
+@app.post("/api/community/signup")
+async def community_signup(request: Request):
+    user = request.state.user
+    body = await _body(request)
+    try:
+        await asyncio.to_thread(community.sign_up, str(body.get("event") or ""), user.id, bool(body.get("coming")))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    return {"ok": True}
+
+
+@app.get("/api/community/unread")
+async def community_unread(request: Request):
+    user = request.state.user
+    return {"mine": await asyncio.to_thread(community.unread, user.id),
+            "admin": await asyncio.to_thread(community.unread_admin) if user.role == "admin" else 0}
+
+
+@app.get("/api/community/messages")
+async def community_my_messages(request: Request):
+    user = request.state.user
+    return {"threads": await asyncio.to_thread(community.threads_for, user.id), "kinds": community.KINDS}
+
+
+def _may_read(user: auth.User, t: dict | None) -> dict:
+    if not t or (t["user_id"] != user.id and user.role != "admin"):
+        raise HTTPException(404, "No such message")
+    return t
+
+
+@app.get("/api/community/messages/{tid}")
+async def community_thread(tid: int, request: Request):
+    user = request.state.user
+    t = _may_read(user, await asyncio.to_thread(community.thread, tid))
+    mine = t["user_id"] == user.id
+    await asyncio.to_thread(community.mark_read, tid, not mine)
+    who = auth.get_user(t["user_id"])
+    return {**t, "with": who.shown if who else "?", "messages": await asyncio.to_thread(community.thread_messages, tid)}
+
+
+@app.post("/api/community/messages")
+async def community_send(request: Request):
+    """A player writes to the admins: a new message (an idea, something wrong, a question)."""
+    user = request.state.user
+    body = await _body(request)
+    if await asyncio.to_thread(community.recent_from, user.id) >= 10:
+        raise HTTPException(429, "That's a lot of messages! Wait a little before sending more.")
+    kind = body.get("kind") if body.get("kind") in community.KINDS else "other"
+    typed = community._line(body.get("subject"), community.SUBJECT_MAX)
+    subject = f"{community.KINDS[kind]}: {typed}" if typed else community.KINDS[kind]
+    try:
+        tid = await asyncio.to_thread(community.start, user.id, "suggestion", subject, body.get("body"), False, user.shown)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    votegame.new_message(user.shown, subject)
+    return {"id": tid}
+
+
+@app.post("/api/community/messages/{tid}")
+async def community_reply(tid: int, request: Request):
+    user = request.state.user
+    t = _may_read(user, await asyncio.to_thread(community.thread, tid))
+    admin = user.role == "admin" and t["user_id"] != user.id
+    if not admin and await asyncio.to_thread(community.recent_from, user.id) >= 10:
+        raise HTTPException(429, "That's a lot of messages! Wait a little before sending more.")
+    body = await _body(request)
+    try:
+        await asyncio.to_thread(community.reply, tid, body.get("body"), admin, user.shown)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    if not admin:
+        votegame.new_message(user.shown, t["subject"])
+    return {"ok": True}
+
+
+@app.get("/api/community/admin/votes")
+async def admin_votes(request: Request):
+    user = auth.require_admin(request)
+    return [community.view(p, community.voter_key(user), True) for p in await asyncio.to_thread(community.polls, 100)]
+
+
+@app.post("/api/community/admin/votes")
+async def admin_vote_create(request: Request):
+    user = auth.require_admin(request)
+    try:
+        p = await asyncio.to_thread(community.create_poll, await _body(request))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    auth.audit(user, None, "vote_create", p["question"])
+    return p
+
+
+@app.put("/api/community/admin/votes/{pid}")
+async def admin_vote_update(pid: int, request: Request):
+    user = auth.require_admin(request)
+    try:
+        p = await asyncio.to_thread(community.update_poll, pid, await _body(request))
+    except KeyError:
+        raise HTTPException(404, "No such vote") from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    auth.audit(user, None, "vote_edit", p["question"])
+    return p
+
+
+@app.post("/api/community/admin/votes/{pid}/close")
+async def admin_vote_close(pid: int, request: Request):
+    user = auth.require_admin(request)
+    p = await asyncio.to_thread(community.close_now, pid)
+    if not p:
+        raise HTTPException(404, "No such vote, or it's closed already")
+    await S.registry.refresh()
+    await votegame.closed(p, list(S.registry.servers.values()))
+    auth.audit(user, None, "vote_close", p["question"])
+    return {"ok": True, "result": community.result_text(p)}
+
+
+@app.delete("/api/community/admin/votes/{pid}")
+async def admin_vote_delete(pid: int, request: Request):
+    user = auth.require_admin(request)
+    await asyncio.to_thread(community.delete_poll, pid)
+    auth.audit(user, None, "vote_delete", str(pid))
+    return {"ok": True}
+
+
+@app.get("/api/community/admin/messages")
+async def admin_messages(request: Request):
+    auth.require_admin(request)
+    def build():
+        shown = {u["id"]: u["shown"] for u in auth.list_users()}
+        return {"threads": [{**t, "with": shown.get(t["user_id"], "?")} for t in community.all_threads()],
+                "players": sorted(({"id": u["id"], "name": u["shown"]} for u in auth.list_users() if u["role"] == "player"),
+                                  key=lambda x: x["name"].lower())}
+    return await asyncio.to_thread(build)
+
+
+@app.post("/api/community/admin/messages")
+async def admin_message_send(request: Request):
+    """An admin writes to one or more players (or all of them)."""
+    user = auth.require_admin(request)
+    body = await _body(request)
+    to = body.get("to")
+    players = [u["id"] for u in auth.list_users() if u["role"] == "player"]
+    ids = players if to == "all" else [int(x) for x in (to or []) if str(x).isdigit() and int(x) in players]
+    if not ids:
+        raise HTTPException(400, "Pick who it's for")
+    try:
+        for uid in ids:
+            await asyncio.to_thread(community.start, uid, "message", body.get("subject"), body.get("body"), True, user.shown)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    auth.audit(user, None, "message_send", f"{len(ids)} player(s): {community._line(body.get('subject'), 80)}")
+    return {"sent": len(ids)}
+
+
 # ------------------------------------------------------------------ play time (bedtimes and screen time)
 def _playtime_view() -> dict:
     cfg = playtime.config()
@@ -3062,7 +3253,7 @@ async def not_found_page(full_path: str):
     return HTMLResponse(_page("home.html"), status_code=404, headers={"Cache-Control": "no-cache"})
 
 
-ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "live.js", "home.js", "postfmt.js", "guides.js", "website.js", "adventures.js", "playtime.js")
+ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "live.js", "home.js", "postfmt.js", "guides.js", "website.js", "adventures.js", "playtime.js", "community.js")
 
 
 @functools.cache

@@ -154,6 +154,9 @@ async function signedIn(user) {
   state.buildCheck = setInterval(async () => {
     try { const d = await (await fetch("/api/public/status")).json(); if (appBuild && d.build && d.build !== appBuild) { showToast('Solstone has been updated. <a href="" data-reload>Reload to get the new version</a>', 0); clearInterval(state.buildCheck); } } catch { /* offline for a moment */ }
   }, 5 * 60 * 1000);
+  cmRefreshUnread();                                 // messages waiting: a number on the account button
+  clearInterval(state.unreadCheck);
+  state.unreadCheck = setInterval(cmRefreshUnread, 60 * 1000);
   // Pages that don't need the server list (Events, Fireworks, Manage) show without waiting for it.
   loadServers();
   route();
@@ -1612,11 +1615,15 @@ async function route() {
       else if (tab === "notifications") await viewNotifications();
       else if (tab === "holidays") await viewHolidays();
       else if (tab === "playtime") await viewPlaytime();
+      else if (tab === "votes") await viewManageVotes();
+      else if (tab === "messages") await viewManageMessages(parts[2]);
       else await viewAdmin(tab);
       return;
     }
     if (parts[0] === "coming-up") { location.replace("#/events"); return; }      // its old name
     if (parts[0] === "events") { await viewUpcoming(); return; }
+    if (parts[0] === "votes") { await viewVotes(); return; }
+    if (parts[0] === "messages") { await viewMessages(parts[1]); return; }
     if (parts[0] === "fireworks" && parts[1] === "show") { await viewFireworkSettings(); return; }
     if (parts[0] === "fireworks") { await viewFireworkEditor(parts[1]); return; }
     if (parts[0] === "s" && parts[1]) {

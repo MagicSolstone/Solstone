@@ -50,7 +50,7 @@ function startBoard(el, opts = {}) {
     el.classList.toggle("ticker", !!ticker);
     const html = list.map((it) => `<div class="bn bn-${esc(it.style)} bn-k-${esc(it.kind)}" data-id="${esc(it.id)}" role="status">
       ${it.emoji ? `<span class="bn-emoji" aria-hidden="true">${esc(it.emoji)}</span>` : ""}
-      <div class="bn-text"><b>${esc(it.text)}</b>${it.detail ? `<small>${esc(it.detail)}</small>` : ""}</div>
+      <div class="bn-text"><b>${it.link && it.link.startsWith("/app#/") ? `<a href="${esc(it.link)}">${esc(it.text)}</a>` : esc(it.text)}</b>${it.detail ? `<small>${esc(it.detail)}</small>` : ""}</div>
       ${cdHtml(it)}${opts.dismiss ? `<button class="bn-x" type="button" data-dismiss="${esc(it.id)}" aria-label="Hide this">×</button>` : ""}</div>`).join("")
       + more + (ticker ? `<div class="bn-dots" aria-hidden="true">${all.map((_, i) => `<i class="${i === turn % all.length ? "on" : ""}"></i>`).join("")}</div>` : "");
     if (el._html !== html) { el._html = html; el.innerHTML = html; }

@@ -10,6 +10,18 @@
 - Your settings move over by themselves: each server's bedtime becomes a schedule (servers with the same times share one), the stay-up lists and the limits from Notifications go into the players' rows.
 - A server's Control shows its bedtimes with a link to Play time, the Users page shows each player's (*90 min a day · bedtime applies*), and Notifications points there for limits.
 
+## 🗳️ Votes, build contests, event sign-ups and messages
+Things for players to do on the website once signed in. Players pick, they don't write to each other: nothing a kid types is seen by other kids.
+- **Votes** (account menu → 🗳️ Votes): admins start them in **Manage → Votes**: a question, the choices, when it closes (or close it yourself), and whether results show once someone has voted or only at the end. Everyone gets one vote and can change it until it closes. **Only totals are shown, never who voted for what**, not even to admins.
+- **Build contests:** a vote where you say who built each entry (names from the game, with pictures if you like). **Nobody can vote for a build they made**, under any of their Minecraft names.
+- **Voting in the game:** a new vote is announced in chat with its choices (click one on Java), and `!vote 2` in chat counts for the newest vote. It's the same vote as on the website, so nobody votes twice.
+- **When a vote closes**, the result is announced in the game, everyone who voted gets a message with it, and the winning builders get a congratulations.
+- A banner on the signed-in pages while a vote is open, counting down to when it closes.
+- **I'm coming!** on Events: for contests, races, games and fireworks shows, with how many are coming. Admins see who (hover the button).
+- **Messages** (account menu → ✉️ Messages): players write to the admins (an idea, something wrong, a question) and get your answers there; only the admins and that player see it, and players can't message each other. Admins see who wrote and answer in **Manage → Messages**, and can write to one player, several or every player (*You won the build contest!*). A number on the account button says when something's waiting. Notices from Solstone (a vote closed, you won) come here too.
+- Get a phone notification when a player writes: Notifications → *A player sends a message* (on to start for new setups). Ten messages an hour per player at most.
+- Removing an account removes its messages, votes and sign-ups too.
+
 ## Smaller things
 - **Manage on phones** is just ⚙ in the bar, so the bar stays on one line. It's in the account menu too.
 - **The map drawing check says when the world isn't finished:** for each region it checks, it counts the chunks the game only started (just the outline of the land, all air) and never finished, and says so: *r.-2.1.mca: 126 of 132 chunks were only started, never finished by the game. Run Chunky over this area again: it finishes them.* Those are black on every map, BlueMap's too.
