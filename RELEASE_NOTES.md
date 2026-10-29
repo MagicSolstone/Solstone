@@ -23,6 +23,7 @@ Things for players to do on the website once signed in. Players pick, they don't
 - Removing an account removes its messages, votes and sign-ups too.
 
 ## Smaller things
+- **The top-down map draws what you're looking at first:** moving around a big world, the squares on your screen now come before ones you've scrolled past (those are dropped, and drawn when someone looks there again). Once someone opens a map, the rest of the world is drawn in the background, gently (one region at a time with a pause between), so after a while every square is ready and the map just shows. It's still one drawing at a time for everyone together, however many people have the map open.
 - **Manage on phones** is just ⚙ in the bar, so the bar stays on one line. It's in the account menu too.
 - **The map drawing check says when the world isn't finished:** for each region it checks, it counts the chunks the game only started (just the outline of the land, all air) and never finished, and says so: *r.-2.1.mca: 126 of 132 chunks were only started, never finished by the game. Run Chunky over this area again: it finishes them.* Those are black on every map, BlueMap's too.
 

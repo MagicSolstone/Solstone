@@ -313,3 +313,39 @@ def test_check_counts_unfinished_chunks(tmp_path):
     info = {}
     worldmap.render_region(tmp_path / "r.0.0.mca", worldmap.Colors(None), False, info)
     assert info["statuses"] == {"full": 1, "structure_starts": 1}
+
+
+def test_newest_first_and_the_rest_in_the_background(tmp_path, monkeypatch):
+    import time
+
+    from app import worldmap
+    from app.config import config
+    monkeypatch.setattr(config, "data_dir", tmp_path / "data")
+    monkeypatch.setattr(worldmap, "FILL_PAUSE", 0)
+    world = tmp_path / "world"
+    (world / "region").mkdir(parents=True)
+    for x in range(3):
+        _region(world / "region" / f"r.{x}.0.mca", {(x * 32, 0): _chunk(x * 32, 0, _land)})
+    with worldmap._qlock:                                  # hold the worker back while asking for squares
+        monkeypatch.setattr(worldmap, "_worker", object())
+        worldmap._asked.clear()
+        worldmap._queue.clear()
+        worldmap._queued.clear()
+        worldmap._fill.clear()
+    worldmap.tile("q", world, "minecraft:overworld", 0, 0, None)
+    worldmap._asked[("q", "minecraft:overworld", 0, 0)] -= 60         # asked a while ago: scrolled past
+    worldmap.tile("q", world, "minecraft:overworld", 1, 0, None)
+    with worldmap._qlock:
+        job, background = worldmap._next()
+        assert job[0][2] == 1 and not background                       # what's on screen now goes first
+        job2, background2 = worldmap._next()
+        assert background2 and job2[0][2] in (0, 2)                    # the old ask was dropped; the rest comes after
+        worldmap._queued.discard(job2[0])
+        worldmap._fill.insert(0, job2)
+        monkeypatch.setattr(worldmap, "_worker", None)
+    worldmap.tile("q", world, "minecraft:overworld", 1, 0, None)        # start the worker
+    for _ in range(200):
+        if all(worldmap._tile_path("q", "minecraft:overworld", x, 0).is_file() for x in (0, 2)):
+            break
+        time.sleep(0.05)
+    assert all(worldmap._tile_path("q", "minecraft:overworld", x, 0).is_file() for x in (0, 2))   # drawn in the background

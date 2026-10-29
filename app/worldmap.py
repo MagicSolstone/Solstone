@@ -689,20 +689,49 @@ def _tile_path(sid: str, dim: str, rx: int, rz: int) -> Path:
     return config.data_dir / "maptiles" / f"v{RENDER_VERSION}" / sid / dim.replace(":", "_").replace("/", "_") / f"{rx}.{rz}.png"
 
 
+# One drawing thread for everyone, so however many people look at the map, it never draws more than one region at
+# a time. What's on someone's screen now goes first (the newest ask); a square nobody has asked about for a while
+# (scrolled past) is dropped. With nothing asked, the rest of the world is drawn slowly in the background, once,
+# so the map is ready everywhere after that.
 _queue: list[tuple] = []
 _queued: set = set()
+_asked: dict[tuple, float] = {}
+_fill: list[tuple] = []                 # the rest of the world, drawn when nothing else is waiting
+_filled: set = set()                    # (sid, dim) already listed for that
 _qlock = threading.Lock()
 _worker: threading.Thread | None = None
+FORGET_AFTER = 20                       # seconds: a square not asked about again by then has scrolled off screen
+FILL_PAUSE = 1.0                        # seconds between background drawings, so they never hog the computer
+
+
+def _next() -> tuple[tuple | None, bool]:
+    """The next job: what someone is looking at (newest first), else the background fill. (job, background?)"""
+    now = time.time()
+    while _queue:
+        job = max(_queue, key=lambda j: _asked.get(j[0], 0))
+        _queue.remove(job)
+        if now - _asked.get(job[0], 0) <= FORGET_AFTER:
+            return job, False
+        _queued.discard(job[0])                      # scrolled past: drawn when it's looked at again
+    while _fill:
+        job = _fill.pop(0)
+        if job[0] in _queued or job[2].is_file():
+            continue
+        _queued.add(job[0])
+        return job, True
+    return None, False
 
 
 def _work() -> None:
+    global _worker
     while True:
         with _qlock:
-            if not _queue:
-                global _worker
+            job, background = _next()
+            if job is None:
                 _worker = None
                 return
-            job = _queue.pop(0)
+        if background:
+            time.sleep(FILL_PAUSE)
         key, src, dst, assets, nether = job
         try:
             colors = Colors(assets)
@@ -724,6 +753,7 @@ def _work() -> None:
         finally:
             with _qlock:
                 _queued.discard(key)
+                _asked.pop(key, None)
 
 
 _tidied = False
@@ -833,22 +863,42 @@ def tile(sid: str, world: Path, dim: str, rx: int, rz: int, assets) -> tuple[str
     except OSError:
         return "none", None
     stale = dst_m < src_m and time.time() - dst_m > REDRAW_AFTER
-    if not dst_m or stale:
-        key = (sid, dim, rx, rz)
-        with _qlock:
+    key = (sid, dim, rx, rz)
+    with _qlock:
+        if not dst_m or stale:
+            _asked[key] = time.time()
             if key not in _queued:
                 _queued.add(key)
                 _queue.append((key, src, dst, assets, dim.endswith("the_nether")))
-            if _worker is None:
+        if (sid, dim) not in _filled:            # first look at this map: list the rest of it for the background
+            _filled.add((sid, dim))
+            _fill.extend(_fill_jobs(sid, d, dim, rx, rz, assets))
+        if (_queue or _fill) and _worker is None:
                 _worker = threading.Thread(target=_work, daemon=True, name="map-tiles")
                 _worker.start()
     return ("ready", dst) if dst_m else ("working", None)
+
+
+def _fill_jobs(sid: str, d: Path, dim: str, rx: int, rz: int, assets) -> list[tuple]:
+    """Every region of this map with no picture yet, nearest to where someone is looking first."""
+    jobs = []
+    for f in d.glob("r.*.*.mca"):
+        try:
+            x, z = (int(v) for v in f.name.split(".")[1:3])
+        except ValueError:
+            continue
+        dst = _tile_path(sid, dim, x, z)
+        if not dst.is_file():
+            jobs.append(((x - rx) ** 2 + (z - rz) ** 2, ((sid, dim, x, z), f, dst, assets, dim.endswith("the_nether"))))
+    return [j for _d, j in sorted(jobs, key=lambda t: t[0])]
 
 
 def clear_tiles(sid: str) -> int:
     """Forget the map pictures drawn for a server (a new world): they're drawn again as they're looked at."""
     import shutil
     root = config.data_dir / "maptiles" / f"v{RENDER_VERSION}" / sid
+    with _qlock:                                  # its background drawing starts over when the map is next looked at
+        _filled.difference_update({k for k in _filled if k[0] == sid})
     n = sum(1 for _ in root.rglob("*.png")) if root.is_dir() else 0
     shutil.rmtree(root, ignore_errors=True)
     return n
