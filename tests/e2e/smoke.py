@@ -746,6 +746,31 @@ def main() -> int:
             bars = m.evaluate("() => [...document.querySelectorAll('.tabs, .subtabs')].filter(t => t.offsetHeight - t.clientHeight > 2 || t.offsetWidth - t.clientWidth > 2).length")
             if bars:
                 problems.append(f"manage: {bars} tab rows show a scrollbar")
+            # A slow answer shows "Loading…" instead of a blank page, and the page once it comes
+            held = []
+            m.route("**/api/users", lambda r: held.append(r))
+            m.reload(); m.wait_for_timeout(1200)
+            if "Loading" not in m.locator("#view").inner_text():
+                problems.append("app: a slow page stays blank instead of saying Loading…")
+            for r in held:
+                r.continue_()
+            m.unroute("**/api/users")
+            m.wait_for_timeout(1000)
+            if "Loading" in m.locator("#view").inner_text():
+                problems.append("app: Loading… stayed up after the page came")
+            # Solstone not answering (just restarted): wait and try again, not the sign-in page
+            tries = []
+            def restarting(r):
+                tries.append(1)
+                r.fulfill(status=502, body="Bad gateway") if len(tries) == 1 else r.continue_()
+            m.route("**/api/auth/me", restarting)
+            m.reload(); m.wait_for_timeout(800)
+            if "Waiting for Solstone" not in m.locator("#view").inner_text():
+                problems.append("app: Solstone not answering didn't say it's waiting")
+            m.wait_for_timeout(3500)
+            if m.locator("#login-root:not([hidden])").count() or len(tries) < 2:
+                problems.append("app: after Solstone answered again it didn't sign back in")
+            m.unroute("**/api/auth/me")
             browser.close()
     finally:
         app.terminate()

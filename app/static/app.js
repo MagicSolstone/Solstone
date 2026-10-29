@@ -726,7 +726,20 @@ function setRailTitle() {
 
 // ================================================================ views
 const view = () => $("#view");
-function setView(html) { state.items.clear(); hideTip(); view().innerHTML = html; }
+let viewsShown = 0;
+function setView(html) { viewsShown++; state.items.clear(); hideTip(); view().innerHTML = html; }
+// A page that's slow to come (Solstone busy, or just restarted) says so instead of staying blank.
+let routeSeq = 0;
+function slowPage(seq, before) {
+  const still = () => seq === routeSeq && viewsShown === before;
+  const t1 = setTimeout(() => { if (still()) view().innerHTML = `<div class="empty"><h3>Loading…</h3></div>`; }, 400);
+  const t2 = setTimeout(() => {
+    if (!still()) return;
+    view().innerHTML = `<div class="empty"><h3>Still loading…</h3><p>Solstone is taking a while to answer. The server's disks may be busy (a map render or a backup), or it has just started.</p><p style="margin-top:12px"><button class="btn" type="button" data-retry-route>Try again</button></p></div>`;
+    $("[data-retry-route]", view())?.addEventListener("click", () => route());
+  }, 10000);
+  return () => { clearTimeout(t1); clearTimeout(t2); };
+}
 
 async function viewHome() {
   curSid = null;
@@ -1575,6 +1588,7 @@ async function openSettings(s) {
 async function route() {
   clearTimers();
   const parts = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent).filter(Boolean);
+  const seq = ++routeSeq, done = slowPage(seq, viewsShown);
   try {
     if (!me.user) return;
     // Manage: the old addresses lead to their tab
@@ -1618,9 +1632,10 @@ async function route() {
       else await viewOverview(sid);
     } else await viewHome();
   } catch (e) {
+    if (seq !== routeSeq) return;                      // already on another page
     setView(`<div class="empty"><h3>Something went wrong loading this page</h3><p>${esc(e.message)}</p><p style="margin-top:12px"><a href="#/">Back to servers</a></p></div>`);
     console.error(e);
-  }
+  } finally { done(); }
 }
 let boardSid = null;
 addEventListener("hashchange", async () => {
@@ -1631,6 +1646,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   wireAccountMenu(); wireMobileMenu();
   const ch = $("#build-channel");
   if (ch && BUILD_CHANNEL === "beta") { ch.textContent = "Beta build"; ch.hidden = false; }
-  try { signedIn((await api("/api/auth/me")).user); }
-  catch { showLogin(); }
+  signIn();
 });
+// Only "not signed in" shows the sign-in page: Solstone being slow or just restarting says so, and tries again.
+async function signIn(tries = 0) {
+  let user;
+  try { user = (await api("/api/auth/me")).user; }
+  catch (e) {
+    if (e.status === 401 || e.status === 403 || tries > 20) { showLogin(); return; }
+    view().innerHTML = `<div class="empty"><h3>Waiting for Solstone…</h3><p>It isn't answering right now (it may have just restarted). Trying again…</p></div>`;
+    setTimeout(() => signIn(tries + 1), 3000);
+    return;
+  }
+  signedIn(user);
+}

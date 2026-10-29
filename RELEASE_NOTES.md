@@ -1,3 +1,9 @@
+# Solstone 1.9.10
+
+- **No more blank pages while Solstone is busy:** a page that's slow to come (the server's disks busy with a map render or a backup, or Solstone just started) says **Loading…** straight away, and after 10 seconds *Still loading…* with **Try again**, instead of an empty page.
+- **Just restarted?** Opening the app while Solstone isn't answering yet says *Waiting for Solstone…* and keeps trying every few seconds, then carries on, signed in. It used to show the sign-in page as if you'd been signed out.
+- Pages open a little quicker: Solstone keeps its own page files in memory instead of reading them from disk each time.
+
 # Solstone 1.9.9
 
 - **Holiday countdown banners:** each holiday in Manage → Holidays has **Countdown banner [N] days before**. Set it to 7, say, and from a week ahead every page shows *🎃 Halloween is in 7 days* with a countdown, which turns into the holiday's message when the day comes. Leave it at 0 for just the usual banner on the day itself. No need to make a separate announcement. Weekly days don't have it.

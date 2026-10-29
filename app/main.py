@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import functools
 import hashlib
 import json
 import logging
@@ -33,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.9.9"
+VERSION = "1.9.10"
 
 
 @asynccontextmanager
@@ -3023,9 +3024,19 @@ async def not_found_page(full_path: str):
 ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "live.js", "home.js", "postfmt.js", "guides.js", "website.js")
 
 
+@functools.cache
 def _asset_stamp() -> str:
+    """The app's own files only change with a new build (a new container), so this is worked out once."""
     files = [STATIC / n for n in ASSET_NAMES]
     return format(int(max(f.stat().st_mtime for f in files if f.exists())), "x")
+
+
+@functools.cache
+def _template(name: str) -> str:
+    html = (STATIC / name).read_text(encoding="utf-8")
+    for n in ASSET_NAMES:
+        html = html.replace(f"/static/{n}\"", f"/static/{n}?v={_asset_stamp()}\"")
+    return html
 
 
 def _html_escape(s: str) -> str:
@@ -3034,19 +3045,14 @@ def _html_escape(s: str) -> str:
 
 def _page(name: str) -> str:
     """An HTML page with ?v= on the CSS/JS links so browsers pick up new versions after an update."""
-    stamp = _asset_stamp()
-    html = (STATIC / name).read_text(encoding="utf-8")
-    for n in ASSET_NAMES:
-        html = html.replace(f"/static/{n}\"", f"/static/{n}?v={stamp}\"")
-    return html.replace("{{SITE_NAME}}", _html_escape(site.config()["name"])).replace("{{SITE_LOGO}}", _html_escape(site.logo_url()))
+    return _template(name).replace("{{SITE_NAME}}", _html_escape(site.config()["name"])).replace("{{SITE_LOGO}}", _html_escape(site.logo_url()))
 
 
 async def _page_for(name: str, request: Request) -> str:
     """The page with the top bar already right for whoever's signed in: Events, Servers (and Manage for admins)
     and their name, instead of those popping in a moment later. Only what the bar shows; every API route still
     checks the sign-in itself."""
-    html = _page(name)
-    user = await asyncio.to_thread(auth.user_from_request, request)
+    html, user = await asyncio.to_thread(lambda: (_page(name), auth.user_from_request(request)))   # off the main loop
     if not user:
         return html
     html = html.replace(" data-signed-in hidden", " data-signed-in")
