@@ -211,3 +211,21 @@ def test_in_the_show_limit(client, viewer):
         client.put("/api/fireworks/limit", json={"show_per_person": 5})
         for d in made:
             client.delete(f"/api/fireworks/{d['id']}")
+
+
+def test_holiday_countdown_banner(client):
+    from datetime import datetime, timedelta
+
+    from app import board, db, fwshow
+    keep = fwshow.calendar()
+    now = datetime.now(db.tz())
+    soon = (now + timedelta(days=3)).date()
+    try:
+        fwshow.save_calendar([{"id": "pie", "name": "Pie Day", "emoji": "🥧", "message": "Happy Pie Day!", "banner_days": 5,
+                               "date": {"type": "fixed", "month": soon.month, "day": soon.day}},
+                              {"id": "far", "name": "Far Day", "emoji": "🎈", "banner_days": 1,
+                               "date": {"type": "fixed", "month": soon.month, "day": soon.day}}])
+        got = [b for b in board.active("home", now=now) if b["kind"] == "holiday-soon"]
+        assert [b["text"] for b in got] == ["Pie Day is in 3 days"] and got[0]["countdown"] and got[0]["done_text"] == "Happy Pie Day!"
+    finally:
+        fwshow.save_calendar(keep)

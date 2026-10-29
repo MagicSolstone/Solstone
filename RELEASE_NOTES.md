@@ -1,3 +1,7 @@
+# Solstone 1.9.9
+
+- **Holiday countdown banners:** each holiday in Manage → Holidays has **Countdown banner [N] days before**. Set it to 7, say, and from a week ahead every page shows *🎃 Halloween is in 7 days* with a countdown, which turns into the holiday's message when the day comes. Leave it at 0 for just the usual banner on the day itself. No need to make a separate announcement. Weekly days don't have it.
+
 # Solstone 1.9.8
 
 - **🛠️ Planned maintenance:** Website → Site details → **Planned maintenance**: when it starts and ends, and a message (*Swapping in a faster drive. Your builds are safe!*). Every page shows a banner counting down to it. And while everything's off, the Cloudflare *website is down* page says **Down for maintenance, back around Saturday 3 PM**, with your message, instead of just "down" (and still shows whether each Minecraft server is up). Past the end time it says it's taking a little longer than planned. **Cancel the maintenance** takes it all away again.

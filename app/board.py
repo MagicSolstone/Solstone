@@ -177,6 +177,17 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
             elif kind == "active":
                 out.append({"id": f"bta-{srv.id}", "kind": "bedtime", "emoji": "😴", "style": "info",
                             "text": f"{srv.display_name} is asleep", "detail": f"Back at {guard._fmt_clock(bcfg['end'])}", "countdown": None})
+    # a holiday coming up: a countdown banner from as many days before as it asks (Manage → Holidays)
+    today = now.date()
+    for e in fwshow.calendar():
+        if not e["enabled"] or not e.get("banner_days") or e["date"]["type"] == "weekly":
+            continue
+        nxt = min((s for s in fwshow._starts(e, today) if s > today), default=None)
+        if nxt and (nxt - today).days <= e["banner_days"]:
+            days = (nxt - today).days
+            out.append({"id": f"hs-{e['id']}-{nxt.isoformat()}", "kind": "holiday-soon", "emoji": e["emoji"] or "🎉", "style": "info",
+                        "text": f"{e['name']} is {'tomorrow' if days == 1 else f'in {days} days'}", "detail": "",
+                        "countdown": datetime.combine(nxt, datetime.min.time(), zone).timestamp(), "done_text": e["message"] or "It's here!"})
     th = fwshow.today_state(now)["theme"]
     if th and (th.get("message") or th.get("name")):
         out.append({"id": f"h-{th['id']}-{now.date()}", "kind": "holiday", "emoji": th.get("emoji") or "🎉", "style": "party",
@@ -185,7 +196,7 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
         from . import challenges, games, races
         for one in ([sid] if sid or allowed is None else sorted(allowed)):
             out += challenges.banners(one) + races.banners(one) + games.banners(one)
-    order = {"bedtime": 0, "challenge": 0.5, "note": 1, "birthday": 2, "holiday": 3, "birthday-soon": 4}
+    order = {"bedtime": 0, "challenge": 0.5, "note": 1, "birthday": 2, "holiday": 3, "birthday-soon": 4, "holiday-soon": 4}
     out.sort(key=lambda x: (order.get(x["kind"], 5), x.get("countdown") or 1e12))
     return out
 

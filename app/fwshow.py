@@ -214,6 +214,7 @@ def _clean_entry(e: dict, fallback_id: str | None = None) -> dict | None:
         "colors": [c.lower() for c in (e.get("colors") or []) if isinstance(c, str) and _HEX.match(c)][:6],
         "kinds": [k for k in (e.get("kinds") or []) if k in BUILTIN_KINDS or (isinstance(k, str) and k.startswith("custom:"))][:10],
         "message": str(e.get("message") or "").strip()[:80],
+        "banner_days": num(e.get("banner_days"), 0, 30, 0),     # a countdown banner this many days before (0: just on the day)
         "enabled": e.get("enabled", True) is not False,
         "finale": {"on": bool(fin.get("on")), "day": num(fin.get("day"), 0, days - 1, 0),
                    "show": str(fin.get("show") or "")[:24],

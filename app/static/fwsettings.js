@@ -216,7 +216,7 @@ function renderCalendar(el) {
   el.innerHTML = `<section class="panel"><p class="muted" style="margin-bottom:12px">On these days the fireworks take on the day's colours and favourite kinds. A <b>scheduled show</b> fills the sky at a set time on every open page (and is listed on Events too); the New Year one counts down from 10.</p>
     <div class="fws-cal">${cal.map((e, i) => fws.editing === i ? calEditHtml(e, i) : `<div class="fws-cal-row ${e.enabled ? "" : "off"}" data-i="${i}">
       <span class="fws-emoji">${esc(e.emoji)}</span>
-      <div><b>${esc(e.name)}</b><div class="muted small">${esc(fwsDateText(e))}${e.finale.on ? ` · show at ${esc(fwsTime(e.finale.time))} for ${e.finale.minutes} min${e.finale.countdown ? " with a countdown" : ""}` : ""}</div>
+      <div><b>${esc(e.name)}</b><div class="muted small">${esc(fwsDateText(e))}${e.finale.on ? ` · show at ${esc(fwsTime(e.finale.time))} for ${e.finale.minutes} min${e.finale.countdown ? " with a countdown" : ""}` : ""}${e.banner_days ? ` · banner ${e.banner_days} day${e.banner_days === 1 ? "" : "s"} before` : ""}</div>
         ${fwsOverlapNote(e.id)}<div class="fwe-dots">${e.colors.map((c) => `<i style="background:${c}"></i>`).join("")}</div></div>
       <label class="check small"><input type="checkbox" data-en ${e.enabled ? "checked" : ""}> On</label>
       <button type="button" class="btn sm" data-edit>Edit</button></div>`).join("")}</div>
@@ -258,6 +258,7 @@ function calEditHtml(e, i) {
         : d.type === "once" ? `<input class="input sm" type="date" name="iso" value="${esc(d.iso || "")}">` : `<span class="muted small">Worked out each year</span>`}</label>
       <label class="inl">Lasts ${num("days", e.days, 1, 14)} day(s)</label>
       <label class="wide">Message<input class="input" name="message" maxlength="80" value="${esc(e.message)}" placeholder="Shown on every page that day"></label>
+      ${d.type === "weekly" ? "" : `<label class="inl">Countdown banner ${num("banner_days", e.banner_days || 0, 0, 30)} days before <span class="muted small">(0: just on the day)</span></label>`}
     </div>
     <details class="fws-more" ${fws.moreOpen ? "open" : ""}><summary>Fireworks for this day <span class="muted small">colours, favourite kinds and a scheduled show</span></summary>
     <div class="fws-sub">Colours <span class="muted small">(leave none for the usual colours)</span></div>
@@ -285,6 +286,7 @@ function wireCalEdit(el, i) {
   const read = () => {
     const f = new FormData(form), dtype = f.get("dtype");
     draft.name = f.get("name"); draft.emoji = f.get("emoji"); draft.message = f.get("message"); draft.days = +f.get("days") || 1;
+    draft.banner_days = Math.max(0, Math.min(30, +f.get("banner_days") || 0));
     const d = { type: dtype };
     if (dtype === draft.date.type) {
       if (f.get("month")) d.month = +f.get("month");
