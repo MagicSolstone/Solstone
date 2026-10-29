@@ -34,7 +34,7 @@ _WATERY = {"water", "bubble_column", "kelp", "kelp_plant", "seagrass", "tall_sea
 # Region chunks are big; only the block palettes, packed block data and section heights
 # are needed, so everything else is skipped without being decoded.
 _WANT = {"sections", "Sections", "Level", "block_states", "BlockStates", "blocks", "palette", "Palette", "data", "Data", "Y", "y",
-         "Name", "name", "id", "", "yPos", "xPos", "zPos", "Heightmaps", "WORLD_SURFACE"}
+         "Name", "name", "id", "", "yPos", "xPos", "zPos", "Heightmaps", "WORLD_SURFACE", "Status"}
 
 
 class _R:
@@ -560,7 +560,7 @@ def render_region(path: Path, colors: Colors, nether: bool = False, info: dict |
     """The 512x512 picture of one region file. `info`, if given, is filled with what happened:
     chunks, drawn, blank (no blocks), failed, error, compression types and a sample chunk."""
     info = info if info is not None else {}
-    info.update(chunks=0, drawn=0, blank=0, failed=0, error="", compression={}, sample=None)
+    info.update(chunks=0, drawn=0, blank=0, failed=0, error="", compression={}, sample=None, statuses={})
     layout: dict = {}
     try:
         data = path.read_bytes()
@@ -590,9 +590,11 @@ def render_region(path: Path, colors: Colors, nether: bool = False, info: dict |
                 continue
             raw = _decompress(ctype, data[off + 5: off + 4 + length], path, i)
             nbt = read_chunk(raw)
+            lvl = nbt.get("Level") if isinstance(nbt.get("Level"), dict) else nbt
+            st = str(lvl.get("Status") or "?").removeprefix("minecraft:")      # "full" once the game finished it
+            info["statuses"][st] = info["statuses"].get(st, 0) + 1
             if info["sample"] is None:
-                info["sample"] = {"chunk": i, "keys": _top_keys(raw)[:40], "status": "", "sections": 0}
-                lvl = nbt.get("Level") if isinstance(nbt.get("Level"), dict) else nbt
+                info["sample"] = {"chunk": i, "keys": _top_keys(raw)[:40], "status": st, "sections": 0}
                 secs = lvl.get("sections") or lvl.get("Sections") or []
                 info["sample"]["sections"] = len(secs)
                 info["sample"].update(_describe(raw))

@@ -303,3 +303,13 @@ def test_check_a_spot_with_no_region(tmp_path):
     (reg / "r.0.0.mca").write_bytes(b"\0" * 9000)
     out = worldmap.check("t", tmp_path, "minecraft:overworld", [], None, at=(5000, -3000))
     assert out["checked"][0]["file"] == "r.9.-6.mca" and "No region file" in out["checked"][0]["error"]
+
+
+def test_check_counts_unfinished_chunks(tmp_path):
+    from app import worldmap
+    started = _chunk(1, 0, lambda x, z: [])
+    started["Status"] = String("minecraft:structure_starts")
+    _region(tmp_path / "r.0.0.mca", {(0, 0): _chunk(0, 0, _land), (1, 0): started})
+    info = {}
+    worldmap.render_region(tmp_path / "r.0.0.mca", worldmap.Colors(None), False, info)
+    assert info["statuses"] == {"full": 1, "structure_starts": 1}

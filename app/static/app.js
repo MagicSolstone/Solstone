@@ -566,6 +566,10 @@ function openMapCheck(sid, dims) {
         $("#mc-sum", m).innerHTML = r.error ? `<b>${esc(r.error)}</b>`
           : `<div>${r.regions} region files. Checked ${rows.length}: <b>${ok} drew fine</b>${rows.length - ok ? `, <b class="warn">${rows.length - ok} came out empty</b>` : ""}.</div>`
             + (r.grid?.missing_inside ? `<div class="small warn">${r.grid.missing_inside} spots inside the world have no region file (the dots in the grid below): never generated or saved, so they're black on every map.</div>` : "")
+            + rows.map((x) => {
+              const st = x.statuses || {}, all = Object.values(st).reduce((a, b) => a + b, 0), unfinished = all - (st.full || 0);
+              return unfinished > 0 ? `<div class="small warn">${esc(x.file)}: ${unfinished} of ${all} chunks were only started, never finished by the game (${esc(Object.entries(st).filter(([k]) => k !== "full").map(([k, n]) => `${k} ×${n}`).join(", "))}). Run Chunky over this area again: it finishes them.</div>` : "";
+            }).join("")
             + rows.map((x) => `<div class="small">${esc(x.file)}: ${x.drawn} of ${x.chunks} chunks drawn${x.failed ? `, ${x.failed} unreadable` : ""}${x.error ? ` — ${esc(x.error)}` : ""}${x.layout?.checked ? ` · matches the game's height map ${Math.round(x.layout.agree * 100)}%` : ""}${x.layout?.narrow_sections ? ` · ${x.layout.narrow_sections} narrow-packed sections` : ""}${x.layout?.layouts && Object.keys(x.layout.layouts).some((k) => k !== "yzx") ? ` · block layout: ${Object.entries(x.layout.layouts).map(([k, n]) => `${k} ×${n}`).join(", ")}` : ""}${x.layout?.moved ? ` · ${x.layout.moved} chunks moved` : ""}</div>`).join("");
         const g = r.grid?.rows?.length ? `Region files, north at the top (# a file, + nearly empty, . none, @ / o: 0,0), from region ${r.grid.from.join(",")} to ${r.grid.to.join(",")}, each 512 blocks:\n${r.grid.rows.join("\n")}\n\n` : "";
         $("#mc-out", m).textContent = g + JSON.stringify({ ...r, grid: undefined }, null, 1); $("#mc-out", m).hidden = false; $("#mc-copy", m).hidden = false;

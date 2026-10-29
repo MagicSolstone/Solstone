@@ -1,3 +1,7 @@
+# Solstone 1.9.11
+
+- **The map drawing check says when the world isn't finished:** for each region it checks, it counts the chunks the game only started (just the outline of the land, all air) and never finished, and says so: *r.-2.1.mca: 126 of 132 chunks were only started, never finished by the game. Run Chunky over this area again: it finishes them.* Those are black on every map, BlueMap's too.
+
 # Solstone 1.9.10
 
 - **No more blank pages while Solstone is busy:** a page that's slow to come (the server's disks busy with a map render or a backup, or Solstone just started) says **Loading…** straight away, and after 10 seconds *Still loading…* with **Try again**, instead of an empty page.
