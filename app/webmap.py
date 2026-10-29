@@ -102,6 +102,8 @@ async def proxy(base: str, path: str, request: Request, prefix: str) -> Response
     out = {k: v for k, v in r.headers.items() if k.lower() in KEEP_HEADERS}
     out.update({"Content-Security-Policy": SANDBOX_CSP, "Access-Control-Allow-Origin": "*", "Referrer-Policy": "no-referrer",
                 "X-Frame-Options": "SAMEORIGIN", "X-Content-Type-Options": "nosniff"})
+    if r.status_code in (204, 404):                     # "nothing drawn here yet": never kept, so it shows once drawn
+        out["Cache-Control"] = "no-store"
     if r.is_redirect:                                   # keep the map's own redirects inside /map/...
         loc = r.headers.get("location", "")
         await r.aclose()

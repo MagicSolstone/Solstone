@@ -1,8 +1,10 @@
 # Solstone 1.9.7
 
 - **Your join firework, your pick:** Fireworks (the editor page) has **When you join the server**: pick one of your own fireworks, or anyone's, and it goes off in everyone's sky when you join. Or leave it on *A random firework*. It covers both your Java and Bedrock names. Admins can still set anyone's in the firework show settings.
+- **A limit on fireworks in the show:** besides how many each person can keep (20 to start), each person can have up to **5 in the show** at once, so everyone's turn up. Admins change both on the Fireworks page (*Each person can keep 20, with 5 in the show*); admins themselves have no limit. Saving one when your show spots are full keeps it, out of the show, and says so; the gallery shows *3 of 5 in the show*.
 - **The Launch list is tidier:** **My fireworks** first, then **Made by players** as a row of names: pick someone to see theirs. Makers' names are only shown to people signed in; visitors get one plain list, so it's never a public list of players.
 - **Holidays are simpler to edit:** a day shows its name, date and message; its colours, favourite kinds and scheduled show are folded away under **Fireworks for this day**. Easter's date option says *Easter Sunday (worked out each year)*.
+- The web map through Solstone never lets a browser keep an empty map square, so squares drawn later show up.
 
 # Solstone 1.9.6
 

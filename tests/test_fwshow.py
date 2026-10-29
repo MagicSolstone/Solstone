@@ -189,3 +189,25 @@ def test_players_pick_their_own_join_firework(client):
     finally:
         client.delete(f"/api/users/{u['id']}")
         client.delete(f"/api/fireworks/{d['id']}")
+
+
+def test_in_the_show_limit(client, viewer):
+    """Keep up to the keep limit, but only so many in the show at once (admins: no limit)."""
+    client.put("/api/fireworks/limit", json={"show_per_person": 2})
+    made = []
+    try:
+        for n in range(3):
+            made.append(viewer.post("/api/fireworks", json={"name": f"Kid {n}", "in_show": True}).json())
+        assert [d["in_show"] for d in made] == [True, True, False] and made[2].get("show_full")
+        r = viewer.put(f"/api/fireworks/{made[2]['id']}", json={"in_show": True})
+        assert r.status_code == 400 and "in the show" in r.json()["detail"]
+        saved = viewer.put(f"/api/fireworks/{made[2]['id']}", json={"name": "Kid 2b", "in_show": True}).json()
+        assert saved["name"] == "Kid 2b" and saved["in_show"] is False and saved["show_full"]     # changes kept
+        viewer.put(f"/api/fireworks/{made[0]['id']}", json={"in_show": False})
+        assert viewer.put(f"/api/fireworks/{made[2]['id']}", json={"in_show": True}).status_code == 200
+        lim = viewer.get("/api/fireworks/limit").json()
+        assert lim["show_per_person"] == 2 and lim["mine_in_show"] == 2
+    finally:
+        client.put("/api/fireworks/limit", json={"show_per_person": 5})
+        for d in made:
+            client.delete(f"/api/fireworks/{d['id']}")

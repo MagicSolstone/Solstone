@@ -586,7 +586,8 @@ async function fweSave(asNew) {
   try {
     const saved = ed.id && !asNew ? await post(`/api/fireworks/${ed.id}`, body, "PUT") : await post("/api/fireworks", body);
     ed.id = saved.id; ed.d = { ...fweCopy(FWE_DEFAULT), ...saved }; fweMarkSaved(); fweClearDraft();
-    showToast(`Saved “${esc(saved.name)}”${saved.in_show ? " · it's in the show" : ""}`, 2500);
+    showToast(saved.show_full ? `Saved “${esc(saved.name)}”. It's not in the show: you already have ${ed.limit?.show_per_person} there. Take one out to put this one in.`
+      : `Saved “${esc(saved.name)}”${saved.in_show ? " · it's in the show" : ""}`, saved.show_full ? 6000 : 2500);
     await fweRefresh();
     location.hash = `#/fireworks/${saved.id}`;
   } catch (err) { showError(esc(err.message), 4000); }
@@ -606,15 +607,22 @@ function renderGallery() {
   const by = ed.show === "all" ? "maker" : "";
   const lim = ed.limit, mine = ed.list.filter((f) => f.mine).length;
   const count = $("#fwe-count");
-  if (count) count.textContent = lim?.limited && lim.per_person ? `${ed.list.length} · ${mine} of ${lim.per_person} yours` : String(ed.list.length);
+  const inShow = ed.list.filter((f) => f.mine && f.in_show).length;
+  if (count) count.textContent = lim?.limited && lim.per_person
+    ? `${ed.list.length} · ${mine} of ${lim.per_person} yours${lim.show_per_person ? ` · ${inShow} of ${lim.show_per_person} in the show` : ""}` : String(ed.list.length);
   const filt = $("#fwe-filter");
   if (filt && !filt._wired) {
     filt._wired = true;
     filt.innerHTML = `<div class="seg" role="group" aria-label="Show">${[["mine", "Mine"], ["all", "Everyone's"], ["show", "In the show"]].map(([k, l]) => `<button type="button" data-show="${k}" aria-pressed="${ed.show === k}">${l}</button>`).join("")}</div>
       <input class="input sm" type="search" id="fwe-q" placeholder="Search names" value="${esc(ed.q)}" aria-label="Search saved fireworks">
-      ${isAdmin() ? `<label class="fwe-limit small">Each person can keep <select class="input sm" id="fwe-limit">${[5, 10, 20, 30, 50, 100, 0].map((n) => `<option value="${n}" ${lim?.per_person === n ? "selected" : ""}>${n || "any number"}</option>`).join("")}</select> <span class="muted">(admins: no limit)</span></label>` : ""}`;
+      ${isAdmin() ? `<label class="fwe-limit small">Each person can keep <select class="input sm" id="fwe-limit">${[5, 10, 20, 30, 50, 100, 0].map((n) => `<option value="${n}" ${lim?.per_person === n ? "selected" : ""}>${n || "any number"}</option>`).join("")}</select>,
+        with <select class="input sm" id="fwe-show-limit">${[1, 3, 5, 10, 20, 0].map((n) => `<option value="${n}" ${lim?.show_per_person === n ? "selected" : ""}>${n || "any number"}</option>`).join("")}</select> in the show <span class="muted">(admins: no limit)</span></label>` : ""}`;
     filt.querySelectorAll("[data-show]").forEach((b) => b.addEventListener("click", () => { ed.show = b.dataset.show; filt.querySelectorAll("[data-show]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); renderGallery(); }));
     $("#fwe-q", filt)?.addEventListener("input", (e) => { ed.q = e.target.value; renderGallery(); });
+    $("#fwe-show-limit", filt)?.addEventListener("change", async (e) => {
+      try { ed.limit = { ...ed.limit, ...(await post("/api/fireworks/limit", { show_per_person: +e.target.value }, "PUT")) }; showToast("Saved", 1500); renderGallery(); }
+      catch (err) { showError(esc(err.message), 4000); }
+    });
     $("#fwe-limit", filt)?.addEventListener("change", async (e) => {
       try { ed.limit = { ...ed.limit, ...(await post("/api/fireworks/limit", { per_person: +e.target.value }, "PUT")) }; showToast("Saved", 1500); renderGallery(); }
       catch (err) { showError(esc(err.message), 4000); }
@@ -660,7 +668,7 @@ function renderGallery() {
     });
     card.querySelector('[data-act="show"]')?.addEventListener("change", async (e) => {
       try { await post(`/api/fireworks/${f.id}`, { in_show: e.target.checked }, "PUT"); await fweRefresh(); }
-      catch (err) { showError(esc(err.message), 4000); }
+      catch (err) { e.target.checked = !e.target.checked; showError(esc(err.message), 5000); }
     });
     card.querySelector('[data-act="del"]')?.addEventListener("click", async () => {
       if (!(await confirmBox(`Delete “${f.name}”?`, "It will stop appearing in the show.", "Delete"))) return;

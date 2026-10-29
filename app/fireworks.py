@@ -82,6 +82,7 @@ STAGE_NUMBERS = {"delay": (0.1, 4, 0.8), "size": (0.2, 3, 0.8), "sparks": (8, 12
 PIC_MAX = 25
 MAX_DESIGNS = 1000                   # everyone together (a safety cap, not a working limit)
 PER_PERSON_DEFAULT = 20             # how many each person (not admins) can keep; admins can change it
+SHOW_PER_PERSON_DEFAULT = 5         # and how many of those can be in the show at once, so everyone's turn up
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 _PIC_ROW = re.compile(r"^[.0-3]*$")
 _lock = threading.Lock()  # read-modify-write of the design list
@@ -235,23 +236,42 @@ def set_per_person(n) -> int:
     return n
 
 
+def show_per_person() -> int:
+    """How many of each person's fireworks can be in the show at once (0: no limit). Admins are never limited."""
+    v = settings_store.load().get("firework_show_limit")
+    return int(v) if isinstance(v, int) and v >= 0 else SHOW_PER_PERSON_DEFAULT
+
+
+def set_show_per_person(n) -> int:
+    n = max(0, min(500, int(n)))
+    settings_store.save_section("firework_show_limit", n)
+    return n
+
+
+def count_in_show(author: str) -> int:
+    return sum(1 for d in _load() if d.get("author") == author and d.get("in_show"))
+
+
 def count_by(author: str) -> int:
     return sum(1 for d in _load() if d.get("author") == author)
 
 
-def create(design: dict, author: str, limit: int | None = None) -> dict:
-    """`limit`: how many this person may keep (None: no limit, for admins)."""
+def create(design: dict, author: str, limit: int | None = None, show_limit: int | None = None) -> dict:
+    """`limit`: how many this person may keep; `show_limit`: how many of theirs can be in the show (None: no
+    limit, for admins). Over the show limit, it's saved but kept out of the show (show_full says so)."""
     with _lock:
         items = _load()
         if len(items) >= MAX_DESIGNS:
             raise ValueError(f"There are already {MAX_DESIGNS} saved fireworks. Some need deleting first.")
         if limit and sum(1 for d in items if d.get("author") == author) >= limit:
             raise ValueError(f"You've saved {limit} fireworks, the most each person can keep. Delete one to make room, or ask an admin for more.")
+        want = bool(design.get("in_show", True))
+        full = bool(want and show_limit and sum(1 for d in items if d.get("author") == author and d.get("in_show")) >= show_limit)
         d = {"id": secrets.token_hex(6), **sanitize(design), "author": author,
-             "in_show": bool(design.get("in_show", True)), "created": time.time(), "updated": time.time()}
+             "in_show": want and not full, "created": time.time(), "updated": time.time()}
         items.append(d)
         _save(items)
-        return d
+        return {**d, "show_full": True} if full else d
 
 
 def get(fid: str) -> dict | None:

@@ -1424,7 +1424,8 @@ async def remove_sound(sound_id: str, request: Request):
 @app.get("/api/fireworks/limit")
 async def firework_limit(request: Request):
     user = request.state.user
-    return {"per_person": fireworks.per_person(), "mine": fireworks.count_by(user.username), "limited": user.role != "admin"}
+    return {"per_person": fireworks.per_person(), "mine": fireworks.count_by(user.username), "limited": user.role != "admin",
+            "show_per_person": fireworks.show_per_person(), "mine_in_show": fireworks.count_in_show(user.username)}
 
 
 @app.put("/api/fireworks/limit")
@@ -1432,19 +1433,25 @@ async def set_firework_limit(request: Request):
     user = request.state.user
     if user.role != "admin":
         raise HTTPException(403, "Only admins can change this")
+    body = await _body(request)
     try:
-        n = fireworks.set_per_person((await _body(request)).get("per_person"))
+        if "per_person" in body:
+            fireworks.set_per_person(body["per_person"])
+        if "show_per_person" in body:
+            fireworks.set_show_per_person(body["show_per_person"])
     except (TypeError, ValueError) as e:
         raise HTTPException(400, "Give a number") from e
-    auth.audit(user, None, "firework_limit", str(n))
-    return {"per_person": n}
+    auth.audit(user, None, "firework_limit", f"keep {fireworks.per_person()}, in the show {fireworks.show_per_person()}")
+    return {"per_person": fireworks.per_person(), "show_per_person": fireworks.show_per_person()}
 
 
 @app.post("/api/fireworks")
 async def create_firework(request: Request):
     user = request.state.user
     try:
-        d = fireworks.create(await _body(request), user.username, None if user.role == "admin" else fireworks.per_person())
+        admin = user.role == "admin"
+        d = fireworks.create(await _body(request), user.username, None if admin else fireworks.per_person(),
+                             None if admin else fireworks.show_per_person())
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     auth.audit(user, None, "firework_create", d["name"])
@@ -1460,11 +1467,19 @@ async def update_firework(fid: str, request: Request):
     if not _can_edit(user, d):
         raise HTTPException(403, "Only its maker or an admin can change this firework")
     body = await _body(request)
+    cap = fireworks.show_per_person()
+    full = user.role != "admin" and body.get("in_show") and not d.get("in_show") and cap \
+        and fireworks.count_in_show(d.get("author", "")) >= cap
+    if full and set(body) == {"in_show"}:       # just the Show tick: say why it can't
+        raise HTTPException(400, f"You already have {cap} fireworks in the show, the most each person can. Take one out of the show first.")
+    if full:                                     # saving the whole firework: keep the changes, out of the show
+        body["in_show"] = False
     if user.role != "admin":
         body.pop("weight", None)                  # how often it shows is the admins' call
     elif "weight" in body:
         body["weight"] = _weight(body["weight"])
-    return fireworks.update(fid, body)
+    saved = fireworks.update(fid, body)
+    return {**saved, "show_full": True} if full and saved else saved
 
 
 @app.delete("/api/fireworks/{fid}")
