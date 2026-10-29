@@ -317,7 +317,7 @@ function sfxMutate(p) {
 const FW_KIND_NAMES = { ball: ["⚪", "Ball"], large: ["🔴", "Big ball"], star: ["⭐", "Star"], burst: ["💥", "Burst"], ring: ["⭕", "Ring"],
   crossette: ["✳️", "Crossette"], spiral: ["🌀", "Spiral"], willow: ["🌿", "Willow"], saturn: ["🪐", "Saturn"], pair: ["👯", "Pair"],
   cube: ["🧊", "Cube"], pickaxe: ["⛏️", "Pickaxe"], axe: ["🪓", "Axe"], creeper: ["🟩", "Creeper"], heart: ["❤️", "Heart"], candle: ["🕯️", "Candle"],
-  cake: ["🎂", "Cake"], fountain: ["⛲", "Fountain"], wheel: ["🎡", "Wheel"], sparkler: ["✨", "Sparkler"], shootingstar: ["🌠", "Shooting star"],
+  cake: ["🧨", "Barrage"], fountain: ["⛲", "Fountain"], wheel: ["🎡", "Wheel"], sparkler: ["✨", "Sparkler"], shootingstar: ["🌠", "Shooting star"],
   dragon: ["🐉", "Dragon"], bow: ["🏹", "Bow"], tree: ["🌲", "Tree"] };
 
 // opts: key (localStorage name for the Show switch), defaultOn, hide (offer "hide the page"),

@@ -29,7 +29,7 @@ def test_private_server_is_for_admins_only(client, viewer, anon, sid):
         assert "Home only" not in texts(anon, where="status", sid=sid)
         assert "Home only" in texts(client, where="status", sid=sid)
     finally:
-        client.put("/api/board", json={"items": [], "birthdays": []})
+        client.put("/api/board", json={"items": []})
         _set(client, sid, private="")
     assert viewer.get(f"/api/servers/{sid}").status_code == 200
 

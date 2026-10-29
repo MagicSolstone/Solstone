@@ -141,7 +141,7 @@ async function home() {
     ${s.about ? `<section class="hp-about glass"><h2>About</h2><div class="hp-body">${markdown(s.about)}</div></section>` : ""}`;
 }
 
-// What's planned, for everyone (no names: no birthdays, nobody's sign-up). Signed in, the app's Events page has more.
+// What's planned, for everyone (no names: nobody's sign-up). Signed in, the app's Events page has more.
 async function eventsPage() {
   const d = await getJSON("/api/public/upcoming");
   const day = (iso) => { const [y, m, dd] = iso.split("-").map(Number); return new Date(y, m - 1, dd).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" }); };

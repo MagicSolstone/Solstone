@@ -1,5 +1,5 @@
 """Coming up: everything with a date ahead, in one list. Contests, races and games that are
-scheduled (or on right now), birthdays, the fireworks calendar's holidays and their shows,
+scheduled (or on right now), the fireworks calendar's holidays and their shows,
 and announcements counting down to something."""
 from __future__ import annotations
 
@@ -70,14 +70,6 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
                 ends=r["start"] + float(r.get("minutes") or 10) * 60, optin=bool(r.get("optin")))
 
     cfg = board.config()
-    # birthdays
-    for b in cfg["birthdays"]:
-        bd = board._birthday_on(b, today.year)
-        if bd < today:
-            bd = board._birthday_on(b, today.year + 1)
-        if (bd - today).days <= days:
-            at = datetime.combine(bd, datetime.min.time(), zone).timestamp()
-            add(at, "birthday", "🎂", f"{b['player']}'s birthday", "Today!" if bd == today else "", all_day=True, live=bd == today)
 
     # the fireworks calendar: holidays (and the show on the night, if it has one)
     for e in fwshow.calendar():

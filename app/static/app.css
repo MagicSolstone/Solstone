@@ -1064,11 +1064,8 @@ body.ui-hidden .board-stack:not(#sp-board) { display: none !important; }
 .ann-picks .btn { padding: 4px 8px; font-size: 1.05rem; }
 .ann-full { display: grid; gap: 4px; font-weight: 700; font-size: .88rem; }
 .ann-checks { display: flex; flex-wrap: wrap; gap: 6px 16px; font-weight: 400; }
-.ann-bdays { display: grid; gap: 8px; }
-.ann-bday { display: grid; grid-template-columns: 28px minmax(110px, 160px) 130px 70px minmax(120px, 1fr) auto auto auto; gap: 8px; align-items: center; }
 .ann-bt-list { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-@media (max-width: 900px) { .ann-bday { grid-template-columns: 28px 1fr 1fr; } .ann-bday > :nth-child(5), .ann-bday > :nth-child(6) { grid-column: 2 / -1; } }
 
 /* ------------------------------------------------------------ recap cards */
 .rc-wrap { margin-bottom: 22px; }
@@ -1778,9 +1775,6 @@ a.glance-me:hover { border-color: var(--gold); }
 #live > .sp-main > .tv-dots { margin-bottom: 8px; }
 .hp-live .sp-servers { margin-bottom: 12px; }
 .hp-live .sp-servers:empty { display: none; }
-.su-bday { display: grid; gap: 6px; margin: 6px 0 4px; }
-.su-bday small { display: block; color: var(--muted); }
-.su-bday-row { display: flex; gap: 8px; }
 .turned-away { margin-top: 14px; }
 .turned-away ul { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 6px; }
 .turned-away li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; background: rgba(255, 154, 60, .1); border: 1px solid rgba(255, 154, 60, .35); }

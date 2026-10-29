@@ -55,7 +55,7 @@ Good to know on Bedrock:
 3. Type your Minecraft name as it shows in the game. On Bedrock it starts with a dot, like *.Steve*.
 4. A six-digit code appears in your game chat. Only you can see it, and it works for 10 minutes.
 5. Type the code and pick a password for this website. **Don't use your Microsoft password.** You sign in with your Minecraft name and this password.
-6. If you like, add your first name (only the admins see it) and your birthday, just the month and day (for a birthday banner and fireworks).
+6. If you like, add your first name (only the admins see it).
 
 ## Play on Java and Bedrock?
 Link both to the same account: open the menu under your name, choose **My Minecraft accounts**, and type your other name while playing as it. Then you can sign in with either name, with the same password, and pick which one the website shows (⭐ Main).

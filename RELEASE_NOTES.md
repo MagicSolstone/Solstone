@@ -1,3 +1,13 @@
+# Solstone 1.11.1
+
+- **Birthdays are gone:**
+  - **Sign-up** no longer asks for a birthday.
+  - **Announcements** has no Birthdays tab: no birthday banners, no "birthday in 3 days", no birthday show, and no "Happy birthday" in the game.
+  - **Events** no longer lists birthdays.
+  - **Saved birthdays are deleted** the first time Solstone starts after updating.
+- **Fireworks:** the *Cake* firework is now called *Barrage* (🧨), so it doesn't look like a birthday cake. It fires the same fast fan of shots.
+- **Holidays:** a new holiday added with **+ Add** starts as *New holiday* (🎉) with no message, instead of a birthday.
+
 # Solstone 1.11.0
 
 Includes everything in 1.10.6 (not released on its own), plus:

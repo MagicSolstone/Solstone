@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.11.0"
+VERSION = "1.11.1"
 
 
 @asynccontextmanager
@@ -825,9 +825,8 @@ async def signup_finish(request: Request):
     _signup_on()
     body = await _body(request)
     password = str(body.get("password") or "")
-    bd = body.get("birthday") if isinstance(body.get("birthday"), dict) else None
     u = await asyncio.to_thread(signup.finish, str(body.get("player") or ""), str(body.get("code") or ""),
-                                str(body.get("username") or ""), password, str(body.get("real_name") or "")[:60], bd)
+                                str(body.get("username") or ""), password, str(body.get("real_name") or "")[:60])
     auth.audit(u, None, "signup", f"{u.username} as {u.player_name}")
     user, token = await asyncio.to_thread(auth.login, request, u.username, password)
     resp = JSONResponse({"user": _me(user)})
@@ -977,7 +976,7 @@ async def recap_backfill(request: Request):
     return {"days": total}
 
 
-# ---- announcements, birthdays and countdowns
+# ---- announcements and countdowns
 def _board_servers() -> list[S.Server]:
     return [x for x in S.registry.servers.values() if not x.settings.get("hidden")]
 
@@ -1021,7 +1020,7 @@ async def put_board(request: Request):
     user = auth.require_admin(request)
     body = await _body(request)
     cfg = board.save(body)
-    auth.audit(user, None, "announcements", f"{len(cfg['items'])} announcements, {len(cfg['birthdays'])} birthdays")
+    auth.audit(user, None, "announcements", f"{len(cfg['items'])} announcements")
     return await get_board(request)
 
 
@@ -1451,11 +1450,11 @@ async def get_upcoming(request: Request):
 
 @app.get("/api/public/upcoming")
 async def public_upcoming():
-    """What's planned, for the public Events page: no player's name anywhere (no birthdays, nobody's sign-up)."""
+    """What's planned, for the public Events page: no player's name anywhere (nobody's sign-up)."""
     await S.registry.refresh()
     names = {sid: srv.display_name for sid, srv in S.registry.servers.items() if _visible(srv) and not _private(srv)}
     items = [{k: v for k, v in i.items() if k not in ("link", "key")} for i in upcoming.items(names)
-             if i["kind"] not in ("birthday",) and (i.get("server") is None or i["server"] in names.values())]
+             if i.get("server") is None or i["server"] in names.values()]
     return JSONResponse({"items": items, "days": upcoming.DAYS, "now": time.time()}, headers={"Cache-Control": "no-cache"})
 
 

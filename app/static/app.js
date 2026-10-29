@@ -97,9 +97,6 @@ function openSignup() {
       <p class="su-login">You'll sign in here with your Minecraft name, <b>${esc(player)}</b>, and the password you pick now.</p>
       <label>Pick a password <small>8 or more characters. Not the one for your Microsoft account.</small><input class="input" type="password" name="password" minlength="8" required autocomplete="new-password"></label>
       <label>Your first name <small>Optional. Only the admins see it, so they know who you are.</small><input class="input" name="real_name" maxlength="40" autocomplete="given-name"></label>
-      <div class="su-bday"><span>Your birthday <small>Optional. You get a birthday banner and fireworks on the day.</small></span>
-        <span class="su-bday-row"><select class="input sm" name="bmonth" aria-label="Birthday month"><option value="">Month</option>${["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map((m, i) => `<option value="${i + 1}">${m}</option>`).join("")}</select>
-          <select class="input sm" name="bday" aria-label="Birthday day"><option value="">Day</option>${Array.from({ length: 31 }, (_, i) => `<option>${i + 1}</option>`).join("")}</select></span></div>
       <p class="login-error" role="alert"></p>
       <div class="actions"><button type="button" class="btn" id="su-back">Send a new code</button><button class="btn primary" type="submit">Make my account</button></div></form>`;
   openModal(step1(), (m) => {
@@ -117,9 +114,8 @@ function openSignup() {
         e.preventDefault();
         const f = new FormData(e.target);
         try {
-          const birthday = f.get("bmonth") && f.get("bday") ? { month: +f.get("bmonth"), day: +f.get("bday") } : null;
           const r = await post("/api/public/signup/finish", { player, code: f.get("code"), password: f.get("password"),
-            real_name: f.get("real_name") || "", birthday });
+            real_name: f.get("real_name") || "" });
           closeModal(); signedIn(r.user); showToast(`Welcome, ${esc(r.user.shown)}!`, 3000);
         } catch (err) { $(".login-error", e.target).textContent = err.message; }
       });

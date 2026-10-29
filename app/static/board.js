@@ -1,5 +1,5 @@
 /* Solstone — announcement banners, shared by the app, the sign-in page and the status page.
-   Notes and countdowns (from Announcements), birthdays, bedtime and the holiday of the day.
+   Notes and countdowns (from Announcements), bedtime and the holiday of the day.
    Countdowns tick here every second; at zero a note can set off a show. */
 "use strict";
 
@@ -94,18 +94,6 @@ function startBoard(el, opts = {}) {
     if (opts.ticker?.() && Date.now() - turnAt > 7000) { turn++; turnAt = Date.now(); render(); }
     tickT = setTimeout(tick, 1000 - (Date.now() % 1000) + 5);
   }
-  // A birthday with a show plays it once a day in each browser.
-  function birthdayShows() {
-    const scene = opts.scene?.();
-    if (!scene) return;
-    for (const it of items) {
-      if (it.kind !== "birthday") continue;
-      const key = `solstone-played-${it.id}`;
-      if (lsGet(key, false)) continue;
-      lsSet(key, true);
-      setTimeout(() => { if (it.show) scene.boost(45, it.show); else scene.celebrate(6); }, 1500);
-    }
-  }
   async function poll() {
     clearTimeout(pollT);
     if (stopped) return;
@@ -118,7 +106,6 @@ function startBoard(el, opts = {}) {
           offset = d.now * 1000 - Date.now();
           items = d.items || [];
           render();
-          birthdayShows();
         } else if (r.status === 404 || r.status === 401) { items = []; render(); }
       } catch { /* try again soon */ }
     }

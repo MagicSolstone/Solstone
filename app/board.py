@@ -1,7 +1,7 @@
 """Announcements: banners on the status page, the app and the sign-in page.
 
 An admin writes notes (with an optional countdown that can set off a show and post
-in the game when it reaches zero) and birthdays. Bedtime countdowns and the
+in the game when it reaches zero). Bedtime countdowns and the
 holiday of the day are added automatically.
 """
 from __future__ import annotations
@@ -9,10 +9,9 @@ from __future__ import annotations
 import logging
 import re
 import secrets
-from datetime import date, datetime
+from datetime import datetime
 
 from . import db, fwshow, mcname, playtime, settings_store
-from . import servers as S
 from .control import clean_text, component
 from .rcon import RconError
 
@@ -20,7 +19,7 @@ log = logging.getLogger("solstone.board")
 
 STYLES = ("info", "party", "heads")
 WHERE = ("home", "status", "app", "login")
-DEFAULTS = {"items": [], "birthdays": [], "bedtime": {"show": True, "minutes": 30}, "birthday_soon": 7}
+DEFAULTS = {"items": [], "bedtime": {"show": True, "minutes": 30}}
 _DT = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")
 _NAME = mcname.NAME_RE
 
@@ -59,61 +58,28 @@ def clean_item(it: dict) -> dict | None:
             "say": bool(it.get("say")), "where": where, "server": str(it.get("server") or "")[:64]}
 
 
-def clean_birthday(b: dict) -> dict | None:
-    if not isinstance(b, dict) or not _NAME.match(str(b.get("player") or "")):
-        return None
-    try:
-        m, d = int(b.get("month")), int(b.get("day"))
-        date(2024, m, d)                      # a leap year, so 29 February is allowed
-    except (TypeError, ValueError):
-        return None
-    return {"player": str(b["player"]), "month": m, "day": d,
-            "show": re.sub(r"[^a-z0-9_-]", "", str(b.get("show") or ""))[:24], "say": bool(b.get("say", True))}
-
-
 def config() -> dict:
     saved = settings_store.load().get("board") or {}
+    if "birthdays" in saved or "birthday_soon" in saved:      # birthdays aren't kept any more: what was saved goes
+        saved = {k: v for k, v in saved.items() if k not in ("birthdays", "birthday_soon")}
+        settings_store.save_section("board", saved)
     bt = saved.get("bedtime") or {}
     return {"items": [i for i in (clean_item(x) for x in saved.get("items") or []) if i],
-            "birthdays": [b for b in (clean_birthday(x) for x in saved.get("birthdays") or []) if b],
-            "bedtime": {"show": bool(bt.get("show", True)), "minutes": max(5, min(180, int(bt.get("minutes", 30) or 30)))},
-            "birthday_soon": max(0, min(31, int(saved.get("birthday_soon", 7) or 0)))}
-
-
-def add_birthday(player: str, month, day) -> bool:
-    """A player's birthday (from signing up): a banner and their show on the day. Keeps one per player."""
-    b = clean_birthday({"player": player, "month": month, "day": day})
-    if not b:
-        return False
-    cur = config()
-    cur["birthdays"] = [x for x in cur["birthdays"] if x["player"].lower() != player.lower()] + [b]
-    settings_store.save_section("board", cur)
-    return True
+            "bedtime": {"show": bool(bt.get("show", True)), "minutes": max(5, min(180, int(bt.get("minutes", 30) or 30)))}}
 
 
 def save(body: dict) -> dict:
     cur = config()
     if isinstance(body.get("items"), list):
         cur["items"] = [i for i in (clean_item(x) for x in body["items"][:60]) if i]
-    if isinstance(body.get("birthdays"), list):
-        cur["birthdays"] = [b for b in (clean_birthday(x) for x in body["birthdays"][:100]) if b]
     if isinstance(body.get("bedtime"), dict):
         cur["bedtime"] = {"show": bool(body["bedtime"].get("show", True)),
                           "minutes": max(5, min(180, int(body["bedtime"].get("minutes", 30) or 30)))}
-    if "birthday_soon" in body:
-        cur["birthday_soon"] = max(0, min(31, int(body.get("birthday_soon") or 0)))
     settings_store.save_section("board", cur)
     return cur
 
 
 # ------------------------------------------------------------------ what's showing now
-def _birthday_on(b: dict, year: int) -> date:
-    try:
-        return date(year, b["month"], b["day"])
-    except ValueError:                        # 29 February outside a leap year
-        return date(year, 2, 28)
-
-
 def _show(sid: str) -> dict | None:
     return fwshow.resolved(fwshow.get_show(sid)) if sid else None
 
@@ -147,20 +113,6 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
         out.append({"id": f"n-{it['id']}", "kind": "note", "text": it["text"], "detail": it["detail"], "emoji": it["emoji"],
                     "style": it["style"], "countdown": cd, "done_text": it["done_text"] or "It's here!",
                     "show": _show(it["show"]) if cd and it["show"] else None})
-    if names:
-        for b in cfg["birthdays"]:
-            bd = _birthday_on(b, now.year)
-            if bd < now.date():
-                bd = _birthday_on(b, now.year + 1)
-            days = (bd - now.date()).days
-            if days == 0:
-                out.append({"id": f"b-{b['player'].lower()}-{bd.isoformat()}", "kind": "birthday", "emoji": "🎂", "style": "party",
-                            "text": f"Happy birthday, {b['player']}!", "detail": "", "player": b["player"], "countdown": None,
-                            "show": _show(b["show"])})
-            elif 0 < days <= cfg["birthday_soon"]:
-                out.append({"id": f"bs-{b['player'].lower()}", "kind": "birthday-soon", "emoji": "🎈", "style": "info",
-                            "text": f"{b['player']}'s birthday is {'tomorrow' if days == 1 else f'in {days} days'}",
-                            "detail": bd.strftime("%A %d %B").replace(" 0", " "), "player": b["player"], "countdown": None})
     if cfg["bedtime"]["show"] and where in ("home", "status", "app") and servers:
         pt = playtime.config()
         for srv in servers:
@@ -202,7 +154,7 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
         from . import challenges, games, races
         for one in ([sid] if sid or allowed is None else sorted(allowed)):
             out += challenges.banners(one) + races.banners(one) + games.banners(one)
-    order = {"bedtime": 0, "challenge": 0.5, "note": 1, "birthday": 2, "holiday": 3, "birthday-soon": 4, "holiday-soon": 4, "vote": 1.5}
+    order = {"bedtime": 0, "challenge": 0.5, "note": 1, "holiday": 3, "holiday-soon": 4, "vote": 1.5}
     out.sort(key=lambda x: (order.get(x["kind"], 5), x.get("countdown") or 1e12))
     return out
 
@@ -236,28 +188,4 @@ async def tick(servers: list) -> None:
         if db.alert_once(f"board:{it['id']}:{int(when)}"):
             text = it["done_text"] if cd and it["done_text"] else it["text"]
             await _say_all(servers, text, text if cd else "", it["server"])  # Minecraft's font has no emoji
-
-
-async def greet(srv: S.Server, player: str) -> None:
-    """Happy birthday in the game when someone joins on their birthday (once a day)."""
-    today = datetime.now(db.tz()).date()
-    for b in config()["birthdays"]:
-        if b["player"].lower() != player.lower() or not b["say"] or _birthday_on(b, today.year) != today:
-            continue
-        if not srv.rcon_conf() or not db.alert_once(f"bday:{srv.id}:{player.lower()}:{today}"):
-            return
-        try:
-            await srv.rcon(f"tellraw @a {component([('♥ Happy birthday, ', 'light_purple'), (b['player'], 'gold'), ('!', 'light_purple')])}")
-            await srv.rcon("title " + b["player"] + " times 10 80 20")
-            await srv.rcon(f"title {b['player']} title {component([('Happy birthday!', 'gold')])}")
-        except RconError as e:
-            log.debug("birthday greeting failed on %s: %s", srv.id, e)
-
-
-def days_until(b: dict, today: date | None = None) -> int:
-    today = today or datetime.now(db.tz()).date()
-    d = _birthday_on(b, today.year)
-    if d < today:
-        d = _birthday_on(b, today.year + 1)
-    return (d - today).days
 

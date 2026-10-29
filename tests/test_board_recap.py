@@ -1,4 +1,4 @@
-"""Announcements, birthdays, bedtime banners, daily recaps (with old-log backfill) and TV settings."""
+"""Announcements, bedtime banners, daily recaps (with old-log backfill) and TV settings."""
 import gzip
 import time
 from datetime import date, datetime, timedelta
@@ -70,35 +70,30 @@ def test_recap_api(client, viewer, anon, sid):
     assert isinstance(client.post("/api/recap/backfill").json()["days"], int)
 
 
-def test_announcements_birthdays_bedtime(client, viewer, anon, sid):
+def test_announcements_bedtime_and_no_birthdays(client, viewer, anon, sid):
     from app import board, db
     zone = db.tz()
     now = datetime.now(zone)
     soon = (now + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M")
     past = (now - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M")
-    yday = now - timedelta(days=1)
     assert viewer.get("/api/board").status_code == 403
     cfg = client.put("/api/board", json={
         "items": [{"text": "  Build contest  ", "emoji": "🏗️", "style": "party", "countdown": soon, "show": "grand-finale", "say": True},
                   {"text": "Old news", "end": past},
                   {"text": "Login only", "where": ["login"]},
                   {"text": ""}, {"text": "bad dates", "start": "tomorrow", "style": "loud"}],
-        "birthdays": [{"player": "Tyler", "month": now.month, "day": now.day, "show": "gentle-night"},
-                      {"player": "Ava", "month": yday.month, "day": yday.day},
-                      {"player": "bad name!", "month": 1, "day": 1}, {"player": "Mo", "month": 2, "day": 30}],
-        "birthday_soon": 400}).json()
+        "birthdays": [{"player": "Tyler", "month": now.month, "day": now.day, "show": "gentle-night"}],
+        "birthday_soon": 4}).json()
     assert [i["text"] for i in cfg["items"]] == ["Build contest", "Old news", "Login only", "bad dates"]
     assert cfg["items"][3]["start"] == "" and cfg["items"][3]["style"] == "info"
-    assert [b["player"] for b in cfg["birthdays"]] == ["Tyler", "Ava"] and cfg["birthday_soon"] == 31
+    assert "birthdays" not in cfg and "birthday_soon" not in cfg                    # birthdays aren't kept any more
     assert "Tyler" in cfg["players"] and any(s["id"] == "grand-finale" for s in cfg["shows"])
 
     items = viewer.get(f"/api/public/board?where=app&sid={sid}").json()["items"]
     texts = [i["text"] for i in items]
-    assert "Build contest" in texts and "Happy birthday, Tyler!" in texts and "Old news" not in texts and "Login only" not in texts
+    assert "Build contest" in texts and not any("birthday" in t for t in texts) and "Old news" not in texts and "Login only" not in texts
     note = next(i for i in items if i["text"] == "Build contest")
     assert note["countdown"] > time.time() and note["show"]["name"] == "Grand finale"
-    assert next(i for i in items if i["kind"] == "birthday")["show"]["id"] == "gentle-night"
-    assert not any(i["kind"] == "birthday-soon" for i in items)          # Ava's was yesterday: a year away
 
     # Anonymous: no app banners; login page without player names while the status page is off.
     assert anon.get("/api/public/board?where=app").status_code == 401
@@ -127,7 +122,7 @@ def test_announcements_birthdays_bedtime(client, viewer, anon, sid):
         assert not [i for i in board.active("status", None, True, now, [srv]) if i["kind"] == "bedtime"]
     finally:
         playtime.save(keep)
-    client.put("/api/board", json={"items": [], "birthdays": []})
+    client.put("/api/board", json={"items": []})
 
 
 def test_public_live_extras(client, anon, sid):

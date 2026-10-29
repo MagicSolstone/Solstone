@@ -403,8 +403,6 @@ class Recorder:
                 # File reading happens in a thread; notifications need the event loop, so send them here.
                 for etype, message in await asyncio.to_thread(self.tail_server, srv):
                     maybe_notify(etype, srv.display_name, message, sid=srv.id)
-                    if etype == "join":
-                        await board.greet(srv, message.split(" ", 1)[0])
                 for player, text in self._chat.pop(srv.id, []):
                     await games.on_chat(srv, player, text)
                     await votegame.on_chat(srv, player, text)       # "!vote 2"

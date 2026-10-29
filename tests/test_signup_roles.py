@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from app import main, signup
+from app import main, settings_store, signup
 from app import servers as S
 
 import helpers
@@ -47,7 +47,7 @@ def test_signup_with_a_code_from_the_game(client, anon, game):
         bad = anon.post("/api/public/signup/finish", json={"player": "Tyler", "code": "000000", "username": "tyler_web", "password": "long-enough-1"})
         assert bad.status_code == 400
         ok = anon.post("/api/public/signup/finish", json={"player": "Tyler", "code": code, "username": "tyler_web", "password": "long-enough-1",
-                                                          "real_name": "Tyler J", "birthday": {"month": 3, "day": 14}})
+                                                          "real_name": "Tyler J", "birthday": {"month": 3, "day": 14}})     # an old page sending a birthday: ignored
         assert ok.status_code == 200, ok.text
         me = anon.get("/api/auth/me").json()["user"]
         assert me["role"] == "player" and me["player"]["name"] == "Tyler" and me["shown"] == "Tyler"
@@ -56,8 +56,7 @@ def test_signup_with_a_code_from_the_game(client, anon, game):
         from fastapi.testclient import TestClient
         c2 = TestClient(main.app, headers={"X-Solstone": "1"})
         assert c2.post("/api/auth/login", json={"username": "tyler", "password": "long-enough-1"}).status_code == 200
-        bdays = client.get("/api/board").json()["birthdays"]
-        assert {"player": "Tyler", "month": 3, "day": 14} == {k: v for k, v in next(b for b in bdays if b["player"] == "Tyler").items() if k in ("player", "month", "day")}
+        assert "birthdays" not in client.get("/api/board").json() and "14" not in str(settings_store.load().get("board") or {})
         assert me["servers"] == [helpers.SID]                       # the server they signed up on
         # the code is used up, and a second account for the same player isn't made
         again = anon.post("/api/public/signup/finish", json={"player": "Tyler", "code": code, "username": "tyler2", "password": "long-enough-1"})
@@ -66,7 +65,6 @@ def test_signup_with_a_code_from_the_game(client, anon, game):
         assert "already have an account" in game[-1] and "Tyler" in game[-1]
     finally:
         _signup_on(client, False)
-        client.put("/api/board", json={"birthdays": [b for b in client.get("/api/board").json()["birthdays"] if b["player"] != "Tyler"]})
         for u in client.get("/api/users").json():
             if u["username"] == "Tyler":
                 client.delete(f"/api/users/{u['id']}")

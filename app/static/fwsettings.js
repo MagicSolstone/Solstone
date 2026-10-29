@@ -229,8 +229,8 @@ function renderCalendar(el) {
   });
   if (fws.editing != null && cal[fws.editing]) wireCalEdit(el, fws.editing);
   $("#fws-add")?.addEventListener("click", async () => {
-    const next = [...fweCopy(cal), { name: "Birthday", emoji: "🎂", date: { type: "fixed", month: new Date().getMonth() + 1, day: new Date().getDate() }, days: 1,
-      colors: ["#ff8fc0", "#ffe45c", "#4fd7e6"], kinds: ["heart", "star", "crossette"], message: "Happy birthday!", enabled: true,
+    const next = [...fweCopy(cal), { name: "New holiday", emoji: "🎉", date: { type: "fixed", month: new Date().getMonth() + 1, day: new Date().getDate() }, days: 1,
+      colors: ["#ff8fc0", "#ffe45c", "#4fd7e6"], kinds: ["heart", "star", "crossette"], message: "", enabled: true,
       finale: { on: true, day: 0, time: "19:00", minutes: 5, countdown: false } }];
     await fwsSave({ calendar: next }, "Added");
     fws.editing = fws.data.calendar.length - 1; renderCalendar(el);

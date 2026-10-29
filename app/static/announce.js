@@ -1,13 +1,11 @@
-/* Solstone — Announcements (admins): banners with countdowns and birthdays (the bedtime countdown is in
+/* Solstone — Announcements (admins): banners with countdowns (the bedtime countdown is in
    Manage → Play time). Loaded after app.js. */
 "use strict";
 
-const ANN_TABS = [["banners", "Banners"], ["birthdays", "Birthdays"]];   // bedtime banners: Manage → Play time
 const ANN_STYLES = [["info", "Info"], ["party", "Celebration"], ["heads", "Heads-up"]];
 const ANN_WHERE = [["home", "Home page"], ["app", "Signed-in pages"], ["login", "Sign-in page"]];
 const ANN_EMOJI = ["📣", "🎉", "🏗️", "🏆", "⚠️", "🎂", "🌙", "🎃", "🎄", "⛏️", "🐉", "🎬"];
-const ANN_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const ann = { tab: "banners", data: null, editing: null };
+const ann = { data: null, editing: null };
 
 async function viewAnnouncements() {
   if (!isAdmin()) { location.replace("#/"); return; }
@@ -18,18 +16,13 @@ async function viewAnnouncements() {
   ann.editing = null;
   setView(`<div class="fwe-head"><h1>Announcements</h1>
       <p class="muted">Banners across the top of the home page, the signed-in pages and the sign-in page. Add a countdown and it ticks down live, then can set off a show and post in the game.</p></div>
-    <nav class="fwe-tabs fws-tabs" role="tablist" aria-label="Announcements">${ANN_TABS.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${ann.tab === k}">${l}</button>`).join("")}</nav>
     <div id="ann-body"></div>`);
-  $$(".fws-tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
-    ann.tab = b.dataset.tab; ann.editing = null;
-    $$(".fws-tabs [data-tab]").forEach((x) => x.setAttribute("aria-selected", String(x === b))); renderAnn();
-  }));
   renderAnn();
 }
 function renderAnn() {
   const el = $("#ann-body");
   if (!el) return;
-  ({ banners: annBanners, birthdays: annBirthdays })[ann.tab]?.(el) ?? annBanners(el);
+  annBanners(el);
 }
 async function annSave(part, msg = "Saved") {
   try { ann.data = await post("/api/board", part, "PUT"); showToast(msg, 2000); appSky.board?.refresh(); return true; }
@@ -147,53 +140,13 @@ function annWireEdit(form) {
   });
 }
 
-// ---------------------------------------------------------------- birthdays
-function annDaysUntil(b) {
-  const t = new Date(); t.setHours(0, 0, 0, 0);
-  const at = (y) => { const d = new Date(y, b.month - 1, b.day); return d.getMonth() === b.month - 1 ? d : new Date(y, 1, 28); };
-  let d = at(t.getFullYear());
-  if (d < t) d = at(t.getFullYear() + 1);
-  return Math.round((d - t) / 864e5);
-}
-function annBirthdays(el) {
-  const d = ann.data;
-  const list = [...d.birthdays].sort((a, b) => annDaysUntil(a) - annDaysUntil(b));
-  const row = (b) => `<div class="ann-bday" data-player="${esc(b.player)}">
-      <span class="ann-bd-face">${faceHtml({ name: b.player, uuid: (d.uuids || {})[String(b.player).toLowerCase()] }, 28)}</span>
-      <input class="input sm" name="player" value="${esc(b.player)}" list="ann-players" maxlength="16" aria-label="Player" placeholder="Player">
-      <select class="input sm" name="month" aria-label="Month">${ANN_MONTHS.map((m, i) => `<option value="${i + 1}" ${i + 1 === b.month ? "selected" : ""}>${m}</option>`).join("")}</select>
-      <input class="input sm" name="day" type="number" min="1" max="31" value="${b.day}" aria-label="Day" style="width:70px">
-      <select class="input sm" name="show" aria-label="Show"><option value="">A few fireworks</option>${d.shows.map((s) => `<option value="${esc(s.id)}" ${s.id === b.show ? "selected" : ""}>🎬 ${esc(s.name)}</option>`).join("")}</select>
-      <label class="check small"><input type="checkbox" name="say" ${b.say ? "checked" : ""}> Wish them in the game</label>
-      <span class="muted small">${b.player ? (annDaysUntil(b) === 0 ? "🎂 Today!" : `in ${annDaysUntil(b)} days`) : ""}</span>
-      <button class="btn sm" type="button" data-del aria-label="Remove">×</button></div>`;
-  el.innerHTML = `<section class="panel"><p class="muted" style="margin-bottom:12px">On someone's birthday a banner wishes them a happy birthday everywhere, their show plays once on each screen, and (if you like) the game wishes them happy birthday when they join. Before that, a smaller banner counts the days.</p>
-    <datalist id="ann-players">${d.players.map((p) => `<option value="${esc(p)}">`).join("")}</datalist>
-    <div class="ann-bdays" id="ann-bdays">${list.map(row).join("") || ""}</div>
-    <button class="btn" id="ann-bd-add" type="button" style="margin-top:10px">+ Add a birthday</button>
-    <div class="fw-row" style="margin-top:14px"><span>Banner ahead</span><span><input class="input sm" type="number" min="0" max="31" id="ann-soon" value="${d.birthday_soon}" style="width:70px"> days before (0 for none)</span></div>
-    <div class="actions" style="justify-content:flex-start;margin-top:12px"><button class="btn primary" id="ann-bd-save" type="button">Save birthdays</button></div></section>`;
-  $("#ann-bd-add").addEventListener("click", () => {
-    const now = new Date();
-    $("#ann-bdays").insertAdjacentHTML("beforeend", row({ player: "", month: now.getMonth() + 1, day: now.getDate(), show: "", say: true }));
-    $("#ann-bdays").lastElementChild.querySelector("[name=player]").focus();
-  });
-  $("#ann-bdays").addEventListener("click", (e) => { if (e.target.closest("[data-del]")) e.target.closest(".ann-bday").remove(); });
-  $("#ann-bd-save").addEventListener("click", async () => {
-    const birthdays = $$(".ann-bday").map((r) => ({ player: r.querySelector("[name=player]").value.trim(), month: +r.querySelector("[name=month]").value,
-      day: +r.querySelector("[name=day]").value, show: r.querySelector("[name=show]").value, say: r.querySelector("[name=say]").checked })).filter((b) => b.player);
-    const bad = birthdays.find((b) => !/^\.?[A-Za-z0-9_]{1,16}$/.test(b.player));
-    if (bad) { showToast(`“${esc(bad.player)}” isn't a Minecraft name`, 4000); return; }
-    if (await annSave({ birthdays, birthday_soon: +$("#ann-soon").value || 0 }, "Birthdays saved")) renderAnn();
-  });
-}
 
 
 // ================================================================ events
-// Everything with a date ahead, in one list: contests, races, games, birthdays, holidays and
+// Everything with a date ahead, in one list: contests, races, games, holidays and
 // their shows, announcements counting down.
 const UP_SIGNUP = new Set(["contest", "race", "game", "show"]);      // things people can say they're coming to
-const UP_KIND = { contest: "Contest", race: "Race", game: "Game", birthday: "Birthday", holiday: "Holiday", show: "Fireworks", note: "Announcement" };
+const UP_KIND = { contest: "Contest", race: "Race", game: "Game", holiday: "Holiday", show: "Fireworks", note: "Announcement" };
 async function viewUpcoming() {
   curSid = null;
   document.title = `Events · ${SITE_NAME}`;
@@ -219,11 +172,11 @@ async function viewUpcoming() {
   const groups = [];
   for (const it of ahead) { const g = groups[groups.length - 1]; if (g && g.date === it.date) g.items.push(it); else groups.push({ date: it.date, items: [it] }); }
   setView(`<div class="fwe-head"><h1>Events</h1>
-      <p class="muted">Everything planned for the next ${d.days} days: contests, races and games, birthdays, holidays and their fireworks shows, and announcements counting down.${isAdmin() ? ` Add things from a server's <b>Contests</b> page, <a href="#/manage/holidays">Holidays</a> or <a href="#/manage/announcements">Announcements</a>.` : ""}</p></div>
+      <p class="muted">Everything planned for the next ${d.days} days: contests, races and games, holidays and their fireworks shows, and announcements counting down.${isAdmin() ? ` Add things from a server's <b>Contests</b> page, <a href="#/manage/holidays">Holidays</a> or <a href="#/manage/announcements">Announcements</a>.` : ""}</p></div>
     ${live.length ? `<section class="section"><div class="section-head"><h2>Happening now</h2></div><ul class="up-list panel">${live.map(row).join("")}</ul></section>` : ""}
     ${groups.length ? groups.map((g) => `<section class="section up-day"><div class="section-head"><h2>${esc(dayKey(g.date))}</h2></div><ul class="up-list panel">${g.items.map(row).join("")}</ul></section>`).join("")
       : live.length ? "" : `<div class="panel up-empty"><span class="up-empty-emoji" aria-hidden="true">🗓️</span><h2>No events scheduled</h2>
-          <p class="muted">Nothing's planned for the next ${Math.round(d.days / 30)} months yet. Contests, races, birthdays and holidays show up here when they're added.</p>
+          <p class="muted">Nothing's planned for the next ${Math.round(d.days / 30)} months yet. Contests, races and holidays show up here when they're added.</p>
           ${isAdmin() ? `<p class="muted small">Add a contest from a server's <b>Contests</b> page, a holiday on <a href="#/manage/holidays">Holidays</a>, or a countdown in <a href="#/manage/announcements">Announcements</a>.</p>` : ""}</div>`}`);
   $$("[data-coming]", view()).forEach((b) => b.addEventListener("click", async () => {
     const it = d.items.find((x) => x.key === b.dataset.coming);
