@@ -433,16 +433,16 @@ async function wsNudge(form, sid) {
   const show = () => $$(".wel-preview", form).forEach((pv) => { pv.innerHTML = welcomePreview(sample(form[pv.dataset.for].value), sid) || ""; });
   const fillIn = () => {
     form.join.checked = cfg.join; form.live.checked = cfg.live; form.repeat_minutes.value = cfg.repeat_minutes;
-    form.join_text.value = cfg.join_text; form.live_text.value = cfg.live_text; show();
+    form.join_text.value = cfg.join_text; form.live_text.value = cfg.live_text; form.signup.value = cfg.signup; form.signup_text.value = cfg.signup_text; show();
   };
   fillIn();
   form.addEventListener("input", show);
-  $("[data-nudge-reset]", form).addEventListener("click", () => { form.join_text.value = cfg.defaults.join_text; form.live_text.value = cfg.defaults.live_text; show(); });
+  $("[data-nudge-reset]", form).addEventListener("click", () => { for (const k of ["join_text", "live_text", "signup_text"]) form[k].value = cfg.defaults[k]; show(); });
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
       cfg = await post("/api/settings/nudge", { join: form.join.checked, live: form.live.checked, repeat_minutes: +form.repeat_minutes.value || 0,
-        join_text: form.join_text.value, live_text: form.live_text.value }, "PUT");
+        join_text: form.join_text.value, live_text: form.live_text.value, signup: form.signup.value, signup_text: form.signup_text.value }, "PUT");
       fillIn(); showToast("Saved", 2000);
     } catch (err) { showError(esc(err.message), 5000); }
   });
@@ -464,6 +464,10 @@ async function wsWelcome(el) {
       <label class="check"><input type="checkbox" name="live"> <b>When a new message reaches them</b> while they're playing (from an admin, or a notice like a vote's result)</label>
       <textarea class="input ws-text" name="live_text" rows="2" maxlength="400"></textarea>
       <div class="wel-preview" data-for="live_text"></div>
+      <label class="check"><b>Players without a website account</b>: an invitation to make one (only while sign-up is open)
+        <select class="input sm" name="signup"><option value="off">Off</option><option value="first">The first time they join</option><option value="day">Once a day, when they join</option><option value="every">Every time they join</option></select></label>
+      <textarea class="input ws-text" name="signup_text" rows="2" maxlength="400"></textarea>
+      <div class="wel-preview" data-for="signup_text"></div>
       <div class="btn-row"><button class="btn sm primary" type="submit">Save</button><button class="btn sm" type="button" data-nudge-reset>Back to Solstone's wording</button></div></form>
     ${servers.map((x) => `<form class="panel ws-wel" data-sid="${esc(x.id)}"><div class="section-head"><h2>${esc(x.name)}</h2>
         <select class="input sm" name="when"><option value="off">Off</option><option value="first">First time they join</option><option value="every">Every time they join</option></select></div>

@@ -91,3 +91,52 @@ def test_settings(client, viewer):
     assert r["repeat_minutes"] == 1440 and r["join_text"] == nudge.DEFAULTS["join_text"] and r["live"] is False
     assert client.put("/api/settings/nudge", json={"repeat_minutes": 0}).json()["repeat_minutes"] == 0
     client.put("/api/settings/nudge", json={"repeat_minutes": 60, "live": True})
+
+
+def test_invitation_to_make_an_account(client, sid, monkeypatch):
+    """Only players without an account, only while sign-up is open, as often as set (once a day to start)."""
+    from app import db, site
+    from app import servers as S
+    srv = S.registry.servers[sid]
+    sent = []
+
+    async def fake_send(srv, cmds, delay=0):
+        sent.append(cmds[0])
+    monkeypatch.setattr(nudge.welcome, "send", fake_send)
+    signup = {"on": True}
+    real_cfg = site.config
+    monkeypatch.setattr(site, "config", lambda: {**real_cfg(), "signup": signup["on"]})
+    u = auth.create_user("ng_three", "kid-pass-123", "player", check=False)
+    auth.add_player(u.id, ("00000000-0000-0000-0000-0000000000n3", "HasAccount"))
+    db.x("DELETE FROM alerts WHERE key LIKE 'nudge-signup:%'")
+
+    def join(name):
+        nudge._seen.clear()
+
+        async def go():
+            nudge.on_join(srv, name)
+            await asyncio.sleep(0)
+        asyncio.run(go())
+    try:
+        assert nudge.config()["signup"] == "day"
+        join("NoAccount")
+        assert len(sent) == 1 and "Make a free account" in sent[0] and sent[0].startswith("tellraw NoAccount ")
+        join("NoAccount")
+        assert len(sent) == 1                                   # once a day
+        join("HasAccount")
+        assert len(sent) == 1                                   # already has one: never
+        nudge.save({"signup": "every", "signup_text": "&aSign up at {site}!"})
+        join("NoAccount")
+        assert len(sent) == 2 and "Sign up at" in sent[1]
+        signup["on"] = False
+        join("NoAccount")
+        assert len(sent) == 2                                   # sign-up closed: nothing to invite them to
+        signup["on"] = True
+        nudge.save({"signup": "off"})
+        join("NoAccount")
+        assert len(sent) == 2
+        assert client.put("/api/settings/nudge", json={"signup": "first", "signup_text": ""}).json()["signup_text"] == nudge.DEFAULTS["signup_text"]
+    finally:
+        nudge.save({"signup": "day", "signup_text": nudge.DEFAULTS["signup_text"]})
+        nudge._seen.clear()
+        auth.delete_user(u.id)

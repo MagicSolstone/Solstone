@@ -1,3 +1,12 @@
+# Solstone 1.12.2
+
+- **An invitation to make a website account, for players who don't have one:**
+  - **When:** when they join the game, a line in chat (after the welcome message) says they can make a free account to vote, see what's coming up and say they're coming, and how to do it.
+  - **Who gets it:** only players whose Minecraft name isn't on an account yet, and only while sign-up is open on the website. Nobody has to make one.
+  - **Settings:** Website → Welcome in the game, under the reminders.
+    - **How often:** off, the first time they join, once a day (to start) or every time.
+    - **The wording:** yours to write, with the same colours and fill-ins (`{site}` is the website's address, clickable on Java).
+
 # Solstone 1.12.1
 
 - **Firework editor:**
