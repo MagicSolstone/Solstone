@@ -749,9 +749,36 @@ def tile_info(path: Path) -> dict:
         return {}
 
 
-def check(sid: str, world: Path, dim: str, near: list[tuple[float, float]], assets) -> dict:
+def region_grid(files: list[Path], limit: int = 64) -> dict:
+    """Which region files exist, as rows of text (north at the top): # a region file, + a nearly empty one,
+    . none (never generated or saved there, so the map is black), and @ for the one holding 0,0."""
+    have: dict[tuple[int, int], int] = {}
+    for f in files:
+        try:
+            have[tuple(int(v) for v in f.name.split(".")[1:3])] = f.stat().st_size
+        except (ValueError, OSError):
+            continue
+    if not have:
+        return {"rows": []}
+    xs, zs = [k[0] for k in have], [k[1] for k in have]
+    x0, x1 = max(min(xs), -limit // 2), min(max(xs), limit // 2 - 1)
+    z0, z1 = max(min(zs), -limit // 2), min(max(zs), limit // 2 - 1)
+    rows = []
+    for z in range(z0, z1 + 1):
+        row = ""
+        for x in range(x0, x1 + 1):
+            size = have.get((x, z))
+            mark = "." if size is None else "+" if size < 8192 else "#"
+            row += "@" if (x, z) == (0, 0) and size is not None else ("o" if (x, z) == (0, 0) else mark)
+        rows.append(row)
+    return {"from": [x0, z0], "to": [x1, z1], "rows": rows,
+            "missing_inside": sum(r.strip(".").count(".") + r.strip(".").count("o") for r in rows)}
+
+
+def check(sid: str, world: Path, dim: str, near: list[tuple[float, float]], assets,
+          at: tuple[float, float] | None = None) -> dict:
     """What the map sees, for the admin's map check: folders, region files, and a fresh
-    render of the regions where players are (or the first few) with what went wrong."""
+    render of the regions where players are (or the first few, or the spot asked about) with what went wrong."""
     d = region_dir(world, dim)
     out: dict = {"world": str(world), "world_exists": world.is_dir(), "region_dir": str(d) if d else None,
                  "renderer": RENDER_VERSION, "regions": [], "checked": []}
@@ -761,8 +788,13 @@ def check(sid: str, world: Path, dim: str, near: list[tuple[float, float]], asse
     files = sorted(d.glob("r.*.*.mca"))
     out["regions"] = len(files)
     out["region_sizes"] = {"empty_or_tiny": sum(1 for f in files if f.stat().st_size < 8192)}
-    want = {(int(x // 512), int(z // 512)) for x, z in near}
-    pick = [f for f in files if tuple(int(v) for v in f.name.split(".")[1:3]) in want] or files[:3]
+    out["grid"] = region_grid(files)
+    want = {(int(x // 512), int(z // 512)) for x, z in ([at] if at else near)}
+    pick = [f for f in files if tuple(int(v) for v in f.name.split(".")[1:3]) in want] or ([] if at else files[:3])
+    if at and not pick:
+        rx, rz = int(at[0] // 512), int(at[1] // 512)
+        out["checked"].append({"file": f"r.{rx}.{rz}.mca", "chunks": 0, "drawn": 0, "picture": "empty",
+                               "error": "No region file here: the world was never generated or saved at this spot"})
     colors = Colors(assets)
     for f in pick[:4]:
         info: dict = {"file": f.name}

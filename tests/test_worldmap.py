@@ -283,3 +283,23 @@ def test_mixed_palette_26_1():
     assert (h == 60).all() and stats["agree"] == 1.0
     assert worldmap._block_name({"": "deepslate"}) == "minecraft:deepslate"
     assert worldmap._block_name({"id": "glow_lichen", "properties": {}}) == "minecraft:glow_lichen"
+
+
+def test_region_grid_shows_holes(tmp_path):
+    from app import worldmap
+    for x, z in [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]:
+        (tmp_path / f"r.{x}.{z}.mca").write_bytes(b"\0" * 9000)
+    g = worldmap.region_grid(sorted(tmp_path.glob("*.mca")))
+    assert g["rows"] == ["###", "#o#", "###"] and g["missing_inside"] == 1
+    (tmp_path / "r.0.0.mca").write_bytes(b"\0" * 100)
+    g = worldmap.region_grid(sorted(tmp_path.glob("*.mca")))
+    assert g["rows"][1] == "#@#" and g["missing_inside"] == 0
+
+
+def test_check_a_spot_with_no_region(tmp_path):
+    from app import worldmap
+    reg = tmp_path / "region"
+    reg.mkdir()
+    (reg / "r.0.0.mca").write_bytes(b"\0" * 9000)
+    out = worldmap.check("t", tmp_path, "minecraft:overworld", [], None, at=(5000, -3000))
+    assert out["checked"][0]["file"] == "r.9.-6.mca" and "No region file" in out["checked"][0]["error"]

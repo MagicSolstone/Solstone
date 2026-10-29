@@ -1042,7 +1042,7 @@ async def map_tile(sid: str, request: Request, x: int, z: int, dim: str = "minec
 
 
 @app.get("/api/servers/{sid}/map/check")
-async def map_check(sid: str, request: Request, dim: str = "minecraft:overworld"):
+async def map_check(sid: str, request: Request, dim: str = "minecraft:overworld", x: float | None = None, z: float | None = None):
     """Admin: what the map sees and why a picture might come out empty."""
     auth.require_admin(request)
     srv = await _server(sid)
@@ -1055,7 +1055,8 @@ async def map_check(sid: str, request: Request, dim: str = "minecraft:overworld"
             if pos and (pos.get("dimension") or "minecraft:overworld") == dim:
                 out.append((pos.get("x", 0), pos.get("z", 0)))
         return out
-    return await asyncio.to_thread(lambda: worldmap.check(srv.id, srv.world_dir, dim, near(), _assets(srv)))
+    at = (x, z) if x is not None and z is not None else None
+    return await asyncio.to_thread(lambda: worldmap.check(srv.id, srv.world_dir, dim, [] if at else near(), _assets(srv), at))
 
 
 @app.get("/api/servers/{sid}/check")

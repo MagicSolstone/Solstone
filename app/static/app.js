@@ -549,8 +549,9 @@ function openModal(html, onMount) {
 function openMapCheck(sid, dims) {
   const ids = [...new Set(["minecraft:overworld", ...dims])];
   openModal(`<h2>Map drawing check</h2>
-    <p class="muted small">Reads the region files where players last were and tries to draw them. Nothing is changed.</p>
+    <p class="muted small">Reads the region files where players last were (or at a spot you give, like a black area) and tries to draw them. Nothing is changed.</p>
     <div class="btn-row"><select class="input sm" id="mc-dim">${ids.map((d) => `<option value="${esc(d)}">${esc(dimName(d))}</option>`).join("")}</select>
+      <input class="input sm mc-xz" id="mc-x" type="number" placeholder="X" aria-label="X"><input class="input sm mc-xz" id="mc-z" type="number" placeholder="Z" aria-label="Z">
       <button class="btn sm primary" type="button" id="mc-run">Check</button><button class="btn sm" type="button" id="mc-copy" hidden>Copy</button></div>
     <div id="mc-sum" class="mc-sum"></div><pre class="mc-out" id="mc-out" hidden></pre>
     <div class="actions"><button type="button" class="btn" data-close-modal>Close</button></div>`, (m) => {
@@ -558,13 +559,16 @@ function openMapCheck(sid, dims) {
     const run = async () => {
       $("#mc-sum", m).textContent = "Reading the world…"; $("#mc-out", m).hidden = true;
       try {
-        const r = await api(`/api/servers/${encodeURIComponent(sid)}/map/check?dim=${encodeURIComponent($("#mc-dim", m).value)}`);
+        const x = $("#mc-x", m).value, z = $("#mc-z", m).value;
+        const r = await api(`/api/servers/${encodeURIComponent(sid)}/map/check?dim=${encodeURIComponent($("#mc-dim", m).value)}${x !== "" && z !== "" ? `&x=${+x}&z=${+z}` : ""}`);
         const rows = r.checked || [];
         const ok = rows.filter((x) => x.drawn > 0).length;
         $("#mc-sum", m).innerHTML = r.error ? `<b>${esc(r.error)}</b>`
           : `<div>${r.regions} region files. Checked ${rows.length}: <b>${ok} drew fine</b>${rows.length - ok ? `, <b class="warn">${rows.length - ok} came out empty</b>` : ""}.</div>`
+            + (r.grid?.missing_inside ? `<div class="small warn">${r.grid.missing_inside} spots inside the world have no region file (the dots in the grid below): never generated or saved, so they're black on every map.</div>` : "")
             + rows.map((x) => `<div class="small">${esc(x.file)}: ${x.drawn} of ${x.chunks} chunks drawn${x.failed ? `, ${x.failed} unreadable` : ""}${x.error ? ` — ${esc(x.error)}` : ""}${x.layout?.checked ? ` · matches the game's height map ${Math.round(x.layout.agree * 100)}%` : ""}${x.layout?.narrow_sections ? ` · ${x.layout.narrow_sections} narrow-packed sections` : ""}${x.layout?.layouts && Object.keys(x.layout.layouts).some((k) => k !== "yzx") ? ` · block layout: ${Object.entries(x.layout.layouts).map(([k, n]) => `${k} ×${n}`).join(", ")}` : ""}${x.layout?.moved ? ` · ${x.layout.moved} chunks moved` : ""}</div>`).join("");
-        $("#mc-out", m).textContent = JSON.stringify(r, null, 1); $("#mc-out", m).hidden = false; $("#mc-copy", m).hidden = false;
+        const g = r.grid?.rows?.length ? `Region files, north at the top (# a file, + nearly empty, . none, @ / o: 0,0), from region ${r.grid.from.join(",")} to ${r.grid.to.join(",")}, each 512 blocks:\n${r.grid.rows.join("\n")}\n\n` : "";
+        $("#mc-out", m).textContent = g + JSON.stringify({ ...r, grid: undefined }, null, 1); $("#mc-out", m).hidden = false; $("#mc-copy", m).hidden = false;
       } catch (e) { $("#mc-sum", m).textContent = e.message; }
     };
     $("#mc-run", m).addEventListener("click", run);

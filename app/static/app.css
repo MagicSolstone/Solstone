@@ -1284,6 +1284,7 @@ body.on-editor:not(.ui-hidden) .fwbar .fwb-launch, body.on-editor:not(.ui-hidden
 .mc-sum { margin: 12px 0 8px; display: grid; gap: 4px; }
 .mc-sum .warn { color: var(--redstone); }
 .mc-out { max-height: 40vh; overflow: auto; font-size: .78rem; background: var(--well); padding: 10px; border-radius: var(--radius-s); white-space: pre-wrap; word-break: break-all; }
+.mc-xz { width: 90px; }
 .hidden-list { display: grid; gap: 8px; max-width: 720px; }
 .hidden-row { display: flex; align-items: center; gap: 10px; }
 .hidden-row button { margin-left: auto; }

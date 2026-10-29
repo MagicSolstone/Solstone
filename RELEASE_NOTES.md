@@ -3,6 +3,7 @@
 - **No more blank pages while Solstone is busy:** a page that's slow to come (the server's disks busy with a map render or a backup, or Solstone just started) says **Loading…** straight away, and after 10 seconds *Still loading…* with **Try again**, instead of an empty page.
 - **Just restarted?** Opening the app while Solstone isn't answering yet says *Waiting for Solstone…* and keeps trying every few seconds, then carries on, signed in. It used to show the sign-in page as if you'd been signed out.
 - Pages open a little quicker: Solstone keeps its own page files in memory instead of reading them from disk each time.
+- **Map drawing check, for black areas:** type the **X** and **Z** of a black spot and *Check* looks at just that spot: whether there's a region file there at all, and how its chunks draw. The report also starts with a **grid of the world's region files** (`#` a file, `.` none, `@` 0,0), so holes the world never generated or saved show up at a glance; these are black on every map, BlueMap's too.
 
 # Solstone 1.9.9
 
