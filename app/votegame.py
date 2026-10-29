@@ -84,6 +84,7 @@ async def tick(servers: list[S.Server]) -> None:
         await announce(p, servers)
     for p in community.close_due():
         await closed(p, servers)
+    community.tidy()                                  # old notices go after a month
 
 
 async def closed(p: dict, servers: list[S.Server]) -> None:

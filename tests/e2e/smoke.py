@@ -785,17 +785,26 @@ def main() -> int:
             if "1 vote" not in m.locator("#cm-votes").inner_text():
                 problems.append("votes: voting didn't count")
             check(m, "votes")
-            # Messages: write to the admins, and it's in Manage → Messages
-            m.goto(f"{base}/app#/messages"); m.wait_for_timeout(800)
-            m.locator("#cm-new").click()
-            m.locator("#cm-new-form [name=body]").fill("Can we have a zoo?")
-            m.locator("#cm-new-form button[type=submit]").click(); m.wait_for_timeout(1000)
-            if "Can we have a zoo?" not in m.locator("#view").inner_text():
+            # Messages: a player writes to the admins; the admin reads it (the dot goes), archives it; admins can't write to themselves
+            pl.goto(f"{base}/app#/messages"); pl.wait_for_timeout(800)
+            pl.locator("#cm-new").click()
+            pl.locator("#cm-new-form [name=body]").fill("Can we have a zoo?")
+            pl.locator("#cm-new-form button[type=submit]").click(); pl.wait_for_timeout(1000)
+            if "Can we have a zoo?" not in pl.locator("#view").inner_text():
                 problems.append("messages: the sent message isn't shown")
+            m.goto(f"{base}/app#/messages"); m.wait_for_timeout(800)
+            if m.locator("#cm-new").is_visible():
+                problems.append("messages: an admin is offered 'Write to the admins'")
             m.goto(f"{base}/app#/manage/messages"); m.wait_for_timeout(1000)
             if not m.locator(".cm-threads li").count():
                 problems.append("messages: Manage → Messages is empty after a message")
             check(m, "messages")
+            m.locator(".cm-threads a").first.click(); m.wait_for_timeout(1000)
+            m.locator("[data-archive]").click(); m.wait_for_timeout(1000)
+            if m.locator(".cm-threads a.unread").count() or not m.locator(".cm-archive").count():
+                problems.append("messages: reading didn't clear the dot, or archiving didn't move it to Archived")
+            if m.viewport_size["width"] <= 700 and not m.locator("#manage-select").is_visible():
+                problems.append("phone: Manage isn't a dropdown")
             m.goto(f"{base}/app#/manage/users"); m.wait_for_timeout(800)
             # A slow answer shows "Loading…" instead of a blank page, and the page once it comes
             held = []

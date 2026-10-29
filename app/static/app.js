@@ -173,6 +173,15 @@ function setManageNav(tab) {
   if (!nav) return;
   nav.hidden = !tab || !isAdmin();
   nav.querySelectorAll("[data-m]").forEach((a) => a.toggleAttribute("aria-current", a.dataset.m === tab));
+  // on phones the tabs are one dropdown (the same pages, with the unread count)
+  const sel = $("#manage-select");
+  if (sel && tab) {
+    sel.innerHTML = [...nav.querySelectorAll("a[data-m]")].map((a) => {
+      const n = a.querySelector(".cm-badge:not([hidden])")?.textContent;
+      return `<option value="${esc(a.getAttribute("href"))}" ${a.dataset.m === tab ? "selected" : ""}>${esc(a.childNodes[0].textContent.trim())}${n ? ` (${esc(n)})` : ""}</option>`;
+    }).join("");
+    sel.onchange = () => { location.hash = sel.value; };
+  }
 }
 function markNav() {
   const h = location.hash || "#/";

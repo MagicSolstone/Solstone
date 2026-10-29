@@ -1,3 +1,10 @@
+# Solstone 1.10.1
+
+- **Messages you've read stay read:** an admin opening a message now marks it read for the admins (a message an admin had sent to themselves kept its dot). Admins aren't offered *Write to the admins* any more: players' messages, and writing to them, are in Manage → Messages.
+- **Tidying messages:** players can **remove** a conversation from their list (the admins keep it, and it comes back if someone writes in it again). Admins can **archive** one (it moves to *Archived* at the bottom, and comes back out if someone writes) or **delete** it for everyone. Notices (a vote closed, you won) delete themselves after 30 days.
+- **Manage on phones is one dropdown** (*✉️ Messages (1)*) instead of rows of tabs.
+- The *Write to players* form stays folded away until you open it.
+
 # Solstone 1.10.0
 
 ## ⏰ Play time: bedtimes and screen time in one place

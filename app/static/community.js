@@ -15,6 +15,8 @@ async function cmRefreshUnread() {
     badge($("#account-unread"), total);
     badge($("#menu-unread"), n.mine);
     badge($("#menu-admin-unread"), n.admin);
+    const cur = $("#manage-nav [aria-current]")?.dataset.m;
+    if (cur) setManageNav(cur);                       // the phone dropdown's count too
   } catch { /* offline for a moment */ }
 }
 
@@ -72,7 +74,12 @@ function cmThreadList(threads, admin) {
 }
 
 function cmThreadHtml(t, admin) {
-  return `<div class="panel cm-thread"><a href="#/${admin ? "manage/messages" : "messages"}" class="small">← All messages</a>
+  const tools = admin
+    ? `<button type="button" class="btn sm" data-archive="${t.archived ? "0" : "1"}">${t.archived ? "Take out of the archive" : "🗄️ Archive"}</button>
+       <button type="button" class="btn sm danger" data-delete>Delete for everyone</button>`
+    : `<button type="button" class="btn sm" data-delete>Remove from my messages</button>`;
+  return `<div class="panel cm-thread"><div class="cm-thread-top"><a href="#/${admin ? "manage/messages" : "messages"}" class="small">← All messages</a>
+    <span class="btn-row">${tools}</span></div>
     <h2>${esc(t.subject)}</h2>${admin ? `<p class="muted small">With <b>${esc(t.with)}</b></p>` : ""}
     <div class="cm-msgs">${t.messages.map((m) => `<div class="cm-msg ${m.from_admin ? "from-admin" : "from-player"}">
       <small class="muted"><b>${esc(m.from_admin ? (admin ? m.author : `${m.author} (admin)`) : m.author)}</b> · ${esc(cmWhen(m.ts))}</small>
@@ -82,7 +89,19 @@ function cmThreadHtml(t, admin) {
         <div class="actions"><button class="btn primary" type="submit">Send</button></div></form>`}</div>`;
 }
 
-function cmWireReply(t, again) {
+function cmWireReply(t, again, admin = false) {
+  const back = admin ? "#/manage/messages" : "#/messages";
+  $("[data-delete]")?.addEventListener("click", async () => {
+    const ok = admin ? await confirmBox("Delete this conversation?", "It's gone for good, for the player too.", "Delete")
+      : await confirmBox("Remove it from your messages?", "The admins still have it. If someone writes in it again, it comes back.", "Remove", false);
+    if (!ok) return;
+    try { await api(`/api/community/messages/${t.id}`, { method: "DELETE" }); location.hash = back; }
+    catch (err) { showError(esc(err.message), 4000); }
+  });
+  $("[data-archive]")?.addEventListener("click", async (e) => {
+    try { await post(`/api/community/admin/messages/${t.id}/archive`, { archived: e.target.dataset.archive === "1" }); location.hash = back; }
+    catch (err) { showError(esc(err.message), 4000); }
+  });
   $("#cm-reply")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     try { await post(`/api/community/messages/${t.id}`, { body: e.target.body.value }); showToast("Sent", 1500); again(); }
@@ -103,8 +122,9 @@ async function viewMessages(tid) {
   }
   const d = await api("/api/community/messages");
   setView(`<div class="fwe-head"><h1>Messages</h1>
-      <p class="muted">Write to the admins: an idea, something that's wrong, a question. Only the admins see it, and their answers come here. Notices (a vote closed, you won) come here too.</p></div>
-    <div class="panel"><button type="button" class="btn primary" id="cm-new">✉️ Write to the admins</button>
+      <p class="muted">${isAdmin() ? 'You\'re an admin: players\' messages, and writing to them, are in <a href="#/manage/messages">Manage → Messages</a>. Notices for you come here.'
+        : "Write to the admins: an idea, something that's wrong, a question. Only the admins see it, and their answers come here. Notices (a vote closed, you won) come here too."}</p></div>
+    <div class="panel"><button type="button" class="btn primary" id="cm-new" ${isAdmin() ? "hidden" : ""}>✉️ Write to the admins</button>
       <form id="cm-new-form" class="cm-new" hidden>
         <label>What's it about?<select class="input" name="kind">${Object.entries(d.kinds).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select></label>
         <label>Subject <small>Optional</small><input class="input" name="subject" maxlength="80"></label>
@@ -134,7 +154,7 @@ async function viewManageMessages(tid) {
   if (tid) {
     const t = await api(`/api/community/messages/${encodeURIComponent(tid)}`);
     setView(`<div class="fwe-head"><h1>Messages</h1></div>${cmThreadHtml(t, true)}`);
-    cmWireReply(t, () => viewManageMessages(tid));
+    cmWireReply(t, () => viewManageMessages(tid), true);
     cmRefreshUnread();
     return;
   }
@@ -149,7 +169,8 @@ async function viewManageMessages(tid) {
         <label>Subject<input class="input" name="subject" maxlength="80" required placeholder="You won the build contest!"></label>
         <label>Message<textarea class="input" name="body" rows="4" maxlength="1000" required></textarea></label>
         <div class="actions"><button type="button" class="btn" id="cm-cancel">Cancel</button><button class="btn primary" type="submit">Send</button></div></form>
-      ${cmThreadList(d.threads, true)}</div>`);
+      ${cmThreadList(d.threads.filter((t) => !t.archived), true)}
+      ${d.threads.some((t) => t.archived) ? `<details class="cm-archive"><summary>🗄️ Archived (${d.threads.filter((t) => t.archived).length})</summary>${cmThreadList(d.threads.filter((t) => t.archived), true)}</details>` : ""}</div>`);
   const form = $("#cm-new-form");
   $("#cm-new").addEventListener("click", () => { form.hidden = false; $("#cm-new").hidden = true; });
   $("#cm-cancel").addEventListener("click", () => { form.hidden = true; $("#cm-new").hidden = false; });

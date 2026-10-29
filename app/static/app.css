@@ -2027,3 +2027,15 @@ a.glance-me:hover { border-color: var(--gold); }
 .cmv-actions { margin-top: -6px; margin-bottom: 14px; }
 .up-coming { margin-left: 8px; }
 .up-coming.on { border-color: var(--accent, #6aa9ff); }
+.cm-thread-top { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
+.cm-archive { margin-top: 14px; }
+.cm-archive summary { cursor: pointer; color: var(--muted); }
+
+/* Manage on phones: one dropdown instead of rows of tabs */
+.manage-select { display: none; }
+@media (max-width: 700px) {
+  .manage-nav a[data-m] { display: none; }
+  .manage-select { display: block; width: 100%; font-weight: 600; }
+}
+.cm-new[hidden], .cmv-form[hidden] { display: none; }
+.cm-new label:not(.check) { display: grid; gap: 4px; }

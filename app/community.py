@@ -78,6 +78,8 @@ def _init() -> None:
     with _lock:
         if not _ready:
             db.conn().executescript(SCHEMA)
+            if "user_hidden" not in {r["name"] for r in db.q("PRAGMA table_info(threads)")}:    # added later
+                db.conn().execute("ALTER TABLE threads ADD COLUMN user_hidden INTEGER NOT NULL DEFAULT 0")
             _ready = True
 
 
@@ -324,7 +326,7 @@ def sign_up(event: str, uid: int, coming: bool) -> None:
 # ---------------------------------------------------------------- messages
 def _thread(r) -> dict:
     return {"id": r["id"], "user_id": r["user_id"], "kind": r["kind"], "subject": r["subject"], "created": r["created_ts"],
-            "updated": r["updated_ts"], "closed": bool(r["closed"]),
+            "updated": r["updated_ts"], "closed": bool(r["closed"]), "archived": bool(r["closed"]),
             "unread_user": r["updated_ts"] > r["user_read_ts"], "unread_admin": r["updated_ts"] > r["admin_read_ts"]}
 
 
@@ -332,7 +334,8 @@ def _add(tid: int, from_admin: bool, author: str, body: str) -> None:
     now = time.time()
     db.x("INSERT INTO messages(thread_id, from_admin, author, body, ts) VALUES (?,?,?,?,?)", (tid, int(from_admin), author, body, now))
     who = "admin_read_ts" if from_admin else "user_read_ts"       # the writer has read their own
-    db.x(f"UPDATE threads SET updated_ts=?, {who}=?, closed=0 WHERE id=?", (now, now, tid))
+    # something new: back out of the archive, and back in the player's list if they'd removed it
+    db.x(f"UPDATE threads SET updated_ts=?, {who}=?, closed=0, user_hidden=0 WHERE id=?", (now, now, tid))
 
 
 def start(user_id: int, kind: str, subject: str, body: str, from_admin: bool, author: str) -> int:
@@ -383,7 +386,44 @@ def mark_read(tid: int, admin: bool) -> None:
 
 def threads_for(user_id: int) -> list[dict]:
     _init()
-    return [_thread(r) for r in db.q("SELECT * FROM threads WHERE user_id=? ORDER BY updated_ts DESC LIMIT 100", (user_id,))]
+    return [_thread(r) for r in db.q("SELECT * FROM threads WHERE user_id=? AND user_hidden=0 ORDER BY updated_ts DESC LIMIT 100",
+                                     (user_id,))]
+
+
+def hide_for_user(tid: int) -> None:
+    """A player removes a conversation from their list. The admins keep it; a new message brings it back."""
+    _init()
+    db.x("UPDATE threads SET user_hidden=1, user_read_ts=updated_ts WHERE id=?", (tid,))
+
+
+def set_archived(tid: int, archived: bool) -> None:
+    _init()
+    db.x("UPDATE threads SET closed=?, admin_read_ts=MAX(admin_read_ts, updated_ts) WHERE id=?", (int(archived), tid))
+
+
+def delete_thread(tid: int) -> None:
+    _init()
+    db.x("DELETE FROM messages WHERE thread_id=?", (tid,))
+    db.x("DELETE FROM threads WHERE id=?", (tid,))
+
+
+NOTICE_DAYS = 30
+_tidied = 0.0
+
+
+def tidy(now: float | None = None) -> int:
+    """Notices (a vote closed, you won) go by themselves after a month; conversations stay until an admin deletes them.
+    At most once an hour."""
+    global _tidied
+    now = now or time.time()
+    if now - _tidied < 3600:
+        return 0
+    _tidied = now
+    _init()
+    old = [r["id"] for r in db.q("SELECT id FROM threads WHERE kind='notice' AND updated_ts < ?", (now - NOTICE_DAYS * 86400,))]
+    for tid in old:
+        delete_thread(tid)
+    return len(old)
 
 
 def all_threads(limit: int = 200) -> list[dict]:
@@ -393,7 +433,7 @@ def all_threads(limit: int = 200) -> list[dict]:
 
 def unread(user_id: int) -> int:
     _init()
-    return db.q("SELECT COUNT(*) n FROM threads WHERE user_id=? AND updated_ts > user_read_ts", (user_id,))[0]["n"]
+    return db.q("SELECT COUNT(*) n FROM threads WHERE user_id=? AND user_hidden=0 AND updated_ts > user_read_ts", (user_id,))[0]["n"]
 
 
 def unread_admin() -> int:

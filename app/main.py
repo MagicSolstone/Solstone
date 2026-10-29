@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.10.0"
+VERSION = "1.10.1"
 
 
 @asynccontextmanager
@@ -2394,8 +2394,10 @@ def _may_read(user: auth.User, t: dict | None) -> dict:
 async def community_thread(tid: int, request: Request):
     user = request.state.user
     t = _may_read(user, await asyncio.to_thread(community.thread, tid))
-    mine = t["user_id"] == user.id
-    await asyncio.to_thread(community.mark_read, tid, not mine)
+    if t["user_id"] == user.id:
+        await asyncio.to_thread(community.mark_read, tid, False)
+    if user.role == "admin":                         # an admin reading it has read it for the admins
+        await asyncio.to_thread(community.mark_read, tid, True)
     who = auth.get_user(t["user_id"])
     return {**t, "with": who.shown if who else "?", "messages": await asyncio.to_thread(community.thread_messages, tid)}
 
@@ -2404,6 +2406,8 @@ async def community_thread(tid: int, request: Request):
 async def community_send(request: Request):
     """A player writes to the admins: a new message (an idea, something wrong, a question)."""
     user = request.state.user
+    if user.role == "admin":
+        raise HTTPException(400, "You're an admin: players' messages are in Manage → Messages, and you write to them from there")
     body = await _body(request)
     if await asyncio.to_thread(community.recent_from, user.id) >= 10:
         raise HTTPException(429, "That's a lot of messages! Wait a little before sending more.")
@@ -2422,7 +2426,7 @@ async def community_send(request: Request):
 async def community_reply(tid: int, request: Request):
     user = request.state.user
     t = _may_read(user, await asyncio.to_thread(community.thread, tid))
-    admin = user.role == "admin" and t["user_id"] != user.id
+    admin = user.role == "admin"
     if not admin and await asyncio.to_thread(community.recent_from, user.id) >= 10:
         raise HTTPException(429, "That's a lot of messages! Wait a little before sending more.")
     body = await _body(request)
@@ -2434,6 +2438,29 @@ async def community_reply(tid: int, request: Request):
         votegame.new_message(user.shown, t["subject"])
     else:
         asyncio.get_running_loop().create_task(nudge.poke(t["user_id"]))
+    return {"ok": True}
+
+
+@app.delete("/api/community/messages/{tid}")
+async def community_remove(tid: int, request: Request):
+    """A player removes a conversation from their list (the admins keep it). An admin deletes it for everyone."""
+    user = request.state.user
+    t = _may_read(user, await asyncio.to_thread(community.thread, tid))
+    if user.role == "admin":
+        await asyncio.to_thread(community.delete_thread, tid)
+        auth.audit(user, None, "message_delete", t["subject"])
+    else:
+        await asyncio.to_thread(community.hide_for_user, tid)
+    return {"ok": True}
+
+
+@app.post("/api/community/admin/messages/{tid}/archive")
+async def admin_message_archive(tid: int, request: Request):
+    auth.require_admin(request)
+    if not await asyncio.to_thread(community.thread, tid):
+        raise HTTPException(404, "No such message")
+    body = await _body(request)
+    await asyncio.to_thread(community.set_archived, tid, bool(body.get("archived", True)))
     return {"ok": True}
 
 

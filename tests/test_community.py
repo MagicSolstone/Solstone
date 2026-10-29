@@ -143,3 +143,30 @@ def test_event_signups(client):
         assert community.signups([key]) == {}
     finally:
         auth.delete_user(a.id)
+
+
+def test_reading_removing_archiving_and_old_notices(client):
+    a, ca = _player("cm_gwen", "GwenMC")
+    try:
+        assert client.post("/api/community/messages", json={"body": "to myself"}).status_code == 400   # admins: Manage → Messages
+        tid = ca.post("/api/community/messages", json={"kind": "question", "body": "When is the contest?"}).json()["id"]
+        client.get(f"/api/community/messages/{tid}")
+        assert not next(t for t in client.get("/api/community/admin/messages").json()["threads"] if t["id"] == tid)["unread_admin"]
+        client.post(f"/api/community/messages/{tid}", json={"body": "Saturday!"})
+        ca.delete(f"/api/community/messages/{tid}")                                   # removed from their list...
+        assert ca.get("/api/community/messages").json()["threads"] == [] and ca.get("/api/community/unread").json()["mine"] == 0
+        assert any(t["id"] == tid for t in client.get("/api/community/admin/messages").json()["threads"])   # ...the admins keep it
+        client.post(f"/api/community/admin/messages/{tid}/archive", json={"archived": True})
+        assert next(t for t in client.get("/api/community/admin/messages").json()["threads"] if t["id"] == tid)["archived"]
+        client.post(f"/api/community/messages/{tid}", json={"body": "See you there"})            # written again: back for both
+        assert ca.get("/api/community/messages").json()["threads"][0]["id"] == tid
+        assert not next(t for t in client.get("/api/community/admin/messages").json()["threads"] if t["id"] == tid)["archived"]
+        client.delete(f"/api/community/messages/{tid}")                                # an admin deletes it for everyone
+        assert ca.get(f"/api/community/messages/{tid}").status_code == 404
+        # notices go after a month
+        n = community.notice(a.id, "Vote closed", "Cats won")
+        community.db.x("UPDATE threads SET updated_ts=? WHERE id=?", (time.time() - 31 * 86400, n))
+        community._tidied = 0
+        assert community.tidy() >= 1 and community.thread(n) is None
+    finally:
+        auth.delete_user(a.id)
