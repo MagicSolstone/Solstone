@@ -281,6 +281,26 @@ def main() -> int:
             pg.click('[data-wm="own"]')
             pg.request.put(f"{base}/api/servers/{sid}/settings", data={"map_url": "", "map_proxy": ""}, headers=H)
             map_srv.shutdown()
+            # The top-down map: zooming all the way out fast mustn't leave it stuck black
+            pg.goto(f"{base}/app#/s/{sid}/world"); pg.wait_for_timeout(1500)
+            cvs = pg.locator("#wm-own canvas")
+            if cvs.count():
+                cvs.scroll_into_view_if_needed(); pg.wait_for_timeout(300)
+                box = cvs.bounding_box()
+                scale0 = pg.evaluate("() => window.scrollY")
+                pg.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                for _ in range(25):
+                    pg.mouse.wheel(0, 400)                         # out, out, out
+                pg.wait_for_timeout(6000)
+                note = pg.locator("#wm-own .rm-note").text_content() or ""
+                lit = pg.evaluate("""() => { const c = document.querySelector('#wm-own canvas'), x = c.getContext('2d');
+                    const d = x.getImageData(0, 0, c.width, c.height).data; let n = 0;
+                    for (let i = 0; i < d.length; i += 4 * 97) if (d[i] + d[i + 1] + d[i + 2] > 120) n++; return n; }""")
+                if pg.evaluate("() => window.scrollY") != scale0:
+                    problems.append("top-down map: the mouse wheel scrolled the page instead of zooming the map")
+                if "Loading the map" in note or not lit:
+                    problems.append(f"top-down map: stuck after zooming out fast ({note or 'no note'}, {lit} lit pixels)")
+                check(pg, "world-zoomed-out")
 
             # Manage → Notifications is a page (not a popup), Manage → Holidays switches days on and off
             pg.goto(f"{base}/app#/manage/notifications"); pg.wait_for_timeout(1200)

@@ -343,9 +343,11 @@ function mountMap(el, b, prev) {
   const tileFor = (rx, rz, lod = 0) => {
     const key = `${dimId}|${lod}:${rx},${rz}`;
     let t = map.tiles[key];
-    if (t && (t.state === "loading" || t.state === "none" || (t.state === "wait" && Date.now() < t.retry))) return t;
+    if (t && (t.loading || t.state === "none" || (t.state === "wait" && Date.now() < t.retry))) return t;
+    if ((map.inflight || 0) >= 4 && !t?.img) return t || (map.tiles[key] = { state: "wait", retry: 0, lod, rx, rz });   // a few at a time
     if (t && t.state === "ready" && Date.now() - t.at < 180000) return t;            // fresh enough; redrawn every few minutes
-    t = map.tiles[key] = { ...(t || {}), state: t?.img ? "ready" : "loading", loading: true };
+    t = map.tiles[key] = { ...(t || {}), state: t?.img ? "ready" : "loading", loading: true, lod, rx, rz };
+    map.inflight = (map.inflight || 0) + 1;
     fetch(`/api/public/map/${encodeURIComponent(b.id)}/tile?dim=${encodeURIComponent(dimId)}&x=${rx}&z=${rz}${lod ? `&lod=${lod}` : ""}&t=${Math.floor(Date.now() / 60000)}`, { cache: "no-store" })
       .then(async (r) => {
         if (r.status === 202) { t.state = t.img ? "ready" : "wait"; t.retry = Date.now() + 3000; t.at = t.img ? Date.now() - 170000 : 0; setTimeout(() => map.redraw?.(), 3100); return; }
@@ -353,8 +355,10 @@ function mountMap(el, b, prev) {
         const bmp = await createImageBitmap(await r.blob());
         // a 1x1 picture means nothing could be drawn; the server says why
         t.empty = bmp.width <= 1 ? { chunks: r.headers.get("X-Map-Chunks") || "", error: r.headers.get("X-Map-Error") || "" } : null;
-        t.img = bmp; t.state = "ready"; t.at = Date.now(); map.redraw?.();
-      }).catch(() => { t.state = "wait"; t.retry = Date.now() + 10000; });
+        t.img = bmp; t.state = "ready"; t.at = Date.now();
+        if (r.headers.get("X-Map-Partial") === "1") { t.at = Date.now() - 175000; setTimeout(() => map.redraw?.(), 5100); }   // still filling in: again in 5 s
+      }).catch(() => { t.state = "wait"; t.retry = Date.now() + 10000; })
+      .finally(() => { t.loading = false; map.inflight--; map.redraw?.(); });
     return t;
   };
   const colors = { overworld: ["#14261c", "#0c1712"], the_nether: ["#2a1212", "#170a0a"], the_end: ["#211a33", "#120e1d"], other: ["#18202e", "#0e131c"] }[dim];
@@ -405,6 +409,12 @@ function mountMap(el, b, prev) {
         }
         return map.lodSets[k].set.has(`${x},${z}`);
       };
+      for (const [k, o] of Object.entries(map.tiles)) {      // what's here from other zoom levels first, so it never goes black
+        if (!o.img || o.empty || o.lod === undefined || o.lod === lod || !k.startsWith(`${dimId}|`)) continue;
+        const osz = 512 * 2 ** o.lod, ox = sx(o.rx * osz), oz = sz(o.rz * osz), px = osz * scale;
+        if (ox > w || oz > h || ox + px < 0 || oz + px < 0) continue;
+        ctx.drawImage(o.img, Math.round(ox), Math.round(oz), Math.ceil(px) + 1, Math.ceil(px) + 1);
+      }
       for (let rx = Math.floor(x0 / size); rx <= Math.floor(x1 / size) && n < 36; rx++) {
         for (let rz = Math.floor(z0 / size); rz <= Math.floor(z1 / size) && n < 36; rz++) {
           if (!has(rx, rz)) continue;

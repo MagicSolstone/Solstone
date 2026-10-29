@@ -332,8 +332,13 @@ function worldMapCanvas(el, sid, o) {
   let dim = o.dim || "minecraft:overworld";
   const view = { cx: o.center?.x ?? 0, cz: o.center?.z ?? 0, scale: o.scale || 1 };     // scale: pixels per block
   let tiles = {}, regions = null;
+  let progress = null;                       // {drawn, total}: the first time through a big world takes a while
   const loadRegions = () => fetch(`/api/public/map/${encodeURIComponent(sid)}/regions?dim=${encodeURIComponent(dim)}`, { credentials: "same-origin" })
-    .then((r) => (r.ok ? r.json() : null)).then((d) => { regions = new Set((d?.regions || []).map(([x, z]) => `${x},${z}`)); draw(); }).catch(() => { regions = new Set(); draw(); });
+    .then((r) => (r.ok ? r.json() : null)).then((d) => {
+      regions = new Set((d?.regions || []).map(([x, z]) => `${x},${z}`));
+      progress = d ? { drawn: d.drawn ?? 0, total: d.regions.length } : null;
+      draw();
+    }).catch(() => { regions = null; setTimeout(() => cv.isConnected && loadRegions(), 5000); });   // try again, don't give up
   loadRegions();
   // Zoomed out, one picture covers 2x2, 4x4 ... regions (lod), so a wide view is a handful of pictures, not hundreds.
   const lodSets = {};
@@ -342,17 +347,28 @@ function worldMapCanvas(el, sid, o) {
     lodSets[lod] ||= new Set([...regions].map((k) => { const [a, b] = k.split(",").map(Number); return `${Math.floor(a / 2 ** lod)},${Math.floor(b / 2 ** lod)}`; }));
     return lodSets[lod].has(`${x},${z}`);
   };
+  // A few requests at a time (zooming out fast asks for a lot at once); a picture still filling in (its regions are
+  // being drawn for the first time) is asked for again every few seconds, and kept on screen meanwhile.
+  let inflight = 0;
+  const MAX_INFLIGHT = 4;
   const tile = (rx, rz, lod = 0) => {
     const k = `${lod}:${rx},${rz}`;
     let t = tiles[k];
-    if (t && (t.img || t.loading || (t.retry && Date.now() < t.retry))) return t;
-    t = tiles[k] = { loading: true };
+    const now = Date.now();
+    if (t && (t.loading || (t.img && !(t.partial && now > t.refresh)) || (!t.img && t.retry && now < t.retry))) return t;
+    if (inflight >= MAX_INFLIGHT) { t ||= tiles[k] = { lod, rx, rz }; return t; }
+    t = tiles[k] = { ...(t || {}), lod, rx, rz, loading: true };
+    inflight++;
     fetch(`/api/public/map/${encodeURIComponent(sid)}/tile?dim=${encodeURIComponent(dim)}&x=${rx}&z=${rz}${lod ? `&lod=${lod}` : ""}`, { credentials: "same-origin" })
       .then(async (r) => {
-        t.loading = false;
         if (r.status === 202) { t.retry = Date.now() + 3000; setTimeout(draw, 3100); return; }
-        if (r.ok) { t.img = await createImageBitmap(await r.blob()); draw(); }
-      }).catch(() => { t.loading = false; t.retry = Date.now() + 10000; });
+        if (r.ok) {
+          t.img = await createImageBitmap(await r.blob());
+          t.partial = r.headers.get("X-Map-Partial") === "1";
+          if (t.partial) { t.refresh = Date.now() + 5000; setTimeout(draw, 5100); }
+        } else if (r.status !== 404) t.retry = Date.now() + 10000;
+      }).catch(() => { t.retry = Date.now() + 10000; })
+      .finally(() => { t.loading = false; inflight--; draw(); });
     return t;
   };
   const toScreen = (x, z) => [cv.clientWidth / 2 + (x - view.cx) * view.scale, cv.clientHeight / 2 + (z - view.cz) * view.scale];
@@ -369,6 +385,12 @@ function worldMapCanvas(el, sid, o) {
       ctx.imageSmoothingEnabled = view.scale < 1;
       const lod = Math.max(0, Math.min(5, Math.floor(Math.log2(1 / (view.scale * dpr)))));
       const size = 512 * 2 ** lod;                          // blocks across one picture
+      // what's already here from other zoom levels first (coarse under fine), so it never goes black while loading
+      for (const t of Object.values(tiles).filter((x) => x.img && x.lod !== lod).sort((a, b) => b.lod - a.lod)) {
+        const sz = 512 * 2 ** t.lod, [sx, sy] = toScreen(t.rx * sz, t.rz * sz), px = sz * view.scale;
+        if (sx > w || sy > h || sx + px < 0 || sy + px < 0) continue;
+        ctx.drawImage(t.img, Math.round(sx), Math.round(sy), Math.ceil(px) + 1, Math.ceil(px) + 1);
+      }
       for (let rx = Math.floor(x0 / size); rx <= Math.floor(x1 / size); rx++) {
         for (let rz = Math.floor(z0 / size); rz <= Math.floor(z1 / size); rz++) {
           if (!lodHas(lod, rx, rz)) continue;
@@ -378,7 +400,13 @@ function worldMapCanvas(el, sid, o) {
         }
       }
     }
-    note.textContent = !regions ? "Loading the map…" : waiting ? "Drawing the map…" : "";
+    if (waiting && progress && progress.drawn < progress.total && Date.now() - (progress.at || 0) > 15000) {   // how far along, now and then
+      progress.at = Date.now();
+      fetch(`/api/public/map/${encodeURIComponent(sid)}/regions?dim=${encodeURIComponent(dim)}`, { credentials: "same-origin" })
+        .then((r) => (r.ok ? r.json() : null)).then((d) => { if (d) { progress.drawn = d.drawn ?? progress.drawn; draw(); } }).catch(() => {});
+    }
+    const pct = progress && progress.total ? Math.min(100, Math.round((progress.drawn / progress.total) * 100)) : 100;
+    note.textContent = !regions ? "Loading the map…" : waiting ? `Drawing the map…${pct < 100 ? ` (${pct}% of the world drawn so far: the first time takes a while)` : ""}` : "";
     // grid every 64 or 256 blocks, labelled
     const step = view.scale >= 1 ? 64 : view.scale >= 0.25 ? 256 : 1024;
     const [gx0, gz0] = toWorld(0, 0);

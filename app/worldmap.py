@@ -668,6 +668,20 @@ def region_dir(world: Path, dim: str) -> Path | None:
     return p if p.is_dir() else None
 
 
+def partial(path: Path) -> bool:
+    """A zoomed-out picture still missing some regions (they're being drawn): the page asks for it again later."""
+    return bool(_overview_pending.get(path))
+
+
+def drawn_count(sid: str, dim: str) -> int:
+    """How many region pictures of this map are drawn so far (the first time through a big world takes a while)."""
+    d = _tile_path(sid, dim, 0, 0).parent
+    try:
+        return sum(1 for f in d.iterdir() if f.suffix == ".png")
+    except OSError:
+        return 0
+
+
 def regions(world: Path, dim: str) -> list[list[int]]:
     d = region_dir(world, dim)
     out = []
@@ -881,6 +895,7 @@ def tile(sid: str, world: Path, dim: str, rx: int, rz: int, assets) -> tuple[str
 
 OVERVIEW_LEVELS = 5                     # zoomed out: one picture for 2x2 regions, 4x4, ... 32x32
 OVERVIEW_RECHECK = 20                   # seconds: a picture still missing some parts is built again at most this often
+OVERVIEW_FRESH = 3                      # seconds: asked again within this, the picture as it is (no looking through its parts)
 
 
 def overview(sid: str, world: Path, dim: str, level: int, x: int, z: int, assets) -> tuple[str, Path | None]:
@@ -891,6 +906,9 @@ def overview(sid: str, world: Path, dim: str, level: int, x: int, z: int, assets
     if not d or not 1 <= level <= OVERVIEW_LEVELS:
         return "none", None
     dst = _tile_path(sid, dim, x, z).parent / f"L{level}" / f"{x}.{z}.png"
+    made = _overview_made.get(dst)
+    if made and time.time() - made[1] < OVERVIEW_FRESH and dst.is_file():   # asked again straight away (zooming fast)
+        return "ready", dst
     parts, pending, sig = [], False, []
     for i, (cx, cz) in enumerate(((2 * x, 2 * z), (2 * x + 1, 2 * z), (2 * x, 2 * z + 1), (2 * x + 1, 2 * z + 1))):
         state, path = tile(sid, world, dim, cx, cz, assets) if level == 1 else overview(sid, world, dim, level - 1, cx, cz, assets)
@@ -906,7 +924,6 @@ def overview(sid: str, world: Path, dim: str, level: int, x: int, z: int, assets
         return ("working", None) if pending else ("none", None)
     # Built from exactly these parts already? (Compared by what they were, not by times: a part can be finished
     # just before this picture is made and land on disk just after.)
-    made = _overview_made.get(dst)
     if made and dst.is_file() and made[0] == sig and (not pending or time.time() - made[1] < OVERVIEW_RECHECK):
         return "ready", dst
     img = Image.new("RGBA", (TILE, TILE), (0, 0, 0, 0))

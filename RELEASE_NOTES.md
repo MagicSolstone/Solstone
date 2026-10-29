@@ -1,3 +1,13 @@
+# Solstone 1.10.4
+
+- **The top-down map no longer gets stuck when you zoom out fast:**
+  - Zoomed-out pictures that were still filling in (their regions being drawn for the first time) are fetched again every few seconds, instead of staying half-empty or black until a reload.
+  - While a zoom level loads, whatever was already loaded at other zoom levels stays on screen, so it never goes black.
+  - At most a few pictures are fetched at a time, and asking again straight away gets the picture as it is, so zooming fast can't pile up work on the server or hold up the rest of the page.
+  - The first time through a big world it says how far it's got: *Drawing the map… (40% of the world drawn so far: the first time takes a while)*. That happens once; after that, only changed regions are drawn again.
+  - If loading the map's list of regions fails, it tries again instead of staying on *Loading the map…*.
+  - The same on the home page's *Where everyone is*.
+
 # Solstone 1.10.3
 
 - **The home page stays tidy however many posts there are:** it shows the newest **3 news posts** and **4 guides**, then a **More news →** / **More guides and questions →** button to the full pages when there are more. Change how many (up to 12, or 0 to leave that part off) in Website → Site details.

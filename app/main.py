@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.10.3"
+VERSION = "1.10.4"
 
 
 @asynccontextmanager
@@ -1025,7 +1025,8 @@ async def _map_server(request: Request, sid: str) -> S.Server:
 @app.get("/api/public/map/{sid}/regions")
 async def map_regions(sid: str, request: Request, dim: str = "minecraft:overworld"):
     srv = await _map_server(request, sid)
-    return {"dim": dim, "size": worldmap.TILE, "regions": await asyncio.to_thread(worldmap.regions, srv.world_dir, dim)}
+    regs = await asyncio.to_thread(worldmap.regions, srv.world_dir, dim)
+    return {"dim": dim, "size": worldmap.TILE, "regions": regs, "drawn": await asyncio.to_thread(worldmap.drawn_count, srv.id, dim)}
 
 
 @app.get("/api/public/map/{sid}/tile")
@@ -1038,7 +1039,9 @@ async def map_tile(sid: str, request: Request, x: int, z: int, dim: str = "minec
             raise HTTPException(404)
         if state == "working":
             return Response(status_code=202, headers={"Retry-After": "3", "Cache-Control": "no-store"})
-        return FileResponse(path, media_type="image/png", headers={"Cache-Control": "max-age=60"})
+        partial = worldmap.partial(path)                 # still filling in: the page asks again in a few seconds
+        return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-store" if partial else "max-age=60",
+                                                                   "X-Map-Partial": "1" if partial else "0"})
     state, path = await asyncio.to_thread(worldmap.tile, srv.id, srv.world_dir, dim, x, z, _assets(srv))
     if state == "none":
         raise HTTPException(404)
