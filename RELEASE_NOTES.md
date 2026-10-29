@@ -1,6 +1,6 @@
 # Solstone 1.9.6
 
-- **Fewer stalls when the server's disks are busy:** the players list and the leaderboards read every player's files away from the part of Solstone that answers pages, so a slow disk (the mover, a backup) no longer holds up the whole website. More room for background work too.
+- **Fewer stalls when the server's disks are busy:** the players list, the leaderboards and the home page's live section (who played this week, where they were) read players' files away from the part of Solstone that answers pages, so a slow disk (the mover, a backup) no longer holds up the whole website. More room for background work too.
 - **A watchdog in the log:** if the website stops answering for more than a few seconds, Solstone's log says so (*The website has been held up for 12 s. It was busy with: …*) and when it's going again, and any page that takes over 5 seconds is logged (*Slow answer: …*). If it ever stalls again, those lines show why.
 
 # Solstone 1.9.5

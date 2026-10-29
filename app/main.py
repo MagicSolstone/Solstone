@@ -446,9 +446,9 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
         for p, live in zip(online, details, strict=True):
             d = live
             if d is None and p.get("uuid"):
-                d, _m = S.player_file_data(srv, p["uuid"])
+                d, _m = await asyncio.to_thread(S.player_file_data, srv, p["uuid"])
             row: dict = {"name": p["name"], "uuid": p.get("uuid"), "live": live is not None,   # never how long they've played
-                         "doing": adventures.lately(srv.id, p["name"])}                    # "⛏️ Mining", from their statistics
+                         "doing": await asyncio.to_thread(adventures.lately, srv.id, p["name"])}   # "⛏️ Mining", from their statistics
             if d:
                 row.update(health=d["health"], max_health=d["max_health"], absorption=d.get("absorption", 0),
                            food=d["food"], xp_level=d["xp_level"], xp_progress=d["xp_progress"],
@@ -468,23 +468,29 @@ async def _build_board(srv: S.Server, cfg: dict) -> dict:
         board["recent"] = [{"ts": e["ts"], "type": e["type"], "player": e["player"], "message": e["message"]} for e in evs]
     online_l = {n.lower() for n in summ["online"]}
     if srv.is_java:
-        week = time.time() - 7 * 86400
-        recent = []
-        for uuid, p in S.known_players(srv).items():
-            if p["name"].lower() in online_l:
-                continue
-            seen = S.last_seen(srv, uuid)
-            if seen and seen > week:
-                recent.append({"name": p["name"], "uuid": uuid, "last_seen": seen})
-        board["recently"] = sorted(recent, key=lambda r: -r["last_seen"])[:8]
-        if cfg["show_positions"]:
-            # where they were when they left, so the map has something to show with nobody on
-            for r in board["recently"]:
-                d, _m = S.player_file_data(srv, r["uuid"])
-                if d and d.get("position"):
-                    r["position"] = {k: d["position"][k] for k in ("x", "y", "z")}
-                    r["dimension"] = d["position"].get("dimension") or "minecraft:overworld"
+        board["recently"] = await asyncio.to_thread(_recently, srv, online_l, cfg["show_positions"])
     return board
+
+
+def _recently(srv: S.Server, online_l: set[str], positions: bool) -> list[dict]:
+    """Who played this week but isn't on now (disk work: run off the main loop)."""
+    week = time.time() - 7 * 86400
+    recent = []
+    for uuid, p in S.known_players(srv).items():
+        if p["name"].lower() in online_l or S.removed(srv, p):
+            continue
+        seen = S.last_seen(srv, uuid)
+        if seen and seen > week:
+            recent.append({"name": p["name"], "uuid": uuid, "last_seen": seen})
+    recent = sorted(recent, key=lambda r: -r["last_seen"])[:8]
+    if positions:
+        # where they were when they left, so the map has something to show with nobody on
+        for r in recent:
+            d, _m = S.player_file_data(srv, r["uuid"])
+            if d and d.get("position"):
+                r["position"] = {k: d["position"][k] for k in ("x", "y", "z")}
+                r["dimension"] = d["position"].get("dimension") or "minecraft:overworld"
+    return recent
 
 
 async def _board(srv: S.Server, cfg: dict) -> dict:
