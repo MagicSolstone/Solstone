@@ -943,9 +943,7 @@ async def live_player(srv: Server, name: str) -> dict | None:
     return data
 
 
-async def players_overview(srv: Server, with_removed: bool = False) -> dict:
-    online, source = await online_players(srv)
-    online_l = {n.lower() for n in online}
+def _player_rows(srv: Server, online_l: set[str], with_removed: bool) -> tuple[list[dict], set[str]]:
     rows = []
     known = known_players(srv)
     names_known = {p["name"].lower() for p in known.values()}
@@ -971,6 +969,14 @@ async def players_overview(srv: Server, with_removed: bool = False) -> dict:
             "headline": headline_stats(stats),
             **({"removed": True} if gone else {}),
         })
+    return rows, names_known
+
+
+async def players_overview(srv: Server, with_removed: bool = False) -> dict:
+    online, source = await online_players(srv)
+    online_l = {n.lower() for n in online}
+    # Reading every player's files is disk work: done off the main loop, so a busy disk can't hold up the website
+    rows, names_known = await asyncio.to_thread(_player_rows, srv, online_l, with_removed)
     # Players online who have never been saved yet (first join)
     for n in online:
         if n.lower() not in names_known:
@@ -1096,6 +1102,10 @@ def leaderboard_stats(stats: dict) -> dict:
 
 
 async def leaderboard(srv: Server) -> dict:
+    return await asyncio.to_thread(_leaderboard, srv)          # disk work: off the main loop
+
+
+def _leaderboard(srv: Server) -> dict:
     rows = []
     for uuid, p in known_players(srv).items():
         if removed(srv, p):                 # off the whitelist: off the boards (back on, and their scores return)

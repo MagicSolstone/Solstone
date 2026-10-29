@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, webmap, welcome, worldmap
+from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, watchdog, webmap, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -33,11 +33,12 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.9.5"
+VERSION = "1.9.6"
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    watchdog.start()
     await S.registry.refresh(force=True)
     log.info("Solstone %s — %d server(s) found", VERSION, len(S.registry.servers))
     db.conn()
@@ -278,7 +279,11 @@ async def require_login(request: Request, call_next):
             return JSONResponse({"detail": "Too many requests. Slow down a little."}, status_code=429, headers={"Retry-After": "30"})
     if not auth.TRUST_PROXY and not _proxy_warned and (request.headers.get("x-forwarded-for") or request.headers.get("cf-connecting-ip")):
         _warn_proxy()
+    started = time.monotonic()
     response = await call_next(request)
+    took = time.monotonic() - started
+    if took > watchdog.SLOW_REQUEST_SECONDS and not path.endswith(("/stream", "/sse")):
+        log.warning("Slow answer: %s %s took %.1f s", request.method, path, took)
     if auth.is_https(request):
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
