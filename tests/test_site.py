@@ -345,7 +345,7 @@ def test_offline_worker(client, viewer, anon):
         assert "__SITE__" not in code and "export default" in code
         cfg = json.loads(re.search(r"const SITE = (\{.*?\n\});", code, re.S).group(1))
         assert cfg["contact"] == "help@fbc.example" and isinstance(cfg["servers"], list)
-        assert set(cfg) == {"name", "contact", "discord", "servers"}          # nothing beyond what the home page shows
+        assert set(cfg) == {"name", "contact", "discord", "servers", "key"}   # what the home page shows, and its maintenance key
         if shutil.which("node"):
             import tempfile
             from pathlib import Path

@@ -1,3 +1,8 @@
+# Solstone 1.9.8
+
+- **🛠️ Planned maintenance:** Website → Site details → **Planned maintenance**: when it starts and ends, and a message (*Swapping in a faster drive. Your builds are safe!*). Every page shows a banner counting down to it. And while everything's off, the Cloudflare *website is down* page says **Down for maintenance, back around Saturday 3 PM**, with your message, instead of just "down" (and still shows whether each Minecraft server is up). Past the end time it says it's taking a little longer than planned. **Cancel the maintenance** takes it all away again.
+- For the Cloudflare page to know, it needs the new Worker and somewhere to keep the notice: **download the Worker again** and paste it in, then add a free **KV namespace** to it bound as `SOLSTONE` (the steps are in Site details). Without it, everything else works as before, and Site details says why the page wasn't told.
+
 # Solstone 1.9.7
 
 - **Your join firework, your pick:** Fireworks (the editor page) has **When you join the server**: pick one of your own fireworks, or anyone's, and it goes off in everyone's sky when you join. Or leave it on *A random firework*. It covers both your Java and Bedrock names. Admins can still set anyone's in the firework show settings.

@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, watchdog, webmap, welcome, worldmap
+from . import adventures, auth, backups, board, challenges, control, db, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, watchdog, maintenance, webmap, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -33,7 +33,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.9.7"
+VERSION = "1.9.8"
 
 
 @asynccontextmanager
@@ -629,11 +629,37 @@ async def offline_worker(request: Request):
     pub = json.loads((await public_site()).body)
     cfg = {"name": pub["name"], "contact": pub.get("contact") or "", "discord": pub.get("discord") or "",
            "servers": [{"name": j["name"], "java": j["java"], "bedrock": j["bedrock"], "bedrock_port": j["bedrock_port"]}
-                       for j in pub["joins"]]}
+                       for j in pub["joins"]],
+           "key": maintenance.worker_key()}                 # so only Solstone can tell it about planned maintenance
     code = (Path(__file__).parent / "offline_worker.js").read_text(encoding="utf-8")
     code = code.replace("__SITE__", json.dumps(cfg, ensure_ascii=False, indent=2).replace("</", "<\\/"), 1)
     return Response(code, media_type="text/javascript; charset=utf-8",
                     headers={"Content-Disposition": 'attachment; filename="solstone-offline-worker.js"'})
+
+
+@app.get("/api/settings/maintenance")
+async def get_maintenance(request: Request):
+    auth.require_admin(request)
+    return {"maintenance": maintenance.current()}
+
+
+@app.put("/api/settings/maintenance")
+async def set_maintenance(request: Request):
+    """Plan maintenance (start, end, message; empty start clears it): a countdown banner on every page, and the
+    details handed to the Cloudflare Worker so its page says it's maintenance while everything's off."""
+    user = auth.require_admin(request)
+    body = await _body(request)
+    if body.get("start"):
+        try:
+            m = await asyncio.to_thread(maintenance.plan, str(body.get("start")), str(body.get("end") or ""), str(body.get("message") or ""))
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+    else:
+        m = None
+        await asyncio.to_thread(maintenance.clear)
+    problem = await maintenance.push(_public_base(request), m)
+    auth.audit(user, None, "maintenance", f"{m['start']} to {m['end']}" if m else "cleared")
+    return {"maintenance": m, "worker": problem or "ok"}
 
 
 @app.post("/api/settings/site/logo")

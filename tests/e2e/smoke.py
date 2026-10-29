@@ -523,6 +523,8 @@ def main() -> int:
                 pg.fill('#ws-site [name="contact"]', "contact@example.net")
                 if not pg.locator('.ws-offline a[href="/api/settings/site/offline-worker"]').count():
                     problems.append("website: no download for the Cloudflare offline page")
+                if not pg.locator("#ws-maint-form [name=start]").count():
+                    problems.append("website: no Planned maintenance in Site details")
                 pg.click('#ws-site button[type="submit"]'); pg.wait_for_timeout(1500)
                 anon.goto(f"{base}/"); anon.reload(); anon.wait_for_timeout(1200)
                 if "main" not in (anon.locator(".hp-join-card").first.get_attribute("class") or "").split() or "survival world" not in (anon.locator(".hp-join-card.main").text_content() or ""):

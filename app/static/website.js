@@ -239,6 +239,29 @@ function wsPosts(el) {
   });
 }
 
+// ---------------------------------------------------------------- planned maintenance
+async function wsMaintenance() {
+  const form = $("#ws-maint-form"), status = $("#ws-maint-status"), clearBtn = $("#ws-maint-clear");
+  if (!form) return;
+  const show = (m, worker) => {
+    form.start.value = m?.start || ""; form.end.value = m?.end || ""; form.message.value = m?.message || "";
+    clearBtn.hidden = !m;
+    const told = worker === "ok" ? " The Cloudflare page knows about it." : worker ? ` ⚠ ${worker}.` : "";
+    status.textContent = m ? `Planned: ${new Date(m.start).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })} to ${new Date(m.end).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}.${told}` : worker ? `No maintenance planned.${worker === "ok" ? "" : told}` : "";
+  };
+  const cur = await api("/api/settings/maintenance").catch(() => null);
+  show(cur?.maintenance, null);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try { const r = await post("/api/settings/maintenance", { start: form.start.value, end: form.end.value, message: form.message.value }, "PUT"); show(r.maintenance, r.worker); showToast("Maintenance planned", 2500); }
+    catch (err) { showError(esc(err.message), 5000); }
+  });
+  clearBtn.addEventListener("click", async () => {
+    try { const r = await post("/api/settings/maintenance", { start: "" }, "PUT"); show(null, r.worker); showToast("Maintenance cancelled", 2500); }
+    catch (err) { showError(esc(err.message), 5000); }
+  });
+}
+
 // ---------------------------------------------------------------- site details
 function wsSite(el) {
   const s = ws.data.site;
@@ -275,10 +298,22 @@ function wsSite(el) {
       <li>Save the details above, then <a class="btn sm" href="/api/settings/site/offline-worker" download>⬇ Download the Worker</a></li>
       <li>In Cloudflare: <b>Workers &amp; Pages → Create application → Start with Hello World</b>, name it (like <i>site-offline</i>) and <b>Deploy</b>. Then <b>Edit code</b>, replace everything there with the downloaded file, and <b>Deploy</b> again. (Not <i>Upload</i> or static files: that's for Pages, and won't take it.)</li>
       <li>In the Worker: <b>Settings → Domains &amp; Routes → Add → Route</b> (not <i>Custom domain</i>): <code>${esc(location.host)}/*</code> on your domain's zone. The website's address must be proxied by Cloudflare (orange cloud, or a Cloudflare Tunnel). Its own <i>workers.dev</i> address isn't needed; you can turn it off there.</li>
+      <li>For planned maintenance (below), give it somewhere to keep the notice: in Cloudflare, <b>Storage &amp; Databases → KV → Create</b> (name it <i>solstone</i>), then in the Worker <b>Settings → Bindings → Add → KV namespace</b>, variable name <code>SOLSTONE</code>, that namespace, and <b>Deploy</b>.</li>
       <li>To try it, stop Solstone for a moment and open the website.</li>
     </ol>
     <p class="muted small">Changed the name, contact or servers? Download it again and paste it over the old one. The server check uses mcsrvstat.us, a free public status checker.</p>
+  </section>
+  <section class="panel ws-offline" id="ws-maint"><h3>🛠️ Planned maintenance</h3>
+    <p class="muted">Taking the servers and website down on purpose (new hardware, say)? Plan it here: every page shows a banner counting down to it, and while everything's off, the Cloudflare page says <i>Down for maintenance, back around …</i> with your message, instead of just "down". Times are the server's.</p>
+    <form id="ws-maint-form" class="ws-row">
+      <label>From<input class="input" type="datetime-local" name="start" required></label>
+      <label>Until<input class="input" type="datetime-local" name="end" required></label>
+      <label class="wide">Message <small>Optional, shown on the banner and the Cloudflare page</small><input class="input" name="message" maxlength="240" placeholder="Swapping in a faster drive. Your builds are safe!"></label>
+      <div class="actions"><button type="button" class="btn" id="ws-maint-clear" hidden>Cancel the maintenance</button><button class="btn primary" type="submit">Plan it</button></div>
+    </form>
+    <p class="muted small" id="ws-maint-status" role="status"></p>
   </section>`;
+  wsMaintenance();
   // each server's join details come from its settings
   $$(".ws-join").forEach(async (row) => {
     const cur = await api(`/api/servers/${encodeURIComponent(row.dataset.sid)}/settings`).catch(() => ({}));
