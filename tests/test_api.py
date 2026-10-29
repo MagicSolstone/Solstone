@@ -157,3 +157,32 @@ def test_one_leaderboard_list_for_app_and_status_page(client, anon, sid):
         assert public["boards"] == mine["boards"]                    # same boards, same order, no drift
     finally:
         client.put("/api/settings/status", json={"enabled": False})
+
+
+def test_players_off_the_whitelist_are_left_out(client, sid):
+    """Taken off the whitelist: gone from player lists, leaderboards and who played; back on, all of it returns."""
+    import json
+
+    import helpers
+    from app import servers as S
+    srv = S.registry.servers[sid]
+    wl = srv.dir / "whitelist.json"
+    keep = wl.read_text() if wl.exists() else None
+    tyler, gimli = helpers.PLAYERS[0], helpers.PLAYERS[1]
+    others = [p for p in helpers.PLAYERS if p[0] != gimli[0]]
+    wl.write_text(json.dumps([{"uuid": u, "name": n} for n, u in others]))
+    try:
+        names = {p["name"] for p in client.get(f"/api/servers/{sid}/players").json()["players"]}
+        assert gimli[0] not in names and tyler[0] in names
+        assert client.get(f"/api/servers/{sid}/players").json()["removed_count"] == 1
+        board = {p["name"] for p in client.get(f"/api/servers/{sid}/leaderboard").json()["players"]}
+        assert gimli[0] not in board and tyler[0] in board
+        back = {p["name"]: p for p in client.get(f"/api/servers/{sid}/players?removed=1").json()["players"]}
+        assert back[gimli[0]].get("removed") is True                     # admins can still look
+    finally:
+        if keep is None:
+            wl.unlink()
+        else:
+            wl.write_text(keep)
+    names = {p["name"] for p in client.get(f"/api/servers/{sid}/players").json()["players"]}
+    assert gimli[0] in names

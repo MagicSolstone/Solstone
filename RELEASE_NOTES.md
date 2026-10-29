@@ -6,6 +6,11 @@
 - **Players are shown by their Minecraft name:** on the website a player is always their in-game name, never a made-up one. With two linked, **My Minecraft accounts** (it was *My Minecraft players*) marks one **⭐ Main**, and **Make main** switches. Admins and Trusted accounts keep a display name of their own.
 - The account menu says which login you're signed in with, and the guide to making an account explains linking Java and Bedrock.
 
+## Players taken off the whitelist
+- **Off the whitelist, off Solstone's lists:** with the whitelist on, someone no longer on it is left out of the players list, the leaderboards (and medals) and *who played*. Nothing is deleted: put them back on the whitelist and it all returns. Operators always count.
+- Admins see *N no longer on the whitelist · Show them* under the players list, to look at them again (marked *Removed*).
+- **Sign-ins in the activity log:** Manage → Activity log now shows each sign-in (*Signed in*, and with which name), not only failed ones.
+
 ## The web map from anywhere
 - **Show the map through Solstone** (a server's ⚙ settings, under the map address): BlueMap, squaremap or Dynmap opens on the World tab from anywhere, not just at home, and only for people signed in who may see the map (Players only with *Players can see the map* on). The map itself stays on your home network: give its home address (like `http://192.168.1.10:8100`).
 - **Walled off from the website:** the map runs in a sandbox, so nothing on it (a claim name, say) can reach anyone's account. Links to it carry a pass that runs out after 12 hours and stops at once if the map or a player's access is switched off.

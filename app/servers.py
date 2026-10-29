@@ -31,6 +31,22 @@ def whitelist_entries(srv) -> tuple[set[str], set[str]]:
     return _cache.get(("whitelist", srv.id), srv.dir / "whitelist.json", load) or (set(), set())
 
 
+def removed(srv, p: dict) -> bool:
+    """Taken off the server: the whitelist is on and they're not on it (nor an operator). Their files and history
+    stay (put them back and it all returns), but player lists and leaderboards leave them out."""
+    if str(srv.props.get("white-list", "false")).lower() != "true" or p.get("op"):
+        return False
+    uuids, names = whitelist_entries(srv)
+    if not uuids and not names:             # no whitelist file (or an unreadable one): never hide everyone
+        return False
+    return not whitelisted(srv, p.get("uuid"), p.get("name"))
+
+
+def removed_names(srv) -> set[str]:
+    """Lowercased names of the players taken off the server (see removed)."""
+    return {p["name"].lower() for p in known_players(srv).values() if removed(srv, p)}
+
+
 def whitelisted(srv, uuid: str | None, name: str | None) -> bool:
     """Is this player on the server's whitelist (by UUID, or by name, with or without Floodgate's dot)?"""
     uuids, names = whitelist_entries(srv)
@@ -927,13 +943,16 @@ async def live_player(srv: Server, name: str) -> dict | None:
     return data
 
 
-async def players_overview(srv: Server) -> dict:
+async def players_overview(srv: Server, with_removed: bool = False) -> dict:
     online, source = await online_players(srv)
     online_l = {n.lower() for n in online}
     rows = []
     known = known_players(srv)
     names_known = {p["name"].lower() for p in known.values()}
     for uuid, p in known.items():
+        gone = removed(srv, p)
+        if gone and p["name"].lower() not in online_l and not with_removed:
+            continue
         data, _m = player_file_data(srv, uuid)
         stats = player_stats(srv, uuid)
         adv = player_advancements(srv, uuid)
@@ -950,6 +969,7 @@ async def players_overview(srv: Server) -> dict:
             "position": data["position"] if data else None,
             "advancements": sum(1 for k, a in adv.items() if a["done"] and "/recipes/" not in k and ":recipes/" not in k),
             "headline": headline_stats(stats),
+            **({"removed": True} if gone else {}),
         })
     # Players online who have never been saved yet (first join)
     for n in online:
@@ -1078,6 +1098,8 @@ def leaderboard_stats(stats: dict) -> dict:
 async def leaderboard(srv: Server) -> dict:
     rows = []
     for uuid, p in known_players(srv).items():
+        if removed(srv, p):                 # off the whitelist: off the boards (back on, and their scores return)
+            continue
         data, _ = player_file_data(srv, uuid)
         h = leaderboard_stats(player_stats(srv, uuid))
         h["xp_level"] = data["xp_level"] if data else 0

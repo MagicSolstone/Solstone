@@ -1501,7 +1501,10 @@ async def _body(request: Request) -> dict:
 @app.post("/api/auth/login")
 async def login(request: Request):
     body = await _body(request)
-    user, token = await asyncio.to_thread(auth.login, request, str(body.get("username", "")), str(body.get("password", "")))
+    typed = str(body.get("username", ""))
+    user, token = await asyncio.to_thread(auth.login, request, typed, str(body.get("password", "")))
+    auth.audit(user, None, "login", f"as {typed} from {auth.client_ip(request)}" if typed.lower() != user.username.lower()
+               else f"from {auth.client_ip(request)}")
     resp = JSONResponse({"user": _me(user)})
     auth.set_cookie(resp, request, token)
     return resp
@@ -1926,8 +1929,12 @@ async def pack_file(token: str, path: str, request: Request):
 
 
 @app.get("/api/servers/{sid}/players")
-async def get_players(sid: str):
-    data = await S.players_overview(await _server(sid))
+async def get_players(sid: str, removed: bool = False):
+    """Everyone who has played, minus those taken off the whitelist (admins can ask for them with ?removed=1)."""
+    srv = await _server(sid)
+    data = await S.players_overview(srv, with_removed=removed and _admin_viewing())
+    if _admin_viewing():
+        data["removed_count"] = len(S.removed_names(srv))
     if not _shows_play_time():
         data = _no_durations(data)
     see_map = _players_see_map()
@@ -2087,14 +2094,16 @@ async def get_settings(sid: str, request: Request):
 async def activity(sid: str, days: int = 14):
     srv = await _server(sid)
     days = max(1, min(days, 90))
+    gone = S.removed_names(srv)                  # taken off the whitelist: left out of who played
     if not _shows_play_time():
-        daily = [{"date": d["date"], "players": {n: 1 for n, v in d["players"].items() if v > 0}} for d in db.daily_playtime(srv.id, days)]
+        daily = [{"date": d["date"], "players": {n: 1 for n, v in d["players"].items() if v > 0 and n.lower() not in gone}}
+                 for d in db.daily_playtime(srv.id, days)]
         return {"daily": daily, "sessions": [], "durations": False,
                 "recorder_since": (db.q("SELECT MIN(ts) AS t FROM metrics WHERE server_id=?", (srv.id,))[0]["t"])}
     return {
         "durations": True,
-        "daily": db.daily_playtime(srv.id, days),
-        "sessions": db.sessions(srv.id, limit=40),
+        "daily": [{**d, "players": {n: v for n, v in d["players"].items() if n.lower() not in gone}} for d in db.daily_playtime(srv.id, days)],
+        "sessions": [x for x in db.sessions(srv.id, limit=40) if (x.get("player") or "").lower() not in gone],
         "recorder_since": (db.q("SELECT MIN(ts) AS t FROM metrics WHERE server_id=?", (srv.id,))[0]["t"]),
     }
 

@@ -832,7 +832,7 @@ function playerRow(p) {
   const h = p.headline || {};
   const sub = p.online
     ? `<span class="live-tag"><span class="status-dot on"></span>Playing</span>${p.dimension ? `<span>${esc(dimName(p.dimension))}</span>` : ""}`
-    : `<span>Last seen ${esc(fmtAgo(p.last_seen))}</span>`;
+    : `<span>Last seen ${esc(fmtAgo(p.last_seen))}</span>${p.removed ? '<span class="chip" title="Not on the whitelist any more">Removed</span>' : ""}`;
   const vitals = p.online && p.health != null
     ? `<span title="Health">❤ ${p.health}</span>${p.food != null ? `<span title="Hunger">🍗 ${p.food}</span>` : ""}`
     : "";
@@ -848,22 +848,29 @@ function playersListHtml(data) {
   return `${on.length ? `<div class="pl-group"><div class="pl-label">Playing now · ${on.length}</div>${on.map(playerRow).join("")}</div>` : `<p class="muted pl-none">Nobody is playing right now.</p>`}
     ${off.length ? `<div class="pl-group"><div class="pl-label">${on.length ? "Everyone else" : "Players"}</div>${off.map(playerRow).join("")}</div>` : ""}`;
 }
+// Players taken off the whitelist are left out; admins can show them again for a look (?removed=1).
+let showRemoved = false;
+const removedNote = (d) => d.removed_count ? `<p class="muted small pl-removed">${d.removed_count} no longer on the whitelist (left out of lists and leaderboards).
+  <button type="button" class="link-btn" data-show-removed>${showRemoved ? "Hide them" : "Show them"}</button></p>` : "";
 async function viewOverview(sid) {
   const s = await serverFrame(sid, "overview");
-  const data = await api(`/api/servers/${sid}/players`);
+  const playersUrl = () => `/api/servers/${sid}/players${showRemoved ? "?removed=1" : ""}`;
+  const data = await api(playersUrl());
   setView(serverHeader(s, "overview") + `<div class="overview">
       <aside class="ov-side" aria-label="Players"><div class="section-head"><h2>Players</h2><span class="muted">${data.players.length} joined</span></div>
-        <div id="players-body">${playersListHtml(data)}</div></aside>
+        <div id="players-body">${playersListHtml(data)}${removedNote(data)}</div></aside>
       <div class="ov-main">${isPlayer() ? '<div id="ov-glance"></div>' : ""}<section class="rc-wrap" id="ov-recap" aria-label="Daily recap"></section><div id="ov-activity"></div></div></div>`);
   wireHeader(s);
   const refreshRecap = mountRecap($("#ov-recap"), sid);
   // Players get the server at a glance (now, the world, coming up, themselves) and who played which days;
   // everyone else the full activity.
   const refreshActivity = isPlayer() ? mountPlayerGlance($("#ov-glance"), $("#ov-activity"), s, data) : mountActivity($("#ov-activity"), sid, data.players.map((p) => p.name));
-  every(10000, async () => {
-    const d = await api(`/api/servers/${sid}/players`).catch(() => null);
-    if (d && $("#players-body")) $("#players-body").innerHTML = playersListHtml(d);
-  });
+  const repaint = async () => {
+    const d = await api(playersUrl()).catch(() => null);
+    if (d && $("#players-body")) $("#players-body").innerHTML = playersListHtml(d) + removedNote(d);
+  };
+  $("#players-body").addEventListener("click", (e) => { if (e.target.closest("[data-show-removed]")) { showRemoved = !showRemoved; repaint(); } });
+  every(10000, repaint);
   every(30000, refreshActivity);
   every(120000, refreshRecap);
 }

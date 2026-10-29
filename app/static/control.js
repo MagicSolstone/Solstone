@@ -13,7 +13,7 @@ const ACTION_LABELS = {
   "player:op": "Made operator", "player:deop": "Removed operator", "power:start_server": "Started the server",
   "power:stop_server": "Stopped the server", "power:restart_server": "Restarted the server", "power:backup_server": "Started a backup",
   kick: "Disconnected", add_user: "Added a user", edit_user: "Changed a user", delete_user: "Removed a user",
-  change_password: "Changed their password", login_page_settings: "Changed the sign-in page", login_failed: "Failed sign-in", notification_settings: "Changed notifications",
+  change_password: "Changed their password", login_page_settings: "Changed the sign-in page", login_failed: "Failed sign-in", login: "Signed in", main_player: "Picked their main Minecraft account", notification_settings: "Changed notifications",
 };
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
