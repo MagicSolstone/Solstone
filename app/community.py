@@ -455,10 +455,14 @@ def recent_from(user_id: int, seconds: int = 3600) -> int:
 
 
 def forget_user(uid: int) -> None:
-    """An account removed: its messages, votes and sign-ups go too (a new account never inherits them)."""
+    """An account removed: its messages and sign-ups go too, and its votes in votes still open (a new account never
+    inherits any of it). Its votes in finished votes stay counted, so a result never changes afterwards."""
     _init()
     for (tid,) in [(r["id"],) for r in db.q("SELECT id FROM threads WHERE user_id=?", (uid,))]:
         db.x("DELETE FROM messages WHERE thread_id=?", (tid,))
     db.x("DELETE FROM threads WHERE user_id=?", (uid,))
-    db.x("DELETE FROM poll_votes WHERE voter=?", (f"u{uid}",))
+    # votes still open: taken back (the vote isn't decided yet); closed ones stay in the result, nobody's any more
+    db.x("DELETE FROM poll_votes WHERE voter=? AND poll_id IN (SELECT id FROM polls WHERE closed_ts IS NULL)", (f"u{uid}",))
+    for r in db.q("SELECT poll_id FROM poll_votes WHERE voter=?", (f"u{uid}",)):
+        db.x("UPDATE poll_votes SET voter=? WHERE poll_id=? AND voter=?", (f"gone:{secrets.token_hex(6)}", r["poll_id"], f"u{uid}"))
     db.x("DELETE FROM signups WHERE user_id=?", (uid,))

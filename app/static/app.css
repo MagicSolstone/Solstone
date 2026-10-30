@@ -2111,3 +2111,7 @@ a.glance-me:hover { border-color: var(--gold); }
 
 .mp-own { display: grid; gap: 6px; margin-top: 12px; padding: 12px 14px; }
 .mp-own .btn { justify-self: start; }
+
+.ws-unused { margin-top: 16px; display: grid; gap: 8px; }
+.ws-unused-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ws-unused-row img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; border: 1px solid rgba(255, 255, 255, .1); }

@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import adventures, backups, board, challenges, db, eventgroups, fishing, fwshow, games, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome
+from . import accounts, adventures, backups, board, challenges, db, eventgroups, fishing, fwshow, games, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -312,6 +312,7 @@ class Recorder:
         self._online[srv.id] = list(online)
         for n in joined:                                # a new skin is picked up when they sign in, fetched now
             if online.get(n):                           # so pages have it ready instead of waiting on Mojang
+                accounts.follow_name(online[n], n)      # a new Java name or gamertag: what's kept by name follows
                 skins.stale(online[n])
                 asyncio.get_running_loop().create_task(skins.warm(online[n]))
         if online and srv.is_java:

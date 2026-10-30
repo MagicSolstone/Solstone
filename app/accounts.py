@@ -74,3 +74,54 @@ def forget(uid: int, username: str, players: list[str]) -> dict:
             pt["people"].setdefault(f"p:{n}", dict(row))
         playtime.save(pt)
     return gone
+
+
+def follow_name(uuid: str, name: str) -> str | None:
+    """A player joined under a new name (a Java name change, a new Xbox gamertag): the game knows them by their
+    UUID, which stays the same, so their stats, whitelist place and history carry on. What Solstone keeps under the
+    name follows: the name linked to their account (and their login, if it was that name), their play-time limits,
+    their join firework and their votes. Returns the old name if it changed."""
+    from . import auth, playtime
+    if not uuid or not name:
+        return None
+    auth._init()
+    row = next((r for r in db.q("SELECT user_id, name FROM user_players WHERE lower(replace(uuid, '-', ''))=?",
+                                (uuid.lower().replace("-", ""),))), None)
+    old = row["name"] if row and row["name"] != name else None
+    if old:
+        db.x("UPDATE user_players SET name=? WHERE lower(replace(uuid, '-', ''))=?", (name, uuid.lower().replace("-", "")))
+        auth._sync_first(row["user_id"])
+        u = auth.get_user(row["user_id"])
+        if u and u.username.lower() == old.lower() and not db.q(
+                "SELECT 1 FROM users WHERE id<>? AND username=? COLLATE NOCASE", (u.id, name)):
+            db.x("UPDATE users SET username=? WHERE id=?", (name, u.id))      # they sign in with their Minecraft name
+            rename(u.username, name)
+        auth.audit(name, None, "name_changed", f"{old} → {name}")
+    if not old:                                     # not on an account: name-kept things may still need to follow
+        old = _previous_name(uuid, name)
+    if not old:
+        return None
+    o, n = old.lower(), name.lower()
+    pt = settings_store.load().get(playtime.SECTION)
+    if isinstance(pt, dict) and f"p:{o}" in (pt.get("people") or {}):
+        pt["people"].setdefault(f"p:{n}", pt["people"].pop(f"p:{o}"))
+        playtime.save(pt)
+    sigs = settings_store.load().get("fw_signatures") or {}
+    if o in sigs:
+        sigs.setdefault(n, sigs.pop(o))
+        settings_store.save_section("fw_signatures", sigs)
+    try:
+        db.x("UPDATE OR IGNORE poll_votes SET voter=? WHERE voter=?", (f"p:{n}", f"p:{o}"))
+    except Exception:
+        pass
+    return old
+
+
+def _previous_name(uuid: str, name: str) -> str | None:
+    """The name this UUID last joined under, if it was a different one (from the play history)."""
+    try:
+        r = db.q("SELECT player FROM sessions WHERE lower(replace(uuid, '-', ''))=? AND player<>? ORDER BY start_ts DESC LIMIT 1",
+                 (uuid.lower().replace("-", ""), name))
+    except Exception:
+        return None
+    return r[0]["player"] if r else None

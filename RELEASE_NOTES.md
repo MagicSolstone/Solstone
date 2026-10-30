@@ -8,6 +8,12 @@
   - **Gone:** its fireworks and saved sounds, its join firework and its weight in the firework show. Its messages, votes and *I'm coming* sign-ups already went.
   - **Kept:** posts on the website (they're the site's pages), Adventures saved for a server, and the activity log.
   - **Bedtime and play-time limits** set for that player move onto their Minecraft name, so they keep applying in the game without an account.
+  - **Votes:** in votes still open, its vote is taken back (the vote isn't decided yet). In finished votes, its vote stays counted, so a result never changes afterwards; it just isn't anyone's any more.
+- **A new Java name or Xbox gamertag:** the game knows each player by an ID that never changes, so their whitelist place, stats and history all carry on. They don't need to ask to join again. Solstone now notices the new name when they next join and moves to it:
+  - the name linked to their account, and their login if it was that name;
+  - their play-time limits and their join firework;
+  - their votes from the game.
+- **🧹 Unused pictures** (Website → Site details): pictures uploaded for posts and votes that nothing uses any more (taken out of a post, or the post or vote deleted). It shows how many there are and how much space they take, with **Remove them**. Pictures less than a day old are never counted, so one in a post you're still writing is safe.
 
 # Solstone 1.12.2
 

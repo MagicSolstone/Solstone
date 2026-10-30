@@ -112,6 +112,42 @@ def save_image(data: bytes) -> str:
     return f"/api/public/images/{name}"
 
 
+UNUSED_AFTER = 86400                       # a picture just put in a post that isn't saved yet isn't "unused"
+
+
+def unused_images(now: float | None = None) -> list[dict]:
+    """Pictures uploaded for posts and votes that nothing uses any more (taken out of a post, a post or vote
+    deleted): not in any post, vote or saved setting, and more than a day old."""
+    import json
+    folder = app_config.data_dir / "site" / "images"
+    if not folder.is_dir():
+        return []
+    used = json.dumps(settings_store.load())
+    for r in db.q("SELECT body, card_image, summary FROM posts"):
+        used += " ".join(str(r[k] or "") for k in ("body", "card_image", "summary"))
+    try:
+        used += " ".join(str(r["options"]) for r in db.q("SELECT options FROM polls"))
+    except Exception:
+        pass
+    now = now or time.time()
+    out = []
+    for p in folder.iterdir():
+        if IMAGE_NAME.match(p.name) and p.name not in used and now - p.stat().st_mtime > UNUSED_AFTER:
+            out.append({"name": p.name, "bytes": p.stat().st_size, "url": f"/api/public/images/{p.name}"})
+    return sorted(out, key=lambda x: x["name"])
+
+
+def remove_unused_images() -> int:
+    gone = 0
+    for x in unused_images():
+        try:
+            (app_config.data_dir / "site" / "images" / x["name"]).unlink()
+            gone += 1
+        except OSError:
+            pass
+    return gone
+
+
 def image_file(name: str):
     if not IMAGE_NAME.match(name):
         return None

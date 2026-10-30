@@ -71,3 +71,61 @@ def test_deleting_an_account_takes_what_was_only_theirs():
         pt = playtime.config()
         pt["people"].pop("p:leavingkid", None)
         playtime.save(pt)
+
+
+def test_finished_votes_keep_their_result_when_an_account_goes():
+    from app import community
+    u = auth.create_user("voter_gone", "long-enough-1", "player", check=False)
+    done = community.create_poll({"question": "Best mob?", "options": ["Cat", "Bee"]})
+    still = community.create_poll({"question": "Next build?", "options": ["Castle", "Boat"]})
+    try:
+        community.vote(done["id"], f"u{u.id}", done["options"][0]["id"])
+        community.vote(still["id"], f"u{u.id}", still["options"][0]["id"])
+        community.close_now(done["id"])
+        auth.delete_user(u.id)
+        assert community.view(community.get_poll(done["id"]), "p:someone", admin=True)["counts"][done["options"][0]["id"]] == 1        # history stays
+        assert community.view(community.get_poll(still["id"]), "p:someone", admin=True)["counts"][still["options"][0]["id"]] == 0      # still open: taken back
+        assert not db.q("SELECT 1 FROM poll_votes WHERE voter=?", (f"u{u.id}",))                      # nobody's any more
+    finally:
+        community.delete_poll(done["id"])
+        community.delete_poll(still["id"])
+
+
+def test_unused_pictures_found_and_removed(client):
+    import time
+
+    from app import site
+    folder = site.app_config.data_dir / "site" / "images"
+    folder.mkdir(parents=True, exist_ok=True)
+    old = time.time() - 3 * 86400
+    import os
+    for name in ("aaaaaaaaaaaaaaaa.png", "bbbbbbbbbbbbbbbb.png", "cccccccccccccccc.png"):
+        (folder / name).write_bytes(b"x")
+        os.utime(folder / name, (old, old))
+    (folder / "dddddddddddddddd.png").write_bytes(b"new")                  # just uploaded: not counted yet
+    p = site.save({"title": "Pics", "body": "![a](/api/public/images/aaaaaaaaaaaaaaaa.png)", "category": "news"}, "admin")
+    try:
+        names = {x["name"] for x in client.get("/api/site/images/unused").json()["images"]}
+        assert {"bbbbbbbbbbbbbbbb.png", "cccccccccccccccc.png"} <= names and "aaaaaaaaaaaaaaaa.png" not in names and "dddddddddddddddd.png" not in names
+        assert client.delete("/api/site/images/unused").json()["removed"] >= 2
+        assert (folder / "aaaaaaaaaaaaaaaa.png").is_file() and not (folder / "bbbbbbbbbbbbbbbb.png").exists()
+    finally:
+        site.delete(p["id"])
+        for f in folder.glob("[a-d]" * 16 + ".png"):
+            f.unlink()
+
+
+def test_a_new_minecraft_name_follows_through():
+    from app import accounts
+    u = auth.create_user("OldName", "long-enough-1", "player", check=False)
+    auth.add_player(u.id, ("00000000-0000-0000-0000-0000000000a4", "OldName"))
+    settings_store.save_section("fw_signatures", {"oldname": "sig1"})
+    try:
+        assert accounts.follow_name("00000000-0000-0000-0000-0000000000a4", "NewName") == "OldName"
+        v = auth.get_user(u.id)
+        assert v.username == "NewName" and [p["name"] for p in v.players] == ["NewName"] and v.shown == "NewName"
+        assert settings_store.load()["fw_signatures"] == {"newname": "sig1"}
+        assert auth._login_rows("NewName") and not auth._login_rows("OldName")                      # signs in as the new name
+    finally:
+        settings_store.save_section("fw_signatures", {})
+        auth.delete_user(u.id)

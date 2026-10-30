@@ -32,7 +32,7 @@ async function viewWebsite() {
 function renderWebsite() {
   const el = $("#ws-body");
   if (!el) return;
-  if (ws.tab === "site") wsSite(el); else if (ws.tab === "welcome") wsWelcome(el); else wsPosts(el);
+  if (ws.tab === "site") { wsSite(el); wsUnusedImages(el); } else if (ws.tab === "welcome") wsWelcome(el); else wsPosts(el);
 }
 
 // ---------------------------------------------------------------- posts
@@ -279,6 +279,29 @@ async function wsMaintenance() {
 }
 
 // ---------------------------------------------------------------- site details
+// Pictures uploaded for posts and votes that nothing uses any more: listed (with what they'd free up) and removed
+// on request. Only ones more than a day old, so a picture in a post still being written is never one of them.
+async function wsUnusedImages(el) {
+  const box = document.createElement("section");
+  box.className = "panel ws-unused";
+  el.append(box);
+  const show = async () => {
+    const d = await api("/api/site/images/unused").catch(() => null);
+    if (!d) { box.remove(); return; }
+    const mb = (d.bytes / 1048576).toFixed(d.bytes > 10485760 ? 0 : 1);
+    box.innerHTML = `<div class="section-head"><h2>🧹 Unused pictures</h2></div>
+      ${d.images.length ? `<p class="muted small">${d.images.length} picture${d.images.length === 1 ? "" : "s"} (${mb} MB) uploaded for posts or votes that nothing uses any more: taken out of a post, or the post or vote was deleted.</p>
+        <div class="ws-unused-row">${d.images.slice(0, 12).map((x) => `<img src="${esc(x.url)}" alt="" loading="lazy">`).join("")}${d.images.length > 12 ? `<span class="muted">+${d.images.length - 12}</span>` : ""}</div>
+        <div class="btn-row"><button class="btn sm danger" type="button" data-rm-unused>Remove them</button></div>`
+        : `<p class="muted small">Nothing to tidy: every picture uploaded is used in a post or vote.</p>`}`;
+    box.querySelector("[data-rm-unused]")?.addEventListener("click", async () => {
+      if (!(await confirmBox(`Remove ${d.images.length} unused picture${d.images.length === 1 ? "" : "s"}?`, "They aren't in any post or vote. This can't be undone.", "Remove them"))) return;
+      try { const r = await api("/api/site/images/unused", { method: "DELETE" }); showToast(`Removed ${r.removed}`, 2500); show(); } catch (err) { showError(esc(err.message), 4000); }
+    });
+  };
+  show();
+}
+
 function wsSite(el) {
   const s = ws.data.site;
   el.innerHTML = `<form class="panel ws-site" id="ws-site">

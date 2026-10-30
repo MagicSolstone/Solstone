@@ -695,6 +695,22 @@ async def upload_post_image(request: Request):
     return {"url": url}
 
 
+@app.get("/api/site/images/unused")
+async def unused_images(request: Request):
+    """Website → Site details: pictures nothing uses any more (taken out of posts, or their post or vote deleted)."""
+    auth.require_admin(request)
+    found = await asyncio.to_thread(site.unused_images)
+    return {"images": found, "bytes": sum(x["bytes"] for x in found)}
+
+
+@app.delete("/api/site/images/unused")
+async def remove_unused_images(request: Request):
+    user = auth.require_admin(request)
+    n = await asyncio.to_thread(site.remove_unused_images)
+    auth.audit(user, None, "images_removed", f"{n} unused pictures")
+    return {"removed": n}
+
+
 @app.get("/api/public/images/{name}")
 async def post_image(name: str):
     found = site.image_file(name)
