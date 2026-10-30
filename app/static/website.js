@@ -32,7 +32,7 @@ async function viewWebsite() {
 function renderWebsite() {
   const el = $("#ws-body");
   if (!el) return;
-  if (ws.tab === "site") { wsSite(el); wsUnusedImages(el); } else if (ws.tab === "welcome") wsWelcome(el); else wsPosts(el);
+  if (ws.tab === "site") { wsSite(el); wsSky(el); wsUnusedImages(el); } else if (ws.tab === "welcome") wsWelcome(el); else wsPosts(el);
 }
 
 // ---------------------------------------------------------------- posts

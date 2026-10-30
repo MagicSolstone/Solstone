@@ -71,10 +71,9 @@ async function fwsSave(body, msg = "Saved") {
 function renderFws() {
   const el = $("#fws-body");
   if (fws.tab === "show") {
-    el.innerHTML = `<section class="panel fws-sky" id="fws-sky"></section>
+    el.innerHTML = `<p class="muted small fws-sky-moved">🌌 The sky behind every page (follow the game or always night, and fireworks in the daytime) is in <a href="#/manage/website">Website → Site details</a>.</p>
       <section class="panel fw-settings" id="fw-settings">${fireworksSettingsHtml(fws.fw)}</section>
       <section class="panel fws-community" id="fws-community"></section>`;
-    renderSky($("#fws-sky"));
     wireFireworksSettings($("#fw-settings"), fws.fw);
     renderCommunity($("#fws-community"));
   } else if (fws.tab === "shows") renderShows(el);
@@ -339,7 +338,15 @@ function wireCalEdit(el, i) {
 }
 
 
-// ---------------------------------------------------------------- the sky
+// ---------------------------------------------------------------- the sky (shown in Website → Site details)
+async function wsSky(el) {
+  const box = document.createElement("section");
+  box.className = "panel fws-sky ws-sky";
+  el.append(box);
+  try { fws.fw = await api("/api/public/fireworks"); } catch { box.remove(); return; }
+  fws.data = { ...(fws.data || {}), servers: (state.servers || []).filter((x) => x.type !== "bedrock").map((x) => ({ id: x.id, name: x.name })) };
+  renderSky(box);
+}
 function renderSky(el) {
   const sky = fws.fw.sky || { mode: "game", server: "auto", daytime: "smoke" };
   const seg = (name, opts, cur) => `<div class="seg" role="group" data-sky="${name}">${opts.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${v === cur}">${l}</button>`).join("")}</div>`;

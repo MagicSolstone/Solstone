@@ -1,5 +1,7 @@
 # Solstone 1.12.4
 
+- **Server start and stop icons on phones:** on the home page's live info (*Lately* and *Recent activity*), server starts and stops showed a crossed-out box in some phone browsers, because their fonts have no power symbol. They now use ⚙️, as the server page does.
+- **The sky's settings moved to Website → Site details:** follow the game or always night, which server it follows, and fireworks in the daytime. It's the sky behind every page, so it belongs with the website's settings. Fireworks → Firework show links there.
 - **Removing a player for good** (Manage → Whitelist, at the bottom):
   - **A step-by-step guide for the game side,** in order:
     1. take a backup;

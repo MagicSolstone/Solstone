@@ -205,6 +205,12 @@ def main() -> int:
             elif pg.locator("[data-forget]").count() and not pg.locator("[data-forget]").is_disabled():
                 problems.append("whitelist: Forget is ready before the name's typed and the backup's ticked")
 
+            # the sky's settings live on Website → Site details now
+            pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(900)
+            pg.click("[data-tab=site]"); pg.wait_for_timeout(1200)
+            if not pg.locator(".ws-sky [data-sky=mode] button").count():
+                problems.append("website: the sky settings aren't on Site details")
+
             # Manage → Activity: filters and a page count
             pg.goto(f"{base}/app#/manage/activity"); pg.wait_for_timeout(1300)
             if not pg.locator("#audit-filters [name=action]").count() or not pg.locator("#audit-keep").count():
