@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.12.4"
+VERSION = "1.12.5"
 
 
 @asynccontextmanager
@@ -2199,6 +2199,8 @@ async def put_settings(sid: str, request: Request):
     if "welcome" in body:                    # the message when someone joins (welcome.py)
         body["welcome"] = welcome.clean(body["welcome"])
         settings_store.save_section("welcome_site", _public_base(request))      # for {rules} and {site} in the game
+    if "fishing_journal" in body:            # the fishing journal on the website (fishing.journal_on)
+        body["fishing_journal"] = True if body["fishing_journal"] else ""
     if "welcome_when" in body:
         body["welcome_when"] = body["welcome_when"] if body["welcome_when"] in welcome.WHEN else "off"
     if "join_bedrock_port" in body:

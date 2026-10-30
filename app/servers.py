@@ -405,6 +405,7 @@ async def server_summary(srv: Server) -> dict:
         "perf": _latest_perf(srv),
         "backup": _backup(srv),
         "fishing": _fishing_with(srv),
+        "fishing_journal": _journal_on(srv),
     }
 
 
@@ -1004,6 +1005,14 @@ def _fishing_with(srv: Server) -> str | None:
         return fishing.available(srv)
     except Exception:
         return None
+
+
+def _journal_on(srv: Server) -> bool:
+    from . import fishing
+    try:
+        return fishing.journal_on(srv)
+    except Exception:
+        return False
 
 
 def _tide():

@@ -177,8 +177,8 @@ function showNavFor(user) {
   wireServersMenu();
 }
 
-// The website's pages when someone is signed in: the same bar as inside the app, and their name (with a
-// menu: Fireworks, Sign out) where "Sign in" was, so the website and the servers feel like one site.
+// The website's pages when someone is signed in: the same bar as inside the app, and their name (with the same
+// menu as in the app, and the same unread numbers) where "Sign in" was, so the website and the servers feel like one site.
 function showSignedIn() {
   fetch("/api/auth/me", { credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null)).then((d) => {
     if (!d?.user) return;
@@ -188,10 +188,26 @@ function showSignedIn() {
     if (!b) return;
     const wrap = document.createElement("div");
     wrap.className = "account";
-    wrap.innerHTML = `<button class="btn sm" id="hp-account" type="button" aria-haspopup="menu" aria-expanded="false">👤 ${esc(d.user.shown || d.user.username)}</button>
+    const u = d.user, admin = u.role === "admin";
+    const own = (u.players || []).some((p) => p.name.toLowerCase() === String(u.username).toLowerCase());
+    const role = { player: "Player", trusted: "Trusted", admin: "Admin" }[u.role] || "Signed in";
+    wrap.innerHTML = `<button class="btn sm" id="hp-account" type="button" aria-haspopup="menu" aria-expanded="false">👤 ${esc(u.shown || u.username)}<span class="cm-badge" id="hp-unread" hidden></span></button>
       <div class="account-menu" id="hp-account-menu" role="menu" hidden>
+        <div class="account-role">${esc(role)} · signed in as ${esc(u.username)}</div>
+        <a role="menuitem" href="/app#/messages">✉️ Messages <span class="cm-badge" id="hp-menu-unread" hidden></span></a>
+        <a role="menuitem" href="/app#/votes">🗳️ Votes</a>
         <a role="menuitem" href="/app#/fireworks">🎆 Fireworks</a>
+        ${admin ? `<a role="menuitem" href="/app#/manage">⚙ Manage</a>` : ""}
+        ${u.role === "player" || own ? "" : `<a role="menuitem" href="/app#/account/name">Display name</a>`}
+        <a role="menuitem" href="/app#/account/players">🎮 My Minecraft accounts</a>
+        <a role="menuitem" href="/app#/account/password">Change password</a>
         <button type="button" role="menuitem" id="hp-logout">Sign out</button></div>`;
+    fetch("/api/community/unread", { credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null)).then((n) => {
+      if (!n) return;
+      const set = (id, v) => { const el = document.getElementById(id); if (el) { el.textContent = v ? String(v) : ""; el.hidden = !v; } };
+      set("hp-unread", n.mine + (n.admin || 0) + (n.requests || 0));
+      set("hp-menu-unread", n.mine);
+    }).catch(() => {});
     b.replaceWith(wrap);
     const close = wireDropMenu(wrap.querySelector("#hp-account"), wrap.querySelector("#hp-account-menu"));
     document.getElementById("hp-logout").addEventListener("click", async () => {

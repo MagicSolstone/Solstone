@@ -88,6 +88,7 @@ def pond(monkeypatch):
     monkeypatch.setattr(gather, "LEAD", 0)
     settings_store.save_section("challenges", {})
     srv = FakeServer()
+    srv.settings = {"fishing_journal": True}            # these tests are about the journal (off by default: see below)
     fishing._state.pop(srv.id, None)
 
     async def online(_s):
@@ -261,3 +262,19 @@ def test_pack_started_by_solstone_when_the_load_list_didnt_run(monkeypatch):
     said.clear()
     asyncio.run(fishing.check(Srv(), force=True))
     assert not any(c.startswith("function") for c in said)                   # running: nothing to start
+
+
+def test_journal_off_only_contest_catches_count(pond):
+    """With the journal off (the default for the pack), a fish caught outside a contest isn't weighed, kept or shown."""
+    import asyncio
+
+    from app import db
+    fishing, challenges, srv = pond
+    srv.settings = {}
+    assert fishing.journal_on(srv) is False
+    before = db.q("SELECT COUNT(*) AS n FROM fish_catches")[0]["n"]
+    srv.catches = []
+    asyncio.run(fishing.poll([srv]))                 # first look: sets the starting point
+    srv.catches = [("minecraft:cod", None, 1, "", 50, 6)]
+    asyncio.run(fishing.poll([srv]))
+    assert db.q("SELECT COUNT(*) AS n FROM fish_catches")[0]["n"] == before and not srv.said

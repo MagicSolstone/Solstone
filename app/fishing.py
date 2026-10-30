@@ -103,6 +103,19 @@ def files(srv) -> list[dict]:
     return out
 
 
+def journal_on(srv) -> bool:
+    """The fishing journal (every catch kept, with its weight, on the website): always with Tide, whose fish show
+    their weight in the game; with the Solstone pack only when an admin turns it on, since the game never shows a
+    pack weight outside a contest (fish caught in contests are announced and scored either way)."""
+    from . import tide
+    try:
+        if tide.installed(srv):
+            return True
+    except Exception:
+        pass
+    return bool((getattr(srv, "settings", None) or {}).get("fishing_journal"))
+
+
 def available(srv) -> str | None:
     """What this server fishes with, for showing the Fishing tab: "tide" (the mod), "pack" (the
     Solstone data pack is in the world, or catches from it were recorded), or None (plain vanilla:
@@ -260,9 +273,11 @@ async def poll(servers: list) -> None:
         for c in sorted(fresh, key=lambda c: c["i"]):
             who = lookup.get(c["uuid"].lower(), "Someone")
             c["player"] = who
+            contest = await challenges.on_catch(srv, who, c)
+            if not contest and not journal_on(srv):
+                continue                              # journal off: a weight only means something in a contest
             # Trophy and Legendary get their own type so the status page's feed shows only those
             db.add_event(srv.id, time.time(), "bigfish" if c["quality"] >= 3 else "fish", describe(c, who), who if who != "Someone" else None)
-            contest = await challenges.on_catch(srv, who, c)
             try:
                 await _celebrate(srv, who, c, contest)
                 if who != "Someone":

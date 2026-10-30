@@ -211,6 +211,12 @@ def main() -> int:
             if not pg.locator(".ws-sky [data-sky=mode] button").count():
                 problems.append("website: the sky settings aren't on Site details")
 
+            # the website's pages: the same account menu as in the app
+            pg.goto(f"{base}/news"); pg.wait_for_timeout(1500)
+            menu = pg.locator("#hp-account-menu").inner_html() if pg.locator("#hp-account-menu").count() else ""
+            if not all(x in menu for x in ("Messages", "Votes", "Manage", "My Minecraft accounts", "Change password")):
+                problems.append("website pages: the account menu is missing items")
+
             # Manage → Activity: filters and a page count
             pg.goto(f"{base}/app#/manage/activity"); pg.wait_for_timeout(1300)
             if not pg.locator("#audit-filters [name=action]").count() or not pg.locator("#audit-keep").count():
@@ -715,7 +721,7 @@ def main() -> int:
             check(pl, "player-account-overview")
             tabs = pl.locator("nav[aria-label='Server sections']").text_content() or ""
             hrefs = " ".join(pl.eval_on_selector_all("nav[aria-label='Server sections'] a", "els => els.map(e => e.getAttribute('href'))"))
-            if "World" in tabs or "/chat" in hrefs or "/adventures" in hrefs or pl.locator("nav[aria-label='Server sections'] a").count() < 2:
+            if "World" in tabs or "/chat" in hrefs or pl.locator("nav[aria-label='Server sections'] a").count() < 2:
                 problems.append(f"player account: wrong tabs ({tabs.strip()})")
             pl.goto(f"{base}/app#/s/{sid}/p/{puuid}"); pl.wait_for_timeout(1300)
             check(pl, "player-account-own-page")

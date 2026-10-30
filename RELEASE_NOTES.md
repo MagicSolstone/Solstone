@@ -1,3 +1,20 @@
+# Solstone 1.12.5
+
+- **The fishing journal is off to start (servers with the Solstone pack):**
+  - **Why:** the game never shows a fish's weight outside a contest, so a journal full of weights players never saw was confusing.
+  - **With it off:** fish caught outside a contest aren't weighed, kept or shown on the website. The Fishing tabs are hidden for players.
+  - **Contests are unchanged:** catches are weighed, announced in chat and scored, with prizes.
+  - **"Fish caught" on the leaderboards** still counts every fish (it's the game's own number).
+  - **To turn it back on:** admins can, at the top of Play → Fishing (**Show the fishing journal**).
+  - **With the Tide mod** it's always on, because Tide's fish show their weight in the game.
+- **The same account menu everywhere:** on Home, News, Help and the other website pages, your name's menu now matches the one inside the app:
+  - your role;
+  - Messages and Votes (with the unread number);
+  - Fireworks;
+  - Manage, for admins;
+  - display name, My Minecraft accounts, change password;
+  - sign out.
+
 # Solstone 1.12.4
 
 - **Server start and stop icons on phones:** on the home page's live info (*Lately* and *Recent activity*), server starts and stops showed a crossed-out box in some phone browsers, because their fonts have no power symbol. They now use ⚙️, as the server page does.

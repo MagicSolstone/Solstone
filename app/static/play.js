@@ -1196,6 +1196,8 @@ async function viewFishingJournal(sid, who) {
             ${rec ? `<span class="muted small">${esc(rec.player)} has caught one</span>` : ""}</div>`;
     };
     setView(`${serverHeader(s, "fishing")}
+      ${isAdmin() && s.fishing !== "tide" ? `<label class="check panel fj-toggle"><input type="checkbox" id="fj-on" ${s.fishing_journal ? "checked" : ""}>
+        <span><b>Show the fishing journal</b> to players, and keep every catch with its weight. <small class="muted">Off: the game never shows a weight outside a contest, so only contest catches are weighed and announced. Contests work the same either way.</small></span></label>` : ""}
       <section class="section"><div class="section-head"><h2>🎣 Fishing journal</h2><span class="muted">Every fish caught, with its weight</span></div>
         ${d.players.length ? `<div class="fj-players">${d.players.map((x) => `<button type="button" class="chip-btn ${x.name === pick ? "on" : ""}" data-fj="${esc(x.name)}">${faceHtml({ name: x.name }, 20)} ${esc(x.name)} <small>${Object.keys(x.species).length}/${total}</small></button>`).join("")}</div>` : `<p class="muted">Nobody has caught a fish yet.</p>`}
         ${p ? `<div class="panel fj-head">
@@ -1207,6 +1209,13 @@ async function viewFishingJournal(sid, who) {
           <span class="fq-${FQ[c.quality]}">${esc(c.quality === 1 ? "" : `${qName(c.quality)} `)}${esc(c.name)}</span><span class="muted small">${c.lb} lb · ${c.points} pts · ${esc(fmtAgo(c.ts))}</span></li>`).join("")}</ul></section>` : ""}
       ${d.qualities.length ? `<section class="section"><div class="section-head"><h2>How rare</h2></div><div class="fish-qs">${d.qualities.map((q) => `<span class="fish-q fq-${q.color}">${esc(q.name)} <small>${q.one_in <= 2 ? `${q.chance}%` : `1 in ${q.one_in}`}</small></span>`).join("")}</div></section>` : ""}`);
     wireHeader(s);
+    $("#fj-on")?.addEventListener("change", async (e) => {
+      try {
+        await post(`/api/servers/${encodeURIComponent(sid)}/settings`, { fishing_journal: e.target.checked }, "PUT");
+        s.fishing_journal = e.target.checked; await loadServers?.();
+        showToast(e.target.checked ? "The fishing journal is on" : "The fishing journal is off: only contest catches are weighed", 3000);
+      } catch (err) { showError(esc(err.message), 4000); e.target.checked = !e.target.checked; }
+    });
     $$("[data-fj]").forEach((b) => b.addEventListener("click", () => { pick = b.dataset.fj; render(); }));
   };
   render();

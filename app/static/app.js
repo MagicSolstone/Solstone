@@ -819,7 +819,7 @@ function serverHeader(s, tab) {
     ["overview", "Overview", [["overview", "Overview", base]]],
     ...(java ? [...(isPlayer() && !s.player_map ? [] : [["world", "World", [["world", "World", `${base}/world`]]]]),
       ["leaderboards", "Leaderboards", [["leaderboards", "Leaderboards", `${base}/leaderboards`]]],
-      ["play", "Play", [...(s.fishing ? [["fishing", "Fishing", `${base}/fishing`]] : []), ["adventures", "Adventures", `${base}/adventures`],
+      ["play", "Play", [...(s.fishing && (isAdmin() || s.fishing_journal) ? [["fishing", "Fishing", `${base}/fishing`]] : []), ["adventures", "Adventures", `${base}/adventures`],
         ...(isAdmin() ? [["challenges", "Challenges", `${base}/challenges`]] : [])]]] : []),
     ["server", "Server", [["performance", "Performance", `${base}/performance`], ...(java ? [["mods", "Mods", `${base}/mods`], ...(isPlayer() ? [] : [["chat", "Chat", `${base}/chat`]])] : []),
       ...(isAdmin() ? [["control", "Control", `${base}/control`]] : []), ...(isAdmin() && java ? [["check", "Check", `${base}/check`]] : [])]],
@@ -936,7 +936,7 @@ function mountPlayerGlance(el, daysEl, s, data) {
       <div class="glance-card"><small>In the world</small>${world}</div>
       ${mine ? `<a class="glance-card glance-me" href="#/s/${encodeURIComponent(sid)}/p/${mine.uuid}"><small>You</small>
         <b>${headHtml(mine, 28)} ${esc(mine.name)}${mine.xp_level != null ? ` <span class="lvl">${mine.xp_level}</span>` : ""}</b>
-        <span>${mine.online ? "Playing now" : `Last seen ${esc(fmtAgo(mine.last_seen))}`} · your inventory${s.fishing ? ", stats and fishing" : " and stats"} →</span></a>` : ""}
+        <span>${mine.online ? "Playing now" : `Last seen ${esc(fmtAgo(mine.last_seen))}`} · your inventory${s.fishing_journal ? ", stats and fishing" : " and stats"} →</span></a>` : ""}
       <div class="glance-card"><small>Events</small>${next.length ? next.map((x) => `<span>${esc(x.emoji || "")} <b>${esc(x.title)}</b> ${x.live ? "· on now" : `· ${esc(new Date(x.at * 1000).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }))}${x.time ? ` ${esc(x.time)}` : ""}`}</span>`).join("")
         : "<span>Nothing planned yet</span>"}<a class="glance-more" href="#/events">All of it →</a></div>
     </div>`;
@@ -984,7 +984,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
   catch (e) { setView(serverHeader(s, "overview") + `<div class="empty"><h3>Player not found</h3><p>${esc(e.message)}</p></div>`); wireHeader(s); return; }
   const base = `#/s/${encodeURIComponent(sid)}/p/${uuid}`;
   const tabs = [["inventory", "Inventory"], ["history", "Play history"], ["stats", "Statistics"], ["advancements", "Advancements"],
-    ...(s.fishing ? [["fishing", "Fishing"]] : [])];
+    ...(s.fishing_journal ? [["fishing", "Fishing"]] : [])];
   setView(`<a class="back" href="#/s/${encodeURIComponent(sid)}">← ${esc(s.name)}</a>
     <div id="hero">${playerHero(p)}</div>
     <div id="strip">${statStrip(p)}</div>
@@ -1637,6 +1637,12 @@ async function route() {
       return;
     }
     if (parts[0] === "coming-up") { location.replace("#/events"); return; }      // its old name
+    if (parts[0] === "account") {             // from the website's pages: the account menu's windows, over the app
+      const open = { players: openMyPlayers, password: openPasswordChange, name: openDisplayName }[parts[1]];
+      location.replace("#/");
+      if (open) setTimeout(open, 400);
+      return;
+    }
     if (parts[0] === "events") { await viewUpcoming(); return; }
     if (parts[0] === "votes") { await viewVotes(); return; }
     if (parts[0] === "messages") { await viewMessages(parts[1]); return; }
