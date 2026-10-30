@@ -45,15 +45,36 @@ function modsHtml(m) {
     <ul>${m.list.map((x) => `<li>${x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.name)}</a>` : esc(x.name)}${x.version ? ` <span class="muted small">${esc(x.version)}</span>` : ""}${x.kind && x.kind !== "mod" ? ` <span class="chip">${esc(x.kind === "resourcepack" ? "Resource pack" : x.kind === "shader" ? "Shader" : x.kind)}</span>` : ""}</li>`).join("")}</ul></details>`;
 }
 
-// A server's state in a few words, beside where to join it: online or not, how many on, up how long, how smooth.
-function statusLine(s) {
-  if (!s) return "";
-  if (!s.running) return `<p class="hp-join-state"><span class="hp-dot"></span>Offline right now</p>`;
-  const since = s.started ? new Date(String(s.started).replace(" ", "T")).getTime() : NaN;
-  const up = Number.isFinite(since) ? (() => { const m = Math.max(0, Math.floor((Date.now() - since) / 60000)), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60);
-    return d ? `${d} d ${h} h` : h ? `${h} h ${m % 60} min` : `${m} min`; })() : "";
-  const tps = s.tps == null ? "" : s.tps >= 19.5 ? "running smoothly" : s.tps >= 15 ? "a little laggy" : "very laggy";
-  return `<p class="hp-join-state"><span class="hp-dot on"></span><b>Online</b> · ${s.online} / ${s.max ?? "?"} playing${up ? ` · up ${up}` : ""}${tps ? ` · ${tps}${s.tps != null ? ` (${Number(s.tps).toFixed(1)} TPS)` : ""}` : ""}</p>`;
+// How long since a time ("2 d 4 h"), for "up for".
+function sinceText(started) {
+  const since = started ? new Date(String(started).replace(" ", "T")).getTime() : NaN;
+  if (!Number.isFinite(since)) return "";
+  const m = Math.max(0, Math.floor((Date.now() - since) / 60000)), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60);
+  return d ? `${d} d ${h} h` : h ? `${h} h ${m % 60} min` : `${m} min`;
+}
+
+// The servers' status at the top of the home page: up or down, how many are playing (never who), how smoothly it
+// runs, its version, how long it's been up, and what it's using. The same for everyone; refreshed while it's open.
+function statusPanel(site) {
+  if (!site.servers?.length) return "";
+  const tile = (label, value, hint = "") => `<div class="hp-stat"><span class="hp-stat-label">${esc(label)}</span><b>${value}</b>${hint ? `<small class="muted">${esc(hint)}</small>` : ""}</div>`;
+  const card = (s) => {
+    if (!s.running) return `<article class="hp-status-card off"><header><span class="hp-dot"></span><h3>${esc(s.name)}</h3><span class="hp-status-word">Offline</span></header>
+      <p class="muted small">It's not running right now.${s.uptime_7d != null ? ` Up ${Math.round(s.uptime_7d * 1000) / 10}% of the last 7 days.` : ""}</p></article>`;
+    const tps = s.tps == null ? null : Number(s.tps);
+    const smooth = tps == null ? "" : tps >= 19.5 ? "Smooth" : tps >= 15 ? "A little laggy" : "Laggy";
+    const tiles = [
+      tile("Playing now", `${s.online}${s.max ? ` <small>/ ${s.max}</small>` : ""}`),
+      tps != null ? tile("TPS", tps.toFixed(1), `${smooth}${s.mspt != null ? ` · ${Number(s.mspt).toFixed(0)} ms a tick` : ""}`) : "",
+      s.version ? tile("Minecraft", esc(s.version), s.loader ? s.loader.charAt(0).toUpperCase() + s.loader.slice(1) : "") : "",
+      sinceText(s.started) ? tile("Up for", esc(sinceText(s.started)), s.uptime_7d != null ? `${Math.round(s.uptime_7d * 1000) / 10}% of the last 7 days` : "") : "",
+      s.cpu != null ? tile("CPU", `${Math.round(Number(s.cpu))}%`) : "",
+      s.mem ? tile("Memory", esc(s.mem), s.mem_percent != null ? `${Math.round(Number(s.mem_percent))}% of its share` : "") : "",
+    ].join("");
+    return `<article class="hp-status-card"><header><span class="hp-dot on"></span><h3>${esc(s.name)}</h3><span class="hp-status-word">Online</span></header>
+      <div class="hp-stats">${tiles}</div></article>`;
+  };
+  return `<section class="hp-status" id="hp-status" aria-label="Server status"><div class="hp-status-cards ${site.servers.length > 1 ? "many" : ""}">${site.servers.map(card).join("")}</div></section>`;
 }
 
 function joinCard(site) {
@@ -66,11 +87,11 @@ function joinCard(site) {
     if (j.java) r.push(["Java", j.java, j.version ? `Minecraft ${j.version}` : ""]);
     if (j.bedrock) r.push(["Bedrock", j.bedrock, `Port ${j.bedrock_port} · newest version`]);
     const kind = j.java && j.bedrock ? "Java and Bedrock" : j.java ? "Java only" : "Bedrock only";
-    const icon = site.live && j.status?.has_icon ? `<img class="px" src="/api/public/icon/${encodeURIComponent(j.id)}.png" alt="" width="40" height="40">` : "";
+    const icon = j.status?.has_icon ? `<img class="px" src="/api/public/icon/${encodeURIComponent(j.id)}.png" alt="" width="40" height="40">` : "";
     return `<article class="hp-join-card ${j.main ? "main" : ""}" ${j.color ? `style="--accent:${esc(j.color)}"` : ""}>
       <header>${icon}<div><h3>${esc(j.name)}</h3><span class="chip">${kind}</span></div></header>
-      ${statusLine(j.status)}${rowsHtml(r)}${j.note ? `<p class="hp-join-note">${esc(j.note)}</p>` : ""}${modsHtml(j.mods)}
-      ${site.live ? `<a class="hp-join-live" href="#live" data-live-sid="${esc(j.id)}">📊 Go to live stats →</a>` : ""}</article>`;
+      ${rowsHtml(r)}${j.note ? `<p class="hp-join-note">${esc(j.note)}</p>` : ""}${modsHtml(j.mods)}
+</article>`;
   });
   if (!cards.length) return "";
   return `<section class="hp-join glass"><h2>Join the server${cards.length > 1 ? "s" : ""}</h2>
@@ -78,18 +99,6 @@ function joinCard(site) {
     ${site.join_requests ? `<div class="hp-ask-cta"><a class="btn primary hp-ask-btn" href="/guides/join#ask">🙋 Ask to join</a>
       <span class="muted">New here? The server only lets in people on its list. Ask, and an admin will add you.</span></div>` : ""}
     <p class="muted"><a href="/guides/join">Step-by-step guide</a>${site.signup ? ' · <a href="/guides/account">Make an account on this website</a>' : ""}${site.discord ? ` · Questions? <a href="${esc(site.discord)}" target="_blank" rel="noopener">Join us on Discord</a>` : ""}</p></section>`;
-}
-
-// With live info on, a server's card shows it live further down the page.
-function serversCard(site) {
-  if (!site.servers.length) return "";
-  return `<section class="hp-servers"><h2>Servers</h2><div class="hp-server-list">${site.servers.map((s) => `
-    <a class="hp-server glass" href="${site.live ? "#live" : "#"}" ${site.live ? `data-live-sid="${esc(s.id)}"` : 'aria-disabled="true"'}>
-      ${s.has_icon ? `<img class="px" src="/api/public/icon/${encodeURIComponent(s.id)}.png" alt="" width="40" height="40">` : ""}
-      <span class="hp-server-name">${esc(s.name)}</span>
-      <span class="hp-dot ${s.running ? "on" : ""}" aria-hidden="true"></span>
-      <span class="muted">${s.running ? `${s.online} / ${s.max} online` : "Offline"}${s.version ? ` · ${esc(s.version)}` : ""}</span>
-    </a>`).join("")}</div></section>`;
 }
 
 function postCards(posts, empty) {
@@ -104,13 +113,6 @@ function faqList(posts) {
   if (!posts.length) return `<p class="muted">No questions yet.</p>`;
   return `<div class="hp-faq">${posts.map((p) => `<details class="glass"><summary>${esc(p.title)}</summary>
     <div class="hp-body" data-faq="${esc(p.slug)}"><p class="muted">Loading…</p></div></details>`).join("")}</div>`;
-}
-
-// Live: who's playing right now, the world, leaderboards and the recap (live.js fills it in).
-function liveSection() {
-  return `<section class="hp-live" id="live" hidden><div class="hp-head"><h2>Live on the servers</h2><span class="sp-updated" id="sp-updated" aria-live="polite"></span></div>
-    <nav class="sp-servers" id="sp-servers" aria-label="Servers"></nav>
-    <div id="sp-main" class="sp-main"><p class="muted sp-loading">Loading…</p></div></section>`;
 }
 
 // ------------------------------------------------------------------ built-in guides
@@ -134,10 +136,10 @@ async function home() {
   const more = (list, n, href, label) => (list.length > n ? `<div class="hp-more"><a class="btn" href="${href}">${label} →</a></div>` : "");
   return `${s.home_title ? `<section class="hp-hero"><h1>${esc(s.name)}</h1>${s.tagline ? `<p class="hp-tagline">${esc(s.tagline)}</p>` : ""}</section>` : ""}
     <p class="hp-ask-status" id="ask-status" hidden></p>
-    ${joinCard(s) || serversCard(s)}
+    ${statusPanel(s)}
+    ${joinCard(s)}
     ${nNews ? `<section><div class="hp-head"><h2>News</h2><a href="/news">All news →</a></div>${postCards(news.slice(0, nNews), "No news yet.")}${more(news, nNews, "/news", "More news")}</section>` : ""}
     ${nGuides ? `<section><div class="hp-head"><h2>Help</h2><a href="/help">All guides and questions →</a></div>${postCards(help.slice(0, nGuides), "")}${more(help, nGuides, "/help", "More guides and questions")}</section>` : ""}
-    ${s.live ? liveSection() : ""}
     ${s.about ? `<section class="hp-about glass"><h2>About</h2><div class="hp-body">${markdown(s.about)}</div></section>` : ""}`;
 }
 
@@ -321,17 +323,18 @@ async function route() {
   main.innerHTML = html;
   document.querySelectorAll("[data-nav]").forEach((a) => a.toggleAttribute("aria-current", a.dataset.nav === nav));
   showAskStatus();
-  if (["#faq", "#ask", "#contact"].includes(location.hash)) $(location.hash)?.scrollIntoView(); else if (location.hash !== "#live") window.scrollTo(0, 0);
-  if ($("#live") && typeof startLive === "function") {
-    await startLive({ scene: hp.scene, toast: (h) => toast(h, true) });
-    if (location.hash === "#live") $("#live")?.scrollIntoView();
-  }
+  if (["#faq", "#ask", "#contact"].includes(location.hash)) $(location.hash)?.scrollIntoView(); else window.scrollTo(0, 0);
 }
+
+// The status panel keeps itself current while the home page is open (the server is only asked every 15 s).
+setInterval(async () => {
+  const el = document.getElementById("hp-status");
+  if (!el || document.hidden) return;
+  try { hp.site = await getJSON("/api/public/site"); const fresh = statusPanel(hp.site); if (fresh) el.outerHTML = fresh; } catch { /* next time */ }
+}, 30000);
 
 // Links inside the site change the page without a reload; everything else is a normal link.
 document.addEventListener("click", (e) => {
-  const card = e.target.closest("[data-live-sid]");
-  if (card) { e.preventDefault(); window.showLiveServer?.(card.dataset.liveSid); return; }
   const copy = e.target.closest("[data-copy]");
   if (copy) {
     navigator.clipboard?.writeText(copy.dataset.copy).then(() => toast("Copied"), () => toast(copy.dataset.copy));

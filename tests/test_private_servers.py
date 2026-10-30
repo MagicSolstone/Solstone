@@ -19,8 +19,8 @@ def test_private_server_is_for_admins_only(client, viewer, anon, sid):
         assert viewer.get(f"/api/servers/{sid}/players").status_code == 404
         # nor do the public pages
         assert not any(s["id"] == sid for s in anon.get("/api/public/status").json()["servers"])
-        assert anon.get(f"/api/public/status/{sid}").status_code == 404
-        assert anon.get(f"/api/public/leaderboard/{sid}").status_code == 404
+        assert viewer.get(f"/api/public/status/{sid}").status_code == 404
+        assert viewer.get(f"/api/public/leaderboard/{sid}").status_code == 404
         # nor its announcements
         client.put("/api/board", json={"items": [{"text": "Home only", "where": ["home", "status"], "server": sid},
                                                  {"text": "For everyone", "where": ["home"]}]})
@@ -58,9 +58,7 @@ def test_whereabouts_and_the_map_need_sign_in(client, anon, viewer, sid):
     client.put("/api/settings/status", json={"enabled": True, "show_positions": True})
     main._board_cache.clear()
     try:
-        board = anon.get(f"/api/public/status/{sid}").json()
-        assert board["spawn"] is None and "web_map" not in board
-        assert all("position" not in p for p in board["players"] + board["recently"])
+        assert anon.get(f"/api/public/status/{sid}").status_code == 401                  # strangers: nothing at all
         assert anon.get(f"/api/public/map/{sid}/regions").status_code == 404           # no map pictures for strangers
         assert anon.get(f"/api/public/map/{sid}/tile?x=0&z=0").status_code == 404
         assert viewer.get(f"/api/public/map/{sid}/regions").status_code == 200         # signed in: there it is

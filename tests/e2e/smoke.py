@@ -532,8 +532,8 @@ def main() -> int:
             anon.route("**/api/public/site", running)
             anon.goto(f"{base}/"); anon.reload(); anon.wait_for_timeout(1200)
             anon.locator(".hp-mods summary").first.click() if anon.locator(".hp-mods summary").count() else None
-            if "Online" not in (anon.locator(".hp-join").text_content() or ""):
-                problems.append("home: the join box doesn't say the server is online")
+            if "Online" not in (anon.locator("#hp-status").text_content() if anon.locator("#hp-status").count() else ""):
+                problems.append("home: the status panel at the top doesn't say the server is online")
             if "mods.example.net:25566" not in (anon.locator(".hp-join .hp-join-card").text_content() if anon.locator(".hp-join .hp-join-card").count() else ""):
                 problems.append("home: a second server's own join address isn't shown")
             check(anon, "site-home-two-servers")
@@ -751,83 +751,20 @@ def main() -> int:
             pl.goto(f"{base}/app#/s/{sid}"); pl.wait_for_timeout(1200)
             if not pl.locator(".app-top .hp-nav a[href='/']").is_visible():
                 problems.append("app: no link back to the website")
-            # live on the home page, signed out: the old status page's screens, as tabs
-            anon.goto(f"{base}/#live"); anon.wait_for_timeout(1000)
-            appear(anon, "#live .tv-dots [data-tv]", 2)
-            check(anon, "site-home-live")
-            if not anon.locator("#live:not([hidden])").count():
-                problems.append("home: the live section isn't shown")
-            tabs = anon.locator("#live .tv-dots [data-tv]")
-            if tabs.count() < 2:
-                problems.append("live: the screens aren't offered as tabs")
-            else:
-                tabs.nth(1).click(); anon.wait_for_timeout(500)
-                if anon.locator(".tv-slide.on").count() != 1:
-                    problems.append("live: picking a screen didn't show it")
-                if not anon.locator("#hp-main .hp-join").count():
-                    problems.append("live: picking a screen redrew the page")
-                check(anon, "live-tab")
-                feed = anon.locator(".tv-dots [data-tv='feed']")
-                if feed.count():
-                    feed.click(); anon.wait_for_timeout(500)
-                    check(anon, "live-activity")
-                    clipped = anon.evaluate("""() => { const s = document.querySelector('.tv-slide.on'); if (!s) return 'no slide';
-                        for (let el = s; el && el !== document.body; el = el.parentElement) {
-                          const cs = getComputedStyle(el); if (cs.overflowY !== 'visible' && el.scrollHeight > el.clientHeight + 2) return el.className; }
-                        return ''; }""")
-                    if clipped:
-                        problems.append(f"live: Recent activity is cut off by {clipped}")
-            # the map on the live section: drag to move around, then Reset view; the screens' names fit on one line
-            anon.goto(f"{base}/#live"); anon.wait_for_timeout(2500)
-            rows = anon.evaluate("() => new Set([...document.querySelectorAll('#live .tv-dots [data-tv]')].map(b => Math.round(b.getBoundingClientRect().top))).size")
-            if rows > 1:
-                problems.append(f"live: the screens' names take {rows} lines")
-            if anon.locator("#live .tv-dots [data-tv='map']").count():
-                problems.append("live: someone not signed in can see where everyone is")
-            # a busy server: everyone's card, compact (the game's answer is made up here)
-            def busy(route):
-                b = json.loads(route.fetch().text())
-                b["online_count"] = 4
-                b["players"] = [{"name": n, "uuid": puuid, "health": h, "max_health": 20, "food": f, "xp_level": lv, "xp_progress": .4,
-                                 "dimension": "minecraft:overworld", "held": {"id": "minecraft:diamond_sword", "name": "Diamond Sword", "count": 1}}
-                                for n, h, f, lv in (("Tyler", 20, 18, 31), ("Gimli_Jr", 13, 20, 12), (".Steve_K", 7.5, 9, 4), ("MomCrafts", 20, 20, 50))]
-                route.fulfill(json=b)
-            anon.route(f"**/api/public/status/{sid}", busy)
-            anon.set_viewport_size({"width": 1280, "height": 800}); anon.goto(f"{base}/#live"); anon.reload(); anon.wait_for_timeout(1000)
-            appear(anon, "#live .sp-player", 4)
-            anon.locator("#live .sp-players").scroll_into_view_if_needed() if anon.locator("#live .sp-players").count() else None
-            check(anon, "live-busy")
-            if anon.locator("#live .sp-player").count() != 4 or "❤️" not in (anon.locator("#live .sp-player").first.text_content() or ""):
-                problems.append("live: the players' compact cards aren't shown")
-            anon.unroute(f"**/api/public/status/{sid}")
-            # a web map (BlueMap) is never on the home page, only on a server's World tab (signed in)
-            pg.request.put(f"{base}/api/servers/{sid}/settings", data={"map_url": "http://192.168.1.10:8100"}, headers=H)
-            pg.goto(f"{base}/#live"); pg.reload(); pg.wait_for_timeout(2500)
-            if pg.locator("iframe").count() or pg.locator("#live .tv-dots [data-tv='web']").count():
-                problems.append("live: the web map is on the home page")
-            pg.request.put(f"{base}/api/servers/{sid}/settings", data={"map_url": ""}, headers=H)
-            # signed in, the map is there: drag to move around, then Reset view
-            pg.goto(f"{base}/#live"); pg.wait_for_timeout(2500)
-            mp = pg.locator("#live .tv-dots [data-tv='map']")
-            if not mp.count():
-                problems.append("live: no map screen for an admin with positions on")
-            else:
-                mp.click(); pg.wait_for_timeout(1200)
-                box = pg.locator("#sp-map canvas").bounding_box()
-                pg.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2); pg.mouse.down()
-                pg.mouse.move(box["x"] + box["width"] / 2 + 120, box["y"] + box["height"] / 2 + 60, steps=6); pg.mouse.up()
-                pg.wait_for_timeout(300)
-                if not pg.locator("#sp-map [data-reset]:not([hidden])").count():
-                    problems.append("live map: dragging didn't move the view (no Reset view)")
-                check(pg, "live-map-moved")
-                pg.click("#sp-map [data-reset]"); pg.wait_for_timeout(1200)
-                if pg.locator("#sp-map [data-reset]:not([hidden])").count():
-                    problems.append("live map: Reset view stayed")
-            anon.set_viewport_size({"width": 390, "height": 800}); anon.goto(f"{base}/#live"); anon.wait_for_timeout(2000)
-            check(anon, "m-live")
-            off = anon.evaluate("() => [...document.querySelectorAll('.tv-dots [data-tv]')].filter(b => b.getBoundingClientRect().right > innerWidth).length")
-            if off:
-                problems.append(f"phone live: {off} screen tabs run off the side")
+            # the home page: a status panel at the top (counts and health), no live section, no names for anyone
+            anon.set_viewport_size({"width": 1280, "height": 800}); anon.goto(f"{base}/"); anon.wait_for_timeout(1500)
+            check(anon, "site-home-status")
+            if anon.locator("#live").count() or anon.locator(".sp-player").count():
+                problems.append("home: the old live section is still there")
+            if anon.locator("#hp-status").count() and anon.locator("#hp-status").bounding_box()["y"] > anon.locator(".hp-join").bounding_box()["y"]:
+                problems.append("home: the status panel isn't above Join the server")
+            for path in (f"/api/public/status/{sid}", f"/api/public/leaderboard/{sid}", f"/api/public/recap/{sid}"):
+                if anon.request.get(f"{base}{path}", headers={"X-Solstone": "1"}).status == 200:
+                    problems.append(f"public: {path} is open to people not signed in")
+            anon.set_viewport_size({"width": 390, "height": 800}); anon.goto(f"{base}/"); anon.wait_for_timeout(1500)
+            check(anon, "m-home-status")
+            if anon.evaluate("document.documentElement.scrollWidth") > 392:
+                problems.append("phone: the home page is wider than the screen")
 
             # phone width
             m = page(390, 800)

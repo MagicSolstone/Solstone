@@ -65,7 +65,7 @@ def test_recap_api(client, viewer, anon, sid):
     yday = (date.fromisoformat(r["today"]) - timedelta(days=1)).isoformat()
     assert viewer.get(f"/api/servers/{sid}/recap?day={yday}").json()["day"] == yday
     assert viewer.get(f"/api/servers/{sid}/recap?day=nope").status_code == 400
-    assert anon.get(f"/api/public/recap/{sid}").status_code == 404        # status page off
+    assert anon.get(f"/api/public/recap/{sid}").status_code == 401        # never for strangers
     assert viewer.post("/api/recap/backfill").status_code == 403
     assert isinstance(client.post("/api/recap/backfill").json()["days"], int)
 
@@ -127,13 +127,14 @@ def test_announcements_bedtime_and_no_birthdays(client, viewer, anon, sid):
 
 def test_public_live_extras(client, anon, sid):
     assert client.get("/api/settings/tv").status_code == 404          # TV mode went with the status page
-    assert anon.get(f"/api/public/leaderboard/{sid}").status_code == 404
+    assert anon.get(f"/api/public/leaderboard/{sid}").status_code == 401
     client.put("/api/settings/status", json={"enabled": True})
     try:
         assert "tv" not in anon.get("/api/public/status").json()
-        lb = anon.get(f"/api/public/leaderboard/{sid}").json()
+        assert anon.get(f"/api/public/leaderboard/{sid}").status_code == 401 and anon.get(f"/api/public/recap/{sid}").status_code == 401
+        lb = client.get(f"/api/public/leaderboard/{sid}").json()
         assert lb["players"] and "play_time" not in lb["players"][0] and "xp_level" in lb["players"][0]
-        r = anon.get(f"/api/public/recap/{sid}").json()
+        r = client.get(f"/api/public/recap/{sid}").json()
         assert "recap" in r and "on_this_day" in r
         assert anon.get("/api/public/board?where=status").status_code == 200
     finally:

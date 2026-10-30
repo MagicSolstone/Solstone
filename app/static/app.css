@@ -2123,3 +2123,20 @@ a.glance-me:hover { border-color: var(--gold); }
 .rm-confirm { display: grid; gap: 8px; max-width: 520px; padding: 12px; border: 1px solid rgba(224, 80, 63, .5); border-radius: 12px; }
 .rm-confirm .btn { justify-self: start; }
 .ws-sky { margin-top: 16px; }
+
+/* Home: the servers' status at the top (counts and health only, never names) */
+.hp-status { margin: 0 0 18px; }
+.hp-status-cards { display: grid; gap: 12px; }
+.hp-status-cards.many { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.hp-status-card { padding: 14px 16px; border-radius: 16px; background: rgba(20, 26, 43, .72); border: 1px solid rgba(255, 255, 255, .1); backdrop-filter: blur(6px); }
+.hp-status-card header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.hp-status-card h3 { margin: 0; font-size: 1.05rem; flex: 1; min-width: 0; }
+.hp-status-word { font-weight: 700; color: var(--copper); }
+.hp-status-card.off .hp-status-word { color: var(--muted); }
+.hp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.hp-stat { display: grid; gap: 2px; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, .05); }
+.hp-stat-label { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.hp-stat b { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.hp-stat b small { font-size: .75em; color: var(--muted); font-weight: 600; }
+.hp-stat small { font-size: .78rem; }
+@media (max-width: 480px) { .hp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

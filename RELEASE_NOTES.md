@@ -1,3 +1,18 @@
+# Solstone 1.13.0
+
+- **A clean server status panel at the top of the home page,** above *Join the server*, the same for everyone. For each public server:
+  - online or offline;
+  - how many are playing (a number, never who);
+  - TPS (with how smooth it's running);
+  - the Minecraft version and loader;
+  - how long it's been up, and its uptime over the last 7 days;
+  - CPU and memory.
+  - It refreshes every 30 seconds while the page is open. It's switched on with *Show the public servers' status on the home page* in Website → Site details.
+- **The live section at the bottom of the home page is gone:** who's playing now, who was playing, where everyone is, leaderboards and *Today on the server*. Everyone who's signed in sees all of that on each server's own pages.
+- **No player names for anyone not signed in:**
+  - **Live data:** the data behind the old live section (who's on, leaderboards, recaps) now needs a sign-in.
+  - **Banners and fireworks:** these name players only to people who are signed in.
+
 # Solstone 1.12.6
 
 - **Votes you haven't voted in, everywhere you're signed in:**

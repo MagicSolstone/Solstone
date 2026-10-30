@@ -302,7 +302,7 @@ def test_public_status_page(anon, client, viewer, monkeypatch):
     # Off by default: nothing public except "it's off".
     off = anon.get("/api/public/status").json()
     assert off["enabled"] is False and off["servers"] == [] and off["build"]          # the build lets open pages notice an update
-    assert anon.get(f"/api/public/status/{helpers.SID}").status_code == 404
+    assert anon.get(f"/api/public/status/{helpers.SID}").status_code == 401     # who's playing: never for strangers
     assert anon.get(f"/api/public/icon/{helpers.SID}.png").status_code == 404
     r = anon.get("/status", follow_redirects=False)          # the live status lives on the home page now
     assert r.status_code == 301 and r.headers["location"] == "/#live"
@@ -317,8 +317,8 @@ def test_public_status_page(anon, client, viewer, monkeypatch):
         assert lst["enabled"] is True
         assert any(s["id"] == helpers.SID for s in lst["servers"])
         assert anon.get("/api/public/site").json()["live"] is True
-        assert "/static/live.js?v=" in anon.get("/").text
-        board = anon.get(f"/api/public/status/{helpers.SID}").json()
+        assert "/static/live.js" not in anon.get("/").text        # no live section on the home page any more
+        board = viewer.get(f"/api/public/status/{helpers.SID}").json()
         assert {"name", "running", "players", "recent", "recently", "world"} <= set(board)
         assert all(e["type"] != "chat" for e in board["recent"])   # chat is never public
         assert anon.get(f"/api/public/icon/{helpers.SID}.png").status_code == 200
@@ -328,7 +328,7 @@ def test_public_status_page(anon, client, viewer, monkeypatch):
 
         client.put("/api/settings/status", json={"enabled": True, "show_positions": False, "show_items": False})
         main._board_cache.clear()
-        board = anon.get(f"/api/public/status/{helpers.SID}").json()
+        board = viewer.get(f"/api/public/status/{helpers.SID}").json()
         assert board["spawn"] is None
         assert all("position" not in p and "held" not in p for p in board["players"])
         assert anon.get(f"/api/public/item/{helpers.SID}/minecraft/stone.png").status_code == 404

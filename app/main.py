@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.12.6"
+VERSION = "1.13.0"
 
 
 @asynccontextmanager
@@ -535,6 +535,18 @@ async def public_status():
     return {"enabled": True, "servers": out, "build": _asset_stamp()}
 
 
+def _uptime(sid: str, days: int) -> float | None:
+    """The share of the last few days the server was up (from Solstone's own checks), 0..1."""
+    r = db.q("SELECT COUNT(*) AS n, SUM(running) AS r FROM metrics WHERE server_id=? AND ts>=?", (sid, time.time() - days * 86400))[0]
+    return round((r["r"] or 0) / r["n"], 4) if r["n"] else None
+
+
+def _require_signed_in(request: Request) -> None:
+    """Who's playing, who was, where, leaderboards and recaps: for people signed in only (never strangers)."""
+    if request.state.user is None:
+        raise HTTPException(401, "Sign in to see this")
+
+
 def _may_see_map(user) -> bool:
     """Where everyone is (coordinates, the map, the web map) is for people signed in: Trusted and Admins, and Players when
     "Players can see the map" is on. Never for anonymous visitors, so nobody outside can watch where the kids are, and the
@@ -550,6 +562,7 @@ def _without_whereabouts(board: dict) -> dict:
 
 @app.get("/api/public/status/{sid}")
 async def public_board(sid: str, request: Request):
+    _require_signed_in(request)
     cfg = _require_status()
     srv = await _public_server(sid)
     board = await _board(srv, cfg)
@@ -580,9 +593,15 @@ async def public_site():
             except Exception as e:
                 log.warning("home list failed for %s: %s", srv.id, e)
                 continue
+            perf = summ.get("perf") or {}
+            # how the server is doing, never who's on it: a count of players, its health, its uptime
             servers.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "online": len(summ["online"]),
                             "max": summ["max_players"], "version": summ.get("version"), "has_icon": summ["has_icon"],
-                            "started": summ.get("started") if summ["running"] else None, "tps": (summ.get("perf") or {}).get("tps")})
+                            "started": summ.get("started") if summ["running"] else None, "tps": perf.get("tps"),
+                            "mspt": perf.get("mspt"), "cpu": summ.get("cpu") if summ["running"] else None,
+                            "mem": summ.get("mem") if summ["running"] else None,
+                            "mem_percent": summ.get("mem_percent") if summ["running"] else None,
+                            "loader": summ.get("loader"), "uptime_7d": _uptime(srv.id, 7)})
         _site_cache = (time.monotonic(), servers)
     # How to join, one card per public server: its own addresses (its ⚙ settings, or Website → Site details), with
     # Site details' addresses standing in for the first server that has none of its own (the main one, usually).
@@ -928,7 +947,8 @@ _lb_cache: dict[str, tuple[float, dict]] = {}
 
 
 @app.get("/api/public/leaderboard/{sid}")
-async def public_leaderboard(sid: str):
+async def public_leaderboard(sid: str, request: Request):
+    _require_signed_in(request)
     _require_status()
     srv = await _public_server(sid)
     if not srv.is_java:
@@ -966,7 +986,8 @@ _recap_cache: dict[str, tuple[float, dict]] = {}
 
 
 @app.get("/api/public/recap/{sid}")
-async def public_recap(sid: str):
+async def public_recap(sid: str, request: Request):
+    _require_signed_in(request)
     cfg = _require_status()
     if not cfg["show_activity"]:
         raise HTTPException(404, "Activity is hidden on the status page")
@@ -1014,7 +1035,7 @@ async def public_board_items(request: Request, where: str = "status", sid: str =
     servers = [x for x in _board_servers() if _visible(x)]     # a private server's announcements stay private
     if sid and not any(x.id == sid for x in servers):
         sid = ""
-    items = await asyncio.to_thread(board.active, where, sid or None, signed_in or status_on, None, servers)
+    items = await asyncio.to_thread(board.active, where, sid or None, signed_in, None, servers)   # names only for people signed in
     if signed_in:                                    # signed in, on every page: the votes they haven't voted in yet
         items += await asyncio.to_thread(board.vote_banners, f"u{request.state.user.id}")
     return JSONResponse({"now": time.time(), "items": items}, headers={"Cache-Control": "no-store"})
@@ -1311,9 +1332,8 @@ async def set_my_join_firework(request: Request):
 
 @app.get("/api/public/fireworks/feed")
 async def firework_feed(request: Request, since: int = -1):
-    """Fireworks set off by things happening in the game. Player names only for people
-    signed in, or when the public status page (which shows them anyway) is on."""
-    names = request.state.user is not None or _status_cfg()["enabled"]
+    """Fireworks set off by things happening in the game. Player names only for people signed in."""
+    names = request.state.user is not None
     feed = fwshow.feed_since(since, names)
     if not _admin_viewing():      # nothing from a private server, not even that something happened there
         hidden = {x.id for x in S.registry.servers.values() if _private(x) or not _allowed(x)}
