@@ -323,6 +323,7 @@ function wsSite(el) {
         <div class="ws-row"><label>Java<input class="input" data-j="join_address" maxlength="80" placeholder="${i === 0 ? "play.example.net" : "mods.example.net:25566"}"></label>
           <label>Bedrock<input class="input" data-j="join_bedrock_address" maxlength="80"></label>
           <label>Port<input class="input" data-j="join_bedrock_port" inputmode="numeric" placeholder="19132"></label></div>
+        <label>Address for the up/down check <small>Optional. What the offline page checks to see if this server is up: only the Java side, since it's the same server for Bedrock. Use the direct address if the one above goes through DNS tricks, like playit's <code>something.ply.gg:12345</code>. Empty: the Java address above.</small><input class="input" data-j="join_check" maxlength="80" placeholder="something.ply.gg:12345"></label>
         <label>About this server <small>Optional, shown on its card: what it is, who it's for. For example: Our survival world for the whole family, or: Modded adventures, needs the modpack.</small><textarea class="input" data-j="join_note" maxlength="300" rows="2"></textarea></label>
         <label class="check"><input type="checkbox" data-j="join_mods"> List the mods players need</label></div>`).join("")}
     </fieldset>

@@ -9,7 +9,7 @@ from .config import config
 _PATH = config.data_dir / "settings.json"
 _lock = threading.Lock()
 ALLOWED = {"display_name", "map_url", "rcon_host", "rcon_port", "rcon_password", "hidden", "private", "bedtime",
-           "join_address", "join_bedrock_address", "join_bedrock_port", "join_note", "join_mods", "join_color",
+           "join_address", "join_bedrock_address", "join_check", "join_bedrock_port", "join_note", "join_mods", "join_color",
            "welcome", "welcome_when", "map_proxy"}   # how to join this server, on the home page
 
 

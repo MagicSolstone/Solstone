@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.12.5"
+VERSION = "1.12.6"
 
 
 @asynccontextmanager
@@ -629,9 +629,12 @@ async def offline_worker(request: Request):
     """The Cloudflare Worker that shows a "website is down" page (app/offline_worker.js), with this site's name,
     contact and public servers' addresses filled in. Only what the home page already shows publicly."""
     auth.require_admin(request)
+    await S.registry.refresh()
     pub = json.loads((await public_site()).body)
     cfg = {"name": pub["name"], "contact": pub.get("contact") or "", "discord": pub.get("discord") or "",
-           "servers": [{"name": j["name"], "java": j["java"], "bedrock": j["bedrock"], "bedrock_port": j["bedrock_port"]}
+           "servers": [{"name": j["name"], "java": j["java"], "bedrock": j["bedrock"], "bedrock_port": j["bedrock_port"],
+                        # the up/down check: the Java side only (one check covers the server for Bedrock too)
+                        "check": (S.registry.servers[j["id"]].settings.get("join_check") if j["id"] in S.registry.servers else "") or j["java"] or ""}
                        for j in pub["joins"]],
            "key": maintenance.worker_key()}                 # so only Solstone can tell it about planned maintenance
     code = (Path(__file__).parent / "offline_worker.js").read_text(encoding="utf-8")
@@ -2193,7 +2196,7 @@ async def put_settings(sid: str, request: Request):
     if "join_color" in body:                 # a border colour for its card: #rrggbb, or nothing
         c = str(body["join_color"] or "").strip().lower()
         body["join_color"] = c if re.fullmatch(r"#[0-9a-f]{6}", c) else ""
-    for k, n in (("join_address", 80), ("join_bedrock_address", 80), ("join_note", 300)):
+    for k, n in (("join_address", 80), ("join_bedrock_address", 80), ("join_note", 300), ("join_check", 80)):
         if k in body:
             body[k] = " ".join(str(body[k] or "").split())[:n]
     if "welcome" in body:                    # the message when someone joins (welcome.py)

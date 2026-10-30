@@ -450,3 +450,23 @@ def test_post_dates_and_order(client, anon):
     finally:
         for p in made:
             client.delete(f"/api/posts/{p['id']}")
+
+
+def test_offline_page_checks_one_java_address(client, sid):
+    """One up/down check per server: its own check address (playit's direct one, say), else its Java address."""
+    import json
+    import re
+    client.put("/api/settings/site", json={"main_server": sid})
+    client.put(f"/api/servers/{sid}/settings", json={"join_address": "fbcminecraft.com", "join_bedrock_address": "bedrock.fbcminecraft.com",
+                                                     "join_check": "  example.ply.gg:12345 "})
+    try:
+        code = client.get("/api/settings/site/offline-worker").text
+        cfg = json.loads(re.search(r"const SITE = (\{.*?\n\});", code, re.S).group(1))
+        mine = next(s for s in cfg["servers"] if s["java"] == "fbcminecraft.com")
+        assert mine["check"] == "example.ply.gg:12345" and mine["bedrock"] == "bedrock.fbcminecraft.com"
+        client.put(f"/api/servers/{sid}/settings", json={"join_check": ""})
+        code = client.get("/api/settings/site/offline-worker").text
+        cfg = json.loads(re.search(r"const SITE = (\{.*?\n\});", code, re.S).group(1))
+        assert next(s for s in cfg["servers"] if s["java"] == "fbcminecraft.com")["check"] == "fbcminecraft.com"
+    finally:
+        client.put(f"/api/servers/{sid}/settings", json={"join_address": "", "join_bedrock_address": "", "join_check": ""})

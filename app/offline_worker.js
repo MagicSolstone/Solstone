@@ -65,14 +65,12 @@ async function ask(path) {
 
 const host = (a) => String(a).replace(/[^\w.:-]/g, "");      // play.example.net or play.example.net:25566
 
+// One check per server, of its Java side (its own check address, else its Java address): Java and Bedrock players
+// play on the same server, and Bedrock is harder to ask reliably. A Bedrock-only server is asked over Bedrock.
 async function status(s) {
-  const [java, bedrock] = await Promise.all([
-    s.java ? ask(`3/${host(s.java)}`) : null,
-    s.bedrock ? ask(`bedrock/3/${host(s.bedrock)}:${Number(s.bedrock_port) || 19132}`) : null,
-  ]);
-  const up = [java, bedrock].filter((x) => x && x.online);
-  const known = [java, bedrock].some((x) => x);
-  return { ...s, online: up.length > 0, known, playing: up.length ? Math.max(...up.map((x) => x.players?.online || 0)) : 0 };
+  const r = s.check ? await ask(`3/${host(s.check)}`)
+    : s.bedrock ? await ask(`bedrock/3/${host(s.bedrock)}:${Number(s.bedrock_port) || 19132}`) : null;
+  return { ...s, online: !!(r && r.online), known: !!r, playing: r?.online ? r.players?.online || 0 : 0 };
 }
 
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -80,7 +78,7 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 function page(checks, planned) {
   const row = (s) => `<li><div><b>${esc(s.name)}</b>
       <span class="addr">${[s.java && `Java: ${esc(s.java)}`, s.bedrock && `Bedrock: ${esc(s.bedrock)} port ${esc(s.bedrock_port || 19132)}`].filter(Boolean).join(" · ")}</span></div>
-      <span class="pill ${s.online ? "on" : s.known ? "off" : ""}">${s.online ? `Up · ${s.playing} playing` : s.known ? "Down" : "Couldn't check"}</span></li>`;
+      <span class="pill ${s.online ? "on" : s.known ? "off" : ""}">${s.online ? `Online · ${s.playing} playing` : s.known ? "Offline" : "Couldn't check"}</span></li>`;
   const anyUp = checks.some((s) => s.online);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(SITE.name)} · ${planned ? "down for maintenance" : "down for now"}</title><meta name="robots" content="noindex">

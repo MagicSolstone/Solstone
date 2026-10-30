@@ -1,3 +1,11 @@
+# Solstone 1.12.6
+
+- **The offline page checks each server once, on its Java side:**
+  - Java and Bedrock players play on the same server, and a Bedrock check is less reliable, so one check now covers both.
+  - The page says **Online · 3 playing** or **Offline**, and still lists both the Java and the Bedrock address (with its port) for joining.
+  - A new **Address for the up/down check** box in Website → Site details (on each server's join card) lets you give the address to check directly, like playit's `something.ply.gg:12345`. That helps when the address players use goes through DNS that a status checker can't follow. Empty means it checks the Java address.
+  - **After changing it,** download the offline page again and paste it over the old one in Cloudflare.
+
 # Solstone 1.12.5
 
 - **The fishing journal is off to start (servers with the Solstone pack):**
