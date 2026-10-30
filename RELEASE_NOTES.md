@@ -1,3 +1,10 @@
+# Solstone 1.13.1
+
+- **Up for is right:**
+  - **The bug:** the home page's status panel worked out how long a server had been up from Crafty's start time, which has no time zone. In some setups it landed in the future, and the panel showed *0 min*.
+  - **The fix:** Solstone now works out the start time itself and uses its own record of when it last saw the server go up whenever Crafty's time doesn't add up. That record survives Solstone restarts.
+- **No memory on the status cards:** CPU stays.
+
 # Solstone 1.13.0
 
 - **A clean server status panel at the top of the home page,** above *Join the server*, the same for everyone. For each public server:

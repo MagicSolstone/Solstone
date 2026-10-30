@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.13.0"
+VERSION = "1.13.1"
 
 
 @asynccontextmanager
@@ -535,6 +535,24 @@ async def public_status():
     return {"enabled": True, "servers": out, "build": _asset_stamp()}
 
 
+def _up_since(sid: str, started) -> float | None:
+    """When the server last started, as a timestamp. Crafty's start time has no time zone (it's read in this
+    container's, which can differ from Crafty's or the visitor's), so it's used only when it lands in the past and
+    agrees with Solstone's own checks; otherwise it's when Solstone's checks have seen it running since."""
+    rows = db.q("SELECT ts FROM metrics WHERE server_id=? AND running=0 ORDER BY ts DESC LIMIT 1", (sid,))
+    after = db.q("SELECT MIN(ts) AS t FROM metrics WHERE server_id=? AND running=1 AND ts>?", (sid, rows[0]["ts"] if rows else 0))
+    seen = after[0]["t"] if after and after[0]["t"] else None
+    try:
+        from datetime import datetime
+        t = datetime.fromisoformat(str(started).replace("T", " ")).replace(tzinfo=db.tz()).timestamp() if started else None
+    except (TypeError, ValueError):
+        t = None
+    now = time.time()
+    if t and t <= now + 60 and (seen is None or t <= seen + 900):
+        return min(t, now)
+    return seen
+
+
 def _uptime(sid: str, days: int) -> float | None:
     """The share of the last few days the server was up (from Solstone's own checks), 0..1."""
     r = db.q("SELECT COUNT(*) AS n, SUM(running) AS r FROM metrics WHERE server_id=? AND ts>=?", (sid, time.time() - days * 86400))[0]
@@ -598,6 +616,7 @@ async def public_site():
             servers.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "online": len(summ["online"]),
                             "max": summ["max_players"], "version": summ.get("version"), "has_icon": summ["has_icon"],
                             "started": summ.get("started") if summ["running"] else None, "tps": perf.get("tps"),
+                            "up_since": _up_since(srv.id, summ.get("started")) if summ["running"] else None,
                             "mspt": perf.get("mspt"), "cpu": summ.get("cpu") if summ["running"] else None,
                             "mem": summ.get("mem") if summ["running"] else None,
                             "mem_percent": summ.get("mem_percent") if summ["running"] else None,

@@ -470,3 +470,21 @@ def test_offline_page_checks_one_java_address(client, sid):
         assert next(s for s in cfg["servers"] if s["java"] == "fbcminecraft.com")["check"] == "fbcminecraft.com"
     finally:
         client.put(f"/api/servers/{sid}/settings", json={"join_address": "", "join_bedrock_address": "", "join_check": ""})
+
+
+def test_up_since_doesnt_trust_a_start_time_in_the_future(sid):
+    """Crafty's start time has no time zone: one that lands in the future is ignored for Solstone's own checks."""
+    import time
+
+    from app import db, main
+    now = time.time()
+    db.x("DELETE FROM metrics WHERE server_id='up-test'")
+    for ts, run in ((now - 7200, 0), (now - 3600, 1), (now - 1800, 1)):
+        db.x("INSERT INTO metrics(server_id, ts, running, players) VALUES (?,?,?,0)", ("up-test", ts, run))
+    try:
+        assert abs(main._up_since("up-test", "2099-01-01 00:00:00") - (now - 3600)) < 1        # in the future: our own checks
+        from datetime import datetime
+        when = datetime.fromtimestamp(now - 3500, db.tz()).strftime("%Y-%m-%d %H:%M:%S")
+        assert abs(main._up_since("up-test", when) - (now - 3500)) < 2                           # believable: Crafty's own
+    finally:
+        db.x("DELETE FROM metrics WHERE server_id='up-test'")

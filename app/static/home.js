@@ -47,7 +47,7 @@ function modsHtml(m) {
 
 // How long since a time ("2 d 4 h"), for "up for".
 function sinceText(started) {
-  const since = started ? new Date(String(started).replace(" ", "T")).getTime() : NaN;
+  const since = typeof started === "number" ? started : started ? new Date(String(started).replace(" ", "T")).getTime() : NaN;
   if (!Number.isFinite(since)) return "";
   const m = Math.max(0, Math.floor((Date.now() - since) / 60000)), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60);
   return d ? `${d} d ${h} h` : h ? `${h} h ${m % 60} min` : `${m} min`;
@@ -67,9 +67,8 @@ function statusPanel(site) {
       tile("Playing now", `${s.online}${s.max ? ` <small>/ ${s.max}</small>` : ""}`),
       tps != null ? tile("TPS", tps.toFixed(1), `${smooth}${s.mspt != null ? ` · ${Number(s.mspt).toFixed(0)} ms a tick` : ""}`) : "",
       s.version ? tile("Minecraft", esc(s.version), s.loader ? s.loader.charAt(0).toUpperCase() + s.loader.slice(1) : "") : "",
-      sinceText(s.started) ? tile("Up for", esc(sinceText(s.started)), s.uptime_7d != null ? `${Math.round(s.uptime_7d * 1000) / 10}% of the last 7 days` : "") : "",
+      s.up_since ? tile("Up for", esc(sinceText(s.up_since * 1000)), s.uptime_7d != null ? `${Math.round(s.uptime_7d * 1000) / 10}% of the last 7 days` : "") : "",
       s.cpu != null ? tile("CPU", `${Math.round(Number(s.cpu))}%`) : "",
-      s.mem ? tile("Memory", esc(s.mem), s.mem_percent != null ? `${Math.round(Number(s.mem_percent))}% of its share` : "") : "",
     ].join("");
     return `<article class="hp-status-card"><header><span class="hp-dot on"></span><h3>${esc(s.name)}</h3><span class="hp-status-word">Online</span></header>
       <div class="hp-stats">${tiles}</div></article>`;
