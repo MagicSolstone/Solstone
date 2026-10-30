@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.12.2"
+VERSION = "1.12.3"
 
 
 @asynccontextmanager
@@ -1726,6 +1726,18 @@ async def change_profile(request: Request):
     body = await _body(request)
     u = await asyncio.to_thread(auth.set_display_name, user.id, str(body.get("display_name") or ""))
     auth.audit(user, None, "display_name", u.shown)
+    return {"user": u.public()}
+
+
+@app.post("/api/auth/use-minecraft-name")
+async def use_minecraft_name(request: Request):
+    """Sign in with (and be shown as) one of your linked Minecraft names: the old login stops working and everything
+    kept under it moves over."""
+    user = auth.require_user(request)
+    body = await _body(request)
+    old = user.username
+    u = await asyncio.to_thread(auth.use_player_name, user.id, str(body.get("name") or "") or None)
+    auth.audit(u, None, "login_renamed", f"{old} → {u.username}")
     return {"user": u.public()}
 
 

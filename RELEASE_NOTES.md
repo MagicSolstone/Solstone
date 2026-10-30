@@ -1,3 +1,14 @@
+# Solstone 1.12.3
+
+- **Go by your Minecraft name only:** in **My Minecraft accounts** (account menu), once your Minecraft name is linked, **Use <name> as my login** makes it both your login and the name everyone sees.
+  - The old login stops working completely. Your password stays the same.
+  - Your fireworks, saved sounds, posts, Adventures and activity log move over to the new name.
+  - There's no separate display name after that.
+- **Deleting an account cleans up after it:**
+  - **Gone:** its fireworks and saved sounds, its join firework and its weight in the firework show. Its messages, votes and *I'm coming* sign-ups already went.
+  - **Kept:** posts on the website (they're the site's pages), Adventures saved for a server, and the activity log.
+  - **Bedtime and play-time limits** set for that player move onto their Minecraft name, so they keep applying in the game without an account.
+
 # Solstone 1.12.2
 
 - **Asks to join on your name:** for admins, the number on your name at the top now also counts asks to join that are still waiting (not yet let in on every server they asked for). **✅ Whitelist** in Manage shows how many, and the number goes down as you let people in.

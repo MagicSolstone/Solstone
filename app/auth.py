@@ -399,11 +399,35 @@ def delete_user(uid: int) -> None:
         raise HTTPException(404, "User not found")
     if u.role == "admin" and count_admins() <= 1:
         raise HTTPException(400, "Solstone needs at least one admin")
+    from . import accounts                    # their fireworks, sounds and so on (see accounts.py)
+    accounts.forget(uid, u.username, [p["name"] for p in u.players])
     db.x("DELETE FROM sessions_auth WHERE user_id=?", (uid,))
     db.x("DELETE FROM user_players WHERE user_id=?", (uid,))
     db.x("DELETE FROM users WHERE id=?", (uid,))
     from . import community                   # their messages, votes and sign-ups go with them
     community.forget_user(uid)
+
+
+def use_player_name(uid: int, name: str | None = None) -> User:
+    """Make one of the account's Minecraft names (its main one, to start) its login, and the name shown: the old
+    login stops working, and everything kept under it (fireworks, posts, the activity log) moves over."""
+    _init()
+    u = get_user(uid)
+    if not u:
+        raise HTTPException(404, "User not found")
+    p = next((x for x in u.players if name and x["name"].lower() == name.lower()), None) or u.main_player
+    if not p:
+        raise HTTPException(400, "Link a Minecraft account first")
+    new = p["name"]
+    if new == u.username and not u.display_name:
+        return u
+    if db.q("SELECT 1 FROM users WHERE id<>? AND (username=? COLLATE NOCASE OR display_name=? COLLATE NOCASE)", (uid, new, new)):
+        raise HTTPException(409, f"Another account already goes by {new}")
+    old = u.username
+    db.x("UPDATE users SET username=?, display_name=NULL WHERE id=?", (new, uid))
+    from . import accounts
+    accounts.rename(old, new)
+    return get_user(uid)
 
 
 def bootstrap() -> None:

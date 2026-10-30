@@ -196,7 +196,9 @@ function showAccountPlayers(user) {
   $("#account-role").textContent = `${(ROLE_NAMES.find(([v]) => v === user.role) || [, "Signed in"])[1]} · signed in as ${user.username}`;
   $("#account-name").textContent = user.shown;
   // players are shown by their Minecraft name (picked in My Minecraft accounts), so no display name of their own
-  const dn = $("#btn-display-name"); if (dn) dn.hidden = user.role === "player";
+  // nor anyone who goes by their Minecraft name (their login is it)
+  const own = (user.players || []).some((p) => p.name.toLowerCase() === String(user.username).toLowerCase());
+  const dn = $("#btn-display-name"); if (dn) dn.hidden = user.role === "player" || own;
 }
 
 // Your Minecraft accounts: a Java one and a Bedrock one can both be yours, and you sign in with either name (one
@@ -210,7 +212,11 @@ function openMyPlayers() {
     return `<ul class="my-players">${ps.map((p) => `<li>${faceHtml({ name: p.name, uuid: p.uuid }, 24)} <b>${esc(p.name)}</b>${p.name.startsWith(".") ? ' <span class="chip">Bedrock</span>' : ' <span class="chip">Java</span>'}
         ${ps.length > 1 ? (p.uuid === main ? ' <span class="chip mp-main">⭐ Main</span>' : `<button class="btn sm" type="button" data-main="${esc(p.uuid)}">Make main</button>`) : ""}
         ${isPlayer() && ps.length <= 1 ? "" : `<button class="btn sm" type="button" data-unlink="${esc(p.uuid)}">Unlink</button>`}</li>`).join("")}</ul>
-      <p class="muted small">You can sign in with ${ps.length > 1 ? "any of these names" : "this name"} and your one password.${isPlayer() && ps.length > 1 ? " On the website you're shown as your ⭐ main one." : ""}</p>`;
+      <p class="muted small">You can sign in with ${ps.length > 1 ? "any of these names" : "this name"} and your one password.${isPlayer() && ps.length > 1 ? " On the website you're shown as your ⭐ main one." : ""}</p>
+      ${ps.some((p) => p.name.toLowerCase() === me.user.username.toLowerCase()) ? "" : `<div class="mp-own panel">
+        <b>Go by your Minecraft name only</b>
+        <p class="muted small">Your login is <b>${esc(me.user.username)}</b>. Make <b>${esc((ps.find((p) => p.main) || ps[0]).name)}</b> your login and the name everyone sees instead: <b>${esc(me.user.username)}</b> stops working, and your fireworks, posts and history move over to the new name.</p>
+        <button class="btn sm primary" type="button" data-own-name>Use ${esc((ps.find((p) => p.main) || ps[0]).name)} as my login</button></div>`}`;
   };
   openModal(`<h2>My Minecraft accounts</h2>
     <div id="mp-list">${list()}</div>
@@ -222,6 +228,14 @@ function openMyPlayers() {
       <div class="actions"><button type="button" class="btn" data-close-modal>Close</button><button class="btn primary" type="submit" id="mp-go">Send me a code</button></div></form>`, (m) => {
     let sent = false;
     $("#mp-list", m).addEventListener("click", async (e) => {
+      if (e.target.closest("[data-own-name]")) {
+        const name = (me.user.players.find((p) => p.main) || me.user.players[0]).name;
+        if (!(await confirmBox(`Sign in as ${name} from now on?`, `<b>${esc(me.user.username)}</b> won't work any more. Your password stays the same.`, `Use ${name}`, false))) { openMyPlayers(); return; }
+        try { const r = await post("/api/auth/use-minecraft-name", { name }); me.user = r.user; showAccountPlayers(me.user); $("#account-name").textContent = r.user.shown; showToast(`You sign in as ${esc(r.user.username)} now`, 3500); }
+        catch (err) { showError(esc(err.message), 5000); }
+        openMyPlayers();
+        return;
+      }
       const mb = e.target.closest("[data-main]");
       if (mb) {
         try { const r = await post(`/api/auth/players/${encodeURIComponent(mb.dataset.main)}/main`, {}); me.user = r.user; showAccountPlayers(me.user); $("#mp-list", m).innerHTML = list(); showToast(`You're shown as ${esc(r.user.shown)}`, 2500); }

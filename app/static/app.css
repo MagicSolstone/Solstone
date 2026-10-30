@@ -2108,3 +2108,6 @@ a.glance-me:hover { border-color: var(--gold); }
 .eg-adding { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
 .ch-ingroup { margin: 4px 0 0; }
 @media (max-width: 600px) { .eg-part { grid-template-columns: 72px 24px minmax(0, 1fr); } .eg-acts { grid-column: 1 / -1; justify-content: flex-start; } }
+
+.mp-own { display: grid; gap: 6px; margin-top: 12px; padding: 12px 14px; }
+.mp-own .btn { justify-self: start; }
