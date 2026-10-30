@@ -788,4 +788,80 @@ async function viewWhitelist() {
     if (ok) showToast(`${esc(name)} added to ${ok} server${ok === 1 ? "" : "s"}`, 3000);
     viewWhitelist();
   });
+  const rm = document.createElement("section");
+  rm.className = "section";
+  rm.innerHTML = removePlayerHtml();
+  view().append(rm);
+  wireForgetPlayer(rm);
+}
+
+// ---------------------------------------------------------------- removing a player for good
+// A guide for the game side (done by hand: the server's files, land claims, the whitelist), and forgetting
+// them in Solstone, guarded so it can't happen by accident: what goes is shown first, their name typed again,
+// a server backup confirmed, nobody online under that name, and a Solstone backup made just before.
+const FORGET_KINDS = [["sessions", "times they played (days played, play time, leaderboards)"], ["events", "lines in the activity feed and chat"],
+  ["positions", "points of their Adventures trail"], ["fish", "fish in the fishing journal"], ["recaps", "daily recaps that name them (their name comes out)"],
+  ["challenges", "contests, races and games they were in (results kept, as “a former player”)"], ["playtime", "bedtime and play-time rules"],
+  ["join_firework", "join firework"], ["prizes_owed", "prizes still waiting for them"], ["join_requests", "asks to join"], ["votes", "votes from the game"]];
+
+function removePlayerHtml() {
+  return `<div class="section-head"><h2>🚪 Removing a player for good</h2><span class="muted">When someone has left and shouldn't come back</span></div>
+    <div class="panel rm-guide">
+      <p class="muted">Do these in order. The game and its mods keep things about each player by their <b>ID</b> (a long code; the check below shows it), so their files are named by it.</p>
+      <ol>
+        <li><b>Take a server backup</b> (in Crafty) before anything else. It's the only way to undo.</li>
+        <li><b>Their land claims (Flan):</b> in the server console run <code>/flan help</code> to find the admin delete command for your Flan version, then delete all of their claims (it's usually <code>/flan adminDelete all &lt;name&gt;</code>). Their claimed land becomes free to build on.</li>
+        <li><b>Off the whitelist</b>, above, on every server (or <code>/whitelist remove &lt;name&gt;</code> in the console). If they were an operator, <code>/deop &lt;name&gt;</code> too. If they must never come back, <code>/ban &lt;name&gt;</code>.</li>
+        <li><b>Their files</b>, while they're offline (stopping the server is safest), in the world folder:
+          <ul><li><code>playerdata/&lt;ID&gt;.dat</code> and <code>playerdata/&lt;ID&gt;.dat_old</code>: their inventory, ender chest and where they were</li>
+            <li><code>stats/&lt;ID&gt;.json</code>: their statistics (Solstone's leaderboards read these)</li>
+            <li><code>advancements/&lt;ID&gt;.json</code>: their advancements</li></ul>
+          With the server stopped, you can also delete their line from <code>usercache.json</code> in the server folder (the game's list of names it has seen).</li>
+        <li><b>Other mods</b> may keep their own files by the same ID (a search of the world's <code>data</code> folder for the ID finds them). Distant Horizons and BlueMap don't keep anything per player.</li>
+        <li><b>Their website account</b>, if they made one: Manage → Users → delete. Their fireworks and messages go with it.</li>
+        <li><b>Forget them in Solstone</b>, below. It can be done before or after the steps above. If they ever join again, Solstone starts a fresh history for them.</li>
+      </ol>
+    </div>
+    <form class="panel rm-forget" id="rm-forget" autocomplete="off">
+      <h3>🧹 Forget a player in Solstone</h3>
+      <p class="muted small">Takes them off Solstone's pages on every server: history, play time, leaderboards, the activity feed, Adventures, the fishing journal and recaps. Nothing in the game is changed.</p>
+      <div class="btn-row"><input class="input sm" name="name" placeholder="Minecraft name (.Name for Bedrock)" pattern="\\.?[A-Za-z0-9_]{1,16}" required>
+        <button class="btn sm" type="submit">Check what would go</button></div>
+      <div id="rm-plan"></div>
+    </form>`;
+}
+
+function wireForgetPlayer(el) {
+  const form = $("#rm-forget", el), out = $("#rm-plan", el);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = form.name.value.trim();
+    let p;
+    try { p = await api(`/api/players/forget?name=${encodeURIComponent(name)}`); } catch (err) { showError(esc(err.message), 4000); return; }
+    const rows = FORGET_KINDS.filter(([k]) => p.counts[k]).map(([k, label]) => `<li><b>${p.counts[k].toLocaleString()}</b> ${esc(label)}</li>`).join("");
+    out.innerHTML = `<div class="rm-plan">
+      <p><b>${esc(p.name)}</b>${p.uuid ? ` · ID <code>${esc(p.uuid)}</code>` : " · not seen on any server"}${p.names.length > 1 ? ` · also played as ${esc(p.names.filter((n) => n !== p.name.toLowerCase()).join(", "))}` : ""}</p>
+      ${p.total ? `<ul class="rm-counts">${rows}</ul>` : `<p class="muted">Solstone has nothing kept about them.</p>`}
+      ${p.account ? `<p class="notice small">They have a website account (<b>${esc(p.account)}</b>). That isn't removed here: delete it in Manage → Users.</p>` : ""}
+      ${p.online.length ? `<p class="notice small">They're playing on ${esc(p.online.join(", "))} right now. Wait until they've left.</p>` : ""}
+      ${p.total && !p.online.length ? `<div class="rm-confirm">
+        <label class="check"><input type="checkbox" name="backed_up"> I've taken a server backup (Solstone makes its own backup just before, too)</label>
+        <label>To be sure, type <b>${esc(p.name)}</b> again<input class="input sm" name="confirm" autocomplete="off" spellcheck="false"></label>
+        <button class="btn danger" type="button" data-forget disabled>Forget ${esc(p.name)} in Solstone</button>
+        <p class="muted small">This can't be undone here. To get it back, restore the Solstone backup made just before (see Solstone's backups in Manage → Servers).</p></div>` : ""}
+    </div>`;
+    const go = out.querySelector("[data-forget]");
+    if (!go) return;
+    const ready = () => { go.disabled = !(form.backed_up.checked && form.confirm.value.trim() === p.name); };
+    form.backed_up.addEventListener("change", ready);
+    form.confirm.addEventListener("input", ready);
+    go.addEventListener("click", async () => {
+      if (!(await confirmBox(`Forget ${p.name}?`, `${p.total.toLocaleString()} things about them come off Solstone's pages, on every server.`, "Forget them"))) return;
+      try {
+        const r = await post("/api/players/forget", { name: p.name, confirm: p.name, backed_up: true });
+        out.innerHTML = `<p class="notice small">Done: ${r.total.toLocaleString()} things about ${esc(r.name)} are gone from Solstone. A backup was made just before.</p>`;
+        form.reset();
+      } catch (err) { showError(esc(err.message), 5000); }
+    });
+  });
 }

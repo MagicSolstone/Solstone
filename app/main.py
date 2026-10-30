@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, board, challenges, community, control, db, eventgroups, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
+from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.12.3"
+VERSION = "1.12.4"
 
 
 @asynccontextmanager
@@ -2334,6 +2334,55 @@ def _open_requests(servers: list) -> list[dict]:
             continue                                  # done everywhere: their own page says so
         reqs.append({**{k: r.get(k) for k in ("player", "name", "note", "ts")}, "bedrock": mcname.is_bedrock(r["player"]), "servers": each})
     return reqs
+
+
+# ---- forgetting a player (Manage → Whitelist → Removing a player): forget.py
+@app.get("/api/players/forget")
+async def forget_preview(name: str, request: Request):
+    """What forgetting this player would remove (nothing is changed)."""
+    auth.require_admin(request)
+    await S.registry.refresh()
+    p = await asyncio.to_thread(forget.plan, name)
+    if not p:
+        raise HTTPException(400, "Type a Minecraft name")
+    p["online"] = await _online_on(p["names"])
+    return p
+
+
+async def _online_on(names: list[str]) -> list[str]:
+    """Servers where any of these names is playing right now."""
+    out = []
+    for srv in [s for s in S.registry.servers.values() if s.is_java]:
+        try:
+            on, _src = await S.online_players(srv)
+        except Exception:
+            continue
+        if any(n.lower() in names for n in on):
+            out.append(srv.display_name)
+    return out
+
+
+@app.post("/api/players/forget")
+async def forget_player(request: Request):
+    """Forget a player for good. Guarded: their exact name typed again, a server backup confirmed, not online
+    anywhere; a Solstone backup is made first."""
+    user = auth.require_admin(request)
+    body = await _body(request)
+    name = str(body.get("name") or "").strip()
+    if not name or str(body.get("confirm") or "").strip() != name:
+        raise HTTPException(400, "Type the player's name exactly, to be sure")
+    if not body.get("backed_up"):
+        raise HTTPException(400, "Take a server backup first, and tick the box to say you have")
+    await S.registry.refresh()
+    p = await asyncio.to_thread(forget.plan, name)
+    if not p:
+        raise HTTPException(400, "Type a Minecraft name")
+    on = await _online_on(p["names"])
+    if on:
+        raise HTTPException(409, f"{name} is playing on {', '.join(on)} right now. Wait until they've left.")
+    done = await asyncio.to_thread(forget.wipe, name)
+    auth.audit(user, None, "forget_player", f"{name}: {done['total']} things removed ({', '.join(done['names'])})")
+    return done
 
 
 @app.get("/api/whitelist")

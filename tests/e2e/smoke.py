@@ -195,6 +195,16 @@ def main() -> int:
             if pg.locator("#fwe-join").count() and pg.locator("#fwe-join").is_visible() and not (pg.locator("#fwe-join").text_content() or "").strip():
                 problems.append("firework editor: an empty box shows above the save bar")
 
+            # Manage → Whitelist: the removal guide, and forgetting a player shows what would go before anything happens
+            pg.goto(f"{base}/app#/manage/whitelist"); pg.wait_for_timeout(1300)
+            if not pg.locator(".rm-guide ol li").count():
+                problems.append("whitelist: no guide for removing a player")
+            pg.fill("#rm-forget [name=name]", "Tyler"); pg.click("#rm-forget [type=submit]"); pg.wait_for_timeout(900)
+            if not pg.locator("#rm-plan .rm-plan").count():
+                problems.append("whitelist: checking what would be forgotten showed nothing")
+            elif pg.locator("[data-forget]").count() and not pg.locator("[data-forget]").is_disabled():
+                problems.append("whitelist: Forget is ready before the name's typed and the backup's ticked")
+
             # Manage → Activity: filters and a page count
             pg.goto(f"{base}/app#/manage/activity"); pg.wait_for_timeout(1300)
             if not pg.locator("#audit-filters [name=action]").count() or not pg.locator("#audit-keep").count():

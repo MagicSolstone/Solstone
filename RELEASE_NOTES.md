@@ -1,3 +1,26 @@
+# Solstone 1.12.4
+
+- **Removing a player for good** (Manage → Whitelist, at the bottom):
+  - **A step-by-step guide for the game side,** in order:
+    1. take a backup;
+    2. delete their land claims (Flan);
+    3. take them off the whitelist (and deop or ban them if needed);
+    4. delete their files (`playerdata`, `stats`, `advancements`, by their ID) while they're offline;
+    5. remove their line from `usercache.json`, and look for other mods' files under their ID;
+    6. delete their website account.
+  - **🧹 Forget a player in Solstone:** takes them off Solstone's pages on every server:
+    - their play history, play time and leaderboards;
+    - their activity and chat lines, Adventures trail and fishing journal;
+    - their name in daily recaps;
+    - their play-time rules, join firework, prizes still owed, asks to join and in-game votes.
+    - Finished contests, races and games keep their results, with "a former player" in place of their name.
+    - Nothing in the game itself is changed.
+  - **Guarded against accidents:**
+    - It shows exactly what would go first, with their ID and any old names they played under.
+    - You type their name again and tick that you've taken a server backup.
+    - It won't run while they're playing anywhere.
+    - Solstone makes its own backup just before, so it can be undone by restoring that.
+
 # Solstone 1.12.3
 
 - **Go by your Minecraft name only:** in **My Minecraft accounts** (account menu), once your Minecraft name is linked, **Use <name> as my login** makes it both your login and the name everyone sees.
