@@ -1015,6 +1015,8 @@ async def public_board_items(request: Request, where: str = "status", sid: str =
     if sid and not any(x.id == sid for x in servers):
         sid = ""
     items = await asyncio.to_thread(board.active, where, sid or None, signed_in or status_on, None, servers)
+    if signed_in:                                    # signed in, on every page: the votes they haven't voted in yet
+        items += await asyncio.to_thread(board.vote_banners, f"u{request.state.user.id}")
     return JSONResponse({"now": time.time(), "items": items}, headers={"Cache-Control": "no-store"})
 
 
@@ -2531,7 +2533,8 @@ async def community_unread(request: Request):
         servers = [s for s in S.registry.servers.values() if s.is_java and not s.settings.get("hidden")]
         requests = len(await asyncio.to_thread(_open_requests, servers))
     return {"mine": await asyncio.to_thread(community.unread, user.id),
-            "admin": await asyncio.to_thread(community.unread_admin) if user.role == "admin" else 0, "requests": requests}
+            "admin": await asyncio.to_thread(community.unread_admin) if user.role == "admin" else 0, "requests": requests,
+            "votes": len(await asyncio.to_thread(community.unvoted, f"u{user.id}"))}
 
 
 @app.get("/api/community/messages")

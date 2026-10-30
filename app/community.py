@@ -454,6 +454,17 @@ def recent_from(user_id: int, seconds: int = 3600) -> int:
                 "WHERE t.user_id=? AND m.from_admin=0 AND m.ts > ?", (user_id, time.time() - seconds))[0]["n"]
 
 
+def unvoted(voter: str) -> list[dict]:
+    """Open votes this voter ('u<id>' or 'p:<name>') hasn't voted in yet (a build contest where every entry is
+    theirs doesn't count: there's nothing they could vote for)."""
+    out = []
+    for p in open_polls():
+        own = set(own_entries(p, voter)) if p["kind"] == "build" else set()
+        if my_vote(p["id"], voter) is None and len(own) < len(p["options"]):
+            out.append(p)
+    return out
+
+
 def forget_user(uid: int) -> None:
     """An account removed: its messages and sign-ups go too, and its votes in votes still open (a new account never
     inherits any of it). Its votes in finished votes stay counted, so a result never changes afterwards."""

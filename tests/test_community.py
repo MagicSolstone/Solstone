@@ -206,3 +206,19 @@ def test_events_public_without_names_and_who_is_coming(client, anon, sid):
         d["items"] = [i for i in d["items"] if i["name"] != "Fishing night"]
         challenges._save(d)
         auth.delete_user(a.id)
+
+
+def test_unvoted_votes_count_and_banner_everywhere(client):
+    from app import community
+    p = community.create_poll({"question": "Pick a pet?", "options": ["Cat", "Dog"]})
+    try:
+        n = client.get("/api/community/unread").json()
+        assert n["votes"] >= 1
+        for where in ("home", "app", "login"):
+            items = client.get(f"/api/public/board?where={where}").json()["items"]
+            assert any(i["kind"] == "vote" and i["text"] == "Pick a pet?" for i in items), where
+        client.post(f"/api/community/votes/{p['id']}", json={"option": p["options"][0]["id"]})
+        assert client.get("/api/community/unread").json()["votes"] == n["votes"] - 1
+        assert not any(i["text"] == "Pick a pet?" for i in client.get("/api/public/board?where=home").json()["items"])    # voted: gone
+    finally:
+        community.delete_poll(p["id"])

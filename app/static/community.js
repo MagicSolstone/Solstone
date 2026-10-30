@@ -10,10 +10,11 @@ async function cmRefreshUnread() {
   if (!me.user) return;
   try {
     const n = await api("/api/community/unread");
-    const total = n.mine + (n.admin || 0) + (n.requests || 0);
+    const total = n.mine + (n.admin || 0) + (n.requests || 0) + (n.votes || 0);
     const badge = (el, count) => { if (el) { el.textContent = count ? String(count) : ""; el.hidden = !count; } };
     badge($("#account-unread"), total);
     badge($("#menu-unread"), n.mine);
+    badge($("#menu-votes"), n.votes);
     badge($("#menu-admin-unread"), n.admin);
     badge($("#menu-requests"), n.requests);
     const cur = $("#manage-nav [aria-current]")?.dataset.m;
@@ -58,7 +59,7 @@ async function viewVotes() {
     try {
       await post(`/api/community/votes/${b.dataset.vote}`, { option: b.dataset.opt });
       showToast("🗳️ Thanks for voting!", 2000);
-      viewVotes();
+      viewVotes(); cmRefreshUnread(); appSky.board?.refresh();      // the number on your name, and the banner, go
     } catch (err) { showError(esc(err.message), 4000); }
   }));
 }

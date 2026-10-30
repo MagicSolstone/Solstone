@@ -129,12 +129,6 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
             elif kind == "active":
                 out.append({"id": f"bta-{srv.id}", "kind": "bedtime", "emoji": "😴", "style": "info",
                             "text": f"{srv.display_name} is asleep", "detail": f"Back at {playtime.fmt_clock(bcfg['end'])}", "countdown": None})
-    if where == "app":                              # a vote open: a banner for those signed in, to go and vote
-        from . import community
-        for p in community.open_polls()[:2]:
-            out.append({"id": f"vote-{p['id']}", "kind": "vote", "emoji": "🏆" if p["kind"] == "build" else "🗳️", "style": "info",
-                        "text": p["question"], "detail": "Vote now: Votes, or !vote in the game", "link": "/app#/votes",
-                        "countdown": p["closes"], "done_text": "Voting has closed!"})
     # a holiday coming up: a countdown banner from as many days before as it asks (Manage → Holidays)
     today = now.date()
     for e in fwshow.calendar():
@@ -189,3 +183,13 @@ async def tick(servers: list) -> None:
             text = it["done_text"] if cd and it["done_text"] else it["text"]
             await _say_all(servers, text, text if cd else "", it["server"])  # Minecraft's font has no emoji
 
+
+def vote_banners(voter: str) -> list[dict]:
+    """For someone signed in, on every page: a banner for each open vote they haven't voted in yet."""
+    from . import community
+    out = []
+    for p in community.unvoted(voter)[:2]:
+        out.append({"id": f"vote-{p['id']}", "kind": "vote", "emoji": "🏆" if p["kind"] == "build" else "🗳️", "style": "info",
+                    "text": p["question"], "detail": "Vote now: Votes, or !vote in the game", "link": "/app#/votes",
+                    "countdown": p["closes"], "done_text": "Voting has closed!"})
+    return out

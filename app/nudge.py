@@ -80,12 +80,7 @@ def waiting(name: str) -> tuple[int, int]:
     u = _account(name)
     msgs = community.unread(u["id"]) if u else 0
     voter = f"u{u['id']}" if u else f"p:{name.lower()}"
-    votes = 0
-    for p in community.open_polls():
-        own = set(community.own_entries(p, voter)) if p["kind"] == "build" else set()
-        if community.my_vote(p["id"], voter) is None and len(own) < len(p["options"]):
-            votes += 1
-    return msgs, votes
+    return msgs, len(community.unvoted(voter))
 
 
 def describe(msgs: int, votes: int) -> str:

@@ -1,5 +1,9 @@
 # Solstone 1.12.6
 
+- **Votes you haven't voted in, everywhere you're signed in:**
+  - **Banners:** a vote's banner now shows on Home, News, Help and every other page, not just inside the app. It goes away once you've voted.
+  - **The number on your name** counts unvoted votes too.
+  - **In your name's menu:** **Messages** shows its own count and **Votes** shows its own. For example, 2 new messages and 1 vote gives **3** on your name, **2** by Messages and **1** by Votes. Voting updates the numbers straight away.
 - **The offline page checks each server once, on its Java side:**
   - Java and Bedrock players play on the same server, and a Bedrock check is less reliable, so one check now covers both.
   - The page says **Online · 3 playing** or **Offline**, and still lists both the Java and the Bedrock address (with its port) for joining.

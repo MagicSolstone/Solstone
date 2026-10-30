@@ -195,7 +195,7 @@ function showSignedIn() {
       <div class="account-menu" id="hp-account-menu" role="menu" hidden>
         <div class="account-role">${esc(role)} · signed in as ${esc(u.username)}</div>
         <a role="menuitem" href="/app#/messages">✉️ Messages <span class="cm-badge" id="hp-menu-unread" hidden></span></a>
-        <a role="menuitem" href="/app#/votes">🗳️ Votes</a>
+        <a role="menuitem" href="/app#/votes">🗳️ Votes <span class="cm-badge" id="hp-menu-votes" hidden></span></a>
         <a role="menuitem" href="/app#/fireworks">🎆 Fireworks</a>
         ${admin ? `<a role="menuitem" href="/app#/manage">⚙ Manage</a>` : ""}
         ${u.role === "player" || own ? "" : `<a role="menuitem" href="/app#/account/name">Display name</a>`}
@@ -205,8 +205,9 @@ function showSignedIn() {
     fetch("/api/community/unread", { credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null)).then((n) => {
       if (!n) return;
       const set = (id, v) => { const el = document.getElementById(id); if (el) { el.textContent = v ? String(v) : ""; el.hidden = !v; } };
-      set("hp-unread", n.mine + (n.admin || 0) + (n.requests || 0));
+      set("hp-unread", n.mine + (n.admin || 0) + (n.requests || 0) + (n.votes || 0));
       set("hp-menu-unread", n.mine);
+      set("hp-menu-votes", n.votes);
     }).catch(() => {});
     b.replaceWith(wrap);
     const close = wireDropMenu(wrap.querySelector("#hp-account"), wrap.querySelector("#hp-account-menu"));
