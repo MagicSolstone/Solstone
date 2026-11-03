@@ -9,7 +9,8 @@ monster per wave. Everyone's own things go safely into the vault (kits.py) and t
   - Everyone for themselves: most monsters defeated wins. Falling means a few seconds watching, then back in.
 
 The monsters are the game's own, marked as the arena's, kept inside it, and removed at the end. Mob griefing is off
-while it runs (no creeper holes). Everyone's things are given back exactly afterwards, and they're put back where
+while it runs (no creeper holes). By default it's midnight while it runs, with the day-night cycle held (spiders only
+fight in the dark); the time of day and the cycle go back to how they were afterwards. It's the whole server's time. Everyone's things are given back exactly afterwards, and they're put back where
 they were.
 """
 from __future__ import annotations
@@ -72,6 +73,7 @@ def settings(body: dict, num, point) -> dict:
     return {"zone": {**c, "r": round(num(body.get("radius"), 6, 60, 15), 1), "h": 12}, "mob_spots": spots,
             "spawns": [c], "level": level, "waves": waves, "coop": bool(body.get("coop", True)),
             "respawn_secs": int(num(body.get("respawn_secs"), 1, 60, 5)), "no_dig": bool(body.get("no_dig", True)),
+            "night": bool(body.get("night", True)),          # midnight while it runs: spiders fight, nothing burns
             "kit": kits.clean_kit(body.get("kit") or {})}
 
 
@@ -81,7 +83,12 @@ async def start(srv, r: dict) -> None:
     if not names:
         r["state"], r["result"] = "skipped", "Nobody" + (" joined" if r.get("optin") else " was online")
         return
-    await battle.rules_on(srv, r, {"mob_griefing": False})
+    night = r.get("night", True) and r.get("dim", "minecraft:overworld") == "minecraft:overworld"
+    await battle.rules_on(srv, r, {"mob_griefing": False, **({"daylight": False} if night else {})})
+    if night:                                        # midnight, held there (spiders only fight in the dark); the time
+        m = re.search(r"(\d+)", await battle._rcon(srv, "time query daytime"))       # of day goes back afterwards
+        r["time_before"] = int(m.group(1)) if m else None
+        await battle._rcon(srv, "time set 18000")
     playing = await battle.ready(srv, r, names, TAG)
     if not playing:
         await battle.finish(srv, r, TAG)
@@ -216,6 +223,8 @@ async def _end(srv, r: dict, wiped: bool = False, called_off: bool = False) -> N
         result = f"{' & '.join(winners)} won the mob arena with {best} monsters defeated!" if winners else "The mob arena: nobody defeated a monster."
     await _say(srv, [("★ ", "gold"), (result, "yellow")], "Arena over" if not called_off else "", (" & ".join(winners))[:40] if winners else "")
     await battle._rcon(srv, f"scoreboard objectives remove {TAG}_k")
+    if r.get("time_before") is not None:             # the time of day it was before
+        await battle._rcon(srv, f"time set {r.pop('time_before')}")
     await battle.finish(srv, r, TAG)
     _finish(srv, r, result)
     if winners:
