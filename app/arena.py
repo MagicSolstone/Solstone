@@ -23,6 +23,7 @@ from . import servers as S
 
 TAG = "solarena"
 BREAK = 10                                   # seconds between waves
+FOLLOW = 128                                 # how far away a monster notices a player (the arena is at most 120 across)
 MOBS = {"zombie": "Zombie", "husk": "Husk", "drowned": "Drowned", "zombie_villager": "Zombie villager", "skeleton": "Skeleton",
         "stray": "Stray", "spider": "Spider", "cave_spider": "Cave spider", "creeper": "Creeper", "slime": "Slime",
         "witch": "Witch", "pillager": "Pillager", "vindicator": "Vindicator", "blaze": "Blaze", "wither_skeleton": "Wither skeleton",
@@ -70,7 +71,7 @@ def settings(body: dict, num, point) -> dict:
     c = point(body.get("center"), "middle of the arena")
     return {"zone": {**c, "r": round(num(body.get("radius"), 6, 60, 15), 1), "h": 12}, "mob_spots": spots,
             "spawns": [c], "level": level, "waves": waves, "coop": bool(body.get("coop", True)),
-            "respawn_secs": int(num(body.get("respawn_secs"), 3, 15, 5)), "no_dig": bool(body.get("no_dig", True)),
+            "respawn_secs": int(num(body.get("respawn_secs"), 1, 60, 5)), "no_dig": bool(body.get("no_dig", True)),
             "kit": kits.clean_kit(body.get("kit") or {})}
 
 
@@ -110,6 +111,10 @@ async def _summon(srv, r: dict, wave: dict) -> None:
                                f"{s['z'] + random.uniform(-1, 1):.1f} {{Tags:[\"{tag}\"],PersistenceRequired:1b}}")
     # no burning up in the daylight, and no wandering off
     await battle._rcon(srv, f"effect give @e[tag={tag}] minecraft:fire_resistance infinite 0 true")
+    # they come for the players from anywhere in the arena: a monster usually only notices someone within about
+    # 16 blocks (the attribute's name changed in 1.21.2: one of these two works, the other's ignored)
+    for attr in ("minecraft:follow_range", "minecraft:generic.follow_range"):
+        await battle._rcon(srv, f"execute as @e[tag={tag}] run attribute @s {attr} base set {FOLLOW}")
 
 
 async def _left(srv, r: dict) -> int:

@@ -138,14 +138,14 @@ async function viewChallenges(sid) {
       }).join("")}</div>
       <div class="ch-grid">
         <label>Name <input class="input" name="name" maxlength="40" placeholder="${esc(kind(draft.kind).label)}" value="${esc(draft.name)}"></label>
-        <label>How long <select class="input" name="minutes">${[5, 10, 15, 20, 30, 45, 60].map((m) => `<option value="${m}" ${draft.minutes === m ? "selected" : ""}>${m} minutes</option>`).join("")}</select></label>
+        <label>How long ${numIn("minutes", draft.minutes, 1, 240, "minutes")}</label>
         ${adding ? "" : `<div class="ch-when"><span class="lbl">When</span>
           <label class="check"><input type="radio" name="when" value="now" ${draft.when === "now" ? "checked" : ""}> Right now</label>
           <label class="check"><input type="radio" name="when" value="later" ${draft.when === "later" ? "checked" : ""}> At <input class="input sm" type="datetime-local" name="at" value="${esc(draft.at)}"></label></div>`}
         ${draft.editing || adding?.iid ? ""
           : `<div class="ch-rounds"><span class="lbl">${adding ? "How many" : "Back to back"}</span>
           <span class="ch-rounds-row"><select class="input sm" name="rounds" aria-label="How many">${Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}" ${draft.rounds === i + 1 ? "selected" : ""}>${i ? `${i + 1} contests in a row` : "Just this one"}</option>`).join("")}</select>
-            <span ${draft.rounds > 1 && !adding ? "" : "hidden"} class="ch-rgap">with a <select class="input sm" name="rgap" aria-label="Break">${[0, 1, 2, 3, 5, 10, 15].map((m) => `<option value="${m}" ${draft.rgap === m ? "selected" : ""}>${m} minute</option>`).join("")}</select> break between</span></span>
+            <span ${draft.rounds > 1 && !adding ? "" : "hidden"} class="ch-rgap">with a ${numIn("rgap", draft.rgap, 0, 60, "minute", { label: "Break" })} break between</span></span>
           <small class="muted ch-rounds-plan">${adding ? "" : roundsPlan()}</small></div>`}
         ${adding ? "" : `<label>Repeats <select class="input" name="repeat">${[["", "Just once"], ["weekly", "Every week, same day and time"], ["daily", "Every day, same time"]].map(([v, l]) => `<option value="${v}" ${draft.repeat === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>`}
         <div class="ch-prizes"><span class="lbl">Prize for the winner</span><button type="button" class="btn ch-pick" data-pick="prize">${prizeHtml(draft.prize)}</button>
@@ -363,14 +363,17 @@ function wireGather(root, sid, g, rerender, center) {
     onClick: async (x, z) => { g.spot = await api(`/api/servers/${encodeURIComponent(sid)}/races/spot?x=${x}&z=${z}`).catch(() => ({ x, y: 64, z })); rerender(); },
   }) : null;
 }
+// A time (or any amount) typed in, with its unit after it: exact control instead of a list to pick from.
+function numIn(name, value, min, max, unit, opts = {}) {
+  return `<span class="num-box"><input class="input sm" type="number" inputmode="numeric" name="${name}" min="${min}" max="${max}" step="${opts.step || 1}"
+    value="${value ?? ""}"${opts.placeholder ? ` placeholder="${esc(opts.placeholder)}"` : ""}${opts.label ? ` aria-label="${esc(opts.label)}"` : ""}${opts.optional ? "" : " required"}><span class="num-unit">${esc(unit)}</span></span>`;
+}
 const gatherBody = (g) => (g.on && g.spot ? { x: g.spot.x, y: g.spot.y, z: g.spot.z, r: g.r } : null);
 
 // How long each hot zone stays open, and the wait before the next (archery and the fishing tournament).
 function hotTimes(f) {
-  const opt = (vals, cur, fmt) => vals.map((v) => `<option value="${v}" ${cur === v ? "selected" : ""}>${fmt(v)}</option>`).join("");
-  const secs = (v) => (v < 60 ? `${v} seconds` : `${v / 60} minute${v > 60 ? "s" : ""}`);
-  return `<label>Open for <select class="input" name="hot_on">${opt([30, 45, 60, 90, 120], f.hot_on, secs)}</select></label>
-    <label>Next one after <select class="input" name="hot_off">${opt([10, 20, 30, 60, 120], f.hot_off, secs)}</select></label>`;
+  return `<label>Open for ${numIn("hot_on", f.hot_on, 15, 300, "seconds")}</label>
+    <label>Next one after ${numIn("hot_off", f.hot_off, 5, 600, "seconds")}</label>`;
 }
 function rconEchoNote(d) {
   return d?.rcon_echo ? `<div class="notice small echo-note"><b>Ops will see a lot of "[Rcon: …]" lines in chat</b> while contests, races and games run: the server shows operators every command Solstone sends. To turn that off, set <code>broadcast-rcon-to-ops=false</code> in this server's <code>server.properties</code> (in Crafty: the server's Config tab) and restart it.</div>` : "";
@@ -417,7 +420,7 @@ async function viewEventGroups(sid) {
       <label>Description <small class="muted">(optional: shown on the Events page)</small><textarea class="input" name="desc" rows="2" maxlength="600" placeholder="Bring your best rod! Prizes for every round.">${esc(g?.desc || "")}</textarea></label>
       <div class="eg-row">
         <label>Starts <input class="input sm" type="datetime-local" name="start" value="${localInput(g?.start || next8())}" ${g && g.state === "running" ? "disabled" : ""}></label>
-        <label>Break between challenges <select class="input sm" name="gap">${[0, 1, 2, 3, 5, 10, 15, 20, 30].map((m) => `<option value="${m}" ${(g?.gap ?? 2) === m ? "selected" : ""}>${m} minute${m === 1 ? "" : "s"}</option>`).join("")}</select></label>
+        <label>Break between challenges ${numIn("gap", g?.gap ?? 2, 0, 60, "minutes")}</label>
         <label>Repeats <select class="input sm" name="repeat">${[["", "Just once"], ["weekly", "Every week"], ["daily", "Every day"]].map(([v, l]) => `<option value="${v}" ${(g?.repeat || "") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
       ${optinField(g ? g.optin : true)}
       <div class="btn-row"><button class="btn primary" type="submit">${g ? "Save" : "Make the event"}</button><button class="btn" type="button" data-eg-close>Cancel</button></div>
@@ -847,7 +850,7 @@ async function viewRaces(sid) {
         ${adding ? `<p class="muted small">Part of <b>${esc(adding.title)}</b>: it starts when its turn comes.</p><input type="hidden" name="when" value="now"><input type="hidden" name="at" value="">` : `<div class="ch-when"><span class="lbl">When</span>
           <label class="check"><input type="radio" name="when" value="now" checked> Right now (10-second countdown)</label>
           <label class="check"><input type="radio" name="when" value="later"> At <input class="input sm" type="datetime-local" name="at" value="${at}"></label></div>`}
-        <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30].map((m) => `<option value="${m}" ${m === (+pre.minutes || 15) ? "selected" : ""}>${m} minutes</option>`).join("")}</select></label>
+        <label>Time limit ${numIn("minutes", +pre.minutes || 15, 2, 60, "minutes")}</label>
         <label>Racing <select class="input" name="vehicle">${[["none", "🏃 On foot"], ["boat", "🛶 By boat: everyone gets a boat at GO (for water and land)"], ["elytra", "🪽 By elytra: everyone gets an elytra and rockets"]].map(([v, l]) => `<option value="${v}" ${(pre.vehicle || "none") === v ? "selected" : ""}>${l}</option>`).join("")}</select>
           <small class="muted rs-elytra-note">Elytra: everyone's own things are kept safe in a sealed vault first (the elytra needs the chest slot), and given back exactly afterwards. A checkpoint counts anywhere in its tall glowing column.</small></label>
         <div class="rs-elytra">
@@ -1040,7 +1043,7 @@ async function viewGames(sid) {
     const kitHtml = () => `<fieldset class="gm-kit gm-wide"><legend>The kit <small class="muted">Everyone's own things are kept safe in a sealed vault first, and given back exactly afterwards (even if they leave mid-game)</small></legend>
         <label>Sword <select class="input sm" name="kit_sword">${(d.kit_tiers?.sword || ["wooden", "stone", "iron", "diamond", "netherite"]).map((t) => `<option value="${t}" ${f.kit.sword === t ? "selected" : ""}>${humanize(t)}</option>`).join("")}</select></label>
         <label>Armour <select class="input sm" name="kit_armour">${(d.kit_tiers?.armour || ["leather", "chainmail", "iron", "diamond", "netherite", "none"]).map((t) => `<option value="${t}" ${f.kit.armour === t ? "selected" : ""}>${t === "none" ? "None" : humanize(t)}</option>`).join("")}</select></label>
-        <label class="check"><input type="checkbox" name="kit_bow" ${f.kit.bow ? "checked" : ""}> Bow and <select class="input sm" name="kit_arrows">${[8, 16, 32, 64].map((v) => `<option value="${v}" ${f.kit.arrows === v ? "selected" : ""}>${v}</option>`).join("")}</select> arrows</label>
+        <label class="check"><input type="checkbox" name="kit_bow" ${f.kit.bow ? "checked" : ""}> Bow and ${numIn("kit_arrows", f.kit.arrows, 1, 64, "arrows", { label: "Arrows" })}</label>
         <label class="check"><input type="checkbox" name="kit_shield" ${f.kit.shield ? "checked" : ""}> Shield</label>
         <label class="check"><input type="checkbox" name="kit_food" ${f.kit.food ? "checked" : ""}> Food</label></fieldset>`;
     const mobName = (m) => (d.mobs || {})[m] || humanize(m);
@@ -1049,23 +1052,26 @@ async function viewGames(sid) {
         <select class="input sm" data-addmob="${i}"><option value="">＋ Add a monster…</option>${Object.entries(d.mobs || {}).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select>
         <button type="button" class="icon-btn" data-rmwave="${i}" aria-label="Remove wave ${i + 1}">✕</button></div>`).join("")}
         ${f.waves.length < 20 ? '<button type="button" class="btn sm" data-addwave>＋ Add a wave</button>' : ""}</div>`;
-    const presetText = (lvl) => ((d.presets || {})[lvl] || []).map((w, i) => `${i + 1}: ${Object.entries(w).map(([m, n]) => `${n} ${mobName(m).toLowerCase()}`).join(", ")}`).join(" · ");
+    // a difficulty's waves, one row each, easy to read; "Change these" starts your own waves from them
+    const presetHtml = (lvl) => `<ol class="gm-preset">${((d.presets || {})[lvl] || []).map((w, i) => `<li><b>Wave ${i + 1}</b>${Object.entries(w).map(([m, n]) => `<span class="chip">${n} × ${esc(mobName(m))}</span>`).join("")}</li>`).join("")}</ol>
+      <button type="button" class="btn sm" data-edit-preset>✏️ Change these</button>`;
     const fightOptions = () => (game === "koth" ? `
         <label>Teams <select class="input" name="team_count">${[[0, "Everyone for themselves"], [2, "2 teams"], [3, "3 teams"], [4, "4 teams"]].map(([v, l]) => `<option value="${v}" ${f.team_count === v ? "selected" : ""}>${l}</option>`).join("")}</select>
           <small class="muted">${f.team_count ? "Picked at random. The team with the most players on the hill scores a point a second; a tie scores nothing." : "Whoever's on the hill alone scores a point a second."}</small></label>
-        <label>Time <select class="input" name="minutes">${[3, 5, 8, 10, 15].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>`
+        <label>Time ${numIn("minutes", f.minutes, 1, 60, "minutes")}</label>`
       : `<label>How <select class="input" name="coop"><option value="1" ${f.coop ? "selected" : ""}>Together: survive the waves as a team</option><option value="0" ${f.coop ? "" : "selected"}>Everyone for themselves: most monsters defeated wins</option></select>
           <small class="muted">${f.coop ? "Someone who falls watches until the wave is cleared, then comes back. Everyone down: it's over." : "Falling means a few seconds watching, then back in."}</small></label>
         <label>Waves <select class="input" name="level">${[["easy", "Easy (5 waves)"], ["normal", "Normal (7 waves)"], ["hard", "Hard (10 waves)"], ["custom", "My own waves"]].map(([v, l]) => `<option value="${v}" ${f.level === v ? "selected" : ""}>${l}</option>`).join("")}</select>
-          ${f.level !== "custom" ? `<small class="muted">${esc(presetText(f.level))}</small>` : ""}</label>
+</label>
+        ${f.level !== "custom" ? `<div class="gm-wide">${presetHtml(f.level)}</div>` : ""}
         ${f.level === "custom" ? wavesHtml() : ""}`) + `
-        ${f.coop && game === "arena" ? "" : `<label>Back in after <select class="input" name="respawn_secs">${[3, 5, 8, 10].map((v) => `<option value="${v}" ${f.respawn_secs === v ? "selected" : ""}>${v} seconds</option>`).join("")}</select></label>`}
+        ${f.coop && game === "arena" ? "" : `<label>Back in after ${numIn("respawn_secs", f.respawn_secs, 1, 60, "seconds")}</label>`}
         <label class="check"><input type="checkbox" name="no_dig" ${f.no_dig ? "checked" : ""}> No digging or building (Adventure mode during the game)</label>
         ${kitHtml()}`;
     const options = () => FIGHTS.has(game) ? fightOptions() : game === "hideseek" ? `
         <label>Seeker <select class="input" name="seeker"><option value="">Random</option>${online().map((n) => `<option ${f.seeker === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
-        <label>Hiding time <select class="input" name="hide_secs">${[30, 45, 60, 90, 120].map((v) => `<option value="${v}" ${f.hide_secs === v ? "selected" : ""}>${v} seconds</option>`).join("")}</select></label>
-        <label>Seeking time <select class="input" name="minutes">${[3, 5, 6, 8, 10, 15].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>
+        <label>Hiding time ${numIn("hide_secs", f.hide_secs, 15, 300, "seconds")}</label>
+        <label>Seeking time ${numIn("minutes", f.minutes, 1, 30, "minutes")}</label>
         <label class="check"><input type="checkbox" name="no_dig" ${f.no_dig ? "checked" : ""}> No digging or building (Adventure mode during the game)</label>
         <label class="check"><input type="checkbox" name="marco" ${f.marco ? "checked" : ""}> Marco Polo: the seeker can type <b>marco</b> to hear roughly where everyone is</label>
         <label class="check"><input type="checkbox" name="infect" ${f.infect ? "checked" : ""}> Found hiders join the seekers (otherwise they watch)</label>
@@ -1078,11 +1084,12 @@ async function viewGames(sid) {
         <label class="check"><input type="checkbox" name="teams" ${f.teams ? "checked" : ""}> Teams: red against blue, picked at random</label>
         <label class="check"><input type="checkbox" name="snowballs" ${f.snowballs ? "checked" : ""}> Snowballs: broken snow drops snowballs to throw (they don't knock players back much; off keeps inventories clean)</label>
         <label class="check"><input type="checkbox" name="shrink" ${f.shrink ? "checked" : ""}> Shrinking floor: the edges start falling away after
-          <select class="input sm" name="shrink_after">${[30, 60, 90, 120].map((v) => `<option value="${v}" ${f.shrink_after === v ? "selected" : ""}>${v < 60 ? `${v} seconds` : `${v / 60} minute${v > 60 ? "s" : ""}`}</option>`).join("")}</select></label>
+          ${numIn("shrink_after", f.shrink_after, 20, 300, "seconds")}</label>
         <p class="muted small gm-wide">Everyone online plays. Falling out lands you in a pool of water; nobody takes damage. When it's over everyone goes back to exactly where they were, and anyone offline is sent back when they next join.</p>`
       : game === "treasure" ? `
-        <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>
-        <label>Show the direction after <select class="input" name="hint_after">${[0, 2, 5, 10, 60].map((v) => `<option value="${v}" ${f.hint_after === v ? "selected" : ""}>${v === 60 ? "never" : v ? `${v} minutes` : "straight away"}</option>`).join("")}</select></label>
+        <label>Time limit ${numIn("minutes", f.minutes, 3, 60, "minutes")}</label>
+        <label>Show the direction after ${numIn("hint_after", f.hint_after >= 60 ? "" : f.hint_after, 0, 59, "minutes", { placeholder: "never", optional: true })}
+          <small class="muted">0: straight away · blank: never</small></label>
         <label class="check gm-wide"><input type="checkbox" name="underwater" ${f.underwater ? "checked" : ""}> It can be underwater, on the bottom of a lake or the sea (otherwise always on dry ground, never in a tree)</label>
         <div class="gm-items"><span class="lbl">In the chest</span>${f.items.map((it, i) => `<span class="chip">${itemIcon({ id: it.item })} ${it.count} × ${esc(it.name)} <button type="button" class="chip-x" data-rmitem="${i}" aria-label="Remove">×</button></span>`).join("")}
           <button type="button" class="btn sm" id="gm-additem">＋ Add treasure</button></div>`
@@ -1094,8 +1101,8 @@ async function viewGames(sid) {
           <label>Opens up to <select class="input" name="hot_far">${[25, 30, 40, 60].map((v) => `<option value="${v}" ${f.hot_far === v ? "selected" : ""}>${v} blocks away</option>`).join("")}</select></label></div>` : ""}` : ""}
         ${f.mode === "points" ? `<p class="muted small gm-wide">Aim: an edge hit counts ×0.2, the middle rings about ×1, a dead-centre bullseye ×3. Distance: nothing under 15 blocks, ×1 at 15, ×2 at 25, ×4 at 35, ×14 at 65. Each further hit from within 3 blocks of an earlier one counts half, so moving around pays. Bullseyes from 30, 45 and 60+ blocks get Great, Amazing and Legendary in chat.</p>` : ""}
         ${f.mode === "horse" ? `<label>Word <input class="input" name="word" maxlength="10" value="${esc(f.word)}"></label>` : ""}
-        ${f.mode === "horse" ? `<label>Time limit <select class="input" name="minutes">${[10, 15, 20, 30, 45].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>`
-          : `<label>Time limit <select class="input" name="seconds">${[[30, "30 seconds"], [60, "1 minute"], [120, "2 minutes"], [180, "3 minutes"], [300, "5 minutes"]].map(([v, l]) => `<option value="${v}" ${f.seconds === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>`}
+        ${f.mode === "horse" ? `<label>Time limit ${numIn("minutes", f.minutes, 2, 60, "minutes")}</label>`
+          : `<label>Time limit ${numIn("seconds", f.seconds, 30, 600, "seconds")}</label>`}
         <label class="check"><input type="checkbox" name="give_bow" ${f.give_bow ? "checked" : ""}> Give everyone a Match Bow (Infinity, one arrow; both taken back at the end, nobody's own bows or arrows touched)</label>`;
     const body = () => `<h2>${GAME_INFO[game][0]} ${esc(GAME_INFO[game][1])}</h2>
       <form id="gm-form" class="gm-form">
@@ -1115,6 +1122,7 @@ async function viewGames(sid) {
       const fm = $("#gm-form", m);
       for (const k of ["seeker", "mode", "word"]) if (fm[k]) f[k] = fm[k].value;
       for (const k of ["hide_secs", "minutes", "seconds", "rounds", "hint_after", "radius", "hot_bonus", "hot_far", "hot_on", "hot_off", "layers", "best_of", "shrink_after"]) if (fm[k]) f[k] = +fm[k].value;
+      if (fm.hint_after && fm.hint_after.value === "") f.hint_after = 60;            // blank: never
       for (const k of ["no_dig", "marco", "infect", "give_bow", "hot", "teams", "snowballs", "shrink", "underwater", "peaceful", "optin"]) if (fm[k]) f[k] = fm[k].checked;
       for (const k of ["team_count", "respawn_secs"]) if (fm[k]) f[k] = +fm[k].value;
       if (fm.coop) f.coop = fm.coop.value === "1";
@@ -1180,6 +1188,9 @@ async function viewGames(sid) {
       m.querySelectorAll("[data-addmob]").forEach((sel) => sel.addEventListener("change", () => { if (!sel.value) return; sync(m); f.waves[+sel.dataset.addmob][sel.value] = (f.waves[+sel.dataset.addmob][sel.value] || 0) + 1; show(); }));
       m.querySelectorAll("[data-rmmob]").forEach((b) => b.addEventListener("click", () => { sync(m); const [i, mob] = b.dataset.rmmob.split(":"); delete f.waves[+i][mob]; show(); }));
       m.querySelectorAll("[data-rmwave]").forEach((b) => b.addEventListener("click", () => { sync(m); f.waves.splice(+b.dataset.rmwave, 1); show(); }));
+      m.querySelector("[data-edit-preset]")?.addEventListener("click", () => {
+        sync(m); f.waves = ((d.presets || {})[f.level] || []).map((w) => ({ ...w })); f.level = "custom"; show();
+      });
       m.querySelector("[data-addwave]")?.addEventListener("click", () => { sync(m); f.waves.push({ ...(f.waves[f.waves.length - 1] || { zombie: 3 }) }); show(); });
       $("#gm-under", m)?.addEventListener("click", async () => {
         sync(m);

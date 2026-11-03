@@ -91,7 +91,7 @@ def create(server: str, body: dict) -> dict:
          "optin": bool(body.get("optin"))}          # players choose to join; off: everyone online plays
     if kind == "hideseek":
         r.update(area={**_point(body.get("center"), "middle of the area"), "r": round(_num(body.get("radius"), 10, 200, 40))},
-                 hide_secs=int(_num(body.get("hide_secs"), 15, 300, 60)), minutes=int(_num(body.get("minutes"), 2, 30, 6)),
+                 hide_secs=int(_num(body.get("hide_secs"), 15, 300, 60)), minutes=int(_num(body.get("minutes"), 1, 30, 6)),
                  no_dig=bool(body.get("no_dig", True)), marco=bool(body.get("marco", True)), infect=bool(body.get("infect", True)),
                  find=round(_num(body.get("find"), 2, 6, 3), 1), seeker=(check_name(body["seeker"]) if body.get("seeker") else ""),
                  rounds=int(_num(body.get("rounds"), 1, 5, 1)), peaceful=bool(body.get("peaceful", True)))
@@ -122,7 +122,7 @@ def create(server: str, body: dict) -> dict:
         word = "".join(c for c in str(body.get("word") or "HORSE").upper() if c.isalpha())[:10] or "HORSE"
         # timed modes run 30 seconds to 5 minutes (short rounds keep it lively); HORSE goes by turns
         minutes = (int(_num(body.get("minutes"), 2, 60, 30)) if mode == "horse"
-                   else round(_num(body.get("seconds") or (float(body["minutes"]) * 60 if body.get("minutes") else None), 30, 300, 120)) / 60)
+                   else round(_num(body.get("seconds") or (float(body["minutes"]) * 60 if body.get("minutes") else None), 30, 600, 120)) / 60)
         r.update(target=_point(body.get("target"), "target"), place_target=bool(body.get("place_target")), mode=mode, word=word,
                  minutes=minutes, give_bow=bool(body.get("give_bow", True)),
                  spot_r=round(_num(body.get("spot_r"), 1, 5, 2), 1), min_ring=int(_num(body.get("min_ring"), 1, 15, 1)),

@@ -2393,3 +2393,13 @@ body.ui-hidden .manage-sub { display: none; }
 /* a holiday's card in its banner's look */
 .up-item.up-look { border-left-width: 4px; border-left-style: solid; border-radius: 10px; margin: 6px 8px; border-top: 0; }
 @media (max-width: 560px) { .tl { padding-left: 24px; } .tl-step::before, .tl-gap::before { left: -17px; } .tl-node { left: -23px; } .tl-now .tl-node { left: -25px; } .tl-has-reward::before { left: -18px; } }
+
+/* a number typed in, with its unit after it (times in the event setups) */
+.num-box { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; }
+.num-box input { width: 84px; }
+.num-box .num-unit { color: var(--muted); font-size: .9rem; }
+/* the mob arena's ready-made waves: a row each */
+.gm-preset { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; }
+.gm-preset li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px; background: var(--well); }
+.gm-preset li b { min-width: 64px; font-size: .88rem; }
+.gm-preset .chip { font-size: .82rem; padding: 2px 8px; }

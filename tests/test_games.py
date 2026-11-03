@@ -467,7 +467,7 @@ def test_archery_short_rounds_and_hot_zones_away_from_the_target(game):
     r = games.create("x", {"game": "archery", "target": {"x": 0, "y": 64, "z": 0}, "mode": "points", "seconds": 30})
     assert r["minutes"] == 0.5
     r = games.create("x", {"game": "archery", "target": {"x": 0, "y": 64, "z": 0}, "mode": "points", "seconds": 900, "hot": True, "hot_far": 5})
-    assert r["minutes"] == 5 and r["hot_far"] >= games.HOT_NEAR + 4                       # 5 minutes at most; zones never near the target
+    assert r["minutes"] == 10 and r["hot_far"] >= games.HOT_NEAR + 4                       # 10 minutes at most; zones never near the target
     assert games.HOT_NEAR >= 15 + games.HOT_R
 
 

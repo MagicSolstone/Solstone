@@ -494,6 +494,13 @@ def main() -> int:
                 if not pg.locator('.ch-card:has-text("King of the Hill") [data-stop]').count():
                     problems.append("games: King of the Hill didn't get set up")
             pg.click('[data-setup="arena"]'); pg.wait_for_timeout(800)
+            pg.select_option("#gm-form [name=level]", "hard"); pg.wait_for_timeout(400)
+            if pg.locator(".gm-preset li").count() != 10 or not pg.locator("#gm-form [name=respawn_secs][type=number]").count() and pg.locator("#gm-form [name=coop]").input_value() == "0":
+                problems.append("games: the mob arena's ready-made waves aren't a row each")
+            pg.locator(".gm-preset").scroll_into_view_if_needed(); check(pg, "games-arena-preset")
+            pg.click("#gm-form [data-edit-preset]"); pg.wait_for_timeout(400)
+            if pg.locator(".gm-wave").count() != 10:
+                problems.append("games: 'Change these' didn't start my own waves from the ready-made ones")
             pg.select_option("#gm-form [name=level]", "custom"); pg.wait_for_timeout(400)
             pg.select_option("#gm-form [data-addmob='0']", "creeper"); pg.wait_for_timeout(400)
             if "Creeper" not in (pg.locator(".gm-waves").text_content() or ""):

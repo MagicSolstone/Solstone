@@ -25,8 +25,8 @@ def settings(body: dict, num, point) -> dict:
         raise ValueError("Set at least one spawn spot")
     teams = int(num(body.get("team_count"), 0, 4, 2))
     return {"zone": {**point(body.get("center"), "hill"), "r": round(num(body.get("radius"), 2, 30, 5), 1), "h": 6},
-            "spawns": spawns, "team_count": 0 if teams < 2 else teams, "minutes": int(num(body.get("minutes"), 2, 30, 8)),
-            "respawn_secs": int(num(body.get("respawn_secs"), 3, 15, 5)), "no_dig": bool(body.get("no_dig", True)),
+            "spawns": spawns, "team_count": 0 if teams < 2 else teams, "minutes": int(num(body.get("minutes"), 1, 60, 8)),
+            "respawn_secs": int(num(body.get("respawn_secs"), 1, 60, 5)), "no_dig": bool(body.get("no_dig", True)),
             "kit": kits.clean_kit(body.get("kit") or {})}
 
 

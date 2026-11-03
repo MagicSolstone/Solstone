@@ -139,8 +139,9 @@ async def ring(srv, r: dict, particle: str = "minecraft:end_rod") -> None:
     if int(r.get("ticks", 0)) % 2:
         return
     c = r["zone"]
-    for i in range(16):
-        a = 2 * math.pi * i / 16
+    n = max(16, min(48, round(2 * math.pi * c["r"] / 3)))      # about every 3 blocks, so a big arena's edge is easy to see
+    for i in range(n):
+        a = 2 * math.pi * i / n
         x, z = c["x"] + c["r"] * math.cos(a), c["z"] + c["r"] * math.sin(a)
         await _rcon(srv, f"execute in {r['dim']} run particle {particle} {x:.1f} {c['y'] + 1} {z:.1f} 0.1 0.6 0.1 0 4 force")
 
