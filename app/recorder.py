@@ -357,6 +357,10 @@ class Recorder:
             except Exception:
                 log.exception("holiday rewards failed on %s", srv.id)
             try:
+                await challenges.waiting_for_room(srv, names)   # prizes waiting for someone to make room for them
+            except Exception:
+                log.exception("prizes waiting for room failed on %s", srv.id)
+            try:
                 if kits.waiting(srv.id):
                     await kits.tidy(srv, names)              # things still in the vault from a game that's over
             except Exception:

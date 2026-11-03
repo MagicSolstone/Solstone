@@ -2,7 +2,7 @@
 import asyncio
 from datetime import datetime
 
-from app import challenges, db, fwshow, holidaygifts, settings_store, upcoming
+from app import board, challenges, db, fwshow, holidaygifts, settings_store, upcoming
 
 
 class FakeServer:
@@ -28,7 +28,7 @@ def test_reward_once_each_during_the_holiday(monkeypatch):
                            "reward": {"items": [{"item": "diamond", "count": 2}, {"item": "nope nope"}], "message": "Happy party week"}}])
     given = []
 
-    async def award(srv, player, prize, why):
+    async def award(srv, player, prize, why, note=""):
         given.append((player, prize["item"], prize["count"]))
         return True
     monkeypatch.setattr(challenges, "award", award)
@@ -40,18 +40,22 @@ def test_reward_once_each_during_the_holiday(monkeypatch):
         assert e["reward"]["items"] == [{"item": "minecraft:diamond", "count": 2, "name": ""}] and e["detail"].startswith("**Come**")
         assert asyncio.run(holidaygifts.tick(srv, ["Alex", "Sam"])) == 2
         assert given == [("Alex", "minecraft:diamond", 2), ("Sam", "minecraft:diamond", 2)]
-        assert any("Happy party week" in c and "2 diamond" in c for c in srv.said)
+        assert any("Happy party week" in c for c in srv.said) and any("2 diamond" in c for c in srv.said)
         assert asyncio.run(holidaygifts.tick(srv, ["Alex", "Kid"])) == 1 and given[-1][0] == "Kid"       # once each
         items = upcoming.items({"hg-test": "Test"})
         h = next(i for i in items if i["kind"] == "holiday")
         assert h["reward"]["items"] == [{"item": "minecraft:diamond", "count": 2, "name": "Diamond"}] and h["about"].startswith("**Come**")
         assert h["reward"]["when"] == today.strftime("%a %-d %b") + " to " + (today + timedelta(days=6)).strftime("%a %-d %b")
-        assert not holidaygifts.banners()                                                  # no banner unless asked for
         cal = fwshow.calendar()
-        cal[0]["reward"].update(banner=True, note="A present for party week")
+        cal[0]["reward"].update(note="A present for party week")
+        cal[0].update(name_fmt="**Party** week", message_fmt="{gold}Party{/gold} all week!", banner={"style": "custom", "colors": ["#112233", "#aabbcc"]})
         fwshow.save_calendar(cal)
-        b = holidaygifts.banners()[0]
-        assert b["text"] == "A present for party week" and b["detail"].startswith("2 × Diamond") and b["items"][0]["item"] == "minecraft:diamond"
+        e = fwshow.calendar()[0]
+        assert e["name"] == "Party week" and e["message"] == "Party all week!"                # plain, for the game and lists
+        b = [x for x in board.holiday_banners(datetime.now(db.tz())) if x["id"].startswith("hol-party")]
+        assert len(b) == 1 and b[0]["text"] == "{gold}Party{/gold} all week!" and b[0]["style"] == "custom" and b[0]["colors"] == ["#112233", "#aabbcc"]
+        assert b[0]["reward_note"] == "A present for party week" and b[0]["items"][0]["item"] == "minecraft:diamond"
+        assert next(i for i in upcoming.items({"hg-test": "Test"}) if i["kind"] == "holiday")["title_fmt"] == "**Party** week"
     finally:
         settings_store.save_section(holidaygifts.SECTION, {})
         settings_store.save_section("fw_calendar", keep)          # None: back to Solstone's own list
@@ -76,3 +80,67 @@ def test_reward_and_colours_reach_past_the_day():
         assert th["id"] == "xmas" and th["colors"] == ["#ff0000", "#00aa00", "#ffffff"] and not th["on_day"] and th["message"] == ""
     finally:
         settings_store.save_section("fw_calendar", keep)
+
+
+def test_one_banner_from_the_countdown_to_the_last_reward_day():
+    from datetime import timedelta
+    now = datetime.now(db.tz())
+    today = now.date()
+    keep = settings_store.load().get("fw_calendar")
+    try:
+        cal = [{"id": "thanks", "name": "Thanksgiving", "emoji": "🦃", "days": 1, "banner_days": 3, "message": "Happy Thanksgiving!",
+                "reward": {"items": [{"item": "pumpkin_pie", "count": 1}], "after": 3, "banner": True}}]
+
+        def banners(day_offset):
+            cal[0]["date"] = {"type": "once", "iso": (today + timedelta(days=day_offset)).isoformat()}
+            fwshow.save_calendar(cal)
+            return [b for b in board.active("home", now=now) if b["id"].startswith("hol-thanks")]
+        soon = banners(2)                                   # in two days: counting down, no reward yet
+        assert len(soon) == 1 and soon[0]["kind"] == "holiday-soon" and soon[0]["countdown"] and "items" not in soon[0]
+        day = banners(0)
+        assert len(day) == 1 and day[0]["text"] == "Happy Thanksgiving!" and day[0]["items"]
+        after = banners(-2)                                 # two days on: still one banner, now about the reward
+        assert len(after) == 1 and after[0]["kind"] == "reward" and "still time" in after[0]["text"] and after[0]["reward_until"].startswith("Play by")
+        assert banners(-4) == []                            # the reward's over: so is the banner
+        cal[0]["reward"]["banner"] = False                  # not kept up for the reward's extra days
+        assert banners(-2) == []
+        cal[0]["banner"] = {"show": False}
+        assert banners(0) == []
+    finally:
+        settings_store.save_section("fw_calendar", keep)
+
+
+class RoomServer(FakeServer):
+    """A pretend server where Alex's inventory has 35 of its 36 spaces full."""
+    full = 35
+
+    async def rcon(self, cmd):
+        self.said.append(cmd)
+        if cmd.startswith("data get entity Alex Inventory"):
+            return "Alex has the following entity data: [" + ", ".join(f"{{Slot: {i}b, id: \"minecraft:dirt\", count: 64}}" for i in range(self.full)) + "]"
+        if cmd.startswith("give Alex"):
+            return "Gave 1 [Diamond Sword] to Alex"
+        return ""
+
+
+def test_a_prize_waits_for_room_instead_of_dropping(monkeypatch):
+    async def online(srv):
+        return ["Alex"], "rcon"
+    monkeypatch.setattr(challenges.S, "online_players", online)
+    srv = RoomServer()
+    srv.said = []
+    keep = challenges._load()
+    try:
+        challenges._save({**keep, "gifts": []})
+        assert challenges.slots_needed("minecraft:diamond_sword", 2) == 2 and challenges.slots_needed("minecraft:cookie", 64) == 1
+        assert not asyncio.run(challenges.award(srv, "Alex", {"item": "minecraft:diamond_sword", "count": 2}, "won", note="Here you go!"))
+        assert not any(c.startswith("give ") for c in srv.said) and any("inventory is full" in c for c in srv.said)
+        told = len(srv.said)
+        asyncio.run(challenges.waiting_for_room(srv, ["Alex"]))       # still full: no give, and not told again
+        assert not any(c.startswith("give ") for c in srv.said) and sum("inventory is full" in c for c in srv.said) == 1 and len(srv.said) > told
+        srv.full = 30                                                    # made room
+        asyncio.run(challenges.waiting_for_room(srv, ["Alex"]))
+        assert any(c == "give Alex minecraft:diamond_sword 2" for c in srv.said) and any("Here you go!" in c for c in srv.said)
+        assert not challenges._load()["gifts"]
+    finally:
+        challenges._save(keep)

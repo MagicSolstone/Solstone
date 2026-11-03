@@ -2348,3 +2348,20 @@ body.ui-hidden .manage-sub { display: none; }
 .gm-vault { display: grid; gap: 6px; }
 .gm-team.green { background: rgba(76, 191, 90, .25); } .gm-team.yellow { background: rgba(230, 193, 47, .25); }
 .rs-elytra { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; } .rs-elytra[hidden], .rs-elytra-note[hidden] { display: none; }
+
+/* Holidays: the editor in three sections, with the banner's preview on top */
+.hol-edit { gap: 14px; }
+.hol-sec { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 0; display: grid; gap: 8px; }
+.hol-sec legend { font-weight: 700; padding: 0 6px; }
+.hol-sec .ann-fmt { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.hol-sec label.wide { display: grid; gap: 4px; font-weight: 700; font-size: .88rem; }
+.hol-sec .hol-bn-opts, .hol-sec .hol-rw-opts { display: grid; gap: 8px; }
+.hol-preview-wrap { display: grid; gap: 6px; }
+.hol-phases:empty { display: none; }
+.hol-preview .bn { margin: 0; }
+.hol-timeline { margin: 0; }
+.hol-game-fmt { display: flex; flex-wrap: wrap; gap: 4px; font-weight: 400; }
+.hol-game-preview:empty { display: none; }
+.bn-reward .bn-gift { font-size: 1rem; }
+.bn-reward .bn-rnote { font-weight: 600; }
+.bn-reward .bn-until { color: var(--muted); }

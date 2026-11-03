@@ -74,7 +74,7 @@ function upEventHtml(it, signedIn = false) {
         title="${esc((p.who || []).join(", "))}">${p.me ? "✅ Coming" : "🙋 I'm coming"}${p.coming ? ` · ${p.coming}` : ""}</button>` : ""}</li>`;
   const who = signedIn ? [...new Set(parts.flatMap((p) => p.who || []))].sort((a, b) => a.localeCompare(b)) : [];
   return `<li class="up-event ${it.live ? "live" : ""}">
-    <div class="up-event-head"><div class="up-main"><b>${it.link && signedIn ? `<a href="${esc(it.link)}">${esc(it.title)}</a>` : esc(it.title)}</b>
+    <div class="up-event-head"><div class="up-main"><b>${it.link && signedIn ? `<a href="${esc(it.link)}">${upTitle(it)}</a>` : upTitle(it)}</b>
         <span class="muted small">${esc([it.server, `${parts.length} challenge${parts.length === 1 ? "" : "s"}`, it.repeat === "weekly" ? "every week" : it.repeat === "daily" ? "every day" : ""].filter(Boolean).join(" · "))}</span></div>
       <span class="up-when">${it.live ? '<span class="state-pill live"><span class="status-dot on"></span>On now</span>' : `${esc(it.time)}${it.end_time ? `–${esc(it.end_time)}` : ""}`}</span></div>
     ${desc ? `<p class="up-event-desc">${desc}</p>` : ""}

@@ -215,7 +215,7 @@ function renderCalendar(el) {
   el.innerHTML = `<section class="panel"><p class="muted" style="margin-bottom:12px">On these days the fireworks take on the day's colours and favourite kinds. A <b>scheduled show</b> fills the sky at a set time on every open page (and is listed on Events too); the New Year one counts down from 10.</p>
     <div class="fws-cal">${cal.map((e, i) => fws.editing === i ? calEditHtml(e, i) : `<div class="fws-cal-row ${e.enabled ? "" : "off"}" data-i="${i}">
       <span class="fws-emoji">${esc(e.emoji)}</span>
-      <div><b>${esc(e.name)}</b><div class="muted small">${esc(fwsDateText(e))}${e.finale.on ? ` · show at ${esc(fwsTime(e.finale.time))} for ${e.finale.minutes} min${e.finale.countdown ? " with a countdown" : ""}` : ""}${e.banner_days ? ` · banner ${e.banner_days} day${e.banner_days === 1 ? "" : "s"} before` : ""}${e.reward?.items?.length ? " · 🎁 reward" : ""}${e.colors_before || e.colors_after ? ` · colours ${e.colors_before} day${e.colors_before === 1 ? "" : "s"} before to ${e.colors_after} after` : ""}</div>
+      <div><b>${annFmt(e.name_fmt || e.name)}</b><div class="muted small">${esc(fwsDateText(e))}${e.finale.on ? ` · show at ${esc(fwsTime(e.finale.time))} for ${e.finale.minutes} min${e.finale.countdown ? " with a countdown" : ""}` : ""}${e.banner_days ? ` · banner ${e.banner_days} day${e.banner_days === 1 ? "" : "s"} before` : ""}${e.reward?.items?.length ? " · 🎁 reward" : ""}${e.colors_before || e.colors_after ? ` · colours ${e.colors_before} day${e.colors_before === 1 ? "" : "s"} before to ${e.colors_after} after` : ""}</div>
         ${fwsOverlapNote(e.id)}<div class="fwe-dots">${e.colors.map((c) => `<i style="background:${c}"></i>`).join("")}</div></div>
       <label class="check small"><input type="checkbox" data-en ${e.enabled ? "checked" : ""}> On</label>
       <button type="button" class="btn sm" data-edit>Edit</button></div>`).join("")}</div>
@@ -246,34 +246,63 @@ function calEditHtml(e, i) {
   const d = e.date, kinds = new Set(e.kinds);
   const num = (name, v, min, max, w = 64) => `<input class="input sm" type="number" name="${name}" min="${min}" max="${max}" value="${v}" style="width:${w}px">`;
   const sel = (name, opts, cur) => `<select class="input sm" name="${name}">${opts.map(([v, l]) => `<option value="${v}" ${String(v) === String(cur) ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
-  return `<form class="fws-cal-edit" data-i="${i}">${fwsOverlapNote(e.id)}
-    <div class="fws-grid">
-      <label>Name<input class="input" name="name" maxlength="40" value="${esc(e.name)}"></label>
-      <label>Emoji<input class="input" name="emoji" maxlength="4" value="${esc(e.emoji)}" style="width:70px"></label>
-      <label>When${sel("dtype", [["fixed", "Same date every year"], ["nth", "A weekday in a month"], ["easter", "Easter Sunday (worked out each year)"], ["weekly", "Every week"], ["once", "Just once"]], d.type)}</label>
-      <label class="fws-when">${d.type === "fixed" ? `${sel("month", FWS_MONTHS.map((m, k) => [k + 1, m]), d.month)} ${num("day", d.day, 1, 31)}`
-        : d.type === "nth" ? `${sel("n", [[1, "1st"], [2, "2nd"], [3, "3rd"], [4, "4th"], [-1, "Last"]], d.n)} ${sel("weekday", FWS_WEEKDAYS.map((w, k) => [k, w]), d.weekday)} of ${sel("month", FWS_MONTHS.map((m, k) => [k + 1, m]), d.month)}`
-        : d.type === "weekly" ? sel("weekday", FWS_WEEKDAYS.map((w, k) => [k, w]), d.weekday)
-        : d.type === "once" ? `<input class="input sm" type="date" name="iso" value="${esc(d.iso || "")}">` : `<span class="muted small">Worked out each year</span>`}</label>
-      <label class="inl">Lasts ${num("days", e.days, 1, 14)} day(s)</label>
-      <label class="wide">Message<input class="input" name="message" maxlength="80" value="${esc(e.message)}" placeholder="Shown on every page that day"></label>
-      ${d.type === "weekly" ? "" : `<label class="inl">Countdown banner ${num("banner_days", e.banner_days || 0, 0, 30)} days before <span class="muted small">(0: just on the day)</span></label>`}
-    </div>
-    <label class="fws-detail">Description <span class="muted small">Optional, on the Events page under its name</span>
-      <span class="ann-fmt" role="toolbar" aria-label="Formatting"><button type="button" class="btn sm" data-wrap="**|**" title="Bold"><b>B</b></button><button type="button" class="btn sm" data-wrap="*|*" title="Italic"><i>I</i></button>
+  const bn = e.banner || { show: true, style: "party", colors: [] }, rw = e.reward || {};
+  const webFmt = `<span class="ann-fmt" role="toolbar" aria-label="Formatting"><button type="button" class="btn sm" data-wrap="**|**" title="Bold"><b>B</b></button><button type="button" class="btn sm" data-wrap="*|*" title="Italic"><i>I</i></button>
         <button type="button" class="btn sm" data-link title="A link">🔗 Link</button>
-        ${POST_COLOURS.map(([k, l]) => `<button type="button" class="ann-col pf-swatch-${k}" data-wrap="{${k}}|{/${k}}" title="${l}" aria-label="${l}"></button>`).join("")}</span>
-      <textarea class="input" name="detail" rows="2" maxlength="600" placeholder="Log in any time this week for a present!">${esc(e.detail || "")}</textarea></label>
-    <fieldset class="fws-reward"><legend>🎁 Reward <span class="muted small">Everyone who plays during it gets this once (each server, each year). Nothing here: no reward.</span></legend>
-      <div class="fws-reward-items">${(e.reward?.items || []).map((it, k) => `<span class="fws-reward-item">${itemIcon({ id: it.item })}<b>${esc(it.count)} × ${esc(it.name || itemName({ id: it.item }))}</b>
+        ${POST_COLOURS.map(([k, l]) => `<button type="button" class="ann-col pf-swatch-${k}" data-wrap="{${k}}|{/${k}}" title="${l}" aria-label="${l}"></button>`).join("")}
+        <span class="muted small">Select words in the box you were last in, then pick.</span></span>`;
+  return `<form class="fws-cal-edit hol-edit" data-i="${i}">${fwsOverlapNote(e.id)}
+    <div class="hol-preview-wrap"><div class="hol-phases seg" role="group" aria-label="Preview the banner"></div><div class="hol-preview" aria-label="Preview"></div>
+      <p class="hol-timeline muted small"></p></div>
+
+    <fieldset class="hol-sec"><legend>📅 The holiday</legend>
+      ${webFmt}
+      <div class="fws-grid">
+        <label class="wide">Name<input class="input" name="name" maxlength="120" value="${esc(e.name_fmt || e.name)}"></label>
+        <label>Emoji<input class="input" name="emoji" maxlength="4" value="${esc(e.emoji)}" style="width:70px"></label>
+      </div>
+      <div class="fws-grid">
+        <label>When${sel("dtype", [["fixed", "Same date every year"], ["nth", "A weekday in a month"], ["easter", "Easter Sunday (worked out each year)"], ["weekly", "Every week"], ["once", "Just once"]], d.type)}</label>
+        <label class="fws-when">${d.type === "fixed" ? `${sel("month", FWS_MONTHS.map((m, k) => [k + 1, m]), d.month)} ${num("day", d.day, 1, 31)}`
+          : d.type === "nth" ? `${sel("n", [[1, "1st"], [2, "2nd"], [3, "3rd"], [4, "4th"], [-1, "Last"]], d.n)} ${sel("weekday", FWS_WEEKDAYS.map((w, k) => [k, w]), d.weekday)} of ${sel("month", FWS_MONTHS.map((m, k) => [k + 1, m]), d.month)}`
+          : d.type === "weekly" ? sel("weekday", FWS_WEEKDAYS.map((w, k) => [k, w]), d.weekday)
+          : d.type === "once" ? `<input class="input sm" type="date" name="iso" value="${esc(d.iso || "")}">` : `<span class="muted small">Worked out each year</span>`}</label>
+        <label class="inl">Lasts ${num("days", e.days, 1, 14)} day(s)</label>
+      </div>
+      <label class="fws-detail">Description on the Events page <span class="muted small">optional, under its name</span>
+        <textarea class="input" name="detail" rows="2" maxlength="600" placeholder="Log in any time this week for a present!">${esc(e.detail || "")}</textarea></label>
+    </fieldset>
+
+    <fieldset class="hol-sec"><legend>📣 Its banner <span class="muted small">one banner on every page, from the countdown to the last day of its reward</span></legend>
+      <label class="check"><input type="checkbox" name="bshow" ${bn.show !== false ? "checked" : ""}> Show a banner</label>
+      <div class="hol-bn-opts" ${bn.show !== false ? "" : "hidden"}>
+        <label class="wide">Message on the day <span class="muted small">(blank: its name)</span><input class="input" name="message" maxlength="240" value="${esc(e.message_fmt ?? e.message)}" placeholder="Merry Christmas!"></label>
+        ${d.type === "weekly" ? "" : `<label class="inl">Counting down from ${num("banner_days", e.banner_days || 0, 0, 30)} days before <span class="muted small">(0: no countdown, just the day)</span></label>`}
+        <div class="fw-row ann-looks"><span>Look</span><div class="seg" role="group" data-seg="bstyle">${ANN_STYLES.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${v === bn.style}">${l}</button>`).join("")}</div></div>
+        <div class="fw-row ann-colors" ${bn.style === "custom" ? "" : "hidden"}><span>Colours</span>
+          ${[0, 1, 2].map((k) => `<label class="ann-color"><input type="color" name="bcolor${k}" value="${esc((bn.colors || [])[k] || ["#2f6fd0", "#8a3ad0", "#d0435f"][k])}" aria-label="Colour ${k + 1}">${k === 2 ? `<input type="checkbox" name="buse3" ${(bn.colors || []).length > 2 ? "checked" : ""} aria-label="Use a third colour"> <small class="muted">a third</small>` : ""}</label>`).join("")}
+          <small class="muted">Left to right. Darker colours keep the words easy to read.</small></div>
+      </div>
+    </fieldset>
+
+    <fieldset class="hol-sec fws-reward"><legend>🎁 Reward <span class="muted small">everyone who plays during it gets this once (each server, each year); no items: no reward</span></legend>
+      <div class="fws-reward-items">${(rw.items || []).map((it, k) => `<span class="fws-reward-item">${itemIcon({ id: it.item })}<b>${esc(it.count)} × ${esc(it.name || itemName({ id: it.item }))}</b>
         <button type="button" class="chip-x" data-rm-reward="${k}" aria-label="Remove ${esc(it.name || it.item)}">×</button></span>`).join("")}
-        ${(e.reward?.items || []).length < 3 ? `<button type="button" class="btn sm" data-add-reward>＋ Add an item</button>` : ""}</div>
-      <label class="inl">Given from ${num("rbefore", e.reward?.before || 0, 0, 30)} days before to ${num("rafter", e.reward?.after || 0, 0, 30)} days after
-        <span class="muted small">(0 and 0: just ${e.days > 1 ? "its days" : "the day"}; Thursday's Thanksgiving through Sunday: 0 and 3)</span></label>
-      <label>Description <span class="muted small">On the Events page and its banner. The formatting buttons above work here too.</span>
-        <input class="input sm" name="rnote" maxlength="300" value="${esc(e.reward?.note || "")}" placeholder="Reward for playing ${esc(e.name)}${e.reward?.after ? " weekend" : ""}!"></label>
-      <label class="check"><input type="checkbox" name="rbanner" ${e.reward?.banner ? "checked" : ""}> Show a banner while it's being given <span class="muted small">(🎁, the item and its description, on every page)</span></label>
-      <label>Message in the game when they get it <input class="input sm" name="rmessage" maxlength="120" value="${esc(e.reward?.message || "")}" placeholder="${esc(e.message || "A present for being here")}"></label>
+        ${(rw.items || []).length < 3 ? `<button type="button" class="btn sm" data-add-reward>＋ Add an item</button>` : ""}</div>
+      <div class="hol-rw-opts" ${(rw.items || []).length ? "" : "hidden"}>
+        <label class="inl">Given from ${num("rbefore", rw.before || 0, 0, 30)} days before to ${num("rafter", rw.after || 0, 0, 30)} days after
+          <span class="muted small">(0 and 0: just ${e.days > 1 ? "its days" : "the day"}; Thursday's Thanksgiving through Sunday: 0 and 3)</span></label>
+        <label class="check"><input type="checkbox" name="rbanner" ${rw.banner ? "checked" : ""}> Keep the banner up on those extra days <span class="muted small">(after the holiday it says there's still time for the reward)</span></label>
+        <label class="wide">Description <span class="muted small">on the Events page and the banner</span>${webFmt}
+          <input class="input" name="rnote" maxlength="300" value="${esc(rw.note || "")}" placeholder="Reward for playing ${esc(e.name)}${rw.after ? " weekend" : ""}!"></label>
+        <label class="wide">Message in the game when they get it <span class="muted small">the game's own colours; then what they got</span>
+          <span class="wel-tools hol-game-fmt">${WELCOME_COLOURS.map(([c, hex, l]) => `<button type="button" class="wel-col" data-code="&${c}" style="background:${hex}" title="${l}" aria-label="${l}"></button>`).join("")}
+            ${WELCOME_STYLES.map(([c, t, l]) => `<button type="button" class="btn sm wel-sty" data-code="&${c}" title="${l}" aria-label="${l}">${t}</button>`).join("")}
+            <button type="button" class="btn sm" data-code="{player}" title="Their name">{player}</button></span>
+          <input class="input" name="rmessage" maxlength="200" value="${esc(rw.message || "")}" placeholder="&6&l${esc(e.name)}!&r &eA present for being here"></label>
+        <div class="wel-preview hol-game-preview"></div>
+        <p class="muted small">No room in their inventory? It waits (nothing's dropped on the ground): they're told to make room, and it arrives by itself when they do.</p>
+      </div>
     </fieldset>
     <details class="fws-more" ${fws.moreOpen ? "open" : ""}><summary>Fireworks <span class="muted small">colours (for the day or the whole week), favourite kinds and a scheduled show</span></summary>
     <div class="fws-sub">Colours <span class="muted small">(leave none for the usual colours)</span></div>
@@ -300,14 +329,40 @@ function calEditHtml(e, i) {
       <button type="button" class="btn" data-preview>Preview</button><button type="button" class="btn danger" data-del>Delete</button></div>
   </form>`;
 }
+// The holiday's one banner at each point: counting down, on the day, and (if its reward runs on) after it.
+function holPhases(e) {
+  const rw = e.reward || {}, items = (rw.items || []).length, stay = items && rw.banner;
+  return [((e.banner_days || 0) > 0 || (stay && rw.before > 0)) && e.date.type !== "weekly" && ["soon", "Before"], ["day", "On the day"],
+    stay && rw.after > 0 && ["after", "After"]].filter(Boolean);
+}
+function holBannerHtml(e, phase) {
+  const rw = e.reward || {}, items = (rw.items || []).map((x) => ({ ...x, name: x.name || itemName({ id: x.item }) }));
+  const name = e.name_fmt || e.name, days = Math.max(1, e.banner_days || 1);
+  const text = phase === "soon" ? `${name} is ${days === 1 ? "tomorrow" : `in ${days} days`}` : phase === "after" ? `${name} is over, but there's still time for its reward!` : (e.message_fmt || name);
+  const giving = items.length && (phase === "day" || phase === "after" || (rw.before || 0) >= days);
+  const it = { style: e.banner.style, colors: e.banner.style === "custom" ? e.banner.colors : [], items, reward_note: rw.note, reward_until: rw.after ? `Until ${rw.after} day${rw.after === 1 ? "" : "s"} after` : "" };
+  return `<div class="bn bn-${esc(it.style)}"${annLook(it)}><span class="bn-emoji">${esc(e.emoji || "🎉")}</span>
+    <div class="bn-text"><b>${annFmt(text)}</b>${giving ? bnRewardHtml(it) : ""}</div>${phase === "soon" ? `<span class="bn-cd">${days} d 0 h</span>` : ""}</div>`;
+}
+function holTimeline(e) {
+  if (!e.banner.show) return "";
+  const rw = e.reward || {}, items = (rw.items || []).length, stay = items && rw.banner;
+  const before = Math.max(e.date.type === "weekly" ? 0 : e.banner_days || 0, stay ? rw.before || 0 : 0), after = stay ? rw.after || 0 : 0;
+  const bits = [before ? `from ${before} day${before === 1 ? "" : "s"} before${e.banner_days ? ", counting down" : ""}` : "",
+    `on ${e.days > 1 ? `its ${e.days} days` : "the day"}`, after ? `and ${after} day${after === 1 ? "" : "s"} after, while the reward's still being given` : ""];
+  return `The banner shows ${bits.filter(Boolean).join(", ")}. It's one banner the whole way through: it just changes what it says.`;
+}
 function wireCalEdit(el, i) {
   const form = el.querySelector(".fws-cal-edit");
   const draft = fweCopy(fws.data.calendar[i]);
   const read = () => {
     const f = new FormData(form), dtype = f.get("dtype");
-    draft.name = f.get("name"); draft.emoji = f.get("emoji"); draft.message = f.get("message"); draft.days = +f.get("days") || 1;
-    draft.banner_days = Math.max(0, Math.min(30, +f.get("banner_days") || 0));
+    draft.name_fmt = draft.name = f.get("name"); draft.emoji = f.get("emoji"); draft.days = +f.get("days") || 1;
+    draft.message_fmt = draft.message = f.get("message") ?? draft.message_fmt ?? "";
+    if (f.get("banner_days") != null) draft.banner_days = Math.max(0, Math.min(30, +f.get("banner_days") || 0));
     draft.detail = f.get("detail") || "";
+    draft.banner = { show: !!f.get("bshow"), style: form.querySelector('[data-seg="bstyle"] [aria-pressed="true"]')?.dataset.v || "party",
+      colors: [f.get("bcolor0"), f.get("bcolor1"), ...(f.get("buse3") ? [f.get("bcolor2")] : [])] };
     draft.reward = { items: draft.reward?.items || [], message: f.get("rmessage") || "", note: f.get("rnote") || "", banner: !!f.get("rbanner"),      // items: picked below
       before: Math.max(0, Math.min(30, +f.get("rbefore") || 0)), after: Math.max(0, Math.min(30, +f.get("rafter") || 0)) };
     draft.colors_before = Math.max(0, Math.min(30, +f.get("cbefore") || 0));
@@ -326,17 +381,47 @@ function wireCalEdit(el, i) {
     draft.finale = { on: !!f.get("fon"), day: Math.max(0, (+f.get("fday") || 1) - 1), time: f.get("ftime") || "20:00", minutes: +f.get("fmin") || 5, countdown: !!f.get("fcount"), show: f.get("fshow") || "" };
   };
   const redraw = () => { read(); fws.moreOpen = !!form.querySelector(".fws-more")?.open; fws.data.calendar[i] = draft; renderCalendar(el); };
-  // the description's formatting buttons wrap what's selected in it
-  // (the description, or the reward's, whichever was last typed in)
-  let det = form.querySelector('[name="detail"]');
-  form.querySelectorAll('[name="detail"], [name="rnote"]').forEach((x) => x.addEventListener("focus", () => { det = x; }));
-  const wrap = (a, z, fill = "words") => { const s0 = det.selectionStart ?? det.value.length, s1 = det.selectionEnd ?? s0; det.setRangeText(a + (det.value.slice(s0, s1) || fill) + z, s0, s1, "end"); det.focus(); };
+  // the formatting buttons wrap what's selected in the box last typed in (the name, the banner's message,
+  // the description, or the reward's description)
+  const fmtBoxes = ["name", "message", "detail", "rnote"].map((n) => form.querySelector(`[name="${n}"]`)).filter(Boolean);
+  let det = fmtBoxes[0];
+  fmtBoxes.forEach((x) => x.addEventListener("focus", () => { det = x; }));
+  const wrap = (a, z, fill = "words") => { const s0 = det.selectionStart ?? det.value.length, s1 = det.selectionEnd ?? s0; det.setRangeText(a + (det.value.slice(s0, s1) || fill) + z, s0, s1, "end"); det.focus(); holShow(); };
   form.querySelectorAll("[data-wrap], [data-link]").forEach((b) => b.addEventListener("mousedown", (ev) => ev.preventDefault()));
   form.querySelectorAll("[data-wrap]").forEach((b) => b.addEventListener("click", () => { const [a, z] = b.dataset.wrap.split("|"); wrap(a, z); }));
-  form.querySelector("[data-link]").addEventListener("click", () => {
+  form.querySelectorAll("[data-link]").forEach((b) => b.addEventListener("click", () => {
     const url = prompt("The link's address (https://…, or a page here like /help)");
     if (url && /^(https?:\/\/|\/)/.test(url.trim())) wrap("[", `](${url.trim()})`, "this link");
+  }));
+  // the game's own colours for the reward's message
+  const gm = form.querySelector('[name="rmessage"]');
+  form.querySelectorAll(".hol-game-fmt [data-code]").forEach((b) => {
+    b.addEventListener("mousedown", (ev) => ev.preventDefault());
+    b.addEventListener("click", () => { const a = gm.selectionStart ?? gm.value.length, z = gm.selectionEnd ?? a; gm.setRangeText(b.dataset.code, a, z, "end"); gm.focus(); holShow(); });
   });
+  // the banner's look
+  form.querySelectorAll('[data-seg="bstyle"] button').forEach((b) => b.addEventListener("click", () => {
+    b.parentElement.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    form.querySelector(".ann-colors").hidden = b.dataset.v !== "custom";
+    holShow();
+  }));
+  form.querySelector('[name="bshow"]').addEventListener("change", (ev) => { form.querySelector(".hol-bn-opts").hidden = !ev.target.checked; holShow(); });
+  // the preview: the banner as it'll look before, on and after the day, and when it shows
+  let phase = "day";
+  const holShow = () => {
+    read();
+    const phases = holPhases(draft);
+    if (!phases.some(([k]) => k === phase)) phase = phases[0]?.[0] || "day";
+    form.querySelector(".hol-phases").innerHTML = phases.length > 1 ? phases.map(([k, l]) => `<button type="button" data-ph="${k}" aria-pressed="${k === phase}">${l}</button>`).join("") : "";
+    form.querySelector(".hol-preview").innerHTML = draft.banner.show ? holBannerHtml(draft, phase) : `<p class="muted small">No banner for this one.</p>`;
+    form.querySelector(".hol-timeline").textContent = holTimeline(draft);
+    const pv = form.querySelector(".hol-game-preview");
+    if (pv) pv.innerHTML = typeof welcomePreview === "function" && draft.reward.message ? welcomePreview(draft.reward.message, curSid) : "";
+  };
+  form.querySelector(".hol-phases").addEventListener("click", (ev) => { const b = ev.target.closest("[data-ph]"); if (b) { phase = b.dataset.ph; holShow(); } });
+  form.addEventListener("input", holShow);
+  form.addEventListener("change", holShow);
+  holShow();
   // the reward: picked from the server's own items (with their pictures), like a contest's prize
   form.querySelector("[data-add-reward]")?.addEventListener("click", () => {
     const sid = (state.servers || []).find((x) => !x.game || x.game === "minecraft-java")?.id;
@@ -371,7 +456,7 @@ function wireCalEdit(el, i) {
     openFwPreview({ title: `${draft.emoji} ${draft.name}`, theme,
       sub: f.on ? `The day's fireworks, then the scheduled show${f.countdown ? " with its countdown" : ""}` : "The day's colours and favourite kinds",
       run: (sc, ui) => {
-        if (draft.message) ui.message(`${draft.emoji} ${draft.message}`, 3500);
+        if (draft.message) ui.message(`${draft.emoji} ${annPlain(draft.message)}`, 3500);
         sc.boost(6);                                       // a taste of the day: its colours and kinds
         if (!f.on) return;
         const start = f.countdown ? 11000 : 7000;

@@ -399,13 +399,13 @@ async def _end(srv, r: dict) -> None:
     else:
         r["result"] = f"{r['name']} is over. Nobody reached the finish."
     await _say(srv, r, [("★ ", "gold"), (r["result"], "yellow")], finished[0]["name"] if finished else "Time's up", "wins " + r["name"] if finished else r["name"])
+    await _remove_markers(srv, r)
+    await bossbar.hide(srv, r)
+    await _gear_back(srv, r)                         # (elytra: their own things back first, so a prize can't be written over)
     for i, x in enumerate(finished[:3]):
         prize = (r.get("prizes") or [None, None, None])[i] if i < len(r.get("prizes") or []) else None
         if prize:
             await challenges.award(srv, x["name"], prize, f"came {_ordinal(i + 1)} in {r['name']}")
-    await _remove_markers(srv, r)
-    await bossbar.hide(srv, r)
-    await _gear_back(srv, r)
     if r.get("gathered"):
         from . import gather
         gather.come_home(srv, r.pop("gathered"), r["name"])

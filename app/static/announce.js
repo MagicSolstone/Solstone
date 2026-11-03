@@ -188,7 +188,7 @@ async function viewUpcoming() {
   };
   const row = (it) => (it.kind === "event" ? upEventHtml(it, true) : `<li class="up-item ${it.live ? "live" : ""} up-${esc(it.kind)} ${it.then ? "up-then" : ""}">
       <span class="up-emoji" aria-hidden="true">${esc(it.emoji || "•")}</span>
-      <div class="up-main"><b>${it.link ? `<a href="${esc(it.link)}">${esc(it.title)}</a>` : esc(it.title)}</b>
+      <div class="up-main"><b>${it.link ? `<a href="${esc(it.link)}">${upTitle(it)}</a>` : upTitle(it)}</b>
         ${it.then ? "" : `<span class="muted small">${esc([UP_KIND[it.kind], it.server, it.detail, it.days > 1 ? `${it.days} days` : ""].filter(Boolean).join(" · "))}</span>`}
         ${it.about ? `<span class="up-about">${annFmt(it.about)}</span>` : ""}${rewardLineHtml(it.reward)}
         ${it.who?.length ? `<span class="small up-who">🙋 ${esc(it.who.join(", "))}</span>` : ""}</div>

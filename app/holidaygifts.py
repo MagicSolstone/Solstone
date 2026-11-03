@@ -64,17 +64,29 @@ async def tick(srv, online: list[str]) -> int:
             settings_store.save_section(SECTION, given)          # first, so a hiccup can't give it twice
             r = e["reward"]
             try:
-                for item in r["items"]:
-                    await challenges.award(srv, name, item, f"{e['name']} reward")
-                msg = r["message"] or f"{e['name']}! A present for being here"
-                await srv.rcon(f"tellraw {name} " + component([("🎁 ", "gold"), (msg, "yellow"), (f": {_say(r['items'])}", "white")]))
-                n += 1
+                got = [item for item in r["items"]               # no room: it waits, and they're told (challenges.py)
+                       if await challenges.award(srv, name, item, f"{e['name']} reward", note=f"Here's your {e['name']} reward!")]
+                if got:
+                    await say(srv, name, e, got)
+                    n += 1
             except Exception as ex:                               # offline again: the prize waits for their next join
                 log.info("holiday reward for %s on %s: %s", name, srv.id, ex)
     if changed:
         cutoff = (datetime.now(db.tz()).date() - timedelta(days=KEEP_DAYS)).isoformat()
         settings_store.save_section(SECTION, {k: v for k, v in given.items() if k.split(":")[1] >= cutoff})
     return n
+
+
+async def say(srv, name: str, e: dict, items: list[dict]) -> None:
+    """The reward's message in the game: the admin's own (with & colour codes), then what they got."""
+    from . import welcome
+    msg = e["reward"]["message"]
+    if not msg:
+        await srv.rcon(f"tellraw {name} " + component([("🎁 ", "gold"), (f"{e['name']}! A present for being here", "yellow"), (f": {_say(items)}", "white")]))
+        return
+    for cmd in welcome.commands(name, welcome.fill(msg, name, srv.display_name)):
+        await srv.rcon(cmd)
+    await srv.rcon(f"tellraw {name} " + component([("🎁 ", "gold"), (_say(items), "white")]))
 
 
 def tag(e: dict, start: date) -> dict | None:
@@ -87,21 +99,6 @@ def tag(e: dict, start: date) -> dict | None:
                       for x in r["items"]],
             "note": r["note"], "first": first.isoformat(), "last": last.isoformat(),
             "when": first.strftime("%a %-d %b") if first == last else f"{first.strftime('%a %-d %b')} to {last.strftime('%a %-d %b')}"}
-
-
-def banners() -> list[dict]:
-    """A small banner for each reward being given right now, when the holiday asks for one."""
-    out = []
-    for e, start in active():
-        if not e["reward"]["banner"]:
-            continue
-        t = tag(e, start)
-        _first, last = window(e, start)
-        out.append({"id": f"gift-{e['id']}-{start.isoformat()}", "kind": "reward", "emoji": "🎁", "style": "party",
-                    "text": t["note"] or f"A reward for playing during {e['name']}!",
-                    "detail": " + ".join(f"{x['count']} × {x['name']}" for x in t["items"]) + f" · play by {last.strftime('%a %-d %b')}",
-                    "items": t["items"], "countdown": None})
-    return out
 
 
 def rewarded_items() -> set[str]:

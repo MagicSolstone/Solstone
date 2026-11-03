@@ -206,14 +206,24 @@ def _clean_entry(e: dict, fallback_id: str | None = None) -> dict | None:
             d["iso"] = date.today().isoformat()
     fin = e.get("finale") if isinstance(e.get("finale"), dict) else {}
     days = num(e.get("days"), 1, 14, 1)
+    from .board import STYLES, plain
+    # the name and message can be formatted like posts (**bold**, {red}…{/red}); "name" and "message" are the same
+    # without it, for the game, titles and lists
+    name_fmt = " ".join(str(e.get("name_fmt") or e.get("name") or "Celebration").split())[:120]
+    name = " ".join(plain(name_fmt).split())[:40] or "Celebration"
+    message_fmt = " ".join(str(e.get("message_fmt") if e.get("message_fmt") is not None else e.get("message") or "").split())[:240]
+    bn = e.get("banner") if isinstance(e.get("banner"), dict) else {}
     return {
         "id": re.sub(r"[^a-z0-9_-]", "", str(e.get("id") or fallback_id or secrets.token_hex(4)).lower())[:24] or secrets.token_hex(4),
-        "name": str(e.get("name") or "Celebration").strip()[:40],
+        "name": name, "name_fmt": name_fmt if plain(name_fmt).strip() else name,
         "emoji": str(e.get("emoji") or "🎆")[:4],
         "date": d, "days": days,
+        # its one banner on every page (the countdown, the day itself, and any reward days after): on or off, and its look
+        "banner": {"show": bn.get("show", True) is not False, "style": bn.get("style") if bn.get("style") in STYLES else "party",
+                   "colors": [c.lower() for c in (bn.get("colors") or [])[:3] if isinstance(c, str) and _HEX.match(c)]},
         "colors": [c.lower() for c in (e.get("colors") or []) if isinstance(c, str) and _HEX.match(c)][:6],
         "kinds": [k for k in (e.get("kinds") or []) if k in BUILTIN_KINDS or (isinstance(k, str) and k.startswith("custom:"))][:10],
-        "message": str(e.get("message") or "").strip()[:80],
+        "message": " ".join(plain(message_fmt).split())[:80], "message_fmt": message_fmt,
         "banner_days": num(e.get("banner_days"), 0, 30, 0),     # a countdown banner this many days before (0: just on the day)
         # the fireworks' colours and favourite kinds: from this many days before the holiday to this many after
         # (a red, green and white week for Christmas), and whether players' own fireworks take the colours too
@@ -248,11 +258,12 @@ def _clean_reward(r) -> dict:
         except (TypeError, ValueError):
             return 0
     # given from this many days before the holiday to this many after it (Thanksgiving through the weekend: 0 and 3)
-    return {"items": items, "message": " ".join(str(r.get("message") or "").split())[:120],
+    # the message in the game when they get it: the game's own & colour codes, like the welcome message
+    return {"items": items, "message": " ".join(str(r.get("message") or "").split())[:200],
             "before": days(r.get("before")), "after": days(r.get("after")),
             # its own line on the Events page and its banner ("Reward for playing Thanksgiving weekend"), formatted like posts
             "note": " ".join(str(r.get("note") or "").split())[:300],
-            "banner": bool(r.get("banner"))}            # a small banner on every page while it's being given
+            "banner": bool(r.get("banner"))}            # the holiday's banner stays up for the reward's days before and after
 
 
 def calendar() -> list[dict]:

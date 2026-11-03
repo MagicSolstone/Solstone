@@ -40,6 +40,12 @@ function rewardLineHtml(r) {
   return `<div class="up-reward"><span class="up-reward-tag">🎁 Reward</span>${rewardItemsHtml(r.items)}${r.note ? `<span class="up-reward-note">${annFmt(r.note)}</span>` : ""}
     <span class="muted small">Play ${r.first === r.last ? "on" : "any time"} ${esc(r.when)}</span></div>`;
 }
+// A holiday's reward on its banner: 🎁, its description, the items with their pictures, and the last day for it.
+function bnRewardHtml(it) {
+  return `<small class="bn-reward"><span class="bn-gift" aria-hidden="true">🎁</span>${it.reward_note ? `<span class="bn-rnote">${annFmt(it.reward_note)}</span>` : ""}${rewardItemsHtml(it.items)}${it.reward_until ? `<span class="bn-until">${esc(it.reward_until)}</span>` : ""}</small>`;
+}
+// An Events row's title: formatted when it has formatting of its own (a holiday's name).
+const upTitle = (it) => (it.title_fmt ? annFmt(it.title_fmt) : esc(it.title));
 // The same without the formatting, for places that only take plain text.
 function annPlain(text) {
   return String(text || "").replace(/\[([^\]]+)\]\([^)\s]+\)/g, "$1").replace(/\*\*([^*]+)\*\*/g, "$1")
@@ -82,7 +88,7 @@ function startBoard(el, opts = {}) {
     el.classList.toggle("ticker", !!ticker);
     const html = list.map((it) => `<div class="bn bn-${esc(it.style)} bn-k-${esc(it.kind)}" data-id="${esc(it.id)}" role="status"${annLook(it)}>
       ${it.emoji ? `<span class="bn-emoji" aria-hidden="true">${esc(it.emoji)}</span>` : ""}
-      <div class="bn-text"><b>${it.link && it.link.startsWith("/app#/") ? `<a href="${esc(it.link)}">${esc(annPlain(it.text))}</a>` : annFmt(it.text)}</b>${it.items ? `<small class="bn-reward">${rewardItemsHtml(it.items)}${esc(it.detail.split(" · ").slice(1).join(" · "))}</small>` : it.detail ? `<small>${annFmt(it.detail)}</small>` : ""}</div>
+      <div class="bn-text"><b>${it.link && it.link.startsWith("/app#/") ? `<a href="${esc(it.link)}">${esc(annPlain(it.text))}</a>` : annFmt(it.text)}</b>${it.detail ? `<small>${annFmt(it.detail)}</small>` : ""}${it.items ? bnRewardHtml(it) : ""}</div>
       ${cdHtml(it)}${opts.dismiss ? `<button class="bn-x" type="button" data-dismiss="${esc(it.id)}" aria-label="Hide this">×</button>` : ""}</div>`).join("")
       + more + (ticker ? `<div class="bn-dots" aria-hidden="true">${all.map((_, i) => `<i class="${i === turn % all.length ? "on" : ""}"></i>`).join("")}</div>` : "");
     if (el._html !== html) { el._html = html; el.innerHTML = html; }

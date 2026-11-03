@@ -424,12 +424,24 @@ def main() -> int:
                     if not pg.locator(".fws-reward-item").count():
                         problems.append("holidays: a picked reward item isn't shown")
                     pg.fill('.fws-cal-edit [name="rafter"]', "3")
+                    pg.check('.fws-cal-edit [name="rbanner"]')
+                    pg.click('.fws-cal-edit [data-seg="bstyle"] [data-v="sunset"]')
+                    pg.fill('.fws-cal-edit [name="rmessage"]', "&6&lBoo!&r here's a treat")
+                    pg.wait_for_timeout(200)
+                    if not pg.locator(".hol-preview .bn-sunset").count() or pg.locator(".hol-phases button").count() != 2:
+                        problems.append("holidays: the banner preview doesn't show its look, or its before/after views")
+                    if not pg.locator('.hol-game-preview span[style*="font-weight:700"]').count():
+                        problems.append("holidays: the reward's game message has no preview with its colours")
+                    pg.evaluate("document.querySelector('.fws-cal-edit').scrollIntoView()"); pg.wait_for_timeout(200)
+                    check(pg, "holiday-edit-top")
                     pg.locator(".fws-cal-edit .fws-more summary").click(); pg.fill('.fws-cal-edit [name="cbefore"]', "2")
                     check(pg, "holiday-reward-edit")
                     pg.click(".fws-cal-edit button[type=submit]"); pg.wait_for_timeout(900)
                     hal = next((x for x in pg.request.get(f"{base}/api/fireworks/show", headers=H).json()["calendar"] if x["id"] == "halloween"), {})
                     if hal.get("detail") != "**Dress up and come trick-or-treat**" or (hal.get("reward", {}).get("items") or [{}])[0].get("item") != picked:
                         problems.append(f"holidays: the description or reward didn't save ({hal.get('detail')!r}, {hal.get('reward')})")
+                    if hal.get("banner", {}).get("style") != "sunset" or not hal.get("reward", {}).get("message", "").startswith("&6&lBoo"):
+                        problems.append(f"holidays: the banner's look or the game message didn't save ({hal.get('banner')}, {hal.get('reward')})")
                     if hal.get("reward", {}).get("after") != 3 or hal.get("colors_before") != 2 or hal.get("recolor") is not True:
                         problems.append(f"holidays: the reward's days, the colours' days or players' colours didn't save ({hal.get('reward')}, {hal.get('colors_before')})")
 
@@ -447,8 +459,8 @@ def main() -> int:
                 problems.append("events: a holiday's reward isn't on its own line with the item, amount and description")
             check(ev, "events-reward"); ev.close()
             pg.goto(f"{base}/app#/events"); pg.reload(); pg.wait_for_timeout(1500)
-            if not pg.locator(".bn-k-reward .bn-reward .rw-item").count():
-                problems.append("banners: no reward banner with its item while it's given")
+            if pg.locator('.bn[data-id^="hol-smokeparty"]').count() != 1 or not pg.locator('.bn[data-id^="hol-smokeparty"] .bn-reward .rw-item').count():
+                problems.append("banners: a holiday with a reward isn't one banner showing the reward")
             check(pg, "reward-banner")
             pg.request.put(f"{base}/api/fireworks/show", data={"calendar": cal}, headers=H)
             # setting up King of the Hill and the mob arena (no game here: the page is told RCON is on)

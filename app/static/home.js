@@ -280,7 +280,7 @@ async function eventsPage() {
   const d = await getJSON("/api/public/upcoming");
   const day = (iso) => { const [y, m, dd] = iso.split("-").map(Number); return new Date(y, m - 1, dd).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" }); };
   const row = (it) => (it.kind === "event" ? upEventHtml(it) : `<li class="up-item ${it.live ? "live" : ""} ${it.then ? "up-then" : ""}"><span class="up-emoji" aria-hidden="true">${esc(it.emoji || "•")}</span>
-    <div class="up-main"><b>${esc(it.title)}</b>${it.then ? "" : `<span class="muted small">${esc([it.server, it.detail, it.days > 1 ? `${it.days} days` : ""].filter(Boolean).join(" · "))}</span>`}
+    <div class="up-main"><b>${upTitle(it)}</b>${it.then ? "" : `<span class="muted small">${esc([it.server, it.detail, it.days > 1 ? `${it.days} days` : ""].filter(Boolean).join(" · "))}</span>`}
       ${it.about ? `<span class="up-about">${inline(esc(it.about))}</span>` : ""}${rewardLineHtml(it.reward)}</div>
     <span class="up-when">${it.live ? "On now" : it.time ? esc(it.time) : '<span class="muted small">All day</span>'}</span></li>`);
   const groups = [];

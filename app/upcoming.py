@@ -24,13 +24,14 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
 
     def add(at: float, kind: str, emoji: str, title: str, detail: str = "", *, all_day: bool = False, server: str | None = None,
             link: str | None = None, live: bool = False, length: int = 1, ends: float | None = None, optin: bool = False,
-            about: str = "", reward: dict | None = None) -> None:
+            about: str = "", reward: dict | None = None, title_fmt: str = "") -> None:
         if optin and not live:
             detail = f"{detail} · join in the game with /trigger join" if detail else "Join in the game with /trigger join"
         out.append({"ends": ends, "at": at, "date": datetime.fromtimestamp(at, zone).date().isoformat(), "time": None if all_day else _clock(at),
                     "kind": kind, "emoji": emoji, "title": title, "detail": detail, "server": server_names.get(server or "", None) if server else None,
                     "link": link, "live": live, "days": length, "key": community.event_key(kind, title, at),
-                    **({"about": about} if about else {}), **({"reward": reward} if reward else {})})
+                    **({"about": about} if about else {}), **({"reward": reward} if reward else {}),
+                    **({"title_fmt": title_fmt} if title_fmt and title_fmt != title else {})})
 
     # contests, races, games: on now, or scheduled ahead
     for c in challenges._load()["items"]:
@@ -113,7 +114,7 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
             at = datetime.combine(s, datetime.min.time(), zone).timestamp()
             on_now = s <= today < s + timedelta(days=e["days"])
             add(at, "holiday", e["emoji"], e["name"], e["message"], all_day=True, live=on_now, length=e["days"],
-                about=e["detail"], reward=holidaygifts.tag(e, s))
+                about=e["detail"], reward=holidaygifts.tag(e, s), title_fmt=e["name_fmt"])
             f = e["finale"]
             if f["on"]:
                 hh, mm = (int(x) for x in f["time"].split(":"))

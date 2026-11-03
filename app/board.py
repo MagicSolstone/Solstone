@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import re
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from . import db, fwshow, mcname, playtime, settings_store
 from .control import clean_text, component
@@ -143,29 +143,57 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
             elif kind == "active":
                 out.append({"id": f"bta-{srv.id}", "kind": "bedtime", "emoji": "😴", "style": "info",
                             "text": f"{srv.display_name} is asleep", "detail": f"Back at {playtime.fmt_clock(bcfg['end'])}", "countdown": None})
-    # a holiday coming up: a countdown banner from as many days before as it asks (Manage → Holidays)
-    today = now.date()
-    for e in fwshow.calendar():
-        if not e["enabled"] or not e.get("banner_days") or e["date"]["type"] == "weekly":
-            continue
-        nxt = min((s for s in fwshow._starts(e, today) if s > today), default=None)
-        if nxt and (nxt - today).days <= e["banner_days"]:
-            days = (nxt - today).days
-            out.append({"id": f"hs-{e['id']}-{nxt.isoformat()}", "kind": "holiday-soon", "emoji": e["emoji"] or "🎉", "style": "info",
-                        "text": f"{e['name']} is {'tomorrow' if days == 1 else f'in {days} days'}", "detail": "",
-                        "countdown": datetime.combine(nxt, datetime.min.time(), zone).timestamp(), "done_text": e["message"] or "It's here!"})
-    from . import holidaygifts
-    out += holidaygifts.banners()                  # a holiday's reward being given, if it asks for a banner
-    th = fwshow.today_state(now)["theme"]
-    if th and th.get("on_day", True) and (th.get("message") or th.get("name")):
-        out.append({"id": f"h-{th['id']}-{now.date()}", "kind": "holiday", "emoji": th.get("emoji") or "🎉", "style": "party",
-                    "text": th.get("message") or th["name"], "detail": "", "countdown": None})
+    out += holiday_banners(now)                   # one banner per holiday: its countdown, the day, its reward days
     if names:
         from . import challenges, games, races
         for one in ([sid] if sid or allowed is None else sorted(allowed)):
             out += challenges.banners(one) + races.banners(one) + games.banners(one)
     order = {"bedtime": 0, "challenge": 0.5, "note": 1, "holiday": 3, "reward": 3.5, "holiday-soon": 4, "vote": 1.5}
     out.sort(key=lambda x: (order.get(x["kind"], 5), x.get("countdown") or 1e12))
+    return out
+
+
+# ------------------------------------------------------------------ holidays
+def holiday_banners(now: datetime) -> list[dict]:
+    """One banner for each holiday, all the way through (Manage → Announcements → Holidays):
+      - before it: "Christmas is in 3 days", counting down (from as many days before as it asks);
+      - on its day(s): its message;
+      - after it, while its reward is still being given: "Christmas is over, but there's still time for its reward".
+    Whenever its reward is being given, the banner shows it (the items, its description, and the last day for it),
+    and the banner stays up for the reward's days before and after if the reward asks for that. Its look is its own."""
+    from . import holidaygifts
+    today, out = now.date(), []
+    for e in fwshow.calendar():
+        if not e["enabled"] or not e["banner"]["show"]:
+            continue
+        weekly, rw = e["date"]["type"] == "weekly", e["reward"]
+        for s in sorted(fwshow._starts(e, today)):
+            end = s + timedelta(days=e["days"] - 1)
+            r_first, r_last = holidaygifts.window(e, s) if rw["items"] else (s, end)
+            stay = bool(rw["items"]) and rw["banner"]
+            first = min(s - timedelta(days=0 if weekly else e["banner_days"]), r_first if stay else s)
+            last = max(end, r_last if stay else end)
+            if not first <= today <= last:
+                continue
+            giving = bool(rw["items"]) and r_first <= today <= r_last
+            if today < s:
+                days = (s - today).days
+                phase = {"kind": "holiday-soon", "text": f"{e['name_fmt']} is {'tomorrow' if days == 1 else f'in {days} days'}",
+                         "countdown": datetime.combine(s, datetime.min.time(), now.tzinfo).timestamp(), "done_text": e["message"] or "It's here!"}
+            elif today <= end:
+                if not (e["message_fmt"] or e["colors"] or e["kinds"] or giving):
+                    break                                   # (a plain weekly show night: no banner of its own)
+                phase = {"kind": "holiday", "text": e["message_fmt"] or e["name_fmt"], "countdown": None}
+            else:
+                phase = {"kind": "reward", "text": f"{e['name_fmt']} is over, but there's still time for its reward!", "countdown": None}
+            b = {"id": f"hol-{e['id']}-{s.isoformat()}-{phase['kind']}", "emoji": e["emoji"] or "🎉", "detail": "",
+                 "style": e["banner"]["style"], "colors": e["banner"]["colors"], **phase}
+            if giving:
+                t = holidaygifts.tag(e, s)
+                b.update(items=t["items"], reward_note=t["note"],
+                         reward_until="Today only" if r_last == today else f"Play by {r_last.strftime('%a %-d %b')}")
+            out.append(b)
+            break
     return out
 
 

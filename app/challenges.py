@@ -370,22 +370,110 @@ def _places(scores: dict[str, int]) -> tuple[list[str], list[str]]:
     return sorted(first, key=str.lower), sorted(second, key=str.lower)
 
 
-async def _give(srv, d: dict, player: str, prize: dict, why: str, online: set[str]) -> None:
+# ------------------------------------------------------------------ prizes: never dropped on the ground
+# The game's /give drops whatever doesn't fit at the player's feet, where it can be lost (lava, a fall, someone
+# else picking it up). So a prize is only given when there's room for all of it; otherwise it waits, they're told
+# once, and it arrives by itself as soon as they've made room (checked every few seconds while they're on).
+_ONE = re.compile(r"(_sword|_pickaxe|_axe|_shovel|_hoe|_helmet|_chestplate|_leggings|_boots|_bucket|_boat|_raft|_shulker_box|_bed"
+                  r"|_horse_armor|_stew|_soup|potion|^music_disc_.*|^bow|^crossbow|^trident|^elytra|^shield|^saddle|^enchanted_book"
+                  r"|^written_book|^writable_book|^totem_of_undying|^mace|^fishing_rod|_on_a_stick|^flint_and_steel|^shears|^brush"
+                  r"|^spyglass|^cake|bundle)$")
+_SIXTEEN = re.compile(r"(^ender_pearl|^snowball|egg|^honey_bottle|_sign|_banner|^armor_stand|^bucket)$")
+
+
+def slots_needed(item: str, count: int) -> int:
+    """Inventory spaces a prize takes (a guess from the item: tools and armour one each, pearls 16 a space, most 64)."""
+    name = item.split("[", 1)[0].split(":")[-1]
+    per = 1 if _ONE.search(name) else 16 if _SIXTEEN.search(name) else 64
+    return max(1, math.ceil(count / per))
+
+
+async def free_slots(srv, player: str) -> int | None:
+    """Empty spaces in their inventory (the 36 main ones; armour and the offhand don't count). None: couldn't tell."""
+    out = await _rcon(srv, f"data get entity {player} Inventory")
+    if "entity data" not in out:
+        return None
+    used = {n for n in (int(x) for x in re.findall(r"Slot: (-?\d+)b", out)) if 0 <= n < 36}
+    return 36 - len(used)
+
+
+def _what(item: str, count: int) -> str:
+    return f"{count} {item.split('[', 1)[0].split(':')[-1].replace('_', ' ')}"
+
+
+async def _hand_over(srv, player: str, item: str, count: int) -> str:
+    """"given", "full" (no room yet: nothing given) or "" (not given: not on, say)."""
+    room = await free_slots(srv, player)
+    if room is not None and room < slots_needed(item, count):
+        return "full"
+    out = await _rcon(srv, f"give {player} {item} {count}")
+    return "given" if out and "gave" in out.lower() else ""
+
+
+async def _full_note(srv, player: str, g: dict) -> None:
+    if g.get("told"):
+        return
+    g["told"] = True
+    n = slots_needed(g["item"], g["count"])
+    await _rcon(srv, f"tellraw {player} " + component([("🎁 ", "gold"), (f"A reward is waiting for you ({_what(g['item'], g['count'])}), but your inventory is full. ", "yellow"),
+                                                        (f"Make room ({n} empty space{'s' if n != 1 else ''}) and it'll arrive by itself.", "white")]))
+
+
+async def _give(srv, d: dict, player: str, prize: dict, why: str, online: set[str], note: str = "") -> bool:
+    """Give it now if they're on and have room, otherwise keep it for later. True if given now."""
+    g = {"server": srv.id, "player": player, "item": prize["item"], "count": prize["count"], "why": why, "at": time.time(),
+         **({"note": note} if note else {})}
     if player.lower() in online:
-        out = await _rcon(srv, f"give {player} {prize['item']} {prize['count']}")
-        if out and "gave" in out.lower():
-            return
-    d["gifts"].append({"server": srv.id, "player": player, "item": prize["item"], "count": prize["count"], "why": why, "at": time.time()})
+        got = await _hand_over(srv, player, prize["item"], prize["count"])
+        if got == "given":
+            return True
+        if got == "full":
+            await _full_note(srv, player, g)
+    d["gifts"].append(g)
+    return False
 
 
-async def award(srv, player: str, prize: dict, why: str) -> bool:
-    """Give a prize now if they're on, otherwise hold it for their next join. True if given now."""
+async def award(srv, player: str, prize: dict, why: str, note: str = "") -> bool:
+    """Give a prize now if they're on (and have room for it), otherwise hold it until they are. True if given now.
+    note: what they're told when it arrives later ("Here's your Christmas reward!")."""
     d = _load()
     online = {n.lower() for n in (await S.online_players(srv))[0]}
-    before = len(d["gifts"])
-    await _give(srv, d, player, prize, why, online)
+    given = await _give(srv, d, player, prize, why, online, note)
     _save(d)
-    return len(d["gifts"]) == before
+    return given
+
+
+async def _deliver(srv, d: dict, player: str) -> bool:
+    """Hand over what's waiting for this player, as far as there's room. True if anything changed."""
+    changed = False
+    for g in [g for g in d["gifts"] if g["server"] == srv.id and g["player"].lower() == player.lower()]:
+        got = await _hand_over(srv, player, g["item"], g["count"])
+        if got == "given":
+            d["gifts"].remove(g)
+            changed = True
+            note = g.get("note") or f"A prize for you: you {g['why']}!"
+            what = f" ({_what(g['item'], g['count'])})"
+            await _rcon(srv, f"tellraw {player} " + component([("★ ", "gold"), (note, "yellow"), (what, "white")]))
+        elif got == "full" and not g.get("told"):
+            await _full_note(srv, player, g)
+            changed = True
+        else:
+            break                                    # not on, or out of room: the rest wait too
+    return changed
+
+
+async def waiting_for_room(srv, online: list[str]) -> None:
+    """Every poll: prizes waiting for someone who's on to make room in their inventory."""
+    d = _load()
+    on = {n.lower(): n for n in online}
+    who = {g["player"].lower() for g in d["gifts"] if g["server"] == srv.id and g.get("told") and g["player"].lower() in on}
+    if not who or not srv.rcon_conf():
+        return
+    changed = False
+    for p in sorted(who):
+        changed = await _deliver(srv, d, on[p]) or changed
+    if changed:
+        _save(d)
 
 
 def clean_prize(p) -> dict | None:
@@ -636,15 +724,12 @@ async def on_join(srv, player: str) -> None:
             await _rcon(srv, f"clear {player} {ROD_MATCH}")
             c["rod_owed"].remove(player.lower())
             _save(d)
-    mine = [g for g in d["gifts"] if g["server"] == srv.id and g["player"].lower() == player.lower()]
-    if not mine or not srv.rcon_conf():
+    if not srv.rcon_conf() or not any(g["server"] == srv.id and g["player"].lower() == player.lower() for g in d["gifts"]):
         return
-    for g in mine:
-        out = await _rcon(srv, f"give {player} {g['item']} {g['count']}")
-        if out and "gave" in out.lower():
-            d["gifts"].remove(g)
-            note = f"A prize for you: you {g['why']}!"
-            await _rcon(srv, f"tellraw {player} {component([('★ ', 'gold'), (note, 'yellow')])}")
+    for g in d["gifts"]:                          # a fresh join: tell them again if there's still no room
+        if g["server"] == srv.id and g["player"].lower() == player.lower():
+            g.pop("told", None)
+    await _deliver(srv, d, player)
     _save(d)
 
 
