@@ -167,3 +167,30 @@ def test_setting_up_both_games(client, sid):
     assert a["name"] == "Mob arena" and len(a["waves"]) == 10
     for r in (k, a):
         client.delete(f"{base}/{r['id']}")
+
+
+def test_elytra_race_things_kept_safe_wings_then_everything_back(fight):
+    from app import races
+    before = {u: dict(s) for u, s in fight.slots.items()}
+    r = {"id": "e1", "name": "Sky loop (elytra)", "minutes": 5, "vehicle": "elytra", "rockets": 16, "safe_flying": True}
+    racing = asyncio.run(races._wings(fight, r, ["Alex", ".LongBedrockNameX"]))
+    assert sorted(racing) == [".LongBedrockNameX", "Alex"] and not fight.slots[U1]                   # their own things in the vault
+    assert any(c.startswith(f"item replace entity {U1} armor.chest with minecraft:elytra[minecraft:custom_data={{solkit:1b}}") for c in fight.said)
+    assert any(c.startswith(f"give {U2} minecraft:firework_rocket[") and c.endswith(" 16") for c in fight.said)
+    assert fight.rules["keepInventory"] == "true"
+    asyncio.run(races._gear_back(fight, r))
+    assert fight.slots == before and fight.rules["keepInventory"] == "false" and not kits.waiting(fight.id)
+
+
+def test_boat_and_elytra_races_are_set_up(client, sid):
+    from app import races
+    c = races.save_course(sid, {"name": "Loop", "points": [{"x": 0, "y": 64, "z": 0}, {"x": 30, "y": 90, "z": 0}]})
+    try:
+        b = races.schedule(sid, {"course": c["id"], "start": 9e9, "vehicle": "boat"})
+        e = races.schedule(sid, {"course": c["id"], "start": 9e9, "vehicle": "elytra", "rockets": 200})
+        w = races.schedule(sid, {"course": c["id"], "start": 9e9, "vehicle": "hovercraft"})
+        assert b["name"] == "Loop (by boat)" and e["name"] == "Loop (elytra)" and e["rockets"] == 64 and w["vehicle"] == "none"
+    finally:
+        for r in races.runs_for(sid):
+            asyncio.run(races.cancel(type("S", (), {"id": sid})(), r["id"]))
+        races.delete_course(sid, c["id"])

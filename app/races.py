@@ -13,6 +13,14 @@ Courses are laid out on Solstone's map (or at a player's spot) and saved. When a
 - it ends when everyone has finished or the time limit is up; places go by finish time, then by
   checkpoints reached; prizes for 1st/2nd/3rd reuse the challenge prizes (held for anyone
   who's logged off).
+
+On foot, by boat, or by elytra:
+- boats: everyone gets a boat at GO (taken back at the end), for courses across water and land;
+- elytra: everyone's own things are kept safe in the vault first (kits.py: the elytra needs the chest
+  slot), then each racer gets an elytra and rockets. A checkpoint counts anywhere in its tall
+  column, so flying through it high up does. Keep inventory and instant respawn are on while it
+  runs, and "safer flying" takes most of the sting out of crashes. Afterwards everyone's things
+  come back exactly.
 """
 from __future__ import annotations
 
@@ -34,6 +42,7 @@ COUNTDOWN = 10
 MAX_POINTS = 16
 _POS = re.compile(r"\[\s*(-?[\d.]+)d?,\s*(-?[\d.]+)d?,\s*(-?[\d.]+)d?\s*\]")
 _DIRS = ["south", "south-west", "west", "north-west", "north", "north-east", "east", "south-east"]
+VEHICLES = ("none", "boat", "elytra")
 
 
 # ------------------------------------------------------------------ storage
@@ -117,7 +126,11 @@ def schedule(server: str, body: dict) -> dict:
          "points": course["points"], "dim": course.get("dim", "minecraft:overworld"),
          "start": start, "minutes": int(_num(body.get("minutes"), 2, 60, 15)), "teleport": bool(body.get("teleport", True)),
          "prizes": prizes, "state": "scheduled", "racers": {}, "results": [], "said": [],
-         "optin": bool(body.get("optin"))}          # players choose to join; off: everyone online races
+         "optin": bool(body.get("optin")),          # players choose to join; off: everyone online races
+         "vehicle": body.get("vehicle") if body.get("vehicle") in VEHICLES else "none",
+         "rockets": int(_num(body.get("rockets"), 0, 64, 16)), "safe_flying": bool(body.get("safe_flying", True))}
+    if r["vehicle"] != "none":
+        r["name"] = f"{r['name']} ({'by boat' if r['vehicle'] == 'boat' else 'elytra'})"
     d["runs"].append(r)
     _save(d)
     return r
@@ -236,6 +249,13 @@ async def _begin_countdown(srv, r: dict) -> None:
         r["state"], r["result"] = "skipped", "Nobody joined"
         await _say(srv, r, [("★ ", "gold"), (f"Nobody joined {r['name']}, so it's off this time.", "yellow")])
         return
+    if r.get("vehicle") == "elytra":
+        names = await _wings(srv, r, names)
+        r["entrants"] = names
+        if not names:
+            await _remove_markers(srv, r)
+            r["state"], r["result"] = "skipped", "Nobody's things could be kept safe, so the race didn't start"
+            return
     if r["teleport"]:
         # side by side on the start line, facing the first checkpoint, held still until GO;
         # everyone goes back where they were once it's over
@@ -246,12 +266,53 @@ async def _begin_countdown(srv, r: dict) -> None:
                "Get ready", r["name"])
 
 
+async def _wings(srv, r: dict, names: list[str]) -> list[str]:
+    """Everyone's own things into the vault, then an elytra and rockets each. Returns who's racing."""
+    from . import battle, kits
+    await battle.rules_on(srv, r)
+    ids = battle.uuids_of(srv, names)
+    racing = await kits.stash(srv, ids, r["id"])
+    r["uuids"] = {n: ids[n] for n in racing}
+    for n in names:
+        if n not in racing:
+            note = component([("★ ", "gold"), ("Your things couldn't be kept safe just now, so you're watching this one. Nothing of yours was touched.", "yellow")])
+            await _rcon(srv, f"tellraw {n} {note}")
+    for n in racing:
+        u = ids[n]
+        elytra, rockets = kits.kit_item("minecraft:elytra"), kits.kit_item("minecraft:firework_rocket")
+        await _rcon(srv, f"item replace entity {u} armor.chest with {elytra}")
+        if r.get("rockets"):
+            await _rcon(srv, f"give {u} {rockets} {r['rockets']}")
+        if r.get("safe_flying"):
+            await _rcon(srv, f"effect give {u} minecraft:resistance {r['minutes'] * 60 + 60} 3 true")
+    return racing
+
+
+async def _gear_back(srv, r: dict) -> None:
+    """After the race: boats and elytras taken back, and (elytra) everyone's own things back exactly."""
+    from . import battle, kits
+    if r.get("vehicle") == "boat":
+        await _rcon(srv, f"clear @a #minecraft:boats[minecraft:custom_data={{{kits.KIT_TAG}:1b}}]")
+    if r.get("vehicle") == "elytra":
+        online = {n.lower() for n in (await S.online_players(srv))[0]}
+        for n, u in (r.get("uuids") or {}).items():
+            if n.lower() in online:                       # offline: theirs when they're next on (kits.on_join)
+                await _rcon(srv, f"effect clear {u} minecraft:resistance")
+                await kits.give_back(srv, u, move=not r.get("gathered"))      # (lined up: the trip home puts them back)
+        await battle.rules_off(srv, r)
+
+
 async def _go(srv, r: dict) -> None:
     from . import gather
     if r.get("gathered"):
         await gather.unfreeze(srv, list(r["gathered"]))
     online, _src = await S.online_players(srv)
-    names = [n for n in online if n in r["entrants"]] if r.get("optin") else online
+    names = [n for n in online if n in r["entrants"]] if r.get("optin") or r.get("vehicle") == "elytra" else online
+    if r.get("vehicle") == "boat":
+        from . import kits
+        boat = kits.kit_item("minecraft:oak_boat")
+        for n in names:
+            await _rcon(srv, f"give {n} {boat} 1")
     r["state"], r["started_at"] = "running", time.time()
     r["ends_at"] = r["started_at"] + r["minutes"] * 60
     r["racers"] = {n: {"next": 1, "splits": [], "finished": None} for n in names}
@@ -264,7 +325,7 @@ async def _go(srv, r: dict) -> None:
 async def _track(srv, r: dict) -> None:
     pts, last = r["points"], len(r["points"]) - 1
     online, _src = await S.online_players(srv)
-    for n in online if not r.get("optin") else []:      # joined mid-race: in, from the start
+    for n in online if not r.get("optin") and r.get("vehicle") != "elytra" else []:      # joined mid-race: in, from the start
         r["racers"].setdefault(n, {"next": 1, "splits": [], "finished": None})
     now = time.time()
     for n, st in r["racers"].items():
@@ -277,7 +338,8 @@ async def _track(srv, r: dict) -> None:
         tgt = pts[st["next"]]
         dx, dz, dy = tgt["x"] - pos[0], tgt["z"] - pos[2], tgt["y"] - pos[1]
         dist = math.hypot(dx, dz)
-        if dist <= tgt["radius"] and abs(dy) <= 10:
+        # on foot or by boat: near the point's height; by elytra: anywhere up its tall column
+        if dist <= tgt["radius"] and (-40 <= dy <= 5 if r.get("vehicle") == "elytra" else abs(dy) <= 10):
             st["splits"].append(round(now - r["started_at"], 1))
             if st["next"] == last:
                 st["finished"] = st["splits"][-1]
@@ -343,6 +405,7 @@ async def _end(srv, r: dict) -> None:
             await challenges.award(srv, x["name"], prize, f"came {_ordinal(i + 1)} in {r['name']}")
     await _remove_markers(srv, r)
     await bossbar.hide(srv, r)
+    await _gear_back(srv, r)
     if r.get("gathered"):
         from . import gather
         gather.come_home(srv, r.pop("gathered"), r["name"])
@@ -357,6 +420,7 @@ async def cancel(srv, rid: str) -> bool:
     if r["state"] in ("countdown", "running"):
         await _remove_markers(srv, r)
         await bossbar.hide(srv, r)
+        await _gear_back(srv, r)
         if r.get("gathered"):
             from . import gather
             await gather.unfreeze(srv, list(r["gathered"]))

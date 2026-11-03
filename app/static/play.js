@@ -848,6 +848,11 @@ async function viewRaces(sid) {
           <label class="check"><input type="radio" name="when" value="now" checked> Right now (10-second countdown)</label>
           <label class="check"><input type="radio" name="when" value="later"> At <input class="input sm" type="datetime-local" name="at" value="${at}"></label></div>`}
         <label>Time limit <select class="input" name="minutes">${[5, 10, 15, 20, 30].map((m) => `<option value="${m}" ${m === (+pre.minutes || 15) ? "selected" : ""}>${m} minutes</option>`).join("")}</select></label>
+        <label>Racing <select class="input" name="vehicle">${[["none", "🏃 On foot"], ["boat", "🛶 By boat: everyone gets a boat at GO (for water and land)"], ["elytra", "🪽 By elytra: everyone gets an elytra and rockets"]].map(([v, l]) => `<option value="${v}" ${(pre.vehicle || "none") === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+          <small class="muted rs-elytra-note">Elytra: everyone's own things are kept safe in a sealed vault first (the elytra needs the chest slot), and given back exactly afterwards. A checkpoint counts anywhere in its tall glowing column.</small></label>
+        <div class="rs-elytra">
+          <label>Rockets each <select class="input sm" name="rockets">${[0, 8, 16, 32, 64].map((v) => `<option value="${v}" ${(pre.rockets ?? 16) === v ? "selected" : ""}>${v || "None"}</option>`).join("")}</select></label>
+          <label class="check"><input type="checkbox" name="safe_flying" ${pre.safe_flying === false ? "" : "checked"}> Safer flying: crashes hurt much less</label></div>
         <label class="check"><input type="checkbox" name="teleport" ${pre.teleport === false ? "" : "checked"}> Line everyone up at the start, held still until GO, and send them back where they were afterwards</label>
         ${adding ? `<input type="checkbox" name="optin" hidden>` : optinField(true)}
         <div class="rs-prizes">${["🥇 1st", "🥈 2nd", "🥉 3rd"].map((l, i) => `<span class="lbl">${l}</span><span id="rs-p${i}">${prizeBtn(i)}</span>`).join("")}</div>
@@ -864,16 +869,23 @@ async function viewRaces(sid) {
       const restore = (m2, keep) => {
         const f = $("#rs-form", m2);
         f.when.value = keep.when.value; f.at.value = keep.at.value; f.minutes.value = keep.minutes.value; f.teleport.checked = keep.teleport.checked; f.optin.checked = keep.optin.checked;
+        f.vehicle.value = keep.vehicle.value; f.rockets.value = keep.rockets.value; f.safe_flying.checked = keep.safe_flying.checked; showWings(f);
       };
+      // the elytra's own settings only show for an elytra race
+      const showWings = (f) => { const on = f.vehicle.value === "elytra"; f.querySelector(".rs-elytra").hidden = !on; f.querySelector(".rs-elytra-note").hidden = !on; };
       const wireAll = (mm) => {
         m = mm; wire();
+        const rf = $("#rs-form", mm);
+        showWings(rf);
+        rf.vehicle.addEventListener("change", () => showWings(rf));
         $("#rs-form", mm).addEventListener("submit", async (e) => {
           e.preventDefault();
           const f = e.target;
           const start = f.when.value === "now" ? Date.now() / 1000 : new Date(f.at.value).getTime() / 1000;
           try {
-            if (adding) { closeModal(); await egSave(adding, "race", { course: c.id, minutes: +f.minutes.value, teleport: f.teleport.checked, prizes }); return; }
-            await post(`${base}/runs`, { course: c.id, start, minutes: +f.minutes.value, teleport: f.teleport.checked, optin: f.optin.checked, prizes });
+            const how = { vehicle: f.vehicle.value, rockets: +f.rockets.value, safe_flying: f.safe_flying.checked };
+            if (adding) { closeModal(); await egSave(adding, "race", { course: c.id, minutes: +f.minutes.value, teleport: f.teleport.checked, prizes, ...how }); return; }
+            await post(`${base}/runs`, { course: c.id, start, minutes: +f.minutes.value, teleport: f.teleport.checked, optin: f.optin.checked, prizes, ...how });
             closeModal(); showToast(f.when.value === "now" ? "Race starting: 10-second countdown in the game" : "Race scheduled", 3000); await reload();
           } catch (err) { showError(esc(err.message), 4000); }
         });
