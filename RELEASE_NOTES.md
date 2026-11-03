@@ -1,3 +1,16 @@
+# Solstone 1.14.3
+
+- **Deny with a message:** saying no to someone who asked to join opens a box for a message ("Ask again with your real name in the note"). Only they see it, where they asked.
+- **The answer where they asked:** the home page's Ask to join step shows the answer, not the corner badge.
+  - **Let in:** with **Clear this**.
+  - **Not accepted:** with the admins' message, **Ask again** and **Clear this**.
+  - The corner badge is now just for the other pages.
+- **A holiday's reward, shown properly:**
+  - **Its own description** ("Reward for playing **Thanksgiving weekend**").
+  - **Its own line on Events,** under the holiday: the item's picture, the amount and the days.
+  - **A banner while it's given,** if you tick it: 🎁, the description, the item and when it ends.
+- **Storage:** the world map's pictures are called what they are. They grow with the world explored, not with time.
+
 # Solstone 1.14.2
 
 - **All together on a player's page covers every tab but the inventory** (for someone with more than one Minecraft account):
