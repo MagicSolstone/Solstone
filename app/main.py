@@ -599,35 +599,75 @@ async def public_board(sid: str, request: Request):
 
 # ---- the public website: site details (how to join) and posts (news, guides, FAQ)
 _site_cache: tuple[float, list] | None = None
+_site_task: asyncio.Task | None = None
+
+
+async def _site_status() -> list:
+    """How each public server is doing, never who's on it: a count of players, its health, its uptime."""
+    global _site_cache
+    await S.registry.refresh()
+    servers = []
+    for srv in _public_servers_list():
+        try:
+            summ = await asyncio.wait_for(S.server_summary(srv), 6)
+        except Exception as e:
+            log.warning("home list failed for %s: %s", srv.id, e)
+            continue
+        perf = summ.get("perf") or {}
+        servers.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "online": len(summ["online"]),
+                        "max": summ["max_players"], "version": summ.get("version"), "has_icon": summ["has_icon"],
+                        "started": summ.get("started") if summ["running"] else None, "tps": perf.get("tps"),
+                        "up_since": _up_since(srv.id, summ.get("started")) if summ["running"] else None,
+                        "mspt": perf.get("mspt"), "cpu": summ.get("cpu") if summ["running"] else None,
+                        "mem": summ.get("mem") if summ["running"] else None,
+                        "mem_percent": summ.get("mem_percent") if summ["running"] else None,
+                        "loader": summ.get("loader"), "uptime_7d": _uptime(srv.id, 7), "trend": _trend(srv.id)})
+    _site_cache = (time.monotonic(), servers)
+    return servers
+
+
+async def _site_servers() -> list:
+    """The status for the home page without making anyone wait: the last check (up to 15 s old) straight away, a
+    fresh one started in the background when it's older; only the very first visitor waits, and at most 3 s."""
+    global _site_task
+    fresh = _site_cache and time.monotonic() - _site_cache[0] < 15
+    if not fresh and (_site_task is None or _site_task.done()):
+        _site_task = asyncio.get_running_loop().create_task(_site_status())
+    if _site_cache:
+        return _site_cache[1]
+    try:
+        return await asyncio.wait_for(asyncio.shield(_site_task), 3)
+    except Exception:
+        return []
+
+
+def _trend(sid: str, hours: int = 6, points: int = 36) -> dict:
+    """The last few hours of Solstone's own checks, for the little graphs on the home page: players, TPS and CPU,
+    averaged into even slices (None where the server was off or nothing was seen)."""
+    now = time.time()
+    start, step = now - hours * 3600, hours * 3600 / points
+    rows = db.q("SELECT ts, running, players, cpu, tps FROM metrics WHERE server_id=? AND ts>=? ORDER BY ts", (sid, start))
+    out = {"players": [None] * points, "tps": [None] * points, "cpu": [None] * points}
+    sums = [{"players": [], "tps": [], "cpu": []} for _ in range(points)]
+    for r in rows:
+        i = min(points - 1, int((r["ts"] - start) // step))
+        if not r["running"]:
+            continue
+        for k in ("players", "tps", "cpu"):
+            if r[k] is not None:
+                sums[i][k].append(r[k])
+    for i, b in enumerate(sums):
+        for k, v in b.items():
+            if v:
+                out[k][i] = round(max(v) if k == "players" else sum(v) / len(v), 1)
+    return {**out, "hours": hours}
 
 
 @app.get("/api/public/site")
 async def public_site():
-    global _site_cache
     site.move_guides_to_posts()
     cfg = site.config()
-    servers = []
-    if cfg["home_live"] and _site_cache and time.monotonic() - _site_cache[0] < 15:
-        servers = _site_cache[1]          # every visitor's page asks; the servers are only checked every 15 s
-    elif cfg["home_live"]:
-        await S.registry.refresh()
-        for srv in _public_servers_list():
-            try:
-                summ = await S.server_summary(srv)
-            except Exception as e:
-                log.warning("home list failed for %s: %s", srv.id, e)
-                continue
-            perf = summ.get("perf") or {}
-            # how the server is doing, never who's on it: a count of players, its health, its uptime
-            servers.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "online": len(summ["online"]),
-                            "max": summ["max_players"], "version": summ.get("version"), "has_icon": summ["has_icon"],
-                            "started": summ.get("started") if summ["running"] else None, "tps": perf.get("tps"),
-                            "up_since": _up_since(srv.id, summ.get("started")) if summ["running"] else None,
-                            "mspt": perf.get("mspt"), "cpu": summ.get("cpu") if summ["running"] else None,
-                            "mem": summ.get("mem") if summ["running"] else None,
-                            "mem_percent": summ.get("mem_percent") if summ["running"] else None,
-                            "loader": summ.get("loader"), "uptime_7d": _uptime(srv.id, 7)})
-        _site_cache = (time.monotonic(), servers)
+    servers = await _site_servers() if cfg["home_live"] else []
     # How to join, one card per public server: its own addresses (its ⚙ settings, or Website → Site details), with
     # Site details' addresses standing in for the first server that has none of its own (the main one, usually).
     await S.registry.refresh()

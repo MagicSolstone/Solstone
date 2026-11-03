@@ -12,15 +12,18 @@ import httpx
 from .config import config
 
 log = logging.getLogger("solstone.crafty")
+DOWN_PAUSE = 30.0               # seconds between tries while Crafty can't be reached
 
 
 class CraftyClient:
     def __init__(self) -> None:
         self.base = config.crafty_url
         self._token = config.crafty_token
-        self._client = httpx.AsyncClient(verify=config.crafty_verify_ssl, timeout=8.0)
+        # a few seconds to connect: Crafty down (or its name not resolving) shouldn't hold pages up
+        self._client = httpx.AsyncClient(verify=config.crafty_verify_ssl, timeout=httpx.Timeout(8.0, connect=3.0))
         self._cache: dict[str, tuple[float, Any]] = {}
         self.last_error: str | None = None
+        self._down_until = 0.0          # after Crafty can't be reached, don't ask again (and wait) for a little while
 
     @property
     def enabled(self) -> bool:
@@ -39,6 +42,17 @@ class CraftyClient:
         hit = self._cache.get(path)
         if hit and now - hit[0] < ttl:
             return hit[1]
+        if now < self._down_until:
+            if hit:
+                return hit[1]                # what it said last, while it's unreachable
+            raise ConnectionError(f"Crafty unreachable ({self.last_error or 'recently'})")
+        try:
+            return await self._fetch(path, now)
+        except httpx.TransportError:
+            self._down_until = time.monotonic() + DOWN_PAUSE
+            raise
+
+    async def _fetch(self, path: str, now: float) -> Any:
         if not self._token:
             await self._login()
         for attempt in range(2):

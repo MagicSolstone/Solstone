@@ -55,23 +55,39 @@ function sinceText(started) {
 
 // The servers' status at the top of the home page: up or down, how many are playing (never who), how smoothly it
 // runs, its version, how long it's been up, and what it's using. The same for everyone; refreshed while it's open.
+// A little line graph of the last few hours (gaps where the server was off), for a status tile.
+function sparkline(values, lo, hi, label) {
+  const v = values || [];
+  if (v.filter((x) => x != null).length < 2) return "";
+  const W = 120, H = 28, n = v.length, top = Math.max(hi, ...v.filter((x) => x != null)), span = top - lo || 1;
+  const pts = v.map((x, i) => (x == null ? null : [(i / (n - 1)) * W, H - 2 - ((x - lo) / span) * (H - 4)]));
+  const runs = [];
+  let cur = [];
+  for (const p of pts) { if (p) cur.push(p); else if (cur.length) { runs.push(cur); cur = []; } }
+  if (cur.length) runs.push(cur);
+  const path = runs.map((r) => (r.length === 1 ? `M${r[0][0].toFixed(1)} ${r[0][1].toFixed(1)}h1` : `M${r.map((p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("L")}`)).join("");
+  const last = pts.filter(Boolean).pop();
+  return `<svg class="hp-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}"><path d="${path}"/>${last ? `<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="2.2"/>` : ""}</svg>`;
+}
+
 function statusPanel(site) {
   if (!site.servers?.length) return "";
-  const tile = (label, value, hint = "") => `<div class="hp-stat"><span class="hp-stat-label">${esc(label)}</span><b>${value}</b>${hint ? `<small class="muted">${esc(hint)}</small>` : ""}</div>`;
+  const tile = (label, value, hint = "", spark = "") => `<div class="hp-stat"><span class="hp-stat-label">${esc(label)}</span><b>${value}</b>${hint ? `<small class="muted">${esc(hint)}</small>` : ""}${spark}</div>`;
   const card = (s) => {
     if (!s.running) return `<article class="hp-status-card off"><header><span class="hp-dot"></span><h3>${esc(s.name)}</h3><span class="hp-status-word">Offline</span></header>
       <p class="muted small">It's not running right now.${s.uptime_7d != null ? ` Up ${Math.round(s.uptime_7d * 1000) / 10}% of the last 7 days.` : ""}</p></article>`;
     const tps = s.tps == null ? null : Number(s.tps);
     const smooth = tps == null ? "" : tps >= 19.5 ? "Smooth" : tps >= 15 ? "A little laggy" : "Laggy";
+    const tr = s.trend || {}, hrs = `the last ${tr.hours || 6} hours`;
     const tiles = [
-      tile("Playing now", `${s.online}${s.max ? ` <small>/ ${s.max}</small>` : ""}`),
-      tps != null ? tile("TPS", tps.toFixed(1), `${smooth}${s.mspt != null ? ` · ${Number(s.mspt).toFixed(0)} ms a tick` : ""}`) : "",
+      tile("Playing now", `${s.online}${s.max ? ` <small>/ ${s.max}</small>` : ""}`, "", sparkline(tr.players, 0, 4, `Players over ${hrs}`)),
+      tps != null ? tile("TPS", tps.toFixed(1), `${smooth}${s.mspt != null ? ` · ${Number(s.mspt).toFixed(0)} ms a tick` : ""}`, sparkline(tr.tps, 0, 20, `TPS over ${hrs}`)) : "",
       s.version ? tile("Minecraft", esc(s.version), s.loader ? s.loader.charAt(0).toUpperCase() + s.loader.slice(1) : "") : "",
       s.up_since ? tile("Up for", esc(sinceText(s.up_since * 1000)), s.uptime_7d != null ? `${Math.round(s.uptime_7d * 1000) / 10}% of the last 7 days` : "") : "",
-      s.cpu != null ? tile("CPU", `${Math.round(Number(s.cpu))}%`) : "",
+      s.cpu != null ? tile("CPU", `${Math.round(Number(s.cpu))}%`, "", sparkline(tr.cpu, 0, 100, `CPU over ${hrs}`)) : "",
     ].join("");
     return `<article class="hp-status-card"><header><span class="hp-dot on"></span><h3>${esc(s.name)}</h3><span class="hp-status-word">Online</span></header>
-      <div class="hp-stats">${tiles}</div></article>`;
+      <div class="hp-stats">${tiles}</div>${tr.players ? `<p class="hp-spark-note muted small">Graphs: ${esc(hrs)}</p>` : ""}</article>`;
   };
   return `<section class="hp-status" id="hp-status" aria-label="Server status"><div class="hp-status-cards ${site.servers.length > 1 ? "many" : ""}">${site.servers.map(card).join("")}</div></section>`;
 }

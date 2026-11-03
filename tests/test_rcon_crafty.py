@@ -97,6 +97,24 @@ def test_crafty_client_with_mock_transport():
     asyncio.run(run())
 
 
+def test_crafty_down_isnt_waited_on_again_and_again():
+    """Crafty unreachable (its name not resolving, say): asked once, then left alone for a while, so pages don't hang."""
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append(request.url.path)
+        raise httpx.ConnectError("name not resolved")
+
+    async def run():
+        c = CraftyClient()
+        c.base, c._token = "https://crafty.test", "tok"
+        c._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        assert await c.servers() is None and await c.servers() is None and await c.stats("abc") is None
+        assert len(calls) == 1
+        await c.close()
+    asyncio.run(run())
+
+
 def test_one_dropped_connection_is_retried_not_backed_off():
     """A single 'connection closed' used to switch RCON off for 30 s (archery and races stalled)."""
     import asyncio

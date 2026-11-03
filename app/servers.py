@@ -250,8 +250,19 @@ class Registry:
         self.servers: dict[str, Server] = {}
         self._refreshed = 0.0
         self._lock = asyncio.Lock()
+        self._bg: set = set()           # background refreshes in flight
 
     async def refresh(self, force: bool = False) -> None:
+        # Known servers and a stale list: refreshed in the background, so no page waits on Crafty (slow or down).
+        if not force and self.servers and time.monotonic() - self._refreshed >= 20:
+            if not self._lock.locked():
+                task = asyncio.get_running_loop().create_task(self._refresh(False))
+                self._bg.add(task)
+                task.add_done_callback(self._bg.discard)
+            return
+        await self._refresh(force)
+
+    async def _refresh(self, force: bool = False) -> None:
         async with self._lock:
             if not force and time.monotonic() - self._refreshed < 20 and self.servers:
                 return
