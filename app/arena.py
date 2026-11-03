@@ -24,7 +24,7 @@ from . import servers as S
 
 TAG = "solarena"
 BREAK = 10                                   # seconds between waves
-FOLLOW = 128                                 # how far away a monster notices a player (the arena is at most 120 across)
+FOLLOW = 128                                 # at most, how far away a monster notices a player (the arena's width, really)
 MOBS = {"zombie": "Zombie", "husk": "Husk", "drowned": "Drowned", "zombie_villager": "Zombie villager", "skeleton": "Skeleton",
         "stray": "Stray", "spider": "Spider", "cave_spider": "Cave spider", "creeper": "Creeper", "slime": "Slime",
         "witch": "Witch", "pillager": "Pillager", "vindicator": "Vindicator", "blaze": "Blaze", "wither_skeleton": "Wither skeleton",
@@ -184,8 +184,10 @@ async def _summon(srv, r: dict, wave: dict) -> None:
     await battle._rcon(srv, f"effect give @e[tag={tag}] minecraft:fire_resistance infinite 0 true")
     # they come for the players from anywhere in the arena: a monster usually only notices someone within about
     # 16 blocks (the attribute's name changed in 1.21.2: one of these two works, the other's ignored)
+    # (only as far as across the arena: they're after the players in it, not people watching from further off)
+    follow = min(FOLLOW, int(2 * r["zone"]["r"] + 8))
     for attr in ("minecraft:follow_range", "minecraft:generic.follow_range"):
-        await battle._rcon(srv, f"execute as @e[tag={tag}] run attribute @s {attr} base set {FOLLOW}")
+        await battle._rcon(srv, f"execute as @e[tag={tag}] run attribute @s {attr} base set {follow}")
 
 
 async def _mark_splits(srv, r: dict) -> None:
@@ -228,6 +230,7 @@ async def tick(srv, r: dict) -> None:
     r["ticks"] = r.get("ticks", 0) + 1
     where = {k.lower(): v for k, v in (await _everyone(srv)).items()}
     await battle.left_and_back(srv, r, where)
+    await battle.keep_out(srv, r, where)                 # people not playing: moved just outside the arena
     died = await battle.deaths(srv, r, TAG, now)
     if r["coop"]:
         for n in died:                                  # together: watch until this wave's cleared

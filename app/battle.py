@@ -166,6 +166,28 @@ def inside(r: dict, pos) -> bool:
     return dim == r["dim"] and math.hypot(x - c["x"], z - c["z"]) <= c["r"] and abs(y - c["y"]) <= c.get("h", 6)
 
 
+async def keep_out(srv, r: dict, where: dict, margin: float = 2) -> None:
+    """Anyone not playing who's in the zone (there when it started, or wandering in) is moved just outside its edge,
+    on the side they're on, onto solid ground, and told why once. Not anyone in creative or spectator (an admin
+    watching). Monsters can still see out, and arrows can fly over the edge: it's a game zone, not a wall."""
+    c = r["zone"]
+    playing = {n.lower() for n in r["players"]}
+    for name, pos in where.items():
+        if name.lower() in playing or not inside({**r, "zone": {**c, "r": c["r"] + margin}}, pos):
+            continue
+        if "passed" not in (await _rcon(srv, f"execute as {name} if entity @s[gamemode=!spectator,gamemode=!creative]")).lower():
+            continue
+        _dim, x, _y, z = pos
+        a = math.atan2(z - c["z"], x - c["x"]) if (x, z) != (c["x"], c["z"]) else 0.0
+        out = c["r"] + margin + 3
+        await _rcon(srv, f"execute in {r['dim']} run spreadplayers {c['x'] + out * math.cos(a):.1f} {c['z'] + out * math.sin(a):.1f} 0 1 false {name}")
+        told = r.setdefault("kept_out", [])
+        if name.lower() not in told:
+            told.append(name.lower())
+            await _rcon(srv, f"tellraw {name} " + control.component([("★ ", "gold"), (f"{r['name']} is on here, so you've been moved just outside. ", "yellow"),
+                                                                     ("You can watch from there, or join the next one!", "white")]))
+
+
 async def finish(srv, r: dict, tag: str) -> None:
     """Everyone's things back, exactly, and where they were; the rules, teams and scores as they were before."""
     online = {n.lower() for n in (await S.online_players(srv))[0]}

@@ -585,9 +585,19 @@ addEventListener("scroll", hideTip, { passive: true });
 // ================================================================ modal + toast
 function openModal(html, onMount) {
   const root = $("#modal-root");
+  // the same popup drawn again (a setup window after each change: a wave, a monster, a spot on the map): it stays
+  // where it was scrolled to, instead of jumping back to the top
+  const old = root.querySelector(".modal"), oldTitle = old?.querySelector("h2")?.textContent;
+  const keep = old ? [old.scrollTop, root.querySelector(".modal-backdrop")?.scrollTop || 0] : null;
   root.innerHTML = `<div class="modal-backdrop"><div class="modal" role="dialog" aria-modal="true">${html}</div></div>`;
   root.querySelector(".modal-backdrop").addEventListener("mousedown", (e) => { if (e.target.classList.contains("modal-backdrop")) closeModal(); });
-  onMount?.(root.querySelector(".modal"));
+  const modal = root.querySelector(".modal");
+  onMount?.(modal);
+  if (keep && oldTitle && modal.querySelector("h2")?.textContent === oldTitle) {
+    modal.scrollTop = keep[0];
+    root.querySelector(".modal-backdrop").scrollTop = keep[1];
+    return;
+  }
   root.querySelector("input, button, [tabindex]")?.focus();
 }
 // ---------------------------------------------------------------- map check (admin)

@@ -507,7 +507,10 @@ def main() -> int:
             if pg.locator(".gm-wave").count() != 10:
                 problems.append("games: 'Change these' didn't start my own waves from the ready-made ones")
             pg.select_option("#gm-form [name=level]", "custom"); pg.wait_for_timeout(400)
+            pg.evaluate("document.querySelector('#modal-root .modal').scrollTop = 600"); pg.wait_for_timeout(100)
             pg.select_option("#gm-form [data-addmob='0']", "creeper"); pg.wait_for_timeout(400)
+            if pg.evaluate("document.querySelector('#modal-root .modal').scrollTop") < 300:
+                problems.append("games: adding a monster to a wave jumped the setup window back to the top")
             if "Creeper" not in (pg.locator(".gm-waves").text_content() or ""):
                 problems.append("games: adding a monster to a mob arena wave didn't show")
             check(pg, "games-arena-setup")

@@ -18,6 +18,7 @@ class FightGame(FakeGame):
         super().__init__()
         self.rules = {"keepInventory": "false", "doImmediateRespawn": "false", "mobGriefing": "true", "doDaylightCycle": "true"}
         self.daytime = 6000
+        self.watching: set[str] = set()                 # in creative or spectator
         self.scores: dict[tuple, int] = {}
         self.pos = {"Alex": ("minecraft:overworld", 0.0, 64.0, 0.0), ".LongBedrockNameX": ("minecraft:overworld", 30.0, 64.0, 0.0)}
 
@@ -29,6 +30,11 @@ class FightGame(FakeGame):
                 self.rules[m.group(1)] = m.group(2)
                 return f"Gamerule {m.group(1)} is now set to: {m.group(2)}"
             return f"Gamerule {m.group(1)} is currently set to: {self.rules[m.group(1)]}"
+        if m := re.fullmatch(r"execute as (\S+) if entity @s\[gamemode=!spectator,gamemode=!creative\]", cmd):
+            return "Test failed" if m.group(1) in self.watching else "Test passed"
+        if m := re.fullmatch(r"execute in \S+ run spreadplayers (-?[\d.]+) (-?[\d.]+) 0 1 false (\S+)", cmd):
+            self.pos[m.group(3)] = ("minecraft:overworld", float(m.group(1)), 64.0, float(m.group(2)))
+            return "Spread 1 player"
         if cmd == "time query daytime":
             return f"The time is {self.daytime}"
         if m := re.fullmatch(r"time set (\d+)", cmd):
@@ -219,3 +225,21 @@ def test_arena_monsters_come_with_their_gear_and_specials():
     assert 'HandItems:[{id:"minecraft:iron_sword",count:1},{}]' in nbt and "ArmorDropChances" in nbt
     assert arena.clean_waves([{"baby_zombie": 2, "charged_creeper": 1}]) == [{"baby_zombie": 2, "charged_creeper": 1}]
     assert arena.battle_name("spear_zombie", 3) == "zombies with spears" and arena.battle_name("baby_zombie", 1) == "baby zombie"
+
+
+def test_people_not_playing_are_moved_out_of_the_arena(fight):
+    r = {"id": "a2", "game": "arena", "name": "Mob arena", "dim": "minecraft:overworld", "players": {"Alex": {"uuid": U1}}}
+    r.update(arena.settings({"center": HILL, "radius": 10, "mob_spots": [{"x": 5, "y": 64, "z": 5}], "level": "easy"}, games._num, games._point))
+    where = {"Alex": ("minecraft:overworld", 1.0, 64.0, 1.0), "Sam": ("minecraft:overworld", 0.0, 64.0, 6.0),
+             "Admin": ("minecraft:overworld", 2.0, 64.0, 2.0), "Far": ("minecraft:overworld", 200.0, 64.0, 0.0)}
+    fight.pos.update(where)
+    fight.watching.add("Admin")
+    asyncio.run(battle.keep_out(fight, r, where))
+    import math
+    _d, x, _y, z = fight.pos["Sam"]
+    assert math.hypot(x, z) > 12 and z > 0                                  # just outside, on the side they were on
+    assert fight.pos["Alex"] == where["Alex"] and fight.pos["Admin"] == where["Admin"] and fight.pos["Far"] == where["Far"]
+    assert sum("moved just outside" in c for c in fight.said) == 1
+    fight.pos["Sam"] = ("minecraft:overworld", 0.0, 64.0, -3.0)                     # wandered back in, the other side
+    asyncio.run(battle.keep_out(fight, r, {"Sam": fight.pos["Sam"]}))
+    assert fight.pos["Sam"][3] < -12 and sum("moved just outside" in c for c in fight.said) == 1      # out again; told once
