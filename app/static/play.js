@@ -793,7 +793,9 @@ async function viewRaces(sid) {
             <ol class="rc-points">${pts.map((p, i) => `<li class="${selected === i ? "sel" : ""}" data-i="${i}">
                 <span class="rc-badge ${i === 0 ? "s" : i === pts.length - 1 && pts.length > 1 ? "f" : ""}">${i === 0 ? "S" : i === pts.length - 1 && pts.length > 1 ? "F" : i}</span>
                 <div class="rc-pt"><input class="input sm" data-name value="${esc(p.name || "")}" placeholder="${pointName(pts, i)}" maxlength="32" aria-label="Name for point ${i + 1}">
-                  <span class="muted small">${Math.round(p.x)}, ${Math.round(p.y)}, ${Math.round(p.z)} · reach within <input class="input sm num-in" type="number" data-radius min="2" max="16" value="${p.radius || 4}" aria-label="Radius"> blocks</span></div>
+                  <span class="muted small">${Math.round(p.x)}, ${Math.round(p.y)}, ${Math.round(p.z)} · reach within <input class="input sm num-in" type="number" data-radius min="2" max="16" value="${p.radius || 4}" aria-label="Radius"> blocks</span>
+                  <span class="muted small rc-band">counts from <input class="input sm num-in" type="number" data-low min="-64" max="380" value="${p.low ?? ""}" placeholder="auto" aria-label="Lowest, blocks above the point">
+                    to <input class="input sm num-in" type="number" data-high min="-62" max="384" value="${p.high ?? ""}" placeholder="auto" aria-label="Highest, blocks above the point"> blocks above it</span></div>
                 <span class="rc-acts"><button type="button" class="icon-btn" data-up ${i === 0 ? "disabled" : ""} aria-label="Move up">▲</button><button type="button" class="icon-btn" data-down ${i === pts.length - 1 ? "disabled" : ""} aria-label="Move down">▼</button><button type="button" class="icon-btn" data-rm aria-label="Remove">✕</button></span></li>`).join("")}</ol>
             ${pts.length ? `<p class="muted small">${Math.max(0, pts.length - 2)} checkpoints · about ${length(pts)} blocks</p>` : `<p class="muted small">No points yet.</p>`}
           </div>
@@ -814,7 +816,9 @@ async function viewRaces(sid) {
     if (pts.length > 1) setTimeout(() => map.fit(pts), 0);
     const sync = () => {
       editing.name = form.name.value;
-      $$(".rc-points li", form).forEach((li) => { const p = editing.points[+li.dataset.i]; p.name = li.querySelector("[data-name]").value.trim(); p.radius = +li.querySelector("[data-radius]").value || 4; });
+      $$(".rc-points li", form).forEach((li) => { const p = editing.points[+li.dataset.i]; p.name = li.querySelector("[data-name]").value.trim(); p.radius = +li.querySelector("[data-radius]").value || 4;
+        const lo = li.querySelector("[data-low]").value, hi = li.querySelector("[data-high]").value;
+        p.low = lo === "" ? null : +lo; p.high = hi === "" ? null : +hi; });
     };
     const addPoint = (p) => { sync(); editing.points.push({ x: p.x, y: p.y, z: p.z, radius: 4, name: "" }); selected = editing.points.length - 1; renderEditor(); };
     $("#rc-addhere").addEventListener("click", async () => {

@@ -70,9 +70,17 @@ def clean_course(body: dict, server: str) -> dict:
     for p in (body.get("points") or [])[:MAX_POINTS]:
         if not isinstance(p, dict):
             continue
-        pts.append({"x": round(_num(p.get("x"), -3e7, 3e7, 0), 1), "y": round(_num(p.get("y"), -64, 320, 64), 1),
-                    "z": round(_num(p.get("z"), -3e7, 3e7, 0), 1), "radius": round(_num(p.get("radius"), 2, 16, 4), 1),
-                    "name": clean_text(str(p.get("name") or ""), 32) if str(p.get("name") or "").strip() else ""})
+        pt = {"x": round(_num(p.get("x"), -3e7, 3e7, 0), 1), "y": round(_num(p.get("y"), -64, 320, 64), 1),
+              "z": round(_num(p.get("z"), -3e7, 3e7, 0), 1), "radius": round(_num(p.get("radius"), 2, 16, 4), 1),
+              "name": clean_text(str(p.get("name") or ""), 32) if str(p.get("name") or "").strip() else ""}
+        # its own height: it counts from `low` to `high` blocks above the point (say 60 to 100, for an elytra race
+        # through the sky). Not set: near the ground on foot or by boat, up to 40 above by elytra.
+        low, high = p.get("low"), p.get("high")
+        if low not in (None, "") or high not in (None, ""):
+            lo = int(_num(low, -64, 380, 0)) if low not in (None, "") else 0
+            hi = int(_num(high, -64, 384, lo + 40)) if high not in (None, "") else lo + 40
+            pt["low"], pt["high"] = min(lo, hi - 2), max(hi, lo + 2)
+        pts.append(pt)
     if len(pts) < 2:
         raise ValueError("A course needs at least a start and a finish")
     name = str(body.get("name") or "").strip()
@@ -180,10 +188,12 @@ async def _place_markers(srv, r: dict) -> None:
                               ("yellow_stained_glass", 0xF2C14E, "gold") if i == last else
                               ("lime_stained_glass", 0x55FF55, "green"))
         x, y, z = p["x"], p["y"], p["z"]
-        out = await _rcon(srv, f"execute in {dim} run summon minecraft:block_display {x} {y} {z} "
+        low, high = _band(r, p) if (p.get("low") is not None or r.get("vehicle") == "elytra") else (0, 32)
+        bottom, tall = y + max(low, -5), max(2, high - max(low, -5))        # the column: just where it counts
+        out = await _rcon(srv, f"execute in {dim} run summon minecraft:block_display {x} {bottom} {z} "
                                f"{{Tags:[\"solrace\",\"{_tag(r)}\"],block_state:{{Name:\"minecraft:{glass}\"}},Glowing:1b,glow_color_override:{glow},"
                                f"view_range:8f,brightness:{{sky:15,block:15}},transformation:{{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],"
-                               f"translation:[-0.5f,0f,-0.5f],scale:[1f,32f,1f]}}}}")
+                               f"translation:[-0.5f,0f,-0.5f],scale:[1f,{tall}f,1f]}}}}")
         if out and "summoned" not in out.lower():
             errors.append(out[:160])
         if i > 0:                       # a dot on everyone's locator bar (1.21.6+): an armor stand buried under the point
@@ -192,7 +202,7 @@ async def _place_markers(srv, r: dict) -> None:
                              f"{{Tags:[\"solrace\",\"{_tag(r)}\",\"{_tag(r)}_wp{i}\"],Small:1b,Marker:1b,NoGravity:1b,Invulnerable:1b,Silent:1b,"
                              f"attributes:[{{id:\"minecraft:waypoint_transmit_range\",base:60000000d}}]}}")
             await _rcon(srv, f"waypoint modify @e[tag={_tag(r)}_wp{i},limit=1] color {'gold' if i == last else 'green'}")
-        await _rcon(srv, f"execute in {dim} run summon minecraft:text_display {x} {y + 33} {z} "
+        await _rcon(srv, f"execute in {dim} run summon minecraft:text_display {x} {bottom + tall + 1} {z} "
                          f"{{Tags:[\"solrace\",\"{_tag(r)}\"],billboard:\"center\",see_through:1b,view_range:8f,"
                          f"background:1073741824,transformation:{{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],"
                          f"translation:[0f,0f,0f],scale:[5f,5f,5f]}},text:{_text_nbt(srv, _label(r, i), color)}}}")
@@ -322,12 +332,21 @@ async def _go(srv, r: dict) -> None:
     db.add_event(srv.id, time.time(), "race", f"{r['name']} started")
 
 
+def _band(r: dict, p: dict) -> tuple[int, int]:
+    """From how far below to how far above the point it counts: its own, or near the ground (on foot, by boat) or
+    up to 40 above it (by elytra)."""
+    if p.get("low") is not None and p.get("high") is not None:
+        return p["low"], p["high"]
+    return (-5, 40) if r.get("vehicle") == "elytra" else (-10, 10)
+
+
 def _passed(r: dict, tgt: dict, prev, pos) -> bool:
     """Did they go through this point between the last look and now? The closest they came along that stretch
     (straight from there to here): within its radius, and at the right height (by elytra: up to 40 above it)."""
+    low, high = _band(r, tgt)
+
     def near(x, y, z):
-        dx, dz, dy = tgt["x"] - x, tgt["z"] - z, tgt["y"] - y
-        return math.hypot(dx, dz) <= tgt["radius"] and (-40 <= dy <= 5 if r.get("vehicle") == "elytra" else abs(dy) <= 10)
+        return math.hypot(tgt["x"] - x, tgt["z"] - z) <= tgt["radius"] and low <= y - tgt["y"] <= high
     if near(*pos[:3]):
         return True
     if not prev or math.dist(prev, pos[:3]) > 120:       # nothing to go on, or a teleport (lined up, a respawn): just here
@@ -338,11 +357,13 @@ def _passed(r: dict, tgt: dict, prev, pos) -> bool:
     return near(prev[0] + t * sx, prev[1] + t * (pos[1] - prev[1]), prev[2] + t * sz)
 
 
-def _height_hint(r: dict, dy: float, dist: float) -> str:
-    """By elytra, close to the next point: whether to come down to it (it counts up to 40 above it)."""
-    if r.get("vehicle") != "elytra" or dist > 80:
+def _height_hint(r: dict, tgt: dict, dy: float, dist: float) -> str:
+    """Close to the next point, by elytra or when it has its own height: whether to go higher or lower for it."""
+    if dist > 80 or (r.get("vehicle") != "elytra" and tgt.get("low") is None):
         return ""
-    return f" · ↓ {int(-dy - 40)} m lower" if dy < -40 else " · height's good"
+    low, high = _band(r, tgt)
+    above = -dy                                          # how far above the point they are
+    return f" · ↓ {int(above - high)} m lower" if above > high else f" · ↑ {int(low - above)} m higher" if above < low else " · height's good"
 
 
 async def _track(srv, r: dict) -> None:
@@ -387,7 +408,7 @@ async def _track(srv, r: dict) -> None:
             tgt = pts[st["next"]]
             dx, dz, dy = tgt["x"] - pos[0], tgt["z"] - pos[2], tgt["y"] - pos[1]
             dist = math.hypot(dx, dz)
-        nxt = f"Next: {_label(r, st['next'])} · {int(dist)} m {_direction(dx, dz)}{_height_hint(r, dy, dist)} · {_fmt(r['ends_at'] - now)} left"
+        nxt = f"Next: {_label(r, st['next'])} · {int(dist)} m {_direction(dx, dz)}{_height_hint(r, tgt, dy, dist)} · {_fmt(r['ends_at'] - now)} left"
         await _rcon(srv, f"title {n} actionbar {component([(nxt, 'yellow')])}")
     # checkpoints everyone has passed leave the locator bar, so the nearest dot is the next one
     todo = {st["next"] for st in r["racers"].values() if not st["finished"]}
@@ -401,8 +422,10 @@ async def _track(srv, r: dict) -> None:
         dim = r.get("dim") or "minecraft:overworld"
         for i in sorted(todo):
             p = pts[i]
-            await _rcon(srv, f"execute in {dim} run particle minecraft:end_rod {p['x']} {p['y'] + 8} {p['z']} {p['radius'] / 3} 8 {p['radius'] / 3} 0.02 90 force")
-            await _rcon(srv, f"execute in {dim} run particle minecraft:glow {p['x']} {p['y'] + 1} {p['z']} {p['radius'] / 2} 0.5 {p['radius'] / 2} 0 30 force")
+            low, high = _band(r, p) if p.get("low") is not None else (0, 16)
+            mid, half = p["y"] + (low + high) / 2, max(1, (high - low) / 2)
+            await _rcon(srv, f"execute in {dim} run particle minecraft:end_rod {p['x']} {mid} {p['z']} {p['radius'] / 3} {min(half, 16)} {p['radius'] / 3} 0.02 90 force")
+            await _rcon(srv, f"execute in {dim} run particle minecraft:glow {p['x']} {p['y'] + max(low, 0) + 1} {p['z']} {p['radius'] / 2} 0.5 {p['radius'] / 2} 0 30 force")
 
 
 def _ordinal(n: int) -> str:

@@ -255,4 +255,29 @@ def test_a_fast_flyer_going_through_a_checkpoint_between_looks_counts():
     assert not races._passed(sky, tgt, [70.0, 150.0, 0.0], (130.0, 150.0, 0.0))          # far too high over it
     assert not races._passed(sky, tgt, [-500.0, 64.0, 0.0], (130.0, 64.0, 0.0))          # a teleport isn't flying through
     assert not races._passed({"vehicle": "none"}, tgt, [70.0, 84.0, 0.0], (130.0, 84.0, 0.0))   # on foot: not 20 up
-    assert races._height_hint(sky, -60, 30) == " · ↓ 20 m lower" and races._height_hint(sky, -10, 30) == " · height's good"
+    assert races._height_hint(sky, {}, -60, 30) == " · ↓ 20 m lower" and races._height_hint(sky, {}, -10, 30) == " · height's good"
+
+
+def test_a_checkpoint_can_have_its_own_height():
+    from app import races
+    c = races.clean_course({"points": [{"x": 0, "y": 64, "z": 0}, {"x": 100, "y": 64, "z": 0, "radius": 8, "low": 60, "high": 100}]}, "s")
+    sky = c["points"][1]
+    assert (sky["low"], sky["high"]) == (60, 100) and "low" not in c["points"][0]
+    r = {"vehicle": "elytra"}
+    assert not races._passed(r, sky, [70.0, 84.0, 0.0], (130.0, 84.0, 0.0))                 # 20 up: under it
+    assert races._passed(r, sky, [70.0, 144.0, 0.0], (130.0, 144.0, 0.0))                   # 80 up: through it
+    assert not races._passed(r, sky, [70.0, 194.0, 0.0], (130.0, 194.0, 0.0))               # 130 up: over it
+    assert races._height_hint(r, sky, -20, 30) == " · ↑ 40 m higher" and races._height_hint(r, sky, -130, 30) == " · ↓ 30 m lower"
+    assert races._height_hint(r, sky, -80, 30) == " · height's good"
+    assert races._height_hint({"vehicle": "none"}, sky, -20, 30) == " · ↑ 40 m higher"     # its own height: said on foot too
+    lo = races.clean_course({"points": [{"x": 0, "y": 64, "z": 0}, {"x": 9, "y": 64, "z": 0, "low": 50, "high": 10}]}, "s")["points"][1]
+    assert lo["low"] < lo["high"]                                                             # mixed up: still a sensible band
+
+
+def test_the_markers_show_where_a_checkpoint_counts(fight):
+    from app import races
+    r = {"id": "m1", "name": "Sky", "vehicle": "elytra", "dim": "minecraft:overworld",
+         "points": [{"x": 0, "y": 64, "z": 0, "radius": 4, "name": ""}, {"x": 50, "y": 64, "z": 0, "radius": 8, "name": "", "low": 60, "high": 100}]}
+    asyncio.run(races._place_markers(fight, r))
+    col = [c for c in fight.said if "block_display 50" in c][0]
+    assert " 124 0 " in col and "scale:[1f,40f,1f]" in col                                   # from 60 up to 100 up
