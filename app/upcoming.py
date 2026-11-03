@@ -126,7 +126,7 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
         start, end, cd = board.item_window(it)
         when = cd or start
         if when and t - 3600 < when <= until:
-            add(when, "note", it["emoji"] or "📣", it["text"], it["detail"], server=it["server"] or None,
+            add(when, "note", it["emoji"] or "📣", board.plain(it["text"]), board.plain(it["detail"]), server=it["server"] or None,
                 live=bool(cd and cd <= t), link="#/announcements")
 
     # a night of back-to-back events: each one that starts soon after the one before (same server) follows on from it

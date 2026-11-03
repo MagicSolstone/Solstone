@@ -14,6 +14,17 @@ function fmtCountdown(sec) {
 // el: where the banners go. opts: where ("app" | "status" | "login"), sid() -> server in view,
 // scene() -> the sky (for shows at zero), dismiss (let people hide a banner), onItems(items),
 // max (show this many, with "+N more"), ticker() -> true to show one at a time, cycling (TV mode).
+// An announcement's text with its formatting (bold, italic, links, colours: the same as posts, from postfmt.js),
+// escaped first so it can't carry HTML of its own. Plain where postfmt.js isn't loaded.
+function annFmt(text) {
+  return typeof inline === "function" ? inline(esc(text || "")) : esc(text || "");
+}
+// The same without the formatting, for places that only take plain text.
+function annPlain(text) {
+  return String(text || "").replace(/\[([^\]]+)\]\([^)\s]+\)/g, "$1").replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/(^|[\s(])[*_]([^*_]+)[*_]/g, "$1$2").replace(/\{\/?[a-z]+\}/g, "");
+}
+
 function startBoard(el, opts = {}) {
   if (!el) return null;
   let items = [], offset = 0, pollT = 0, tickT = 0, stopped = false, expanded = false, turn = 0, turnAt = Date.now();
@@ -50,7 +61,7 @@ function startBoard(el, opts = {}) {
     el.classList.toggle("ticker", !!ticker);
     const html = list.map((it) => `<div class="bn bn-${esc(it.style)} bn-k-${esc(it.kind)}" data-id="${esc(it.id)}" role="status">
       ${it.emoji ? `<span class="bn-emoji" aria-hidden="true">${esc(it.emoji)}</span>` : ""}
-      <div class="bn-text"><b>${it.link && it.link.startsWith("/app#/") ? `<a href="${esc(it.link)}">${esc(it.text)}</a>` : esc(it.text)}</b>${it.detail ? `<small>${esc(it.detail)}</small>` : ""}</div>
+      <div class="bn-text"><b>${it.link && it.link.startsWith("/app#/") ? `<a href="${esc(it.link)}">${esc(annPlain(it.text))}</a>` : annFmt(it.text)}</b>${it.detail ? `<small>${annFmt(it.detail)}</small>` : ""}</div>
       ${cdHtml(it)}${opts.dismiss ? `<button class="bn-x" type="button" data-dismiss="${esc(it.id)}" aria-label="Hide this">×</button>` : ""}</div>`).join("")
       + more + (ticker ? `<div class="bn-dots" aria-hidden="true">${all.map((_, i) => `<i class="${i === turn % all.length ? "on" : ""}"></i>`).join("")}</div>` : "");
     if (el._html !== html) { el._html = html; el.innerHTML = html; }
@@ -68,7 +79,7 @@ function startBoard(el, opts = {}) {
   function fire(it) {
     const scene = opts.scene?.();
     if (it.kind === "bedtime") { bigText(it.done_text || "Time for bed!"); return; }
-    bigText(`${it.emoji ? `${it.emoji} ` : ""}${it.done_text || it.text}`);
+    bigText(`${it.emoji ? `${it.emoji} ` : ""}${it.done_text || annPlain(it.text)}`);
     if (!scene) return;
     if (it.show) scene.boost(60, it.show);
     else if (it.style === "party") scene.celebrate(8);

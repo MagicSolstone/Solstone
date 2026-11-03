@@ -43,7 +43,7 @@ function annState(it) {
 function annBannerHtml(it, preview = false) {
   const cd = it.countdown ? (preview ? new Date(it.countdown).getTime() / 1000 : null) : null;
   return `<div class="bn bn-${esc(it.style)}">${it.emoji ? `<span class="bn-emoji">${esc(it.emoji)}</span>` : ""}
-    <div class="bn-text"><b>${esc(it.text || "Your announcement")}</b>${it.detail ? `<small>${esc(it.detail)}</small>` : ""}</div>
+    <div class="bn-text"><b>${it.text ? annFmt(it.text) : "Your announcement"}</b>${it.detail ? `<small>${annFmt(it.detail)}</small>` : ""}</div>
     ${cd ? `<span class="bn-cd">${esc(cd > Date.now() / 1000 ? fmtCountdown(cd - Date.now() / 1000) : it.done_text || "It's here!")}</span>` : ""}</div>`;
 }
 function annBanners(el) {
@@ -88,10 +88,15 @@ function annEditHtml(it) {
     <div class="ann-preview" aria-label="Preview">${annBannerHtml(it, true)}</div>
     <div class="fws-grid">
       <label>Emoji<span class="ann-emoji"><input class="input sm" name="emoji" value="${esc(it.emoji)}" maxlength="8" style="width:64px"></span></label>
-      <label class="wide">Message<input class="input" name="text" value="${esc(it.text)}" maxlength="120" required placeholder="Build contest: castles!"></label>
+      <label class="wide">Message<input class="input" name="text" value="${esc(it.text)}" maxlength="300" required placeholder="Build contest: castles!"></label>
     </div>
+    <div class="ann-fmt" role="toolbar" aria-label="Formatting (for the box you were last in)">
+      <button type="button" class="btn sm" data-wrap="**|**" title="Bold"><b>B</b></button><button type="button" class="btn sm" data-wrap="*|*" title="Italic"><i>I</i></button>
+      <button type="button" class="btn sm" data-link title="A link">🔗 Link</button>
+      ${POST_COLOURS.map(([k, l]) => `<button type="button" class="ann-col pf-swatch-${k}" data-wrap="{${k}}|{/${k}}" title="${l}" aria-label="${l}"></button>`).join("")}
+      <span class="muted small">Select some words in the message or the smaller line, then pick.</span></div>
     <div class="ann-picks">${ANN_EMOJI.map((e) => `<button type="button" class="btn sm" data-emoji="${e}">${e}</button>`).join("")}</div>
-    <label class="ann-full">Smaller line <span class="muted small">optional</span><input class="input" name="detail" value="${esc(it.detail)}" maxlength="240" placeholder="Meet at spawn. Best build wins a diamond pickaxe."></label>
+    <label class="ann-full">Smaller line <span class="muted small">optional</span><input class="input" name="detail" value="${esc(it.detail)}" maxlength="600" placeholder="Meet at spawn. Best build wins a diamond pickaxe."></label>
     <div class="fw-row"><span>Look</span>${seg("style", ANN_STYLES, it.style)}</div>
     <div class="fw-row"><span>Show on</span><div class="ann-checks">${ANN_WHERE.map(([k, l]) => `<label class="check"><input type="checkbox" name="where" value="${k}" ${it.where.includes(k) ? "checked" : ""}> ${l}</label>`).join("")}</div></div>
     ${d.servers.length > 1 ? `<div class="fw-row"><span>Server</span><select class="input sm" name="server"><option value="">All servers</option>${d.servers.map((s) => `<option value="${esc(s.id)}" ${s.id === it.server ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></div>` : ""}
@@ -128,6 +133,20 @@ function annWireEdit(form) {
     b.parentElement.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); preview();
   }));
   form.querySelectorAll("[data-emoji]").forEach((b) => b.addEventListener("click", () => { form.emoji.value = b.dataset.emoji; preview(); }));
+  // Formatting: wraps what's selected in the message (or the smaller line, whichever was last used).
+  let box = form.text;
+  [form.text, form.detail].forEach((x) => x.addEventListener("focus", () => { box = x; }));
+  const wrap = (a, z, fill = "words") => {
+    const s0 = box.selectionStart ?? box.value.length, s1 = box.selectionEnd ?? s0, mid = box.value.slice(s0, s1) || fill;
+    box.setRangeText(a + mid + z, s0, s1, "end"); box.focus(); preview();
+  };
+  form.querySelectorAll("[data-wrap]").forEach((b) => b.addEventListener("mousedown", (e) => e.preventDefault()));
+  form.querySelectorAll("[data-wrap]").forEach((b) => b.addEventListener("click", () => { const [a, z] = b.dataset.wrap.split("|"); wrap(a, z); }));
+  form.querySelector("[data-link]").addEventListener("mousedown", (e) => e.preventDefault());
+  form.querySelector("[data-link]").addEventListener("click", () => {
+    const url = prompt("The link's address (https://…, or a page here like /help)");
+    if (url && /^(https?:\/\/|\/)/.test(url.trim())) wrap("[", `](${url.trim()})`, "this link");
+  });
   form.querySelector("[data-cancel]").addEventListener("click", () => { ann.editing = null; renderAnn(); });
   form.addEventListener("submit", async (e) => {
     e.preventDefault();

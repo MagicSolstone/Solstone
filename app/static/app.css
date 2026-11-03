@@ -2219,3 +2219,11 @@ a.glance-me:hover { border-color: var(--gold); }
 .ws-sent-list li.done { opacity: .75; }
 .ws-sent-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ws-sent-head .btn { margin-left: auto; }
+
+/* Announcements: formatting buttons, and links in banners */
+.ann-fmt { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -4px 0 4px; }
+.ann-col { width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(255,255,255,.25); cursor: pointer; padding: 0; }
+.pf-swatch-red { background: #ff6b6b; } .pf-swatch-orange { background: #ffa94d; } .pf-swatch-gold { background: #f2c14e; }
+.pf-swatch-green { background: #69db7c; } .pf-swatch-aqua { background: #66d9e8; } .pf-swatch-blue { background: #74c0fc; }
+.pf-swatch-purple { background: #b197fc; } .pf-swatch-pink { background: #f783ac; } .pf-swatch-gray { background: #adb5bd; }
+.bn-text a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }

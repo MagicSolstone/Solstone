@@ -139,3 +139,11 @@ def test_public_live_extras(client, anon, sid):
         assert anon.get("/api/public/board?where=status").status_code == 200
     finally:
         client.put("/api/settings/status", json={"enabled": False})
+
+
+def test_announcements_keep_their_formatting_but_the_game_gets_plain_words():
+    from app import board
+    it = board.clean_item({"text": "**Build** contest: {gold}castles{/gold}! [Rules](/guides/rules)", "detail": "*Meet* at spawn"})
+    assert it["text"].startswith("**Build**") and "{gold}" in it["text"] and it["detail"] == "*Meet* at spawn"
+    assert board.plain(it["text"]) == "Build contest: castles! Rules" and board.plain(it["detail"]) == "Meet at spawn"
+    assert board.clean_item({"text": "{red}{/red}"}) is None                        # formatting with no words isn't a message

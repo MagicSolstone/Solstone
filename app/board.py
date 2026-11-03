@@ -43,15 +43,26 @@ def _line(v, n: int) -> str:
     return " ".join(str(v or "").split())[:n]
 
 
+_MARKS = [(re.compile(r"\[([^\]]+)\]\([^)\s]+\)"), r"\1"), (re.compile(r"\*\*([^*]+)\*\*"), r"\1"),
+          (re.compile(r"(^|[\s(])[*_]([^*_]+)[*_]"), r"\1\2"), (re.compile(r"\{/?[a-z]+\}"), "")]
+
+
+def plain(text: str) -> str:
+    """An announcement without its formatting (bold, italic, links, colours), for the game's chat and lists."""
+    for rx, to in _MARKS:
+        text = rx.sub(to, text or "")
+    return text
+
+
 def clean_item(it: dict) -> dict | None:
     if not isinstance(it, dict):
         return None
-    text = _line(it.get("text"), 120)
-    if not text:
+    text = _line(it.get("text"), 300)            # room for formatting: **bold**, {red}…{/red}, [links](…)
+    if not plain(text).strip():
         return None
     where = [w for w in WHERE if w in (it.get("where") or [])] or list(WHERE)
     return {"id": re.sub(r"[^a-z0-9]", "", str(it.get("id") or "").lower())[:16] or secrets.token_hex(4),
-            "enabled": bool(it.get("enabled", True)), "text": text, "detail": _line(it.get("detail"), 240),
+            "enabled": bool(it.get("enabled", True)), "text": text, "detail": _line(it.get("detail"), 600),
             "emoji": _line(it.get("emoji"), 8), "style": it.get("style") if it.get("style") in STYLES else "info",
             "start": _dt(it.get("start")), "end": _dt(it.get("end")), "countdown": _dt(it.get("countdown")),
             "done_text": _line(it.get("done_text"), 80), "show": re.sub(r"[^a-z0-9_-]", "", str(it.get("show") or ""))[:24],
@@ -180,7 +191,7 @@ async def tick(servers: list) -> None:
         if not when or not when <= t < when + 120:
             continue
         if db.alert_once(f"board:{it['id']}:{int(when)}"):
-            text = it["done_text"] if cd and it["done_text"] else it["text"]
+            text = it["done_text"] if cd and it["done_text"] else plain(it["text"])
             await _say_all(servers, text, text if cd else "", it["server"])  # Minecraft's font has no emoji
 
 
