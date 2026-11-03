@@ -19,6 +19,14 @@ function fmtCountdown(sec) {
 function annFmt(text) {
   return typeof inline === "function" ? inline(esc(text || "")) : esc(text || "");
 }
+// A banner's own colours (the "Your colours" look): a gradient of two or three, see-through enough to read on.
+function annLook(it) {
+  const cs = (it.style === "custom" && it.colors?.length ? it.colors : []).filter((c) => /^#[0-9a-f]{6}$/i.test(c));
+  if (!cs.length) return "";
+  const rgba = (h, a) => `rgba(${parseInt(h.slice(1, 3), 16)}, ${parseInt(h.slice(3, 5), 16)}, ${parseInt(h.slice(5, 7), 16)}, ${a})`;
+  const stops = (cs.length === 1 ? [cs[0], "#141928"] : cs).map((c, i) => rgba(c, i === 0 ? 0.62 : 0.5));
+  return ` style="border-left-color:${cs[0]};background:linear-gradient(90deg, ${stops.join(", ")})"`;
+}
 // The same without the formatting, for places that only take plain text.
 function annPlain(text) {
   return String(text || "").replace(/\[([^\]]+)\]\([^)\s]+\)/g, "$1").replace(/\*\*([^*]+)\*\*/g, "$1")
@@ -59,7 +67,7 @@ function startBoard(el, opts = {}) {
     else if (opts.max && all.length > opts.max + 1 && !expanded) { list = all.slice(0, opts.max); more = `<button class="bn-more" type="button" data-more>+${all.length - opts.max} more</button>`; }
     else if (opts.max && all.length > opts.max + 1) more = `<button class="bn-more" type="button" data-more>Show less</button>`;
     el.classList.toggle("ticker", !!ticker);
-    const html = list.map((it) => `<div class="bn bn-${esc(it.style)} bn-k-${esc(it.kind)}" data-id="${esc(it.id)}" role="status">
+    const html = list.map((it) => `<div class="bn bn-${esc(it.style)} bn-k-${esc(it.kind)}" data-id="${esc(it.id)}" role="status"${annLook(it)}>
       ${it.emoji ? `<span class="bn-emoji" aria-hidden="true">${esc(it.emoji)}</span>` : ""}
       <div class="bn-text"><b>${it.link && it.link.startsWith("/app#/") ? `<a href="${esc(it.link)}">${esc(annPlain(it.text))}</a>` : annFmt(it.text)}</b>${it.detail ? `<small>${annFmt(it.detail)}</small>` : ""}</div>
       ${cdHtml(it)}${opts.dismiss ? `<button class="bn-x" type="button" data-dismiss="${esc(it.id)}" aria-label="Hide this">×</button>` : ""}</div>`).join("")

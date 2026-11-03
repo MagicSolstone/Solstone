@@ -341,8 +341,15 @@ def main() -> int:
                     problems.append("banners: an announcement's formatting (bold, colour, link) isn't shown")
             else:
                 problems.append("banners: an announcement doesn't show on the app's pages")
-            pg.request.put(f"{base}/api/board", data={"items": []}, headers=H)
+            looks = ["info", "party", "heads", "ocean", "forest", "sunset", "candy", "night", "ruby", "custom"]
+            pg.request.put(f"{base}/api/board", data={"items": [{"text": f"The **{k}** look", "detail": "A smaller line", "emoji": "📣", "style": k,
+                                                                  "colors": ["#1f8a70", "#bedb39", "#fd7400"]} for k in looks]}, headers=H)
             pg.set_viewport_size({"width": 1280, "height": 860})
+            pg.goto(f"{base}/app#/manage/announcements"); pg.reload(); pg.wait_for_timeout(1200)
+            if pg.locator(".ann-row .bn").count() != len(looks) or not pg.locator('.ann-row .bn-custom[style*="gradient"]').count():
+                problems.append("announcements: the looks, or your own colours, don't show")
+            check(pg, "announcement-looks")
+            pg.request.put(f"{base}/api/board", data={"items": []}, headers=H)
             # the web map through Solstone: in a walled-off frame, where a map's own code still has storage and its
             # files, but no reach into Solstone (a claim name on the map could be anything)
             mapdir = Path(tempfile.mkdtemp(prefix="smoke-map-"))

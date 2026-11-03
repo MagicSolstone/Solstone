@@ -17,7 +17,8 @@ from .rcon import RconError
 
 log = logging.getLogger("solstone.board")
 
-STYLES = ("info", "party", "heads")
+STYLES = ("info", "party", "heads", "ocean", "forest", "sunset", "candy", "night", "ruby", "custom")
+_HEX = re.compile(r"^#[0-9a-f]{6}$")
 WHERE = ("home", "status", "app", "login")
 DEFAULTS = {"items": [], "bedtime": {"show": True, "minutes": 30}}
 _DT = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")
@@ -64,6 +65,8 @@ def clean_item(it: dict) -> dict | None:
     return {"id": re.sub(r"[^a-z0-9]", "", str(it.get("id") or "").lower())[:16] or secrets.token_hex(4),
             "enabled": bool(it.get("enabled", True)), "text": text, "detail": _line(it.get("detail"), 600),
             "emoji": _line(it.get("emoji"), 8), "style": it.get("style") if it.get("style") in STYLES else "info",
+            # "custom": the admin's own two or three colours, as a gradient
+            "colors": [c for c in (str(x or "").strip().lower() for x in (it.get("colors") or [])[:3]) if _HEX.match(c)],
             "start": _dt(it.get("start")), "end": _dt(it.get("end")), "countdown": _dt(it.get("countdown")),
             "done_text": _line(it.get("done_text"), 80), "show": re.sub(r"[^a-z0-9_-]", "", str(it.get("show") or ""))[:24],
             "say": bool(it.get("say")), "where": where, "server": str(it.get("server") or "")[:64]}
@@ -122,7 +125,7 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
         if (start and t < start) or (end and t >= end):
             continue
         out.append({"id": f"n-{it['id']}", "kind": "note", "text": it["text"], "detail": it["detail"], "emoji": it["emoji"],
-                    "style": it["style"], "countdown": cd, "done_text": it["done_text"] or "It's here!",
+                    "style": it["style"], "colors": it.get("colors") or [], "countdown": cd, "done_text": it["done_text"] or "It's here!",
                     "show": _show(it["show"]) if cd and it["show"] else None})
     if cfg["bedtime"]["show"] and where in ("home", "status", "app") and servers:
         pt = playtime.config()

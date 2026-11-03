@@ -2,7 +2,8 @@
    Manage → Play time). Loaded after app.js. */
 "use strict";
 
-const ANN_STYLES = [["info", "Info"], ["party", "Celebration"], ["heads", "Heads-up"]];
+const ANN_STYLES = [["info", "Info"], ["party", "Celebration"], ["heads", "Heads-up"], ["ocean", "Ocean"], ["forest", "Forest"],
+  ["sunset", "Sunset"], ["candy", "Candy"], ["night", "Night"], ["ruby", "Ruby"], ["custom", "🎨 Your colours"]];
 const ANN_WHERE = [["home", "Home page"], ["app", "Signed-in pages"], ["login", "Sign-in page"]];
 const ANN_EMOJI = ["📣", "🎉", "🏗️", "🏆", "⚠️", "🎂", "🌙", "🎃", "🎄", "⛏️", "🐉", "🎬"];
 const ann = { data: null, editing: null };
@@ -42,7 +43,7 @@ function annState(it) {
 }
 function annBannerHtml(it, preview = false) {
   const cd = it.countdown ? (preview ? new Date(it.countdown).getTime() / 1000 : null) : null;
-  return `<div class="bn bn-${esc(it.style)}">${it.emoji ? `<span class="bn-emoji">${esc(it.emoji)}</span>` : ""}
+  return `<div class="bn bn-${esc(it.style)}"${annLook(it)}>${it.emoji ? `<span class="bn-emoji">${esc(it.emoji)}</span>` : ""}
     <div class="bn-text"><b>${it.text ? annFmt(it.text) : "Your announcement"}</b>${it.detail ? `<small>${annFmt(it.detail)}</small>` : ""}</div>
     ${cd ? `<span class="bn-cd">${esc(cd > Date.now() / 1000 ? fmtCountdown(cd - Date.now() / 1000) : it.done_text || "It's here!")}</span>` : ""}</div>`;
 }
@@ -97,7 +98,10 @@ function annEditHtml(it) {
       <span class="muted small">Select some words in the message or the smaller line, then pick.</span></div>
     <div class="ann-picks">${ANN_EMOJI.map((e) => `<button type="button" class="btn sm" data-emoji="${e}">${e}</button>`).join("")}</div>
     <label class="ann-full">Smaller line <span class="muted small">optional</span><input class="input" name="detail" value="${esc(it.detail)}" maxlength="600" placeholder="Meet at spawn. Best build wins a diamond pickaxe."></label>
-    <div class="fw-row"><span>Look</span>${seg("style", ANN_STYLES, it.style)}</div>
+    <div class="fw-row ann-looks"><span>Look</span>${seg("style", ANN_STYLES, it.style)}</div>
+    <div class="fw-row ann-colors" ${it.style === "custom" ? "" : "hidden"}><span>Colours</span>
+      ${[0, 1, 2].map((i) => `<label class="ann-color"><input type="color" name="color${i}" value="${esc((it.colors || [])[i] || ["#2f6fd0", "#8a3ad0", "#d0435f"][i])}" aria-label="Colour ${i + 1}">${i === 2 ? `<input type="checkbox" name="use3" ${(it.colors || []).length > 2 ? "checked" : ""} aria-label="Use a third colour"> <small class="muted">a third</small>` : ""}</label>`).join("")}
+      <small class="muted">Left to right. Darker colours keep the words easy to read.</small></div>
     <div class="fw-row"><span>Show on</span><div class="ann-checks">${ANN_WHERE.map(([k, l]) => `<label class="check"><input type="checkbox" name="where" value="${k}" ${it.where.includes(k) ? "checked" : ""}> ${l}</label>`).join("")}</div></div>
     ${d.servers.length > 1 ? `<div class="fw-row"><span>Server</span><select class="input sm" name="server"><option value="">All servers</option>${d.servers.map((s) => `<option value="${esc(s.id)}" ${s.id === it.server ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></div>` : ""}
     <h3 class="fws-sub">When</h3>
@@ -121,6 +125,7 @@ function annFormItem(form) {
   const base = typeof ann.editing === "number" ? ann.data.items[ann.editing] : { enabled: true };
   return { ...base, text: f.get("text").trim(), detail: f.get("detail").trim(), emoji: f.get("emoji").trim(),
     style: form.querySelector('[data-seg="style"] [aria-pressed="true"]')?.dataset.v || "info",
+    colors: [f.get("color0"), f.get("color1"), ...(f.get("use3") ? [f.get("color2")] : [])],
     where: f.getAll("where"), server: f.get("server") || "", start: f.get("start"), end: f.get("end"),
     countdown: f.get("countdown"), done_text: f.get("done_text").trim(), show: f.get("show"), say: !!f.get("say") };
 }
@@ -130,7 +135,9 @@ function annWireEdit(form) {
   form.addEventListener("input", preview);
   form.addEventListener("change", preview);
   form.querySelectorAll("[data-seg] button").forEach((b) => b.addEventListener("click", () => {
-    b.parentElement.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); preview();
+    b.parentElement.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    form.querySelector(".ann-colors").hidden = form.querySelector('[data-seg="style"] [aria-pressed="true"]')?.dataset.v !== "custom";
+    preview();
   }));
   form.querySelectorAll("[data-emoji]").forEach((b) => b.addEventListener("click", () => { form.emoji.value = b.dataset.emoji; preview(); }));
   // Formatting: wraps what's selected in the message (or the smaller line, whichever was last used).

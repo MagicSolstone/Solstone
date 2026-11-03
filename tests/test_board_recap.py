@@ -147,3 +147,11 @@ def test_announcements_keep_their_formatting_but_the_game_gets_plain_words():
     assert it["text"].startswith("**Build**") and "{gold}" in it["text"] and it["detail"] == "*Meet* at spawn"
     assert board.plain(it["text"]) == "Build contest: castles! Rules" and board.plain(it["detail"]) == "Meet at spawn"
     assert board.clean_item({"text": "{red}{/red}"}) is None                        # formatting with no words isn't a message
+
+
+def test_announcement_looks_and_your_own_colours():
+    from app import board
+    it = board.clean_item({"text": "Hi", "style": "custom", "colors": ["#FF0000", "#00ff00", "nope", "#0000ff"]})
+    assert it["style"] == "custom" and it["colors"] == ["#ff0000", "#00ff00"]        # only real colours, at most three looked at
+    assert board.clean_item({"text": "Hi", "style": "ocean"})["style"] == "ocean"
+    assert board.clean_item({"text": "Hi", "style": "glitter"})["style"] == "info"
