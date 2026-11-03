@@ -713,6 +713,18 @@ def main() -> int:
                 if saved.get("welcome_when") != "first" or "&cred bit" not in (saved.get("welcome") or ""):
                     problems.append("website: the welcome message didn't save")
                 check(pg, "website-welcome")
+            if not pg.locator("#ws-send").count():
+                problems.append("game messages: no Send a message section")
+            else:
+                pg.click('#ws-send [data-to="player"]'); pg.fill("#ws-send [name=player]", "Tyler")
+                pg.fill("#ws-send [name=text]", "&6Your prize is waiting, {player}!"); pg.wait_for_timeout(200)
+                if "Tyler" not in (pg.locator("#ws-send > .wel-preview").text_content() or "") and "Steve" not in (pg.locator("#ws-send > .wel-preview").text_content() or ""):
+                    problems.append("game messages: no preview of the message")
+                pg.click("#ws-send button[type=submit]"); pg.wait_for_timeout(900)
+                if "Waiting for them to join" not in (pg.locator("#ws-sent").text_content() or ""):
+                    problems.append("game messages: a message for someone not on isn't listed as waiting")
+                pg.locator("#ws-send").scroll_into_view_if_needed()
+                check(pg, "website-game-messages")
             nf = pg.locator("#ws-nudge")
             if not nf.count() or "2 new messages and a vote" not in (nf.locator(".wel-preview").first.text_content() or ""):
                 problems.append("website: the reminder about the website isn't there, or its preview doesn't fill in {waiting}")

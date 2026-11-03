@@ -2208,3 +2208,14 @@ a.glance-me:hover { border-color: var(--gold); }
 .rp-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border-radius: 999px; background: var(--well); font-size: .82rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rp-moment { font-size: .86rem; color: var(--muted); }
 .rp-ev .rp-ev-t { white-space: nowrap; }
+
+/* Game messages: sending one, and the list of what's waiting and what's gone */
+.ws-send { display: grid; gap: 10px; }
+.ws-send-to { justify-self: start; flex-wrap: wrap; }
+.ws-send-player { display: grid; gap: 4px; max-width: 320px; }
+.ws-sent h3 { margin: 10px 0 6px; font-size: 1rem; }
+.ws-sent-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ws-sent-list li { display: grid; gap: 6px; padding: 10px; border-radius: 10px; background: var(--well); }
+.ws-sent-list li.done { opacity: .75; }
+.ws-sent-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ws-sent-head .btn { margin-left: auto; }

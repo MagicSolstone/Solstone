@@ -20,7 +20,7 @@ async function viewWebsite() {
     <nav class="fwe-tabs fws-tabs" role="tablist" aria-label="Website">
       <button type="button" role="tab" data-tab="posts" aria-selected="${ws.tab === "posts"}">Posts</button>
       <button type="button" role="tab" data-tab="site" aria-selected="${ws.tab === "site"}">Site details</button>
-      <button type="button" role="tab" data-tab="welcome" aria-selected="${ws.tab === "welcome"}">Welcome in the game</button></nav>
+      <button type="button" role="tab" data-tab="welcome" aria-selected="${ws.tab === "welcome"}">Game messages</button></nav>
     <div id="ws-body"></div>`);
   $$(".fws-tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
     ws.tab = b.dataset.tab; ws.editing = null;
@@ -486,11 +486,57 @@ async function wsNudge(form, sid) {
   });
 }
 
+// Messages sent into the game by hand: what's waiting (for whom) and what's gone, newest first.
+async function wsSend(form) {
+  let to = "online";
+  const ta = form.text, pv = $(".wel-preview", form), sid = () => form.server.value;
+  const show = () => { pv.innerHTML = welcomePreview(ta.value, sid()) || ""; pv.hidden = !ta.value.trim(); };
+  const list = async () => {
+    const box = $("#ws-sent", form);
+    const d = await api(`/api/servers/${encodeURIComponent(sid())}/game-messages`).catch(() => ({ messages: [] }));
+    const who = (m) => m.to === "online" ? "Everyone on then" : m.to === "next" ? "Everyone, when they next join" : m.player;
+    const state = (m) => {
+      const names = Object.keys(m.sent);
+      if (m.to === "player") return m.done ? `✅ Sent ${esc(fmtAgo(m.sent[names[0]]))}` : "⏳ Waiting for them to join";
+      if (m.to === "online") return names.length ? `✅ Sent to ${esc(names.join(", "))}` : "Nobody got it";
+      return `⏳ Waiting · reached ${names.length}${names.length ? `: ${esc(names.slice(0, 8).join(", "))}${names.length > 8 ? "…" : ""}` : ""}`;
+    };
+    box.innerHTML = d.messages.length ? `<h3>Sent and waiting</h3><ul class="ws-sent-list">${d.messages.map((m) => `<li class="${m.done ? "done" : "waiting"}">
+        <div class="ws-sent-head"><b>${esc(who(m))}</b><span class="muted small">${esc(fmtAgo(m.created))} · ${state(m)}</span>
+          <button type="button" class="btn sm ${m.done ? "" : "danger"}" data-rm="${esc(m.id)}">${m.done ? "Remove" : "Take it down"}</button></div>
+        <div class="wel-preview">${welcomePreview(m.text, sid())}</div></li>`).join("")}</ul>` : "";
+  };
+  const names = async () => {
+    const pl = await api(`/api/servers/${encodeURIComponent(sid())}/players`).catch(() => ({ players: [] }));
+    $("#ws-send-names").innerHTML = pl.players.map((p) => `<option value="${esc(p.name)}">${p.online ? "on now" : ""}</option>`).join("");
+  };
+  form.addEventListener("input", (e) => { if (e.target === ta) show(); });
+  if (form.server.tagName === "SELECT") form.server.addEventListener("change", () => { list(); names(); });
+  form.addEventListener("click", async (e) => {
+    const code = e.target.closest("[data-code]");
+    if (code) { const a = ta.selectionStart ?? ta.value.length, z = ta.selectionEnd ?? a; ta.setRangeText(code.dataset.code, a, z, "end"); ta.focus(); show(); return; }
+    const t = e.target.closest("[data-to]");
+    if (t) { to = t.dataset.to; $$("[data-to]", form).forEach((b) => b.setAttribute("aria-pressed", String(b === t))); $(".ws-send-player", form).hidden = to !== "player"; return; }
+    const rm = e.target.closest("[data-rm]");
+    if (rm) { try { await api(`/api/servers/${encodeURIComponent(sid())}/game-messages/${rm.dataset.rm}`, { method: "DELETE" }); list(); } catch (err) { showError(esc(err.message), 4000); } }
+  });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const m = await post(`/api/servers/${encodeURIComponent(sid())}/game-messages`, { text: ta.value, to, player: form.player.value });
+      const n = Object.keys(m.sent).length;
+      showToast(m.to === "player" ? (n ? `Sent to ${esc(m.player)}` : `${esc(m.player)} isn't on: it's waiting for them`) : m.to === "next" ? `Waiting for everyone's next join${n ? ` (sent to the ${n} on now)` : ""}` : `Sent to ${n} on now`, 3500);
+      ta.value = ""; show(); list();
+    } catch (err) { showError(esc(err.message), 5000); }
+  });
+  list(); names();
+}
+
 async function wsWelcome(el) {
   const servers = (state.servers || []).filter((x) => x.type !== "bedrock");
   if (!servers.length) { el.innerHTML = `<p class="muted">No Java servers yet.</p>`; return; }
   el.innerHTML = `<div class="ws-welcome">
-    <p class="muted">A message in the game's chat, just for the player who joined: on their first time, or every time. Only they see it. Web addresses can be clicked on Java; Bedrock players see them written out.</p>
+    <p class="muted">Messages in the game's chat: a welcome for each server (just for the player who joined, on their first time or every time), reminders about the website, and messages you send yourself (at the bottom). Web addresses can be clicked on Java; Bedrock players see them written out.</p>
     <form class="panel ws-nudge" id="ws-nudge"><div class="section-head"><h2>✉️ Reminders about the website</h2></div>
       <p class="muted small">So the website isn't forgotten: a line in the game when something's waiting there for a player (new messages, a vote they haven't voted in). Nothing is sent when nothing's waiting.
         Fill-ins: <code>{waiting}</code> (like “2 new messages and a vote”), <code>{messages}</code>, <code>{votes}</code>, <code>{player}</code>, <code>{site}</code>. Colours like the welcome message.</p>
@@ -519,6 +565,21 @@ async function wsWelcome(el) {
       <div class="btn-row"><button class="btn sm primary" type="submit">Save</button>
         <button class="btn sm" type="button" data-start>Start from an example</button>
         <span class="wel-try"><select class="input sm" name="try"></select><button class="btn sm" type="button" data-try>Send it to them now</button></span></div></form>`).join("")}</div>`;
+  el.querySelector(".ws-welcome").insertAdjacentHTML("beforeend", `<form class="panel ws-send" id="ws-send"><div class="section-head"><h2>📣 Send a message</h2>
+      ${servers.length > 1 ? `<select class="input sm" name="server" aria-label="Server">${servers.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}</select>` : `<input type="hidden" name="server" value="${esc(servers[0].id)}">`}</div>
+    <p class="muted small">Write it once, see how it looks, and send it: to everyone playing now, to everyone the next time they join (once each, until you take it down), or to one player (now if they're on, otherwise the next time they join).</p>
+    <div class="seg ws-send-to" role="group" aria-label="Who it's for">${[["online", "Everyone on now"], ["next", "Everyone, when they next join"], ["player", "One player"]].map(([k, l], i) => `<button type="button" data-to="${k}" aria-pressed="${i === 0}">${l}</button>`).join("")}</div>
+    <label class="ws-send-player" hidden>Player <small>Their name in the game</small><input class="input" name="player" maxlength="20" autocapitalize="off" list="ws-send-names"></label>
+    <datalist id="ws-send-names"></datalist>
+    <div class="wel-tools" role="toolbar" aria-label="Colours and styles">
+      ${WELCOME_COLOURS.map(([c, hex, l]) => `<button type="button" class="wel-col" data-code="&${c}" style="background:${hex}" title="${l}" aria-label="${l}"></button>`).join("")}
+      ${WELCOME_STYLES.map(([c, t, l]) => `<button type="button" class="btn sm wel-sty" data-code="&${c}" title="${l}" aria-label="${l}">${t}</button>`).join("")}
+      ${WELCOME_FIELDS.map(([k, l]) => `<button type="button" class="btn sm" data-code="{${k}}" title="${l}">{${k}}</button>`).join("")}</div>
+    <textarea class="input ws-text" name="text" rows="4" maxlength="800" placeholder="&6Movie night on the server at 7! &rMeet at spawn, {player}."></textarea>
+    <div class="wel-preview" aria-label="How it looks in the game" hidden></div>
+    <div class="btn-row"><button class="btn primary" type="submit">Send</button></div>
+    <div class="ws-sent" id="ws-sent"></div></form>`);
+  wsSend($("#ws-send", el));
   wsNudge($("#ws-nudge", el), servers[0].id);
   for (const form of $$(".ws-wel", el)) {
     const sid = form.dataset.sid, ta = form.text, pv = $(".wel-preview", form);

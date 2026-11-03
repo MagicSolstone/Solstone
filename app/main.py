@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
+from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -2384,6 +2384,46 @@ async def try_welcome(sid: str, request: Request):
     for cmd in welcome.commands(player, welcome.fill(text, player, srv.display_name)):
         await control.run(srv, cmd)
     auth.audit(user, srv.id, "welcome", f"tried on {player}")
+    return {"ok": True}
+
+
+# ---- messages an admin sends into the game (Website → Game messages): now, at everyone's next join, or to one player
+@app.get("/api/servers/{sid}/game-messages")
+async def list_game_messages(sid: str, request: Request):
+    auth.require_admin(request)
+    srv = await _server(sid)
+    return {"messages": gamemsg.listing(srv.id)}
+
+
+@app.post("/api/servers/{sid}/game-messages")
+async def send_game_message(sid: str, request: Request):
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    body = await _body(request)
+    player = str(body.get("player") or "").strip()
+    if player and not mcname.is_name(player):
+        raise HTTPException(400, "That isn't a Minecraft name")
+    try:
+        online = (await S.online_players(srv))[0] if srv.rcon_conf() else []
+    except Exception:
+        online = []
+    if body.get("to") == "online" and not online:
+        raise HTTPException(400, "Nobody's playing right now. Send it to everyone the next time they join instead")
+    try:
+        item = await gamemsg.create(srv, str(body.get("text") or ""), str(body.get("to") or ""), player, user.username, online)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    auth.audit(user, srv.id, "game_message", item["to"] + (f" {item['player']}" if item["player"] else ""))
+    return item
+
+
+@app.delete("/api/servers/{sid}/game-messages/{mid}")
+async def remove_game_message(sid: str, mid: str, request: Request):
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    if not gamemsg.remove(srv.id, mid):
+        raise HTTPException(404, "No such message")
+    auth.audit(user, srv.id, "game_message_removed", mid)
     return {"ok": True}
 
 
