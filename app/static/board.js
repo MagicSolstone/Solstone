@@ -52,34 +52,49 @@ function upLook(it) {
   return { cls: ` up-look bn-${esc(it.look.style)}`, style: annLook(it.look) };
 }
 // The Events page as a timeline down the page: today at the top (with what's on now), then a dot for each day
-// with something on, a dotted stretch and how long between them, and a gold stretch with the dates for a
-// holiday's reward. row(it) draws each card; cls: the list's own class ("panel" in the app, "glass" outside).
+// with something on, a dotted stretch and how long between them. A holiday's reward has its own small gold dot
+// on the day it starts (when that's before the holiday), and the line is gold for as long as it's being given.
+// row(it) draws each card; cls: the list's own class ("panel" in the app, "glass" outside).
 function upTimeline(items, row, cls = "panel") {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const toDay = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d); };
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const long = (d) => d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
   const between = (a, b) => Math.round((b - a) / 86400000);
+  const short = (isoDay) => { const d = toDay(isoDay); return `${d.toLocaleDateString([], { weekday: "short" })} ${d.getDate()} ${d.toLocaleDateString([], { month: "short" })}`; };   // "Sun 29 Nov", like the reward tags
   const now = items.filter((x) => x.live || x.date === iso(today) || toDay(x.date) < today);
-  const groups = [];
-  for (const it of items.filter((x) => !now.includes(x))) {
-    const g = groups[groups.length - 1];
-    if (g && g.date === it.date) g.items.push(it); else groups.push({ date: it.date, items: [it] });
-  }
-  const rewards = (list) => list.filter((x) => x.reward).map((x) => `<div class="tl-reward"><span aria-hidden="true">🎁</span> Reward: ${esc(x.reward.when)}</div>`).join("");
+  // the days on the line: each day with something on, and each day a reward starts before its holiday
+  const nodes = new Map();
+  const node = (date) => { if (!nodes.has(date)) nodes.set(date, { date, items: [], starts: [] }); return nodes.get(date); };
+  for (const it of items.filter((x) => !now.includes(x))) node(it.date).items.push(it);
+  const windows = items.filter((x) => x.reward?.first && x.reward?.last).map((x) => ({ it: x, first: x.reward.first, last: x.reward.last }));
+  for (const w of windows) if (w.first > iso(today) && w.first < w.it.date) node(w.first).starts.push(w.it);
+  const days = [...nodes.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
+  // gold while a reward's on: from one day to the next on the line
+  const gold = (from, to) => windows.some((w) => w.first <= from && to <= w.last);
+  const until = (d) => { const n = between(today, d); return n === 1 ? "Tomorrow" : n < 60 ? `In ${n} days` : `In ${Math.round(n / 7)} weeks`; };
+  const tag = (x) => `<div class="tl-reward"><span aria-hidden="true">🎁</span> Reward: ${esc(x.reward.when)}</div>`;
   const list = (l) => `<ul class="up-list ${cls}">${l.map(row).join("")}</ul>`;
-  let html = `<ol class="tl"><li class="tl-step tl-now${now.some((x) => x.reward) ? " tl-has-reward" : ""}"><span class="tl-node" aria-hidden="true"></span>
+  const name = (x) => (x.title_fmt ? annFmt(x.title_fmt) : esc(x.title));
+  const startLine = (x) => `<p class="tl-rstart"><span aria-hidden="true">🎁</span> <b>${name(x)}'s reward starts</b> <span class="muted">· play any day until ${esc(short(x.reward.last))}</span></p>`;
+  const onNow = windows.filter((w) => w.first <= iso(today) && iso(today) <= w.last && !now.includes(w.it))
+    .map((w) => `<p class="tl-rstart"><span aria-hidden="true">🎁</span> <b>${name(w.it)}'s reward is on now</b> <span class="muted">· play any day until ${esc(short(w.last))}</span></p>`).join("");
+  const firstNext = days[0]?.date;
+  let html = `<ol class="tl"><li class="tl-step tl-now${firstNext ? (gold(iso(today), firstNext) ? " tl-gold" : "") : ""}"><span class="tl-node" aria-hidden="true"></span>
     <div class="tl-date"><b>Today</b><span>${esc(long(today))}</span></div>
-    ${now.length ? `${rewards(now)}${list(now)}` : `<p class="muted small tl-quiet">Nothing on right now.</p>`}</li>`;
-  let prev = today;
-  for (const g of groups) {
-    const d = toDay(g.date), gap = between(prev, d), until = between(today, d);
-    if (gap > 1) html += `<li class="tl-gap" aria-hidden="true"><span>${gap % 7 ? `${gap} days` : gap === 7 ? "a week" : `${gap / 7} weeks`}</span></li>`;
-    html += `<li class="tl-step${g.items.some((x) => x.reward) ? " tl-has-reward" : ""}"><span class="tl-node" aria-hidden="true"></span>
-      <div class="tl-date"><b>${esc(long(d))}</b><span>${until === 1 ? "Tomorrow" : until < 7 ? `In ${until} days` : until < 14 ? "Next week" : `In ${Math.round(until / 7)} weeks`}</span></div>
-      ${rewards(g.items)}${list(g.items)}</li>`;
-    prev = d;
-  }
+    ${onNow}${now.length ? `${now.filter((x) => x.reward).map(tag).join("")}${list(now)}` : onNow ? "" : `<p class="muted small tl-quiet">Nothing on right now.</p>`}</li>`;
+  let prev = iso(today);
+  days.forEach((n, k) => {
+    const d = toDay(n.date), gap = between(toDay(prev), d), next = days[k + 1]?.date;
+    if (gap > 1) html += `<li class="tl-gap${gold(prev, n.date) ? " tl-gold" : ""}" aria-hidden="true"><span>${gap % 7 ? `${gap} days` : gap === 7 ? "a week" : `${gap / 7} weeks`}</span></li>`;
+    const onlyStart = !n.items.length;
+    const cl = [onlyStart ? "tl-rstep" : "", n.items.some((x) => x.reward) || n.starts.length ? "tl-has-reward" : "",
+      (next ? gold(n.date, next) : windows.some((w) => w.first <= n.date && n.date < w.last)) ? "tl-gold" : ""].filter(Boolean).join(" ");
+    html += `<li class="tl-step ${cl}"><span class="tl-node" aria-hidden="true"></span>
+      <div class="tl-date"><b>${esc(long(d))}</b><span>${until(d)}</span></div>
+      ${n.starts.map(startLine).join("")}${n.items.filter((x) => x.reward).map(tag).join("")}${n.items.length ? list(n.items) : ""}</li>`;
+    prev = n.date;
+  });
   return `${html}</ol>`;
 }
 // The same without the formatting, for places that only take plain text.

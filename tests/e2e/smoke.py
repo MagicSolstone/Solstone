@@ -451,7 +451,10 @@ def main() -> int:
             party = {"id": "smokeparty", "name": "Smoke weekend", "emoji": "🥧", "days": 1, "date": {"type": "once", "iso": today_iso},
                      "detail": "Come and play!", "reward": {"items": [{"item": "minecraft:pumpkin_pie", "count": 3}], "after": 3,
                                                             "note": "Reward for playing **Smoke weekend**", "banner": True}}
-            pg.request.put(f"{base}/api/fireworks/show", data={"calendar": [*cal, party]}, headers=H)
+            soon_iso = time.strftime("%Y-%m-%d", time.localtime(time.time() + 6 * 86400))
+            later = {"id": "smokefeast", "name": "Smoke feast", "emoji": "🦃", "days": 1, "date": {"type": "once", "iso": soon_iso},
+                     "reward": {"items": [{"item": "minecraft:cookie", "count": 2}], "before": 3, "after": 2}}
+            pg.request.put(f"{base}/api/fireworks/show", data={"calendar": [*cal, party, later]}, headers=H)
             ev = browser.new_page(viewport={"width": 1280, "height": 860})
             ev.goto(f"{base}/events"); ev.wait_for_timeout(1200)
             line = ev.locator('.up-item:has-text("Smoke weekend") .up-reward')
@@ -459,6 +462,8 @@ def main() -> int:
                 problems.append("events: a holiday's reward isn't on its own line with the item, amount and description")
             if not ev.locator(".tl .tl-now .tl-node").count() or not ev.locator(".tl-now .tl-reward").count():
                 problems.append("events: no timeline starting from today, or no reward dates on it")
+            if not ev.locator('.tl-rstep .tl-rstart:has-text("Smoke feast")').count() or not ev.locator(".tl-gold").count():
+                problems.append("events: a reward that starts before its holiday has no gold dot of its own on the timeline")
             if not ev.locator(".up-item.up-look").count():
                 problems.append("events: a holiday's card doesn't take its banner's look")
             check(ev, "events-reward")

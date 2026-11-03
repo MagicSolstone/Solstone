@@ -2378,7 +2378,12 @@ body.ui-hidden .manage-sub { display: none; }
 .tl-now .tl-node { width: 18px; height: 18px; left: -29px; top: 1px; background: var(--accent, #6aa9ff); border-color: #fff;
   box-shadow: 0 0 0 4px rgba(106, 169, 255, .25); }
 .tl-has-reward .tl-node { border-color: var(--gold); }
-.tl-has-reward::before { width: 4px; left: -22px; background: linear-gradient(var(--gold), rgba(242, 193, 78, .25)); }
+.tl-gold::before { width: 4px; left: -22px; background: var(--gold); }
+.tl-gap.tl-gold::before { background: none; width: 0; border-left: 3px dotted var(--gold); left: -22px; }
+.tl-rstep .tl-node { width: 12px; height: 12px; left: -26px; top: 4px; background: var(--gold); border-color: var(--gold); }
+.tl-rstep .tl-date b { font-size: .95rem; }
+.tl-rstart { margin: 0 0 8px; padding: 6px 12px; border-radius: 10px; font-size: .9rem; background: rgba(242, 193, 78, .1); border: 1px dashed rgba(242, 193, 78, .45); }
+.tl-rstart b { color: var(--gold); }
 .tl-date { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 8px; }
 .tl-date b { font-size: 1.05rem; }
 .tl-date span { color: var(--muted); font-size: .88rem; }
@@ -2392,7 +2397,7 @@ body.ui-hidden .manage-sub { display: none; }
 .tl .up-list { margin: 0; }
 /* a holiday's card in its banner's look */
 .up-item.up-look { border-left-width: 4px; border-left-style: solid; border-radius: 10px; margin: 6px 8px; border-top: 0; }
-@media (max-width: 560px) { .tl { padding-left: 24px; } .tl-step::before, .tl-gap::before { left: -17px; } .tl-node { left: -23px; } .tl-now .tl-node { left: -25px; } .tl-has-reward::before { left: -18px; } }
+@media (max-width: 560px) { .tl { padding-left: 24px; } .tl-step::before, .tl-gap::before { left: -17px; } .tl-node { left: -23px; } .tl-now .tl-node { left: -25px; } .tl-gold::before { left: -18px; } .tl-rstep .tl-node { left: -22px; } }
 
 /* a number typed in, with its unit after it (times in the event setups) */
 .num-box { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; }
