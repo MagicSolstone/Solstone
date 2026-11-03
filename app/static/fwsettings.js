@@ -270,7 +270,10 @@ function calEditHtml(e, i) {
         ${(e.reward?.items || []).length < 3 ? `<button type="button" class="btn sm" data-add-reward>＋ Add an item</button>` : ""}</div>
       <label class="inl">Given from ${num("rbefore", e.reward?.before || 0, 0, 30)} days before to ${num("rafter", e.reward?.after || 0, 0, 30)} days after
         <span class="muted small">(0 and 0: just ${e.days > 1 ? "its days" : "the day"}; Thursday's Thanksgiving through Sunday: 0 and 3)</span></label>
-      <label>Message with it <input class="input sm" name="rmessage" maxlength="120" value="${esc(e.reward?.message || "")}" placeholder="${esc(e.message || "A present for being here")}"></label>
+      <label>Description <span class="muted small">On the Events page and its banner. The formatting buttons above work here too.</span>
+        <input class="input sm" name="rnote" maxlength="300" value="${esc(e.reward?.note || "")}" placeholder="Reward for playing ${esc(e.name)}${e.reward?.after ? " weekend" : ""}!"></label>
+      <label class="check"><input type="checkbox" name="rbanner" ${e.reward?.banner ? "checked" : ""}> Show a banner while it's being given <span class="muted small">(🎁, the item and its description, on every page)</span></label>
+      <label>Message in the game when they get it <input class="input sm" name="rmessage" maxlength="120" value="${esc(e.reward?.message || "")}" placeholder="${esc(e.message || "A present for being here")}"></label>
     </fieldset>
     <details class="fws-more" ${fws.moreOpen ? "open" : ""}><summary>Fireworks <span class="muted small">colours (for the day or the whole week), favourite kinds and a scheduled show</span></summary>
     <div class="fws-sub">Colours <span class="muted small">(leave none for the usual colours)</span></div>
@@ -305,7 +308,7 @@ function wireCalEdit(el, i) {
     draft.name = f.get("name"); draft.emoji = f.get("emoji"); draft.message = f.get("message"); draft.days = +f.get("days") || 1;
     draft.banner_days = Math.max(0, Math.min(30, +f.get("banner_days") || 0));
     draft.detail = f.get("detail") || "";
-    draft.reward = { items: draft.reward?.items || [], message: f.get("rmessage") || "",      // items: picked below
+    draft.reward = { items: draft.reward?.items || [], message: f.get("rmessage") || "", note: f.get("rnote") || "", banner: !!f.get("rbanner"),      // items: picked below
       before: Math.max(0, Math.min(30, +f.get("rbefore") || 0)), after: Math.max(0, Math.min(30, +f.get("rafter") || 0)) };
     draft.colors_before = Math.max(0, Math.min(30, +f.get("cbefore") || 0));
     draft.colors_after = Math.max(0, Math.min(30, +f.get("cafter") || 0));
@@ -324,7 +327,9 @@ function wireCalEdit(el, i) {
   };
   const redraw = () => { read(); fws.moreOpen = !!form.querySelector(".fws-more")?.open; fws.data.calendar[i] = draft; renderCalendar(el); };
   // the description's formatting buttons wrap what's selected in it
-  const det = form.querySelector('[name="detail"]');
+  // (the description, or the reward's, whichever was last typed in)
+  let det = form.querySelector('[name="detail"]');
+  form.querySelectorAll('[name="detail"], [name="rnote"]').forEach((x) => x.addEventListener("focus", () => { det = x; }));
   const wrap = (a, z, fill = "words") => { const s0 = det.selectionStart ?? det.value.length, s1 = det.selectionEnd ?? s0; det.setRangeText(a + (det.value.slice(s0, s1) || fill) + z, s0, s1, "end"); det.focus(); };
   form.querySelectorAll("[data-wrap], [data-link]").forEach((b) => b.addEventListener("mousedown", (ev) => ev.preventDefault()));
   form.querySelectorAll("[data-wrap]").forEach((b) => b.addEventListener("click", () => { const [a, z] = b.dataset.wrap.split("|"); wrap(a, z); }));

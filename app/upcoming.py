@@ -24,7 +24,7 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
 
     def add(at: float, kind: str, emoji: str, title: str, detail: str = "", *, all_day: bool = False, server: str | None = None,
             link: str | None = None, live: bool = False, length: int = 1, ends: float | None = None, optin: bool = False,
-            about: str = "", reward: str = "") -> None:
+            about: str = "", reward: dict | None = None) -> None:
         if optin and not live:
             detail = f"{detail} · join in the game with /trigger join" if detail else "Join in the game with /trigger join"
         out.append({"ends": ends, "at": at, "date": datetime.fromtimestamp(at, zone).date().isoformat(), "time": None if all_day else _clock(at),
@@ -112,12 +112,8 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
         for s in starts:
             at = datetime.combine(s, datetime.min.time(), zone).timestamp()
             on_now = s <= today < s + timedelta(days=e["days"])
-            gift = holidaygifts.describe(e)
-            if gift and (e["reward"]["before"] or e["reward"]["after"]):        # given over more days than the holiday
-                first, last = holidaygifts.window(e, s)
-                gift = f"{gift} ({first.strftime('%a %-d %b')} to {last.strftime('%a %-d %b')})"
             add(at, "holiday", e["emoji"], e["name"], e["message"], all_day=True, live=on_now, length=e["days"],
-                about=e["detail"], reward=gift)
+                about=e["detail"], reward=holidaygifts.tag(e, s))
             f = e["finale"]
             if f["on"]:
                 hh, mm = (int(x) for x in f["time"].split(":"))

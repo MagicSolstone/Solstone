@@ -20,6 +20,7 @@ class FakeServer:
 
 
 def test_reward_once_each_during_the_holiday(monkeypatch):
+    from datetime import timedelta
     today = datetime.now(db.tz()).date()
     keep = settings_store.load().get("fw_calendar")
     fwshow.save_calendar([{"id": "party", "name": "Party week", "emoji": "🎉", "days": 7, "date": {"type": "once", "iso": today.isoformat()},
@@ -43,7 +44,14 @@ def test_reward_once_each_during_the_holiday(monkeypatch):
         assert asyncio.run(holidaygifts.tick(srv, ["Alex", "Kid"])) == 1 and given[-1][0] == "Kid"       # once each
         items = upcoming.items({"hg-test": "Test"})
         h = next(i for i in items if i["kind"] == "holiday")
-        assert h["reward"] == "2 diamond" and h["about"].startswith("**Come**")
+        assert h["reward"]["items"] == [{"item": "minecraft:diamond", "count": 2, "name": "Diamond"}] and h["about"].startswith("**Come**")
+        assert h["reward"]["when"] == today.strftime("%a %-d %b") + " to " + (today + timedelta(days=6)).strftime("%a %-d %b")
+        assert not holidaygifts.banners()                                                  # no banner unless asked for
+        cal = fwshow.calendar()
+        cal[0]["reward"].update(banner=True, note="A present for party week")
+        fwshow.save_calendar(cal)
+        b = holidaygifts.banners()[0]
+        assert b["text"] == "A present for party week" and b["detail"].startswith("2 × Diamond") and b["items"][0]["item"] == "minecraft:diamond"
     finally:
         settings_store.save_section(holidaygifts.SECTION, {})
         settings_store.save_section("fw_calendar", keep)          # None: back to Solstone's own list

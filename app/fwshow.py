@@ -249,7 +249,10 @@ def _clean_reward(r) -> dict:
             return 0
     # given from this many days before the holiday to this many after it (Thanksgiving through the weekend: 0 and 3)
     return {"items": items, "message": " ".join(str(r.get("message") or "").split())[:120],
-            "before": days(r.get("before")), "after": days(r.get("after"))}
+            "before": days(r.get("before")), "after": days(r.get("after")),
+            # its own line on the Events page and its banner ("Reward for playing Thanksgiving weekend"), formatted like posts
+            "note": " ".join(str(r.get("note") or "").split())[:300],
+            "banner": bool(r.get("banner"))}            # a small banner on every page while it's being given
 
 
 def calendar() -> list[dict]:

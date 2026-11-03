@@ -435,6 +435,24 @@ def main() -> int:
                     if hal.get("reward", {}).get("after") != 3 or hal.get("colors_before") != 2 or hal.get("recolor") is not True:
                         problems.append(f"holidays: the reward's days, the colours' days or players' colours didn't save ({hal.get('reward')}, {hal.get('colors_before')})")
 
+            # a holiday on today with a reward: its own line on Events (with the item's picture), and its banner
+            cal = pg.request.get(f"{base}/api/fireworks/show", headers=H).json()["calendar"]
+            today_iso = time.strftime("%Y-%m-%d")
+            party = {"id": "smokeparty", "name": "Smoke weekend", "emoji": "🥧", "days": 1, "date": {"type": "once", "iso": today_iso},
+                     "detail": "Come and play!", "reward": {"items": [{"item": "minecraft:pumpkin_pie", "count": 3}], "after": 3,
+                                                            "note": "Reward for playing **Smoke weekend**", "banner": True}}
+            pg.request.put(f"{base}/api/fireworks/show", data={"calendar": [*cal, party]}, headers=H)
+            ev = browser.new_page(viewport={"width": 1280, "height": 860})
+            ev.goto(f"{base}/events"); ev.wait_for_timeout(1200)
+            line = ev.locator(".up-reward")
+            if not line.count() or "3 × Pumpkin Pie" not in (line.first.text_content() or "") or not line.first.locator("b").count():
+                problems.append("events: a holiday's reward isn't on its own line with the item, amount and description")
+            check(ev, "events-reward"); ev.close()
+            pg.goto(f"{base}/app#/events"); pg.reload(); pg.wait_for_timeout(1500)
+            if not pg.locator(".bn-k-reward .bn-reward .rw-item").count():
+                problems.append("banners: no reward banner with its item while it's given")
+            check(pg, "reward-banner")
+            pg.request.put(f"{base}/api/fireworks/show", data={"calendar": cal}, headers=H)
             # fireworks settings: every tab, then edit a show (copy a step)
             pg.goto(f"{base}/app#/fireworks/settings"); pg.wait_for_timeout(1200)
             for tab in pg.locator(".fws-tabs [data-tab]").all():

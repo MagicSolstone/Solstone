@@ -2315,3 +2315,13 @@ body.ui-hidden .manage-sub { display: none; }
 .fws-reward-item .item-icon, .fws-reward-item img { width: 24px; height: 24px; }
 .fws-reward-item b { white-space: nowrap; }
 .fws-reward label.inl { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-weight: 400; }
+
+/* A holiday's reward: on Events, a line of its own; on a banner, its items */
+.up-reward { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 6px; padding: 6px 10px; border-radius: 10px;
+  background: rgba(242, 193, 78, .1); border: 1px solid rgba(242, 193, 78, .35); font-size: .88rem; }
+.up-reward-tag { font-weight: 700; color: var(--gold); }
+.up-reward-note a { color: var(--gold); }
+.rw-item { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; white-space: nowrap; }
+.rw-item img { image-rendering: pixelated; }
+.bn-reward { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.bn-reward .rw-item { color: var(--bone); }

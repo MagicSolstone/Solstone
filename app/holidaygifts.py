@@ -77,6 +77,38 @@ async def tick(srv, online: list[str]) -> int:
     return n
 
 
+def tag(e: dict, start: date) -> dict | None:
+    """The reward for the Events page and its banner: the items, its description, and the days it's given."""
+    r = e["reward"]
+    if not r["items"]:
+        return None
+    first, last = window(e, start)
+    return {"items": [{"item": x["item"], "count": x["count"], "name": x.get("name") or x["item"].split(":", 1)[-1].replace("_", " ").title()}
+                      for x in r["items"]],
+            "note": r["note"], "first": first.isoformat(), "last": last.isoformat(),
+            "when": first.strftime("%a %-d %b") if first == last else f"{first.strftime('%a %-d %b')} to {last.strftime('%a %-d %b')}"}
+
+
+def banners() -> list[dict]:
+    """A small banner for each reward being given right now, when the holiday asks for one."""
+    out = []
+    for e, start in active():
+        if not e["reward"]["banner"]:
+            continue
+        t = tag(e, start)
+        _first, last = window(e, start)
+        out.append({"id": f"gift-{e['id']}-{start.isoformat()}", "kind": "reward", "emoji": "🎁", "style": "party",
+                    "text": t["note"] or f"A reward for playing during {e['name']}!",
+                    "detail": " + ".join(f"{x['count']} × {x['name']}" for x in t["items"]) + f" · play by {last.strftime('%a %-d %b')}",
+                    "items": t["items"], "countdown": None})
+    return out
+
+
+def rewarded_items() -> set[str]:
+    """Every item set as a holiday's reward (their pictures may be shown to anyone)."""
+    return {x["item"] for e in fwshow.calendar() for x in e["reward"]["items"]}
+
+
 def describe(e: dict) -> str:
     return _say(e["reward"]["items"]) if e["reward"]["items"] else ""
 

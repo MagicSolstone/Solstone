@@ -154,6 +154,8 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
             out.append({"id": f"hs-{e['id']}-{nxt.isoformat()}", "kind": "holiday-soon", "emoji": e["emoji"] or "🎉", "style": "info",
                         "text": f"{e['name']} is {'tomorrow' if days == 1 else f'in {days} days'}", "detail": "",
                         "countdown": datetime.combine(nxt, datetime.min.time(), zone).timestamp(), "done_text": e["message"] or "It's here!"})
+    from . import holidaygifts
+    out += holidaygifts.banners()                  # a holiday's reward being given, if it asks for a banner
     th = fwshow.today_state(now)["theme"]
     if th and th.get("on_day", True) and (th.get("message") or th.get("name")):
         out.append({"id": f"h-{th['id']}-{now.date()}", "kind": "holiday", "emoji": th.get("emoji") or "🎉", "style": "party",
@@ -162,7 +164,7 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
         from . import challenges, games, races
         for one in ([sid] if sid or allowed is None else sorted(allowed)):
             out += challenges.banners(one) + races.banners(one) + games.banners(one)
-    order = {"bedtime": 0, "challenge": 0.5, "note": 1, "holiday": 3, "holiday-soon": 4, "vote": 1.5}
+    order = {"bedtime": 0, "challenge": 0.5, "note": 1, "holiday": 3, "reward": 3.5, "holiday-soon": 4, "vote": 1.5}
     out.sort(key=lambda x: (order.get(x["kind"], 5), x.get("countdown") or 1e12))
     return out
 

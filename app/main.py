@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, games, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
+from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, games, holidaygifts, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -1257,6 +1257,21 @@ async def public_item_icon(sid: str, ns: str, name: str):
     if not cfg["show_items"] or not _SAFE_ID.match(ns) or not _SAFE_ID.match(name):
         raise HTTPException(404)
     a = _assets(await _public_server(sid))
+    data = await asyncio.to_thread(a.icon, f"{ns}:{name}") if a and a.ready else None
+    if not data:
+        raise HTTPException(404)
+    return Response(data, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/api/public/reward-item/{ns}/{name}.png")
+async def public_reward_icon(ns: str, name: str):
+    """A holiday reward's picture for the Events page and its banner (anyone can see what the reward is). Only items
+    set as a reward, drawn from the first public Java server's game."""
+    if not _SAFE_ID.match(ns) or not _SAFE_ID.match(name) or f"{ns}:{name}" not in holidaygifts.rewarded_items():
+        raise HTTPException(404)
+    await S.registry.refresh()
+    srv = next((x for x in _public_servers_list() if x.is_java), None)
+    a = _assets(srv) if srv else None
     data = await asyncio.to_thread(a.icon, f"{ns}:{name}") if a and a.ready else None
     if not data:
         raise HTTPException(404)
