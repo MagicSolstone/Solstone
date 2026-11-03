@@ -1,3 +1,16 @@
+# Solstone 1.15.3
+
+- **Setup windows keep their place:** adding a wave, a monster, a spot on the map or a checkpoint no longer jumps the window back to the top. That's every setup window.
+- **Events: a reward that starts before its holiday has its own gold dot** on the day it starts ("Thanksgiving's reward starts · play any day until Sun 29 Nov").
+  - The line is gold for as long as a reward is being given.
+  - A reward that's already on shows under Today.
+  - The holiday's own count still counts to the holiday, in days up to 60 ("In 23 days").
+- **People not playing are kept out:**
+  - Anyone in the mob arena who isn't playing (there when it starts, or wandering in) is moved just outside its edge, onto solid ground, and told why once.
+  - Anyone not playing is kept a few blocks off King of the Hill's hill.
+  - Admins in creative or spectator are left alone.
+- **Arena monsters stay on the players in the arena:** they notice players about as far as across the arena, not people watching from nearby.
+
 # Solstone 1.15.2
 
 - **Events as a timeline:** today at the top with what's on now, then a dot for each day with something on, dotted stretches with how long between, and a gold stretch with the dates for a holiday's reward.
