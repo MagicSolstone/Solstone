@@ -1,3 +1,24 @@
+# Solstone 1.15.0
+
+- **Players' things are kept safe during games:**
+  - Before a game that needs it, everyone's inventory, armour and offhand are copied into a sealed storage box under spawn and checked item by item before anything is cleared. If the copy can't be confirmed, that player sits it out and nothing of theirs is touched.
+  - Afterwards everything comes back exactly, and they're put back where they were, in the same game mode, healed and fed.
+  - Someone who signs out or loses connection gets their things back when they next join, even after a server restart.
+  - **Give back now** on the Games page, just in case.
+- **King of the Hill:** free-for-all or 2, 3 or 4 teams. In teams, the side with the most players on the hill scores; level means nobody does. Respawns after a 3–15 second countdown. Keep inventory is on while it runs.
+- **Mob arena:** Easy, Normal or Hard waves, or your own (which monsters, how many of each). Monsters come out of spots you mark on the map. Players and monsters are kept inside the arena, and creepers can't blow holes.
+  - **Together:** anyone who falls watches until the wave is cleared, then comes back.
+  - **Everyone for themselves:** most monsters defeated wins.
+- **Races:**
+  - **Elytra races:** everyone's own things are kept safe, then each racer gets an elytra and rockets. A checkpoint counts flying through it high up. **Safer flying** takes most of the damage out of crashes.
+  - **Boats:** a normal race can give each racer a boat at GO, for courses across water and land. Taken back at the end.
+- **Holidays have one banner each,** all the way through: counting down before, the message on the day, and "still time for its reward" after, if the reward runs on. The reward shows on it whenever it's being given.
+  - **Its own look:** the announcement looks, or your own colours.
+  - **Formatting:** the name, the day's message and the reward's description can be bold, italic or coloured. The reward's game message takes the game's colours, with a preview.
+  - **A tidier editor:** the holiday, its banner and its reward in three sections, with a preview of the banner before, on and after the day.
+- **No more prizes on the ground:** when someone's inventory is full, a reward or prize waits. They're told to make room, and it arrives by itself when they do.
+- **Cleanup:** the old live status page's leftovers are gone; old `/status` links go to the home page.
+
 # Solstone 1.14.3
 
 - **Deny with a message:** saying no to someone who asked to join opens a box for a message ("Ask again with your real name in the note"). Only they see it, where they asked.
