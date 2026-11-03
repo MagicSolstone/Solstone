@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import accounts, adventures, backups, board, challenges, db, eventgroups, fishing, fwshow, gamemsg, games, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome
+from . import accounts, adventures, backups, board, challenges, db, eventgroups, fishing, fwshow, gamemsg, games, holidaygifts, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -351,6 +351,10 @@ class Recorder:
 
         if running and names and srv.is_java and srv.rcon_conf():
             await self._watch_game(srv, names)
+            try:
+                await holidaygifts.tick(srv, names)          # a holiday's reward for everyone playing during it
+            except Exception:
+                log.exception("holiday rewards failed on %s", srv.id)
 
         prev = self._running_state.get(srv.id)
         if prev is not None and prev != running:

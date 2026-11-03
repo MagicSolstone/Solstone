@@ -215,12 +215,30 @@ def _clean_entry(e: dict, fallback_id: str | None = None) -> dict | None:
         "kinds": [k for k in (e.get("kinds") or []) if k in BUILTIN_KINDS or (isinstance(k, str) and k.startswith("custom:"))][:10],
         "message": str(e.get("message") or "").strip()[:80],
         "banner_days": num(e.get("banner_days"), 0, 30, 0),     # a countdown banner this many days before (0: just on the day)
+        # a longer description for the Events page, formatted like posts (bold, colours, links)
+        "detail": str(e.get("detail") or "").replace("\r", "").strip()[:600],
+        # everyone who plays during it gets this once (holidaygifts.py)
+        "reward": _clean_reward(e.get("reward")),
         "enabled": e.get("enabled", True) is not False,
         "finale": {"on": bool(fin.get("on")), "day": num(fin.get("day"), 0, days - 1, 0),
                    "show": str(fin.get("show") or "")[:24],
                    "time": fin.get("time") if isinstance(fin.get("time"), str) and _TIME.match(fin["time"]) else "20:00",
                    "minutes": num(fin.get("minutes"), 1, 30, 5), "countdown": bool(fin.get("countdown"))},
     }
+
+
+def _clean_reward(r) -> dict:
+    from . import challenges
+    r = r if isinstance(r, dict) else {}
+    items = []
+    for x in (r.get("items") or [])[:3]:
+        try:
+            p = challenges.clean_prize(x)
+        except ValueError:
+            p = None
+        if p:
+            items.append(p)
+    return {"items": items, "message": " ".join(str(r.get("message") or "").split())[:120]}
 
 
 def calendar() -> list[dict]:

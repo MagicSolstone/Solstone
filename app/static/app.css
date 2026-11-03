@@ -2276,3 +2276,14 @@ body.ui-hidden .manage-sub { display: none; }
 
 .strip-together { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 0 0 8px; }
 .strip-together a { color: var(--gold); }
+
+/* Holidays: a description and a reward */
+.fws-detail { display: grid; gap: 6px; margin-top: 10px; }
+.fws-detail .ann-fmt { margin: 0; }
+.fws-reward { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 10px 0 0; display: grid; gap: 6px; }
+.fws-reward legend { font-weight: 700; padding: 0 6px; }
+.fws-reward-row { display: flex; align-items: center; gap: 6px; }
+.fws-reward label { display: grid; gap: 4px; }
+.up-about { display: block; font-size: .9rem; margin-top: 2px; }
+.up-about a { color: var(--gold); }
+.up-reward { display: inline-block; margin-top: 4px; padding: 2px 9px; border-radius: 999px; background: rgba(242, 193, 78, .14); border: 1px solid rgba(242, 193, 78, .4); font-size: .82rem; }

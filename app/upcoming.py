@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from . import community, board, challenges, db, eventgroups, fwshow, games, races
+from . import community, board, challenges, db, eventgroups, fwshow, games, holidaygifts, races
 
 DAYS = 90
 NIGHT_GAP = 45 * 60            # seconds between one event's end and the next one's start that still make one night
@@ -23,12 +23,14 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
     out: list[dict] = []
 
     def add(at: float, kind: str, emoji: str, title: str, detail: str = "", *, all_day: bool = False, server: str | None = None,
-            link: str | None = None, live: bool = False, length: int = 1, ends: float | None = None, optin: bool = False) -> None:
+            link: str | None = None, live: bool = False, length: int = 1, ends: float | None = None, optin: bool = False,
+            about: str = "", reward: str = "") -> None:
         if optin and not live:
             detail = f"{detail} · join in the game with /trigger join" if detail else "Join in the game with /trigger join"
         out.append({"ends": ends, "at": at, "date": datetime.fromtimestamp(at, zone).date().isoformat(), "time": None if all_day else _clock(at),
                     "kind": kind, "emoji": emoji, "title": title, "detail": detail, "server": server_names.get(server or "", None) if server else None,
-                    "link": link, "live": live, "days": length, "key": community.event_key(kind, title, at)})
+                    "link": link, "live": live, "days": length, "key": community.event_key(kind, title, at),
+                    **({"about": about} if about else {}), **({"reward": reward} if reward else {})})
 
     # contests, races, games: on now, or scheduled ahead
     for c in challenges._load()["items"]:
@@ -110,7 +112,8 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
         for s in starts:
             at = datetime.combine(s, datetime.min.time(), zone).timestamp()
             on_now = s <= today < s + timedelta(days=e["days"])
-            add(at, "holiday", e["emoji"], e["name"], e["message"], all_day=True, live=on_now, length=e["days"])
+            add(at, "holiday", e["emoji"], e["name"], e["message"], all_day=True, live=on_now, length=e["days"],
+                about=e["detail"], reward=holidaygifts.describe(e))
             f = e["finale"]
             if f["on"]:
                 hh, mm = (int(x) for x in f["time"].split(":"))

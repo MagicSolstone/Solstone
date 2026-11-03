@@ -215,7 +215,7 @@ function renderCalendar(el) {
   el.innerHTML = `<section class="panel"><p class="muted" style="margin-bottom:12px">On these days the fireworks take on the day's colours and favourite kinds. A <b>scheduled show</b> fills the sky at a set time on every open page (and is listed on Events too); the New Year one counts down from 10.</p>
     <div class="fws-cal">${cal.map((e, i) => fws.editing === i ? calEditHtml(e, i) : `<div class="fws-cal-row ${e.enabled ? "" : "off"}" data-i="${i}">
       <span class="fws-emoji">${esc(e.emoji)}</span>
-      <div><b>${esc(e.name)}</b><div class="muted small">${esc(fwsDateText(e))}${e.finale.on ? ` · show at ${esc(fwsTime(e.finale.time))} for ${e.finale.minutes} min${e.finale.countdown ? " with a countdown" : ""}` : ""}${e.banner_days ? ` · banner ${e.banner_days} day${e.banner_days === 1 ? "" : "s"} before` : ""}</div>
+      <div><b>${esc(e.name)}</b><div class="muted small">${esc(fwsDateText(e))}${e.finale.on ? ` · show at ${esc(fwsTime(e.finale.time))} for ${e.finale.minutes} min${e.finale.countdown ? " with a countdown" : ""}` : ""}${e.banner_days ? ` · banner ${e.banner_days} day${e.banner_days === 1 ? "" : "s"} before` : ""}${e.reward?.items?.length ? " · 🎁 reward" : ""}</div>
         ${fwsOverlapNote(e.id)}<div class="fwe-dots">${e.colors.map((c) => `<i style="background:${c}"></i>`).join("")}</div></div>
       <label class="check small"><input type="checkbox" data-en ${e.enabled ? "checked" : ""}> On</label>
       <button type="button" class="btn sm" data-edit>Edit</button></div>`).join("")}</div>
@@ -259,6 +259,15 @@ function calEditHtml(e, i) {
       <label class="wide">Message<input class="input" name="message" maxlength="80" value="${esc(e.message)}" placeholder="Shown on every page that day"></label>
       ${d.type === "weekly" ? "" : `<label class="inl">Countdown banner ${num("banner_days", e.banner_days || 0, 0, 30)} days before <span class="muted small">(0: just on the day)</span></label>`}
     </div>
+    <label class="fws-detail">Description <span class="muted small">Optional, on the Events page under its name</span>
+      <span class="ann-fmt" role="toolbar" aria-label="Formatting"><button type="button" class="btn sm" data-wrap="**|**" title="Bold"><b>B</b></button><button type="button" class="btn sm" data-wrap="*|*" title="Italic"><i>I</i></button>
+        <button type="button" class="btn sm" data-link title="A link">🔗 Link</button>
+        ${POST_COLOURS.map(([k, l]) => `<button type="button" class="ann-col pf-swatch-${k}" data-wrap="{${k}}|{/${k}}" title="${l}" aria-label="${l}"></button>`).join("")}</span>
+      <textarea class="input" name="detail" rows="2" maxlength="600" placeholder="Log in any time this week for a present!">${esc(e.detail || "")}</textarea></label>
+    <fieldset class="fws-reward"><legend>🎁 Reward <span class="muted small">Everyone who plays during it gets this once (each server, each year). Nothing here: no reward.</span></legend>
+      ${[0, 1, 2].map((k) => { const it = (e.reward?.items || [])[k] || {}; return `<div class="fws-reward-row"><input class="input sm" name="ritem${k}" maxlength="80" value="${esc(it.item ? it.item.replace(/^minecraft:/, "") : "")}" placeholder="${["diamond", "cake", "firework_rocket"][k]}" aria-label="Item ${k + 1}"> × ${num(`rcount${k}`, it.count || 1, 1, 64)}</div>`; }).join("")}
+      <label>Message with it <input class="input sm" name="rmessage" maxlength="120" value="${esc(e.reward?.message || "")}" placeholder="${esc(e.message || "A present for being here")}"></label>
+    </fieldset>
     <details class="fws-more" ${fws.moreOpen ? "open" : ""}><summary>Fireworks for this day <span class="muted small">colours, favourite kinds and a scheduled show</span></summary>
     <div class="fws-sub">Colours <span class="muted small">(leave none for the usual colours)</span></div>
     <div class="fwe-colors" data-cal-colors>${e.colors.map((c, k) => `<span class="fwe-color"><input type="color" value="${c}" data-cc="${k}"><button type="button" class="chip-x" data-rmcc="${k}" aria-label="Remove">×</button></span>`).join("")}
@@ -286,6 +295,9 @@ function wireCalEdit(el, i) {
     const f = new FormData(form), dtype = f.get("dtype");
     draft.name = f.get("name"); draft.emoji = f.get("emoji"); draft.message = f.get("message"); draft.days = +f.get("days") || 1;
     draft.banner_days = Math.max(0, Math.min(30, +f.get("banner_days") || 0));
+    draft.detail = f.get("detail") || "";
+    draft.reward = { items: [0, 1, 2].map((k) => ({ item: (f.get(`ritem${k}`) || "").trim(), count: +f.get(`rcount${k}`) || 1 })).filter((x) => x.item),
+      message: f.get("rmessage") || "" };
     const d = { type: dtype };
     if (dtype === draft.date.type) {
       if (f.get("month")) d.month = +f.get("month");
@@ -299,6 +311,15 @@ function wireCalEdit(el, i) {
     draft.finale = { on: !!f.get("fon"), day: Math.max(0, (+f.get("fday") || 1) - 1), time: f.get("ftime") || "20:00", minutes: +f.get("fmin") || 5, countdown: !!f.get("fcount"), show: f.get("fshow") || "" };
   };
   const redraw = () => { read(); fws.moreOpen = !!form.querySelector(".fws-more")?.open; fws.data.calendar[i] = draft; renderCalendar(el); };
+  // the description's formatting buttons wrap what's selected in it
+  const det = form.querySelector('[name="detail"]');
+  const wrap = (a, z, fill = "words") => { const s0 = det.selectionStart ?? det.value.length, s1 = det.selectionEnd ?? s0; det.setRangeText(a + (det.value.slice(s0, s1) || fill) + z, s0, s1, "end"); det.focus(); };
+  form.querySelectorAll("[data-wrap], [data-link]").forEach((b) => b.addEventListener("mousedown", (ev) => ev.preventDefault()));
+  form.querySelectorAll("[data-wrap]").forEach((b) => b.addEventListener("click", () => { const [a, z] = b.dataset.wrap.split("|"); wrap(a, z); }));
+  form.querySelector("[data-link]").addEventListener("click", () => {
+    const url = prompt("The link's address (https://…, or a page here like /help)");
+    if (url && /^(https?:\/\/|\/)/.test(url.trim())) wrap("[", `](${url.trim()})`, "this link");
+  });
   form.querySelector('[name="dtype"]').addEventListener("change", redraw);
   form.querySelector('[name="days"]').addEventListener("change", redraw);
   form.querySelectorAll("[data-kind]").forEach((c) => c.addEventListener("change", () => c.closest(".chip").classList.toggle("on", c.checked)));

@@ -412,6 +412,15 @@ def main() -> int:
                     problems.append("manage: a holiday doesn't open for editing")
                 elif pg.locator(".fws-cal-edit .fws-more[open]").count() or not pg.locator(".fws-cal-edit .fws-more").count():
                     problems.append("manage: a holiday's fireworks details aren't folded away to start")
+                else:
+                    pg.fill('.fws-cal-edit [name="detail"]', "Dress up and come trick-or-treat")
+                    pg.locator('.fws-cal-edit [name="detail"]').select_text(); pg.click('.fws-cal-edit [data-wrap="**|**"]')
+                    pg.fill('.fws-cal-edit [name="ritem0"]', "pumpkin_pie"); pg.fill('.fws-cal-edit [name="rcount0"]', "3")
+                    check(pg, "holiday-reward-edit")
+                    pg.click(".fws-cal-edit button[type=submit]"); pg.wait_for_timeout(900)
+                    hal = next((x for x in pg.request.get(f"{base}/api/fireworks/show", headers=H).json()["calendar"] if x["id"] == "halloween"), {})
+                    if hal.get("detail") != "**Dress up and come trick-or-treat**" or hal.get("reward", {}).get("items", [{}])[0].get("item") != "minecraft:pumpkin_pie":
+                        problems.append(f"holidays: the description or reward didn't save ({hal.get('detail')!r}, {hal.get('reward')})")
 
             # fireworks settings: every tab, then edit a show (copy a step)
             pg.goto(f"{base}/app#/fireworks/settings"); pg.wait_for_timeout(1200)
