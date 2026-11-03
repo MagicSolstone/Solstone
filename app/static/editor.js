@@ -762,14 +762,16 @@ function sfxPanelHtml(slot) {
     return `<label class="fwe-slider"><span>${esc(label)}</span><b data-sfx-out="${k}">${esc(fmt(p[k]))}</b>
       <input type="range" ${attrs} value="${sfxToSlider(k, p[k])}" data-sfx="${k}"></label>`;
   };
+  const loaded = (ed.sounds || []).find((x) => x.id === ed.sfxLoaded?.[slot]);     // the saved sound being changed, if one was picked
   return `<div class="sfx" data-slot="${slot}">
     <div class="sfx-top"><canvas class="sfx-wave" aria-label="What the sound looks like"></canvas>
       <div class="sfx-play"><button class="btn primary" type="button" data-sfx-play>▶ Play</button><span class="muted small" data-sfx-len></span></div></div>
     <div class="sfx-lib">
-      <select class="input sm" data-sfx-lib aria-label="Saved sounds"><option value="">📂 Saved sounds (${(ed.sounds || []).length})…</option>${(ed.sounds || []).map((x) => `<option value="${esc(x.id)}">${esc(x.name)} · ${esc(x.author)}</option>`).join("")}</select>
-      <input class="input sm" data-sfx-name maxlength="32" placeholder="Name this sound" aria-label="Name for this sound">
-      <button class="btn sm" type="button" data-sfx-save>💾 Save sound</button>
-      <button class="btn sm danger" type="button" data-sfx-del hidden>Delete saved</button></div>
+      <select class="input sm" data-sfx-lib aria-label="Saved sounds"><option value="">📂 Saved sounds (${(ed.sounds || []).length})…</option>${(ed.sounds || []).map((x) => `<option value="${esc(x.id)}" ${loaded?.id === x.id ? "selected" : ""}>${esc(x.name)} · ${esc(x.author)}</option>`).join("")}</select>
+      <input class="input sm" data-sfx-name maxlength="32" placeholder="Name this sound" aria-label="Name for this sound" value="${esc(ed.sfxName?.[slot] ?? loaded?.name ?? "")}">
+      ${loaded?.can_delete ? `<button class="btn sm primary" type="button" data-sfx-over title="Save the changes over “${esc(loaded.name)}”">💾 Save</button>
+        <button class="btn sm" type="button" data-sfx-save>Save as new</button>` : `<button class="btn sm" type="button" data-sfx-save>💾 Save sound</button>`}
+      <button class="btn sm danger" type="button" data-sfx-del ${loaded?.can_delete ? "" : "hidden"}>Delete saved</button></div>
     <div class="sfx-makers" role="group" aria-label="Start from">${SFX_MAKER_BTNS.map(([k, l]) => `<button type="button" class="btn sm" data-sfx-make="${k}">${l}</button>`).join("")}
       <button type="button" class="btn sm" data-sfx-mutate title="Nudge everything a little">🧬 Mutate</button></div>
     <div class="fwe-row"><span>Wave</span><div class="seg" role="group">${SFX_WAVE_BTNS.map(([k, l]) => `<button type="button" data-sfx-wave="${k}" aria-pressed="${p.wave === k}">${l}</button>`).join("")}</div></div>
@@ -788,28 +790,34 @@ function wireSfx(root) {
     box.querySelectorAll("[data-sfx-make]").forEach((b) => b.addEventListener("click", () => { home[key] = SFX_MAKERS[b.dataset.sfxMake](); rebuild(); }));
     box.querySelector("[data-sfx-mutate]").addEventListener("click", () => { home[key] = sfxMutate(p()); rebuild(); });
     const lib = box.querySelector("[data-sfx-lib]"), del = box.querySelector("[data-sfx-del]");
+    ed.sfxLoaded ||= {}; ed.sfxName ||= {};
     lib.addEventListener("change", () => {
       const x = (ed.sounds || []).find((o) => o.id === lib.value);
-      del.hidden = !x?.can_delete;
-      if (!x) return;
-      home[key] = { ...x.sfx };
-      const keep = lib.value; rebuild(); const again = $(`.sfx[data-slot="${slot}"] [data-sfx-lib]`); if (again) { again.value = keep; again.dispatchEvent(new Event("pick")); }
+      ed.sfxLoaded[slot] = x?.id || null; delete ed.sfxName[slot];
+      if (x) home[key] = { ...x.sfx };
+      rebuild();
     });
-    lib.addEventListener("pick", () => { const x = (ed.sounds || []).find((o) => o.id === lib.value); del.hidden = !x?.can_delete; });
+    const nameBox = box.querySelector("[data-sfx-name]");
+    nameBox.addEventListener("input", () => { ed.sfxName[slot] = nameBox.value; });
+    const saved = async (x, verb) => {
+      ed.sounds = await api("/api/sounds");
+      ed.sfxLoaded[slot] = x.id; delete ed.sfxName[slot];
+      showToast(`${verb} “${esc(x.name)}”. It's in Saved sounds for every firework.`, 3000);
+      renderControls();
+    };
     box.querySelector("[data-sfx-save]").addEventListener("click", async () => {
-      const name = box.querySelector("[data-sfx-name]").value.trim();
-      if (!name) { showToast("Give the sound a name first", 2500); box.querySelector("[data-sfx-name]").focus(); return; }
-      try {
-        await post("/api/sounds", { name, sfx: p() });
-        ed.sounds = await api("/api/sounds");
-        showToast(`Saved “${esc(name)}”. It's in Saved sounds for every firework now.`, 3000);
-        renderControls();
-      } catch (err) { showError(esc(err.message), 4000); }
+      const name = nameBox.value.trim();
+      if (!name) { showToast("Give the sound a name first", 2500); nameBox.focus(); return; }
+      try { await saved(await post("/api/sounds", { name, sfx: p() }), "Saved"); } catch (err) { showError(esc(err.message), 4000); }
+    });
+    box.querySelector("[data-sfx-over]")?.addEventListener("click", async () => {
+      try { await saved(await post(`/api/sounds/${ed.sfxLoaded[slot]}`, { name: nameBox.value.trim(), sfx: p() }, "PUT"), "Saved over"); }
+      catch (err) { showError(esc(err.message), 4000); }
     });
     del.addEventListener("click", async () => {
-      const x = (ed.sounds || []).find((o) => o.id === lib.value);
+      const x = (ed.sounds || []).find((o) => o.id === ed.sfxLoaded[slot]);
       if (!x || !(await confirmBox(`Delete the sound “${x.name}”?`, "Fireworks already using it keep their own copy.", "Delete"))) return;
-      try { await api(`/api/sounds/${x.id}`, { method: "DELETE" }); ed.sounds = await api("/api/sounds"); renderControls(); }
+      try { await api(`/api/sounds/${x.id}`, { method: "DELETE" }); ed.sounds = await api("/api/sounds"); ed.sfxLoaded[slot] = null; delete ed.sfxName[slot]; renderControls(); }
       catch (err) { showError(esc(err.message), 4000); }
     });
     box.querySelectorAll("[data-sfx-wave]").forEach((b) => b.addEventListener("click", () => { p().wave = b.dataset.sfxWave; rebuild(); }));

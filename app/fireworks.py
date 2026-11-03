@@ -148,6 +148,19 @@ def add_sound(name: str, sfx: dict, author: str) -> dict:
     return item
 
 
+def update_sound(sid: str, name: str, sfx: dict, user: str, admin: bool) -> dict | None:
+    """Save over a saved sound (its maker's, or any for an admin). None if there's no such sound, or it isn't theirs."""
+    name = re.sub(r"\s+", " ", str(name or "")).strip()[:32]
+    with _lock:
+        items = sounds()
+        x = next((x for x in items if x["id"] == sid and (admin or x.get("author") == user)), None)
+        if not x:
+            return None
+        x.update(name=name or x["name"], sfx=_sfx(sfx), updated=time.time())
+        settings_store.save_section("sounds", items)
+    return x
+
+
 def delete_sound(sid: str, user: str, admin: bool) -> bool:
     with _lock:
         items = sounds()

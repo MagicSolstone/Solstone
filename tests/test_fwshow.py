@@ -152,6 +152,10 @@ def test_ground_sounds_and_sound_library(client, viewer, anon):
     assert any(x["id"] == s["id"] and x["can_delete"] for x in listed)                      # admins can remove anyone's
     assert not next(x for x in viewer.get("/api/sounds").json() if x["id"] == s["id"])["can_delete"] is False
     other = client.post("/api/sounds", json={"name": "Admin's", "sfx": {}}).json()
+    # loaded, changed and saved over: the same sound (no new one), by its maker only
+    up = viewer.put(f"/api/sounds/{s['id']}", json={"name": "Bigger boom", "sfx": {"wave": "square"}}).json()
+    assert up["id"] == s["id"] and up["name"] == "Bigger boom" and up["sfx"]["wave"] == "square" and len(client.get("/api/sounds").json()) == 2
+    assert viewer.put(f"/api/sounds/{other['id']}", json={"name": "Mine now", "sfx": {}}).status_code == 404
     assert viewer.delete(f"/api/sounds/{other['id']}").status_code == 404                     # not theirs
     assert viewer.delete(f"/api/sounds/{s['id']}").json() == {"ok": True}
     assert client.delete(f"/api/sounds/{other['id']}").json() == {"ok": True}

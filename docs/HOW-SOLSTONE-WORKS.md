@@ -173,7 +173,7 @@ python tests/e2e/smoke.py    # opens every page in Chromium; fails on JS errors 
   every route. Do it only with the tests passing before and after, and on its own release.
 - **`app.js` is the other big file.** The same idea applies: it could be split by page, as `control.js`,
   `website.js` and others already are.
-- Some older names and comments still say "family" (the fishing journal's "Family record", some docstrings). They're
+- Some older names and comments still say "family" (some docstrings). They're
   harmless.
 - If something breaks after a Minecraft update, run the **Check** tab on a server first: it tries every kind of
   command and file Solstone relies on, and says which fail.

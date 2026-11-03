@@ -351,7 +351,7 @@ def _backfill(sid: str) -> None:
 
 def journal(sid: str) -> dict:
     """Everyone's fishing journal: which species each player has caught, their best of each,
-    family records, and the latest catches."""
+    server records, and the latest catches."""
     _backfill(sid)
     rows = db.fish_catches(sid)
     players: dict[str, dict] = {}

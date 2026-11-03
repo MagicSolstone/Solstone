@@ -1596,6 +1596,17 @@ async def save_sound(request: Request):
     return item
 
 
+@app.put("/api/sounds/{sound_id}")
+async def update_sound(sound_id: str, request: Request):
+    user = request.state.user
+    body = await _body(request)
+    item = fireworks.update_sound(sound_id, body.get("name"), body.get("sfx"), user.username, user.role == "admin")
+    if not item:
+        raise HTTPException(404, "No such sound, or it isn't yours")
+    auth.audit(user, None, "sound_save", item["name"])
+    return item
+
+
 @app.delete("/api/sounds/{sound_id}")
 async def remove_sound(sound_id: str, request: Request):
     user = request.state.user

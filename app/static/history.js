@@ -5,7 +5,8 @@
 // ================================================================ colours
 // Categorical slots (validated for the dark surface, see README). Colour follows the
 // player, not their rank: slots are assigned by alphabetical order of everyone known.
-// 16 colours far enough apart to tell players apart in charts; a 17th player onward is grey.
+// 16 colours far enough apart to tell players apart in charts; past 16 players, the same 16 again lighter, then
+// darker (48 in all), and grey after that.
 const SERIES = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767",
   "#1aa3c4", "#86b81c", "#b85bd6", "#a0663a", "#d4c21a", "#4a55c9", "#ff8c69", "#5fcf9f"];
 const OTHER = "#737a86";
@@ -13,7 +14,13 @@ let playerSlots = {};
 function setPlayerSlots(names) {
   const sorted = [...new Set(names.map((n) => n.toLowerCase()))].sort();
   playerSlots = {};
-  sorted.forEach((n, i) => { playerSlots[n] = i < SERIES.length ? SERIES[i] : OTHER; });
+  const n = SERIES.length;
+  sorted.forEach((x, i) => { playerSlots[x] = i < n ? SERIES[i] : i < 2 * n ? shade(SERIES[i - n], 0.4) : i < 3 * n ? shade(SERIES[i - 2 * n], -0.35) : OTHER; });
+}
+// A colour mixed toward white (amount > 0) or black (< 0).
+function shade(hex, amount) {
+  const to = amount > 0 ? 255 : 0, a = Math.abs(amount);
+  return `#${[1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - a) + to * a).toString(16).padStart(2, "0")).join("")}`;
 }
 const playerColor = (name) => playerSlots[(name || "").toLowerCase()] || OTHER;
 

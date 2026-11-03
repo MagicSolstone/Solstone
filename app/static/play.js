@@ -1172,7 +1172,7 @@ async function viewCheck(sid) {
 }
 
 // ================================================================ fishing journal
-// Every species each player has caught (with their best), family records, the latest catches.
+// Every species each player has caught (with their best), server records, the latest catches.
 const FQ = ["gray", "white", "green", "aqua", "gold", "light_purple"];
 async function viewFishingJournal(sid, who) {
   const s = await serverFrame(sid, "fishing");
@@ -1190,7 +1190,7 @@ async function viewFishingJournal(sid, who) {
         ? `<div class="fj-card got"><div class="fj-top">${itemIcon({ id: sp.item })}<b>${esc(sp.name)}</b></div>
             <span class="fj-best">Best <b>${mine.best_lb} lb</b> · <span class="fq-${FQ[mine.best_quality]}">${esc(mine.best_quality === 1 ? "Normal" : qName(mine.best_quality))}</span></span>
             <span class="muted small">Caught ${mine.count}× · ${esc(where)}</span>
-            ${rec ? `<span class="small ${rec.player === pick ? "fj-mine" : "muted"}">${rec.player === pick ? "🏆 Family record" : `Record: ${rec.lb} lb by ${esc(rec.player)}`}${rec.player === pick ? `: ${rec.lb} lb` : ""}</span>` : ""}</div>`
+            ${rec ? `<span class="small ${rec.player === pick ? "fj-mine" : "muted"}">${rec.player === pick ? "🏆 Server record" : `Record: ${rec.lb} lb by ${esc(rec.player)}`}${rec.player === pick ? `: ${rec.lb} lb` : ""}</span>` : ""}</div>`
         : `<div class="fj-card"><div class="fj-top"><span class="fj-unknown" aria-hidden="true">?</span><b class="muted">???</b></div>
             <span class="muted small">Not caught yet</span><span class="muted small">${esc(where)}</span>
             ${rec ? `<span class="muted small">${esc(rec.player)} has caught one</span>` : ""}</div>`;
@@ -1268,13 +1268,13 @@ function viewTideFishing(s, sid, d, who) {
     if (!rec) return `<div class="fj-card"><div class="fj-top fj-dark">${itemIcon({ id: sp.id })}<b class="muted">${esc(sp.name)}</b>${stars(sp.stars)}</div>
         <span class="muted small">Nobody has caught one yet</span>${sp.where ? `<span class="muted small">Look in: ${esc(sp.where)}</span>` : ""}</div>`;
     return `<div class="fj-card got"><div class="fj-top">${itemIcon({ id: sp.id })}<b>${esc(sp.name)}</b>${stars(sp.stars)}</div>
-        <span class="fj-best" title="Family record, caught by ${esc(rec.player)}${rec.length_cm ? ` · ${esc(fmtLength(rec.length_cm))} long` : ""}${rec.fish_quality >= 0 ? ` · ${esc(d.qualities[rec.fish_quality].name)}` : ""}">🏆 <b>${esc(fmtWeight(rec.weight_g) || fmtLength(rec.length_cm) || `${rec.count} caught`)}</b>${qStar(rec)} <span class="muted small">${esc(rec.player)}</span></span>
+        <span class="fj-best" title="Server record, caught by ${esc(rec.player)}${rec.length_cm ? ` · ${esc(fmtLength(rec.length_cm))} long` : ""}${rec.fish_quality >= 0 ? ` · ${esc(d.qualities[rec.fish_quality].name)}` : ""}">🏆 <b>${esc(fmtWeight(rec.weight_g) || fmtLength(rec.length_cm) || `${rec.count} caught`)}</b>${qStar(rec)} <span class="muted small">${esc(rec.player)}</span></span>
         <ol class="tf-top">${top.map((e, i) => `<li title="${esc(e.player)}: ${esc(size(e))}${e.fish_quality >= 0 ? ` · ${esc(d.qualities[e.fish_quality].name)}` : ""} · ${e.count} caught">
           <span class="rank">${i + 1}</span>${faceHtml({ name: e.player, uuid: e.uuid }, 16)}<span>${esc(e.player)}</span><span class="muted small">${esc(fmtWeight(e.weight_g) || fmtLength(e.length_cm))}${qStar(e)}</span></li>`).join("")}</ol></div>`;
   };
   const playerCard = (p) => (sp) => {
     const mine = p.species[sp.id], rec = d.records[sp.id];
-    const recLine = rec ? (rec.player === p.name ? `<span class="small fj-mine">🏆 Family record</span>`
+    const recLine = rec ? (rec.player === p.name ? `<span class="small fj-mine">🏆 Server record</span>`
       : `<span class="small muted" title="${esc(size(rec))}">Record: ${esc(fmtWeight(rec.weight_g) || fmtLength(rec.length_cm))} by ${esc(rec.player)}</span>`) : "";
     if (!mine) return `<div class="fj-card"><div class="fj-top fj-dark">${itemIcon({ id: sp.id })}<b class="muted">${esc(sp.name)}</b>${stars(sp.stars)}</div>
         <span class="muted small">Not caught yet${sp.where ? ` · ${esc(sp.where)}` : ""}</span>${recLine}</div>`;
@@ -1317,7 +1317,7 @@ function viewTideFishing(s, sid, d, who) {
       <section class="section"><div class="section-head"><h2>Catch quality</h2><span class="muted">At level ${d.baseline}; higher levels improve them, and better fish fight harder</span></div>
         <div class="fish-qs">${d.qualities.map((q, i) => `<span class="fish-q fq-${q.color}">${qMarks(i)} ${esc(q.name)} <small>${q.chance >= 1 ? `${q.chance}%` : `1 in ${Math.round(100 / q.chance).toLocaleString()}`}</small></span>`).join("")}</div></section>
       ${anglers}
-      <section class="section"><div class="section-head"><h2>${p ? `${esc(p.name)}'s journal` : "Family records"}</h2><span class="muted">${p ? "Their best of every fish" : "Hover a record to see who caught it"}</span></div>${groups}</section>
+      <section class="section"><div class="section-head"><h2>${p ? `${esc(p.name)}'s journal` : "Server records"}</h2><span class="muted">${p ? "Their best of every fish" : "Hover a record to see who caught it"}</span></div>${groups}</section>
       ${d.recent.length ? `<section class="section"><div class="section-head"><h2>Latest catches</h2></div><ul class="panel fj-recent">${d.recent.map((c) => `<li>${faceHtml({ name: c.player }, 20)}<b>${esc(c.player)}</b>
           ${itemIcon({ id: c.species })}<span class="fq-${QC[c.quality]}">${esc(c.quality === 1 ? "" : `${c.quality_name} `)}${esc(c.name)}</span><span class="muted small">${esc(fmtWeight(c.weight_g))} · ${c.points} pts · ${esc(fmtAgo(c.ts))}</span></li>`).join("")}</ul></section>` : ""}
 `);
@@ -1377,7 +1377,7 @@ async function renderPlayerFishing(el, sid, player) {
   el.innerHTML = `<section class="section"><div class="panel fj-head">
       ${anglerHead(p, d)}
       <div class="fish-qs">${d.qualities.map((q, i) => `<span class="fish-q fq-${q.color}">${esc(q.name)} <small>${p.qualities[i] || 0}</small></span>`).join("")}</div>
-      ${records.length ? `<p class="small">🏆 Family record holder: ${records.map(esc).join(", ")}</p>` : ""}
+      ${records.length ? `<p class="small">🏆 Server record holder: ${records.map(esc).join(", ")}</p>` : ""}
     </div></section>
     ${best.length ? `<section class="section"><div class="section-head"><h2>Heaviest catches</h2></div><ul class="panel fj-recent">${best.map(([id, m]) => `<li>${itemIcon({ id })}<b>${esc(names[id]?.name || id)}</b>
       <span class="muted small">${esc(fmtWeight(m.heaviest_g))}${m.longest_cm ? ` · ${esc(fmtLength(m.longest_cm))}` : ""} · caught ${m.count}×</span>${m.best_quality >= 0 ? `<span class="fq-${QC[m.best_quality]} small">best ${esc(d.qualities[m.best_quality].name)}</span>` : ""}</li>`).join("")}</ul></section>` : ""}
