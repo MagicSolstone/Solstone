@@ -46,7 +46,7 @@ Good to know on Bedrock:
 
 ## It won't let me in
 - **"You are not white-listed"**: you're not on the list yet. ${ask}.
-- **Can't connect / timed out**: check the address${s.bedrock_address ? " and port" : ""} for typos, and that the server is running${s.live ? " ([see it live](/#live))" : ""}.
+- **Can't connect / timed out**: check the address${s.bedrock_address ? " and port" : ""} for typos, and that the server is running (the [home page](/) shows whether it's up).
 - **Outdated client or server**: on Java, play Minecraft ${s.java_version || "the version shown on the home page"} (not newer, not older). On Bedrock, update Minecraft.`;
     },
   },

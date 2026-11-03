@@ -151,13 +151,7 @@ def test_one_leaderboard_list_for_app_and_status_page(client, anon, sid):
     assert keys == [k for k, _t, _f in S.LEADERBOARDS] and len(keys) >= 20
     assert all(set(keys) <= set(p) for p in mine["players"])
     assert {b["kind"] for b in mine["boards"]} <= {"ticks", "count", "cm", "hearts", "grams"}         # all handled by hud.js fmtStat
-    client.put("/api/settings/status", json={"enabled": True})
-    try:
-        assert anon.get(f"/api/public/leaderboard/{sid}").status_code == 401        # names: signed in only
-        public = client.get(f"/api/public/leaderboard/{sid}").json()
-        assert public["boards"] == mine["boards"]                    # same boards, same order, no drift
-    finally:
-        client.put("/api/settings/status", json={"enabled": False})
+    assert anon.get(f"/api/servers/{sid}/leaderboard").status_code == 401         # names: signed in only
 
 
 def test_players_off_the_whitelist_are_left_out(client, sid):

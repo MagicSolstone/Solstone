@@ -207,22 +207,15 @@ def test_on_the_whitelist_means_its_in_their_account(client, player, sid, tyler)
 
 def test_where_everyone_is_only_on_your_own_servers(client, player, sid):
     """Players can see the map, but not on a server their login doesn't have."""
-    from app import main
     me = player.get("/api/auth/me").json()["user"]
     client.put("/api/settings/players", json={"see_map": True})
-    client.put("/api/settings/status", json={"enabled": True, "show_positions": True})
-    main._board_cache.clear()
     try:
-        b = player.get(f"/api/public/status/{sid}").json()
-        assert b["spawn"] is not None or any("position" in p for p in b["players"] + b["recently"])
+        assert any("position" in p for p in player.get(f"/api/servers/{sid}/players").json()["players"])
         client.patch(f"/api/users/{me['id']}", json={"servers": ["somewhere-else"]})
-        b = player.get(f"/api/public/status/{sid}").json()
-        assert b["spawn"] is None and not any("position" in p for p in b["players"] + b["recently"])
+        assert player.get(f"/api/servers/{sid}/players").status_code == 404           # not one of theirs: nothing at all
     finally:
         client.patch(f"/api/users/{me['id']}", json={"servers": None})
         client.put("/api/settings/players", json={"see_map": False})
-        client.put("/api/settings/status", json={"enabled": False, "show_positions": False})
-        main._board_cache.clear()
 
 
 def test_a_login_with_a_java_and_a_bedrock_player(client, player, sid, tyler, game):

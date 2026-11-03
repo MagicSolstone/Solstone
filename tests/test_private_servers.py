@@ -7,7 +7,6 @@ def _set(client, sid, **kw):
 
 
 def test_private_server_is_for_admins_only(client, viewer, anon, sid):
-    client.put("/api/settings/status", json={"enabled": True})
     try:
         _set(client, sid, private=True)
         # admins still see and manage it
@@ -18,16 +17,18 @@ def test_private_server_is_for_admins_only(client, viewer, anon, sid):
         assert viewer.get(f"/api/servers/{sid}").status_code == 404
         assert viewer.get(f"/api/servers/{sid}/players").status_code == 404
         # nor do the public pages
-        assert not any(s["id"] == sid for s in anon.get("/api/public/status").json()["servers"])
-        assert viewer.get(f"/api/public/status/{sid}").status_code == 404
-        assert viewer.get(f"/api/public/leaderboard/{sid}").status_code == 404
+        from app import main
+        main._site_cache = None                        # the home page's status list is kept for 15 s
+        site = anon.get("/api/public/site").json()
+        assert not any(s["id"] == sid for s in site["servers"]) and not any(j["id"] == sid for j in site["joins"])
+        assert viewer.get(f"/api/servers/{sid}/leaderboard").status_code == 404
         # nor its announcements
         client.put("/api/board", json={"items": [{"text": "Home only", "where": ["home", "status"], "server": sid},
                                                  {"text": "For everyone", "where": ["home"]}]})
         texts = lambda c, **q: [i["text"] for i in c.get("/api/public/board", params=q).json()["items"]]  # noqa: E731
         assert "For everyone" in texts(anon, where="home") and "Home only" not in texts(anon, where="home")
-        assert "Home only" not in texts(anon, where="status", sid=sid)
-        assert "Home only" in texts(client, where="status", sid=sid)
+        assert "Home only" not in texts(anon, where="home", sid=sid)
+        assert "Home only" in texts(client, where="home", sid=sid)
     finally:
         client.put("/api/board", json={"items": []})
         _set(client, sid, private="")
@@ -54,19 +55,11 @@ def test_only_servers_keeps_one_solstone_to_its_own(monkeypatch, sid):
 
 
 def test_whereabouts_and_the_map_need_sign_in(client, anon, viewer, sid):
-    from app import main
-    client.put("/api/settings/status", json={"enabled": True, "show_positions": True})
-    main._board_cache.clear()
-    try:
-        assert anon.get(f"/api/public/status/{sid}").status_code == 401                  # strangers: nothing at all
-        assert anon.get(f"/api/public/map/{sid}/regions").status_code == 404           # no map pictures for strangers
-        assert anon.get(f"/api/public/map/{sid}/tile?x=0&z=0").status_code == 404
-        assert viewer.get(f"/api/public/map/{sid}/regions").status_code == 200         # signed in: there it is
-        signed = viewer.get(f"/api/public/status/{sid}").json()
-        assert signed["spawn"] is not None or any("position" in p for p in signed["players"] + signed["recently"])
-    finally:
-        client.put("/api/settings/status", json={"enabled": False, "show_positions": False})
-        main._board_cache.clear()
+    assert anon.get(f"/api/servers/{sid}/players").status_code == 401                 # strangers: nothing at all
+    assert anon.get(f"/api/public/map/{sid}/regions").status_code == 404               # no map pictures for strangers
+    assert anon.get(f"/api/public/map/{sid}/tile?x=0&z=0").status_code == 404
+    assert viewer.get(f"/api/public/map/{sid}/regions").status_code == 200             # signed in: there it is
+    assert any("position" in p for p in viewer.get(f"/api/servers/{sid}/players").json()["players"])
 
 
 def test_public_requests_are_limited_per_address(anon, monkeypatch):

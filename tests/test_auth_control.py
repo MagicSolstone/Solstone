@@ -288,53 +288,19 @@ def test_helpers_players_constant():
     assert helpers.PLAYERS[0][0] == "Tyler"
 
 
-# ---------------------------------------------------------------- public status page
-def test_public_status_page(anon, client, viewer, monkeypatch):
-    from app import main
-    from app import servers as S
-    main._list_cache = None
-    main._board_cache.clear()
-    # Each anonymous test request runs in its own event loop, so a pooled RCON connection
-    # can't be shared between them; read from files instead.
-    monkeypatch.setattr(S.Server, "rcon_conf", lambda self: None)
-    S.registry.servers[helpers.SID]._rcon = None
-
-    # Off by default: nothing public except "it's off".
-    off = anon.get("/api/public/status").json()
-    assert off["enabled"] is False and off["servers"] == [] and off["build"]          # the build lets open pages notice an update
-    assert anon.get(f"/api/public/status/{helpers.SID}").status_code == 401     # who's playing: never for strangers
-    assert anon.get(f"/api/public/icon/{helpers.SID}.png").status_code == 404
-    r = anon.get("/status", follow_redirects=False)          # the live status lives on the home page now
-    assert r.status_code == 301 and r.headers["location"] == "/#live"
-    assert anon.get(f"/status/{helpers.SID}?tv=1", follow_redirects=False).headers["location"] == "/#live"
-    assert anon.get("/api/public/site").json()["live"] is False
-
-    assert viewer.put("/api/settings/status", json={"enabled": True}).status_code == 403
-    cfg = client.put("/api/settings/status", json={"enabled": True}).json()
-    assert cfg == {"enabled": True, "show_positions": False, "show_items": True, "show_activity": True}
-    try:
-        lst = anon.get("/api/public/status").json()
-        assert lst["enabled"] is True
-        assert any(s["id"] == helpers.SID for s in lst["servers"])
-        assert anon.get("/api/public/site").json()["live"] is True
-        assert "/static/live.js" not in anon.get("/").text        # no live section on the home page any more
-        board = viewer.get(f"/api/public/status/{helpers.SID}").json()
-        assert {"name", "running", "players", "recent", "recently", "world"} <= set(board)
-        assert all(e["type"] != "chat" for e in board["recent"])   # chat is never public
-        assert anon.get(f"/api/public/icon/{helpers.SID}.png").status_code == 200
-        assert anon.get(f"/api/public/item/{helpers.SID}/minecraft/..%2f..%2fx.png").status_code == 404
-        assert anon.get("/api/servers").status_code == 401         # everything else still needs a login
-        assert anon.get(f"/api/servers/{helpers.SID}/players").status_code == 401
-
-        client.put("/api/settings/status", json={"enabled": True, "show_positions": False, "show_items": False})
-        main._board_cache.clear()
-        board = viewer.get(f"/api/public/status/{helpers.SID}").json()
-        assert board["spawn"] is None
-        assert all("position" not in p and "held" not in p for p in board["players"])
-        assert anon.get(f"/api/public/item/{helpers.SID}/minecraft/stone.png").status_code == 404
-    finally:
-        client.put("/api/settings/status", json={"enabled": False})
-        main._board_cache.clear()
+# ---------------------------------------------------------------- the old status page is gone
+def test_old_status_page_is_gone(anon):
+    """The live section, its settings and its addresses went when the status panel came to the top of the home page."""
+    assert anon.get("/api/public/status").json().keys() == {"build"}           # still there: open pages notice an update
+    for gone in (f"/api/public/status/{helpers.SID}", f"/api/public/leaderboard/{helpers.SID}", f"/api/public/recap/{helpers.SID}",
+                 f"/api/public/item/{helpers.SID}/minecraft/stone.png", "/static/live.js"):
+        assert anon.get(gone).status_code == 404, gone
+    r = anon.get("/status", follow_redirects=False)                             # old links and wall screens: the home page
+    assert r.status_code == 301 and r.headers["location"] == "/"
+    assert "live" not in anon.get("/api/public/site").json()
+    assert anon.get(f"/api/public/icon/{helpers.SID}.png").status_code in (200, 404)   # its card's icon, for anyone
+    assert anon.get("/api/servers").status_code == 401                          # everything else still needs a login
+    assert anon.get(f"/api/servers/{helpers.SID}/players").status_code == 401
 
 
 def test_security_and_cache_headers(client, anon):

@@ -352,33 +352,13 @@ async def status():
     }
 
 
-# ------------------------------------------------------------------ live servers on the home page (no login needed)
-# Off until an admin turns it on. Everything here is read-only and cached so anonymous
-# visitors can't hammer RCON or Crafty, and chat is never included.
-STATUS_DEFAULTS = {"enabled": False, "show_positions": False, "show_items": True,
-                   "show_activity": True}       # the web map (BlueMap) is only on a server's World tab, signed in
-STATUS_TTL = 4.0
-_board_cache: dict[str, tuple[float, dict]] = {}
-_board_locks: dict[str, asyncio.Lock] = {}
-_list_cache: tuple[float, list] | None = None
 _SAFE_ID = re.compile(r"^[a-z0-9_.\-]{1,64}$")
 
 
-def _status_cfg() -> dict:
-    saved = settings_store.load().get("status", {})
-    return {k: bool(saved.get(k, v)) for k, v in STATUS_DEFAULTS.items()}
 
 
-def _require_status() -> dict:
-    cfg = _status_cfg()
-    if not cfg["enabled"]:
-        raise HTTPException(404, "Live server info is turned off")
-    return cfg
 
 
-def _phase(t: int) -> str:
-    return ("Morning" if t < 6000 else "Afternoon" if t < 12000 else "Sunset" if t < 13000
-            else "Night" if t < 23000 else "Sunrise")
 
 
 def _public_servers_list() -> list[S.Server]:
@@ -412,127 +392,16 @@ async def _maybe_live(srv: S.Server, p: dict) -> dict | None:
     return await S.live_player(srv, p["name"]) if p.get("uuid") and srv.rcon_conf() else None
 
 
-async def _build_board(srv: S.Server, cfg: dict) -> dict:
-    summ = await S.server_summary(srv)
-    board: dict = {
-        "id": srv.id, "name": summ["name"], "motd": summ["motd"], "running": summ["running"], "crashed": summ["crashed"],
-        "online_count": len(summ["online"]), "max": summ["max_players"], "version": summ["version"],
-        "loader": summ["loader"], "game": summ["game_label"], "java": srv.is_java, "has_icon": summ["has_icon"],
-        "started": summ["started"] if summ["running"] else None,
-        "tps": summ["perf"]["tps"] if summ.get("perf") and summ["running"] is not False else None,
-        "world": None, "spawn": None, "players": [], "recent": [], "recently": [],
-    }
-    lang: dict = {}
-    if srv.is_java:
-        a = _assets(srv)
-        if a and a.ready:
-            lang = await asyncio.to_thread(a.lang_cached)
-        try:
-            w = await asyncio.to_thread(S.world_info, srv, False)
-            if summ["running"] is not False and srv.rcon_conf():
-                w.update(await S.live_world(srv))
-            if w.get("time_of_day") is not None:
-                board["world"] = {"day": w["day"], "time_of_day": w["time_of_day"], "phase": _phase(w["time_of_day"]),
-                                  "raining": w.get("raining"), "thundering": w.get("thundering"), "as_of": w.get("as_of")}
-            if cfg["show_positions"] and w.get("spawn"):
-                board["spawn"] = {k: w["spawn"][k] for k in ("x", "y", "z")}
-            if cfg["show_positions"]:
-                board["race"] = races.live_for_map(srv.id)
-        except Exception as e:
-            log.debug("status page world info failed for %s: %s", srv.id, e)
-    board["live"] = challenges.live(srv.id) + races.live(srv.id) + games.live(srv.id)
-    if summ["running"] is not False and summ["online"]:
-        overview = await S.players_overview(srv)
-        online = [p for p in overview["players"] if p["online"]]
-        details = await asyncio.gather(*(_maybe_live(srv, p) for p in online))
-        hidden = games.hidden_from_map(srv.id)
-        for p, live in zip(online, details, strict=True):
-            d = live
-            if d is None and p.get("uuid"):
-                d, _m = await asyncio.to_thread(S.player_file_data, srv, p["uuid"])
-            row: dict = {"name": p["name"], "uuid": p.get("uuid"), "live": live is not None,   # never how long they've played
-                         "doing": await asyncio.to_thread(adventures.lately, srv.id, p["name"])}   # "⛏️ Mining", from their statistics
-            if d:
-                row.update(health=d["health"], max_health=d["max_health"], absorption=d.get("absorption", 0),
-                           food=d["food"], xp_level=d["xp_level"], xp_progress=d["xp_progress"],
-                           gamemode=d["gamemode"], dimension=d["position"]["dimension"],
-                           effects=[{"id": e["id"], "name": _lang_name(lang, "effect", e["id"]), "amplifier": e["amplifier"]}
-                                    for e in d.get("effects", []) if not e.get("ambient")][:6])
-                if cfg["show_positions"] and p["name"] not in hidden:      # hiders stay hidden during hide and seek
-                    row["position"] = {k: d["position"][k] for k in ("x", "y", "z")}
-                if cfg["show_items"]:
-                    inv = d["inventory"]
-                    sel = d.get("selected_slot", 0)
-                    row["held"] = _public_item(inv["hotbar"][sel] if 0 <= sel < 9 else None, lang)
-                    row["armor"] = [_public_item(inv["armor"][k], lang) for k in ("head", "chest", "legs", "feet")]
-            board["players"].append(row)
-    if cfg["show_activity"]:
-        evs = db.events(srv.id, ["join", "leave", "death", "advancement", "level", "server", "challenge", "race", "bigfish", "game"], None, 14)
-        board["recent"] = [{"ts": e["ts"], "type": e["type"], "player": e["player"], "message": e["message"]} for e in evs]
-    online_l = {n.lower() for n in summ["online"]}
-    if srv.is_java:
-        board["recently"] = await asyncio.to_thread(_recently, srv, online_l, cfg["show_positions"])
-    return board
 
 
-def _recently(srv: S.Server, online_l: set[str], positions: bool) -> list[dict]:
-    """Who played this week but isn't on now (disk work: run off the main loop)."""
-    week = time.time() - 7 * 86400
-    recent = []
-    for uuid, p in S.known_players(srv).items():
-        if p["name"].lower() in online_l or S.removed(srv, p):
-            continue
-        seen = S.last_seen(srv, uuid)
-        if seen and seen > week:
-            recent.append({"name": p["name"], "uuid": uuid, "last_seen": seen})
-    recent = sorted(recent, key=lambda r: -r["last_seen"])[:8]
-    if positions:
-        # where they were when they left, so the map has something to show with nobody on
-        for r in recent:
-            d, _m = S.player_file_data(srv, r["uuid"])
-            if d and d.get("position"):
-                r["position"] = {k: d["position"][k] for k in ("x", "y", "z")}
-                r["dimension"] = d["position"].get("dimension") or "minecraft:overworld"
-    return recent
 
 
-async def _board(srv: S.Server, cfg: dict) -> dict:
-    hit = _board_cache.get(srv.id)
-    if hit and time.monotonic() - hit[0] < STATUS_TTL:
-        return hit[1]
-    lock = _board_locks.setdefault(srv.id, asyncio.Lock())
-    async with lock:
-        hit = _board_cache.get(srv.id)
-        if hit and time.monotonic() - hit[0] < STATUS_TTL:
-            return hit[1]
-        board = await _build_board(srv, cfg)
-        _board_cache[srv.id] = (time.monotonic(), board)
-        return board
 
 
 @app.get("/api/public/status")
 async def public_status():
-    """Whether the status page is on, and the list of servers it can show."""
-    global _list_cache
-    cfg = _status_cfg()
-    if not cfg["enabled"]:
-        return {"enabled": False, "servers": [], "build": _asset_stamp()}
-    if _list_cache and time.monotonic() - _list_cache[0] < 15:
-        return {"enabled": True, "servers": _list_cache[1], "build": _asset_stamp()}
-    await S.registry.refresh()
-    out = []
-    for srv in _public_servers_list():
-        try:
-            summ = await S.server_summary(srv)
-        except Exception as e:
-            log.warning("status list failed for %s: %s", srv.id, e)
-            continue
-        out.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "crashed": summ["crashed"],
-                    "online": len(summ["online"]), "max": summ["max_players"], "has_icon": summ["has_icon"]})
-    main = site.config().get("main_server")
-    out.sort(key=lambda x: x["id"] != main)       # the main server's tab first
-    _list_cache = (time.monotonic(), out)
-    return {"enabled": True, "servers": out, "build": _asset_stamp()}
+    """The build Solstone is running, so open pages can offer a reload after an update."""
+    return {"build": _asset_stamp()}
 
 
 def _up_since(sid: str, started) -> float | None:
@@ -578,23 +447,8 @@ def _may_see_map(user) -> bool:
     return user is not None and (not user.is_player or _players_see_map())
 
 
-def _without_whereabouts(board: dict) -> dict:
-    strip = lambda rows: [{k: v for k, v in r.items() if k != "position"} for r in rows]   # noqa: E731
-    return {**board, "spawn": None, "race": None,
-            "players": strip(board.get("players", [])), "recently": strip(board.get("recently", []))}
 
 
-@app.get("/api/public/status/{sid}")
-async def public_board(sid: str, request: Request):
-    _require_signed_in(request)
-    cfg = _require_status()
-    srv = await _public_server(sid)
-    board = await _board(srv, cfg)
-    if not (_may_see_map(request.state.user) and _allowed(srv)):    # and only on servers their login may see
-        board = _without_whereabouts(board)
-    if board.get("world") and board["world"].get("as_of"):
-        board = {**board, "world": {**board["world"], "age": round(max(0.0, time.time() - board["world"]["as_of"]), 1)}}
-    return JSONResponse(board, headers={"Cache-Control": "no-store"})
 
 
 # ---- the public website: site details (how to join) and posts (news, guides, FAQ)
@@ -712,8 +566,7 @@ async def public_site():
            "xbox_friend": next((j["xbox"] for j in joins if j["xbox"]), "")}
     asks = [{"id": s.id, "name": s.display_name, "main": s.id == cfg.get("main_server")} for s in ordered if s.is_java] if cfg["join_requests"] else []
     return JSONResponse({**cfg, "logo": site.logo_url(), "servers": servers, "joins": joins, "ask_servers": asks,
-                         "guide_posts": site.guide_posts(), "roles": site.ROLES,
-                         "live": _status_cfg()["enabled"], "build": _asset_stamp()},
+                         "guide_posts": site.guide_posts(), "roles": site.ROLES, "build": _asset_stamp()},
                         headers={"Cache-Control": "no-cache"})
 
 
@@ -1026,22 +879,8 @@ async def remove_post(pid: int, request: Request):
     return {"ok": True}
 
 
-_lb_cache: dict[str, tuple[float, dict]] = {}
 
 
-@app.get("/api/public/leaderboard/{sid}")
-async def public_leaderboard(sid: str, request: Request):
-    _require_signed_in(request)
-    _require_status()
-    srv = await _public_server(sid)
-    if not srv.is_java:
-        return {"players": []}
-    hit = _lb_cache.get(srv.id)
-    if hit and time.monotonic() - hit[0] < 120:
-        return hit[1]
-    data = stacks.leaderboard(await S.leaderboard(srv))       # an account's Minecraft names as one player
-    _lb_cache[srv.id] = (time.monotonic(), data)
-    return data
 
 
 # ---- daily recaps and "on this day"
@@ -1065,22 +904,8 @@ async def get_recap(sid: str, day: str | None = None):
     return data if _shows_play_time() else _recap_without_durations(data)
 
 
-_recap_cache: dict[str, tuple[float, dict]] = {}
 
 
-@app.get("/api/public/recap/{sid}")
-async def public_recap(sid: str, request: Request):
-    _require_signed_in(request)
-    cfg = _require_status()
-    if not cfg["show_activity"]:
-        raise HTTPException(404, "Activity is hidden on the status page")
-    srv = await _public_server(sid)
-    hit = _recap_cache.get(srv.id)
-    if hit and time.monotonic() - hit[0] < 60:
-        return hit[1]
-    data = _recap_without_durations(await asyncio.to_thread(_recap_payload, srv.id, None))     # the public never sees how long
-    _recap_cache[srv.id] = (time.monotonic(), data)
-    return data
 
 
 @app.post("/api/recap/backfill")
@@ -1109,11 +934,10 @@ async def public_board_items(request: Request, where: str = "status", sid: str =
     if where not in board.WHERE:
         raise HTTPException(400, "Unknown place")
     signed_in = request.state.user is not None
-    status_on = _status_cfg()["enabled"]
     if where == "app" and not signed_in:
         raise HTTPException(401, "Sign in to continue")
-    if where == "status" and not status_on:
-        raise HTTPException(404, "Live server info is turned off")
+    if where == "status":                            # the old status page, gone (its servers are on the home page)
+        raise HTTPException(404, "There's no status page any more")
     await S.registry.refresh()
     servers = [x for x in _board_servers() if _visible(x)]     # a private server's announcements stay private
     if sid and not any(x.id == sid for x in servers):
@@ -1136,8 +960,7 @@ async def get_board(request: Request):
             uuids.setdefault(p["name"].lower(), u)
     return {**board.config(), "players": sorted(players.values(), key=str.lower), "uuids": uuids,
             "servers": [{"id": x.id, "name": x.display_name, "bedtime": bool(playtime.rules_for(playtime.config(), x.id))} for x in _board_servers()],
-            "shows": [{"id": x["id"], "name": x["name"]} for x in fwshow.shows()], "now": time.time(),
-            "status_enabled": _status_cfg()["enabled"]}
+            "shows": [{"id": x["id"], "name": x["name"]} for x in fwshow.shows()], "now": time.time()}
 
 
 @app.put("/api/board")
@@ -1244,23 +1067,13 @@ async def run_selfcheck(sid: str, request: Request):
 
 @app.get("/api/public/icon/{sid}.png")
 async def public_icon(sid: str):
-    _require_status()
+    """A public server's icon, for its card on the home page."""
     data = S.server_icon_bytes(await _public_server(sid))
     if not data:
         raise HTTPException(404)
     return Response(data, media_type="image/png", headers={"Cache-Control": "max-age=300"})
 
 
-@app.get("/api/public/item/{sid}/{ns}/{name}.png")
-async def public_item_icon(sid: str, ns: str, name: str):
-    cfg = _require_status()
-    if not cfg["show_items"] or not _SAFE_ID.match(ns) or not _SAFE_ID.match(name):
-        raise HTTPException(404)
-    a = _assets(await _public_server(sid))
-    data = await asyncio.to_thread(a.icon, f"{ns}:{name}") if a and a.ready else None
-    if not data:
-        raise HTTPException(404)
-    return Response(data, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/api/public/reward-item/{ns}/{name}.png")
@@ -1278,23 +1091,8 @@ async def public_reward_icon(ns: str, name: str):
     return Response(data, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
 
-@app.get("/api/public/skin/{sid}/{uuid}.png")
-async def public_skin(sid: str, uuid: str, request: Request):
-    """Skins for the status page: only players who have joined a visible server."""
-    _require_status()
-    srv = await _public_server(sid)
-    if S.norm_uuid(uuid) not in S.known_players(srv):
-        raise HTTPException(404)
-    return await _skin_response(request, uuid, "public")
 
 
-@app.get("/api/public/skin/{sid}/{uuid}/body.png")
-async def public_body(sid: str, uuid: str, request: Request, size: int = 256):
-    _require_status()
-    srv = await _public_server(sid)
-    if S.norm_uuid(uuid) not in S.known_players(srv):
-        raise HTTPException(404)
-    return await _skin_response(request, uuid, "public", size)
 
 
 async def _skin_response(request: Request, uuid: str, scope: str, body_size: int | None = None) -> Response:
@@ -1765,23 +1563,8 @@ async def put_player_settings(request: Request):
     return cfg
 
 
-@app.get("/api/settings/status")
-async def get_status_settings(request: Request):
-    auth.require_admin(request)
-    return _status_cfg()
 
 
-@app.put("/api/settings/status")
-async def put_status_settings(request: Request):
-    global _list_cache
-    user = auth.require_admin(request)
-    body = await _body(request)
-    cfg = {k: bool(body.get(k, v)) for k, v in _status_cfg().items()}
-    settings_store.save_section("status", cfg)
-    _list_cache = None
-    _board_cache.clear()
-    auth.audit(user, None, "status_page_settings", ", ".join(f"{k}={v}" for k, v in cfg.items()))
-    return cfg
 
 
 # ------------------------------------------------------------------ accounts
@@ -2412,7 +2195,6 @@ async def clear_saved(sid: str, request: Request):
         welcomed = settings_store.load().get("welcomed") or {}
         if welcomed.pop(srv.id, None) is not None:
             settings_store.save_section("welcomed", welcomed)
-    _board_cache.pop(srv.id, None)
     auth.audit(user, srv.id, "clear_saved", ", ".join(sorted(kinds)))
     return {"ok": True, "cleared": out}
 
@@ -3667,8 +3449,8 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 @app.get("/status", include_in_schema=False)
 @app.get("/status/{sid}", include_in_schema=False)
 async def status_page(sid: str = ""):
-    """The live status is on the home page now; old links and wall screens land there."""
-    return RedirectResponse("/#live", status_code=301)
+    """The old status page: how each server is doing is at the top of the home page now."""
+    return RedirectResponse("/", status_code=301)
 
 
 # ---- the web map (BlueMap etc.) through Solstone: see webmap.py
@@ -3738,7 +3520,7 @@ async def not_found_page(full_path: str):
     return HTMLResponse(_page("home.html"), status_code=404, headers={"Cache-Control": "no-cache"})
 
 
-ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "live.js", "home.js", "postfmt.js", "guides.js", "website.js", "adventures.js", "playtime.js", "community.js")
+ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "home.js", "postfmt.js", "guides.js", "website.js", "adventures.js", "playtime.js", "community.js")
 
 
 @functools.cache

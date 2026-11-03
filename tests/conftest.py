@@ -88,4 +88,8 @@ def _fresh_online_list():
     """Who's online is kept for two seconds in the app; each test fakes its own game, so start each one fresh."""
     from app import servers as S
     S._online_cache.clear()
+    # Each test client runs its requests in an event loop of its own, so an RCON connection pooled by one test
+    # can't be used by the next: every test starts without one.
+    for srv in S.registry.servers.values():
+        srv._rcon = None
     yield

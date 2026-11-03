@@ -135,8 +135,6 @@ def main() -> int:
             hdrs = pg.request.get(f"{base}/").headers
             if "script-src 'self'" not in hdrs.get("content-security-policy", ""):
                 problems.append("index: no Content-Security-Policy header")
-            # turn on live server info so the home page shows it too
-            pg.request.put(f"{base}/api/settings/status", data={"enabled": True, "show_positions": True}, headers=H)
             # the website: how to join, and a post of each kind
             pg.request.put(f"{base}/api/settings/site", data={"name": "Smoke SMP", "tagline": "A test server", "java_address": "play.example.net",
                                                               "bedrock_address": "play.example.net", "about": "We **fish** a lot."}, headers=H)
@@ -912,8 +910,8 @@ def main() -> int:
             if not pg.locator(".hp-nav [data-admin]").is_visible():
                 problems.append("home: an admin doesn't see Manage")
             pg.goto(f"{base}/status"); pg.wait_for_timeout(800)
-            if not pg.url.endswith("/#live"):
-                problems.append("status: the old address doesn't lead to the home page's live section")
+            if pg.url.rstrip("/") != base:
+                problems.append("status: the old address doesn't lead to the home page")
             pl.goto(f"{base}/app#/s/{sid}"); pl.wait_for_timeout(1200)
             if not pl.locator(".app-top .hp-nav a[href='/']").is_visible():
                 problems.append("app: no link back to the website")
@@ -925,8 +923,8 @@ def main() -> int:
             if anon.locator("#hp-status").count() and anon.locator("#hp-status").bounding_box()["y"] > anon.locator(".hp-join").bounding_box()["y"]:
                 problems.append("home: the status panel isn't above Join the server")
             for path in (f"/api/public/status/{sid}", f"/api/public/leaderboard/{sid}", f"/api/public/recap/{sid}"):
-                if anon.request.get(f"{base}{path}", headers={"X-Solstone": "1"}).status == 200:
-                    problems.append(f"public: {path} is open to people not signed in")
+                if anon.request.get(f"{base}{path}", headers={"X-Solstone": "1"}).status != 404:
+                    problems.append(f"public: {path} is still there (it went with the old live section)")
             anon.set_viewport_size({"width": 390, "height": 800}); anon.goto(f"{base}/"); anon.wait_for_timeout(1500)
             check(anon, "m-home-status")
             if anon.evaluate("document.documentElement.scrollWidth") > 392:

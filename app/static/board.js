@@ -132,7 +132,7 @@ function startBoard(el, opts = {}) {
     if (!document.hidden) {
       try {
         const sid = opts.sid?.() || "";
-        const r = await fetch(`/api/public/board?where=${encodeURIComponent(opts.where || "status")}&sid=${encodeURIComponent(sid)}`, { credentials: "same-origin", cache: "no-store" });
+        const r = await fetch(`/api/public/board?where=${encodeURIComponent(opts.where || "home")}&sid=${encodeURIComponent(sid)}`, { credentials: "same-origin", cache: "no-store" });
         if (r.ok) {
           const d = await r.json();
           offset = d.now * 1000 - Date.now();
