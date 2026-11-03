@@ -470,6 +470,8 @@ async function viewAdmin(section = "users") {
         <button class="btn" id="ann-backfill" type="button" style="margin-top:8px">Read old logs again</button></div></section>
     <section class="section"><div class="section-head"><h2>Each server</h2></div>
       <div class="panel"><p>A server's own settings (its name, Private, the web map, bedtime) are on its page: open it from <b>Servers</b> and press ⚙.</p></div></section>
+    <section class="section"><div class="section-head"><h2>💾 Storage</h2><span class="muted">How much room Solstone takes, and what grows</span></div>
+      <div class="panel" id="storage" style="max-width:720px"><p class="muted">Loading…</p></div></section>
     <section class="section"><div class="section-head"><h2>Solstone's own backups</h2><span class="muted">Accounts, settings, posts and history</span></div>
       <div class="panel" id="self-backups" style="max-width:720px"><p class="muted">Loading…</p></div></section>
     <section class="section"><div class="section-head"><h2>Clear saved history</h2><span class="muted">For a new world, or a fresh start</span></div>
@@ -495,6 +497,22 @@ async function viewAdmin(section = "users") {
       <button class="btn sm" type="button" data-backup-now>Back up now</button>`;
   };
   selfBackups();
+  (async () => {
+    const box = $("#storage");
+    if (!box) return;
+    const d = await api("/api/solstone-storage").catch(() => null);
+    if (!d) { box.innerHTML = `<p class="muted">Couldn't work it out.</p>`; return; }
+    const sz = (n) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(1)} GB` : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+    const PART = { "solstone.db": "The database (history, accounts, posts)", backups: "Solstone's own backups", site: "Pictures in posts and the logo",
+      skins: "Players' skins (fetched again if deleted)", assets: "Item pictures, one set per Minecraft version (old versions' can be deleted)",
+      mrpack: "The modpack download", maptiles: "Map colours", "tide-guide": "The tackle guide", "settings.json": "Settings" };
+    const top = Math.max(1, ...d.parts.map((p) => p.bytes));
+    box.innerHTML = `<p><b>${esc(sz(d.total))}</b> in <code>${esc(d.folder)}</code> · <span class="muted">${esc(sz(d.disk.free))} free on that disk</span></p>
+      <ul class="st-list">${d.parts.filter((p) => p.bytes > 0).map((p) => `<li><span>${esc(PART[p.name] || p.name)}</span><span class="st-bar"><i style="width:${(p.bytes / top) * 100}%"></i></span><b>${esc(sz(p.bytes))}</b></li>`).join("")}</ul>
+      <details><summary>Inside the database</summary><table class="data st-table"><thead><tr><th>What</th><th>Rows</th><th>Size</th><th>Kept</th></tr></thead><tbody>
+        ${d.tables.map((t) => `<tr><td>${esc(t.what || t.name)}</td><td>${fmtNum(t.rows)}</td><td>${t.bytes ? esc(sz(t.bytes)) : "–"}</td><td class="muted">${esc(t.kept || "")}</td></tr>`).join("")}</tbody></table>
+        <p class="muted small">Adventures trails are the part that grows: a row every few seconds for each player while anyone plays. Old ones are cleared each day, so it levels off. The database file doesn't shrink when rows are cleared; it reuses the room.</p></details>`;
+  })();
   $("#self-backups")?.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-backup-now]");
     if (!b) return;

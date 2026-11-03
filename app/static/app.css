@@ -2298,3 +2298,13 @@ body.ui-hidden .manage-sub { display: none; }
 .also-tip { position: absolute; z-index: 60; max-width: min(280px, calc(100vw - 16px)); padding: 6px 10px; border-radius: 8px;
   background: rgba(16, 20, 34, .96); border: 1px solid var(--glass-edge); color: var(--bone); font-size: .86rem; box-shadow: 0 6px 18px rgba(0,0,0,.4); }
 .also-tip[hidden] { display: none; }
+
+/* Storage: what takes the room */
+.st-list { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.st-list li { display: grid; grid-template-columns: minmax(0, 1fr) 120px 70px; gap: 10px; align-items: center; font-size: .9rem; }
+.st-list b { text-align: right; font-variant-numeric: tabular-nums; }
+.st-bar { height: 8px; border-radius: 4px; background: var(--well); overflow: hidden; }
+.st-bar i { display: block; height: 100%; background: var(--gold); }
+.st-table td:nth-child(2), .st-table td:nth-child(3) { text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .st-list li { grid-template-columns: minmax(0, 1fr) 60px; } .st-bar { display: none; } }
+.st-table td:nth-child(3), .st-table td:nth-child(2) { white-space: nowrap; }

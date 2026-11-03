@@ -741,6 +741,12 @@ def main() -> int:
             pg.goto(f"{base}/app#/manage/servers"); pg.wait_for_timeout(1000)
             if "Live on the home page" in (pg.locator("main#view").text_content() or ""):
                 problems.append("manage: the old live-on-the-home-page switches are still there")
+            pg.wait_for_timeout(800)
+            if "The database" not in (pg.locator("#storage").text_content() if pg.locator("#storage").count() else ""):
+                problems.append("manage: no Storage panel (how much room Solstone takes)")
+            else:
+                pg.locator("#storage summary").click(); pg.locator("#storage").scroll_into_view_if_needed(); pg.wait_for_timeout(200)
+                check(pg, "manage-storage")
             # the rules page, and a welcome message in the game
             anon.goto(f"{base}/guides/rules"); anon.wait_for_timeout(900)
             if "Leave other people's things alone" not in (anon.locator(".hp-body").text_content() or ""):

@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, games, stacks, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
+from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, games, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -2344,6 +2344,13 @@ async def put_settings(sid: str, request: Request):
     safe = {k: v for k, v in saved.items() if k != "rcon_password"}
     safe["rcon_password_set"] = "rcon_password" in saved
     return safe
+
+
+@app.get("/api/solstone-storage")
+async def solstone_storage(request: Request):
+    """How much room Solstone takes, and what in it grows (storage.py)."""
+    auth.require_admin(request)
+    return await asyncio.to_thread(storage.report)
 
 
 @app.get("/api/solstone-backups")
