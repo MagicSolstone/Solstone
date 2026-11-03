@@ -150,11 +150,14 @@ function stepState(d) {
   ask.classList.toggle("denied", state === "denied");
   play.classList.toggle("now", state === "in" || state === "partly");
   const btn = $("[data-open-ask]", ask), text = $("[data-step-text]", ask);
-  btn.hidden = state === "waiting" || state === "in" || state === "partly";
+  btn.hidden = state === "waiting" || state === "in" || state === "partly" || state === "denied";
+  // the answer, right here: let in, or not (with the admin's message), and a way to clear it or ask again
+  const again = `<span class="hp-step-acts"><button type="button" class="btn sm primary" data-ask-again>🙋 Ask again</button><button type="button" class="link-btn" data-ask-forget>Clear this</button></span>`;
   text.innerHTML = state === "waiting" ? `<span class="spin" aria-hidden="true"></span> Request sent for <b>${esc(d.player)}</b>. Waiting for an admin to let you in. You can leave this page: we'll show it here when you come back.`
-    : state === "in" ? `✅ <b>${esc(d.player)}</b> is on the list.`
+    : state === "in" ? `✅ <b>${esc(d.player)}</b> is on the list. Join the game below! <button type="button" class="link-btn" data-ask-forget>Clear this</button>`
     : state === "partly" ? `✅ <b>${esc(d.player)}</b> is in on some servers, and waiting on the rest.`
-    : state === "denied" ? `Your request for <b>${esc(d.player)}</b> wasn't accepted this time. Ask an admin you know, or send a new one.`
+    : state === "denied" ? `<span class="hp-denied">✋ Your request for <b>${esc(d.player)}</b> wasn't accepted this time.</span>
+        ${d.reason ? `<span class="hp-admin-says"><small>The admins said:</small> ${esc(d.reason)}</span>` : ""}${again}`
     : "The server only lets in people on its list. Send your name, and an admin will add you.";
   $("[data-step-title]", play).textContent = state === "waiting" ? "Then get in the game" : state === "in" || state === "partly" ? "You're in! Join the game" : "Get in the game";
 }
@@ -365,7 +368,7 @@ async function showAskStatus() {
     box.className = `hp-ask-status ${d.state}`;
     const each = (d.servers || []).length > 1 ? ` <span class="ask-each">${d.servers.map((x) => `<span class="${x.in ? "in" : ""}">${x.in ? "✅" : "⏳"} ${esc(x.name)}</span>`).join("")}</span>` : "";
     box.innerHTML = d.state === "denied"
-      ? `Sorry, <b>${esc(d.player)}</b>, your request wasn't accepted this time. If you think that's a mistake, ask an admin you know. <button type="button" class="link-btn" data-ask-forget>Hide this</button>`
+      ? `Sorry, <b>${esc(d.player)}</b>, your request wasn't accepted this time.${d.reason ? ` The admins said: <i>${esc(d.reason)}</i>` : " If you think that's a mistake, ask an admin you know."} <button type="button" class="link-btn" data-ask-forget>Ask again</button>`
       : d.state === "in"
       ? `🎉 <b>${esc(d.player)}</b>, you're in! Join the server now.${each} <button type="button" class="link-btn" data-ask-forget>Hide this</button>`
       : d.state === "partly"
@@ -373,7 +376,8 @@ async function showAskStatus() {
         : `<span class="spin" aria-hidden="true"></span> Your request for <b>${esc(d.player)}</b> is waiting for an admin. It may not be right away, but they'll get to it as soon as they can.${each}`;
   }
   const old = Date.now() - (t.at || Date.now()) > ASK_BADGE_DAYS * 86400000;
-  renderAskBadge(d.state === "in" || d.state === "denied" || (!old && !t.hidden) ? d : null);
+  // the home page's Get started step shows it right where they asked; the corner badge is for the other pages
+  renderAskBadge(!$("#step-ask") && (d.state === "in" || d.state === "denied" || (!old && !t.hidden)) ? d : null);
   if (d.state !== "in" && d.state !== "denied") askTimer = setTimeout(showAskStatus, document.hidden ? 60000 : 15000);
 }
 function renderAskBadge(d) {
@@ -382,7 +386,7 @@ function renderAskBadge(d) {
   if (!b) { b = document.createElement("div"); b.id = "ask-badge"; b.setAttribute("role", "status"); document.body.append(b); }
   b.className = `ask-badge glass ${d.state}`;
   b.innerHTML = d.state === "denied"
-    ? `<span aria-hidden="true">✋</span><span><b>Request not accepted</b><small>Your request for ${esc(d.player)} wasn't accepted this time</small></span><button type="button" class="ask-x" data-ask-forget aria-label="Close">×</button>`
+    ? `<span aria-hidden="true">✋</span><span><b>Request not accepted</b><small>${d.reason ? "The admins left you a message: " : ""}<a href="/">see the home page</a></small></span><button type="button" class="ask-x" data-ask-forget aria-label="Close">×</button>`
     : d.state === "in"
     ? `<span aria-hidden="true">🎉</span><span><b>You're in, ${esc(d.player)}!</b><small>Join the server now</small></span><button type="button" class="ask-x" data-ask-forget aria-label="Close">×</button>`
     : `<span class="spin" aria-hidden="true"></span><span><b>${d.state === "partly" ? "You're in on some" : "Request sent"}</b><small>${d.state === "partly"
@@ -400,6 +404,7 @@ function forgetAsk() {
 document.addEventListener("click", (e) => {
   if (e.target.closest("[data-ask-forget]")) { forgetAsk(); return; }
   if (e.target.closest("[data-open-ask]")) { openPop(askFormHtml(true)); return; }
+  if (e.target.closest("[data-ask-again]")) { forgetAsk(); openPop(askFormHtml(true)); return; }
   if (e.target.closest("[data-open-signup]")) { openSignup(); return; }
   if (e.target.closest("[data-ask-hide]")) {          // hide the badge only: the request is still waiting
     const t = askTicket();

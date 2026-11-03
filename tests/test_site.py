@@ -514,3 +514,14 @@ def test_today_on_the_server_adds_up_and_names_nobody():
         assert "Kid" not in str(t)
     finally:
         db.x("DELETE FROM events WHERE server_id='today-test'")
+
+
+def test_a_denied_request_carries_the_admins_message(client, anon):
+    client.put("/api/settings/site", json={"join_requests": True})
+    try:
+        t = anon.post("/api/public/join-request", json={"rules": True, "player": "Reason_Kid"}).json()["token"]
+        assert client.post("/api/whitelist/deny", json={"player": "Reason_Kid", "reason": "  Ask again with   your real name  "}).json() == {"ok": True}
+        d = anon.post("/api/public/join-request/status", json={"token": t}).json()
+        assert d["state"] == "denied" and d["reason"] == "Ask again with your real name"
+    finally:
+        client.put("/api/settings/site", json={"join_requests": False})

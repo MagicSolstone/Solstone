@@ -2325,3 +2325,12 @@ body.ui-hidden .manage-sub { display: none; }
 .rw-item img { image-rendering: pixelated; }
 .bn-reward { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .bn-reward .rw-item { color: var(--bone); }
+
+/* Asking to join: the answer where they asked */
+.hp-denied { display: block; }
+.hp-admin-says { display: block; margin: 6px 0; padding: 8px 12px; border-radius: 10px; background: rgba(255, 140, 90, .1); border: 1px solid rgba(255, 140, 90, .4); color: var(--bone); }
+.hp-admin-says small { display: block; color: var(--muted); }
+.hp-step-acts { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+.ask-badge a { color: var(--gold); }
+.deny-form { display: grid; gap: 10px; }
+.deny-form label { display: grid; gap: 4px; }

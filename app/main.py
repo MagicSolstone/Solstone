@@ -914,7 +914,7 @@ async def join_request_status(request: Request):
         return {"state": "unknown"}
     r, finished = found
     if r.get("denied"):
-        return {"state": "denied", "player": r["player"], "servers": []}
+        return {"state": "denied", "player": r["player"], "servers": [], "reason": r.get("reason") or ""}
     await S.registry.refresh()
     public = {s.id: s for s in _public_servers_list() if s.is_java}
     sids = [x for x in (r.get("servers") or []) if x in public] or ([] if finished else list(public)[:1])
@@ -2603,8 +2603,9 @@ async def whitelist_overview(request: Request):
 async def deny_request(request: Request):
     """Say no to someone who asked to join: off the Asked to join list, and their page says it wasn't accepted."""
     user = auth.require_admin(request)
-    player = str((await _body(request)).get("player") or "")
-    if not site.deny_join_request(player):
+    body = await _body(request)
+    player = str(body.get("player") or "")
+    if not site.deny_join_request(player, str(body.get("reason") or "")):
         raise HTTPException(404, "That request isn't there any more")
     auth.audit(user, None, "join_request_denied", player)
     return {"ok": True}

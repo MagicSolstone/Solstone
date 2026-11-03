@@ -257,15 +257,17 @@ def drop_join_request(player: str) -> None:
     settings_store.save_section("join_requests", [r for r in join_requests() if r.get("player", "").lower() != player.lower()])
 
 
-def deny_join_request(player: str) -> bool:
-    """Not this time: off the list, kept a while (marked denied) so their page can tell them."""
+def deny_join_request(player: str, reason: str = "") -> bool:
+    """Not this time: off the list, kept a while (marked denied) so their page can tell them, with the admin's
+    reason if they gave one ("Ask again with your real name in the note")."""
+    reason = " ".join(str(reason or "").split())[:300]
     reqs = join_requests()
     mine = [r for r in reqs if r.get("player", "").lower() == player.lower()]
     if not mine:
         return False
     settings_store.save_section("join_requests", [r for r in reqs if r not in mine])
     answered = (settings_store.load().get("join_let_in") or [])[-(REQUESTS_KEPT - len(mine)):]
-    settings_store.save_section("join_let_in", answered + [{**r, "ts_in": time.time(), "denied": True} for r in mine])
+    settings_store.save_section("join_let_in", answered + [{**r, "ts_in": time.time(), "denied": True, "reason": reason} for r in mine])
     return True
 
 

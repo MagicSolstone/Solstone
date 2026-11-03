@@ -716,10 +716,25 @@ function wireFireworksSettings(el, fw) {
 }
 
 // Say no to someone who asked to join (Manage → Players → Whitelist and Control): their page tells them it wasn't accepted.
-async function denyRequest(player) {
-  if (!await confirmBox(`Deny ${player}'s request?`, "It comes off Asked to join, and their page says it wasn't accepted. They aren't added to any whitelist, and can ask again later.", "Deny")) return false;
-  try { await post("/api/whitelist/deny", { player }); showToast(`Denied ${esc(player)}'s request`, 2500); return true; }
-  catch (err) { showError(esc(err.message), 6000); return false; }
+// Saying no, with a reason they'll see where they asked ("Ask again with your real name in the note").
+function denyRequest(player) {
+  return new Promise((done) => {
+    openModal(`<h2>Deny ${esc(player)}'s request?</h2>
+      <p class="muted">It comes off Asked to join. They aren't added to any whitelist, and can ask again.</p>
+      <form id="deny-form" class="deny-form"><label>A message for them <small>Optional. They see it on the home page, where they asked.</small>
+        <textarea class="input" name="reason" rows="3" maxlength="300" placeholder="Can you ask again with your real name, or a note saying who you know here?"></textarea></label>
+        <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn danger" type="submit">Deny</button></div></form>`, (m) => {
+      $("#deny-form textarea", m).focus();
+      $("[data-close-modal]", m).addEventListener("click", () => done(false));
+      $("#deny-form", m).addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          await post("/api/whitelist/deny", { player, reason: new FormData(e.target).get("reason") || "" });
+          closeModal(); showToast(`Denied ${esc(player)}'s request`, 2500); done(true);
+        } catch (err) { showError(esc(err.message), 6000); }
+      });
+    });
+  });
 }
 
 // ================================================================ Manage → Players → Whitelist

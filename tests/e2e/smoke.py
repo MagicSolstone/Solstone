@@ -654,9 +654,13 @@ def main() -> int:
                 anon.goto(f"{base}/"); anon.wait_for_timeout(1200)
                 if "waiting" not in (anon.locator("#step-ask").get_attribute("class") or ""):
                     problems.append("home: someone who asked doesn't see their request waiting")
-                if "Request sent" not in (anon.locator("#ask-badge").text_content() if anon.locator("#ask-badge").count() else ""):
-                    problems.append("home: no Request sent badge while waiting")
+                if anon.locator("#ask-badge").count():
+                    problems.append("home: the corner badge shows on the home page too (the step says it there)")
                 check(anon, "site-home-waiting")
+                anon.goto(f"{base}/help"); anon.wait_for_timeout(1200)
+                if "Request sent" not in (anon.locator("#ask-badge").text_content() if anon.locator("#ask-badge").count() else ""):
+                    problems.append("help: no Request sent badge while waiting")
+                anon.goto(f"{base}/"); anon.wait_for_timeout(1000)
                 # no game here to run the command: Let them in says so, and the request stays waiting
                 pg.locator('.turned-away.asked [data-allow="Smoke_Kid"]').click(); pg.wait_for_timeout(300)
                 pg.click("#cf-yes"); pg.wait_for_timeout(1500)
@@ -669,12 +673,10 @@ def main() -> int:
                 anon.reload(); anon.wait_for_timeout(1500)
                 if "done" not in (anon.locator("#step-ask").get_attribute("class") or "").split() or "You're in" not in (anon.locator("#step-play [data-step-title]").text_content() or ""):
                     problems.append("home: someone let in doesn't see that they're in")
-                if "in" not in (anon.locator("#ask-badge").get_attribute("class") or "").split():
-                    problems.append("home: the badge didn't turn to You're in")
-                anon.click("#ask-badge [data-ask-forget]"); anon.wait_for_timeout(200)
-                if anon.locator("#ask-badge").count():
-                    problems.append("home: closing the badge didn't close it")
                 check(anon, "site-home-youre-in")
+                anon.click("#step-ask [data-ask-forget]"); anon.wait_for_timeout(300)
+                if "done" in (anon.locator("#step-ask").get_attribute("class") or "").split() or anon.locator("#step-ask [data-open-ask]").is_hidden():
+                    problems.append("home: Clear this didn't go back to Ask to join")
                 wl.unlink()
                 # asked again, and an admin says no: off the list, and their page says so
                 t = anon.request.post(f"{base}/api/public/join-request", data={"rules": True, "player": "Nope_Kid"}, headers={"X-Solstone": "1"}).json()["token"]
@@ -684,14 +686,20 @@ def main() -> int:
                     problems.append("whitelist page: no Deny button on a request")
                 else:
                     pg.locator('.wl-req [data-deny="Nope_Kid"]').click(); pg.wait_for_timeout(300)
-                    pg.click("#cf-yes"); pg.wait_for_timeout(1500)
+                    pg.fill("#deny-form [name=reason]", "Ask again with your real name in the note, please")
+                    check(pg, "deny-with-reason")
+                    pg.click("#deny-form button[type=submit]"); pg.wait_for_timeout(1500)
                     if pg.locator('.wl-req [data-deny="Nope_Kid"]').count():
                         problems.append("whitelist page: a denied request is still listed")
                 anon.reload(); anon.wait_for_timeout(1500)
-                if "denied" not in (anon.locator("#ask-badge").get_attribute("class") or "").split():
-                    problems.append("home: someone denied doesn't see that their request wasn't accepted")
+                step = anon.locator("#step-ask")
+                if "denied" not in (step.get_attribute("class") or "").split() or "real name in the note" not in (step.text_content() or "") or not step.locator("[data-ask-again]").count():
+                    problems.append("home: someone denied doesn't see it (with the admins' message and Ask again) where they asked")
                 check(anon, "site-home-denied")
-                anon.click("#ask-badge [data-ask-forget]"); anon.wait_for_timeout(200)
+                step.locator("[data-ask-again]").click(); anon.wait_for_timeout(400)
+                if not anon.locator("#hp-pop[open] #ask-form").count():
+                    problems.append("home: Ask again didn't open the form")
+                anon.keyboard.press("Escape")
                 pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(1000)
                 pg.click('.fws-tabs [data-tab="site"]'); pg.wait_for_timeout(800)
                 if not pg.locator(".ws-join").count():
