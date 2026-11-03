@@ -1,3 +1,18 @@
+# Solstone 1.14.1
+
+- **Bedrock players with long names:** the game takes a name of 16 characters at most in a command, and a Bedrock name through Floodgate can be 17 (a 16-character gamertag with its dot). Heal, teleport, messages, prizes and the rest now reach them by their UUID instead. When the game answers *No player was found*, the page says so instead of *done*.
+- **Admin buttons on a player's own page** while they're playing: Heal & feed, Give items, Teleport, Game mode, Kick, and a private message.
+- **A bell for notifications:** asks to join, messages and votes, each saying what it is with a link straight to it. The number moved off your name.
+- **Linked Minecraft accounts:**
+  - tucked in under the main one in the players list;
+  - a player's page shows everyone's progress **All together** (or **Just** one account);
+  - the **+** is in Most medals too, and can be tapped on a phone to see the other names.
+- **Holidays:** a description (bold, colours, links) and a **reward**. Everyone who plays during it gets the reward once, each server, each year. Both show on Events.
+- **Announcements:** six more looks (ocean, forest, sunset, candy, night, ruby) and **Your colours**, a gradient of two or three of your own.
+- **News & Help** is one page; Questions shows only when there are some.
+- **Asking to join** checks every 15 seconds while the page is open.
+- **Footer:** Solstone made by Tyler J.
+
 # Solstone 1.14.0
 
 - **Getting started on the home page:** the join section is now three steps, one after another, all on the home page:
