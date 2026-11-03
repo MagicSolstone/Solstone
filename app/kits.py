@@ -5,9 +5,15 @@ enchantments, names and all, into two barrels of their own in a vault sealed in 
 under spawn. The copy is checked against what they had, item for item; only then is the player cleared and given the
 kit. A player whose things couldn't be copied safely isn't cleared: they watch that game instead.
 
-Afterwards their inventory (the kit, and anything picked up in the game) is cleared and their things are copied
-back to the same slots, checked again, and only then is the barrel emptied. They're put back where they were, in the
-game mode they were in.
+Afterwards only the kit is taken away (every kit item is marked as the game's). Nothing else of theirs is ever
+cleared: anything else they're carrying by then (picked up in the game, or gathered while Solstone was down and
+couldn't give their things back) is first copied, and checked, into a second pair of barrels, their "pocket". Then
+their own things are copied back to the same slots, checked again, and only then is that barrel emptied. Last, the
+pocket's things go into their empty slots; whatever doesn't fit waits in the pocket, they're told to make room, and
+it arrives by itself when they do. Nothing is ever dropped on the ground.
+
+They're put back where they were, in the game mode they were in, unless the vault was kept from before Solstone last
+started (Solstone was down: they may have gone somewhere since, so they stay put).
 
 It's kept in Solstone's settings, so it survives Solstone restarting, the server crashing, or a player leaving: anyone
 with things in the vault gets them back the next time they're online (or an admin presses Give back, in Control).
@@ -33,7 +39,9 @@ KIT_TAG = "solkit"                    # custom_data on every item a kit gives, s
 # the player's slots, and where each goes: barrel A (the first 27) or barrel B
 SLOTS = ([(f"container.{i}", 0, i) for i in range(27)] + [(f"container.{27 + i}", 1, i) for i in range(9)]
          + [("armor.head", 1, 9), ("armor.chest", 1, 10), ("armor.legs", 1, 11), ("armor.feet", 1, 12), ("weapon.offhand", 1, 13)])
+KIT_MATCH = f"*[minecraft:custom_data={{{KIT_TAG}:1b}}]"     # every item a kit gave, and nothing else
 _lock = asyncio.Lock()
+_STARTED = time.time()                # things kept safe before this: Solstone was down since (don't move anyone)
 
 
 def _load() -> dict:
@@ -88,12 +96,19 @@ def _barrels(v: dict, slot: int) -> tuple[tuple[int, int, int], tuple[int, int, 
 
 
 def _free_slot(d: dict, sid: str) -> int | None:
-    used = {s["slot"] for k, s in d["stash"].items() if k.startswith(f"{sid}:")}
+    used = set()
+    for k, s in d["stash"].items():
+        if k.startswith(f"{sid}:"):
+            if not s.get("restored"):
+                used.add(s["slot"])
+            if s.get("pocket") is not None:
+                used.add(s["pocket"])
     return next((i for i in range(MAX_SLOTS) if i not in used), None)
 
 
 # ------------------------------------------------------------------ comparing what's where
 _ID = re.compile(r'\bid:\s*"([^"]+)"')
+_SLOT = re.compile(r"\bSlot:\s*(-?\d+)b")            # a top-level slot (items inside a shulker box use "slot")
 _COUNT = re.compile(r"\b[cC]ount:\s*(\d+)")
 
 
@@ -165,6 +180,11 @@ async def stash(srv, players: dict[str, str], game: str) -> list[str]:
                 for (x, y, z) in (a, b):
                     await _rcon(srv, f"execute in {DIM} run data merge block {x} {y} {z} {{Items:[]}}")
                 continue
+            if await _player_items(srv, uuid) != before:     # picked something up while it was being copied: not this time
+                log.warning("%s's things changed while being copied; leaving them as they are", name)
+                for (x, y, z) in (a, b):
+                    await _rcon(srv, f"execute in {DIM} run data merge block {x} {y} {z} {{Items:[]}}")
+                continue
             # written down first: from here on, a crash still leaves a copy that gets given back
             d["stash"][key] = {"name": name, "uuid": uuid, "server": srv.id, "slot": slot, "game": game, "at": time.time(),
                                "back": back, "gm": await _gamemode(srv, name)}
@@ -175,9 +195,25 @@ async def stash(srv, players: dict[str, str], game: str) -> list[str]:
     return done
 
 
+async def _empty(srv, spots) -> None:
+    for (x, y, z) in spots:
+        await _rcon(srv, f"execute in {DIM} run data merge block {x} {y} {z} {{Items:[]}}")
+
+
+async def _copy_out(srv, uuid: str, spots) -> None:
+    """Every slot of theirs into this pair of barrels (empty ones too, so the barrels match them exactly)."""
+    for (x, y, z) in spots:
+        await _rcon(srv, f"execute in {DIM} run setblock {x} {y} {z} minecraft:barrel")
+    await _empty(srv, spots)
+    for src, which, i in SLOTS:
+        x, y, z = spots[which]
+        await _rcon(srv, f"execute in {DIM} run item replace block {x} {y} {z} container.{i} from entity {uuid} {src}")
+
+
 async def give_back(srv, uuid: str, move: bool = True) -> bool:
-    """Give one player their things back, exactly, and put them back where they were. False if they're not online
-    (it's tried again when they are) or it didn't check out (the copy stays in the vault)."""
+    """Give one player their things back, exactly, and put them back where they were. Only the kit is taken away:
+    anything else they're carrying is kept (see the top). False if they're not online (it's tried again when they
+    are) or it didn't check out (everything stays where it is, safe)."""
     async with _lock:
         d = _load()
         key = f"{srv.id}:{uuid}"
@@ -187,29 +223,100 @@ async def give_back(srv, uuid: str, move: bool = True) -> bool:
         if await _player_items(srv, uuid) is None:
             return False                                 # not online
         v = await _vault(srv, d)
-        a, b = _barrels(v, s["slot"])
-        kept = await _barrel_items(srv, (a, b))
-        await _rcon(srv, f"clear {uuid}")                # the kit, and anything picked up in the game
-        for src, which, i in SLOTS:
-            x, y, z = (a, b)[which]
-            await _rcon(srv, f"execute in {DIM} run item replace entity {uuid} {src} from block {x} {y} {z} container.{i}")
-        ok = await _player_items(srv, uuid) == kept
-        if ok:
-            for (x, y, z) in (a, b):
-                await _rcon(srv, f"execute in {DIM} run data merge block {x} {y} {z} {{Items:[]}}")
-            del d["stash"][key]
+        try:
+            if not s.get("restored"):
+                if not await _restore(srv, d, s, v, move):
+                    return False
+            await _pocket_out(srv, d, s, v)
+            return True
+        finally:
+            if not any(k.startswith(f"{srv.id}:") for k in d["stash"]):
+                await _rcon(srv, f"execute in {DIM} run forceload remove {v['x']} {v['z']}")
+
+
+async def _restore(srv, d: dict, s: dict, v: dict, move: bool) -> bool:
+    uuid = s["uuid"]
+    a, b = _barrels(v, s["slot"])
+    kept = await _barrel_items(srv, (a, b))
+    await _rcon(srv, f"clear {uuid} {KIT_MATCH}")       # the game's kit: nothing else
+    now = await _player_items(srv, uuid)
+    if now is None:
+        return False
+    if sum(now[0].values()):                             # carrying something: into their pocket first, checked
+        if s.get("pocket") is not None:
+            log.error("%s is carrying things and already has a pocket; leaving everything as it is", s["name"])
+            return False
+        slot = _free_slot(d, srv.id)
+        if slot is None:
+            log.error("no room in the vault for %s's pocket; leaving everything as it is", s["name"])
+            return False
+        pocket = _barrels(v, slot)
+        await _copy_out(srv, uuid, pocket)
+        if await _barrel_items(srv, pocket) != now or await _player_items(srv, uuid) != now:
+            log.error("couldn't keep what %s is carrying safely; leaving everything as it is", s["name"])
+            await _empty(srv, pocket)
+            return False
+        s["pocket"] = slot
+        _save(d)                                         # written down before anything of theirs is touched
+    await _rcon(srv, f"clear {uuid}")                    # (only what's now safe in the pocket, or nothing)
+    for src, which, i in SLOTS:
+        x, y, z = (a, b)[which]
+        await _rcon(srv, f"execute in {DIM} run item replace entity {uuid} {src} from block {x} {y} {z} container.{i}")
+    if await _player_items(srv, uuid) != kept:
+        log.error("giving %s's things back didn't check out; their copy stays in the vault", s["name"])
+        return False
+    await _empty(srv, (a, b))
+    s["restored"] = True
+    _save(d)
+    late = s.get("at", 0) < _STARTED                     # Solstone was down since: they may have gone somewhere
+    if move and not late and s.get("back"):
+        bk = s["back"]
+        await _rcon(srv, f"execute in {bk['d']} run tp {uuid} {bk['x']} {bk['y']} {bk['z']}")
+    await _rcon(srv, f"gamemode {s.get('gm') or 'survival'} {uuid}")
+    await _rcon(srv, f"effect give {uuid} minecraft:instant_health 1 10 true")
+    await _rcon(srv, f"effect give {uuid} minecraft:saturation 1 10 true")
+    return True
+
+
+async def _pocket_out(srv, d: dict, s: dict, v: dict) -> None:
+    """What they were carrying, into their empty slots. What doesn't fit waits; they're told once."""
+    key, uuid = f"{srv.id}:{s['uuid']}", s["uuid"]
+    if s.get("pocket") is not None:
+        spots = _barrels(v, s["pocket"])
+        inv = await _rcon(srv, f"data get entity {uuid} Inventory")
+        if "has the following" not in inv:
+            return
+        used = {n for n in (int(x) for x in _SLOT.findall(inv.split("data:", 1)[-1])) if 0 <= n < 36}
+        free = [n for n in range(36) if n not in used]
+        left = 0
+        for spot in spots:
+            x, y, z = spot
+            for i in sorted({int(n) for n in _SLOT.findall(await _rcon(srv, f"execute in {DIM} run data get block {x} {y} {z} Items"))}):
+                if not free:
+                    left += 1
+                    continue
+                to = free.pop(0)
+                await _rcon(srv, f"execute in {DIM} run item replace entity {uuid} container.{to} from block {x} {y} {z} container.{i}")
+                got = await _rcon(srv, f"data get entity {uuid} Inventory")
+                if to in {int(n) for n in _SLOT.findall(got.split("data:", 1)[-1])}:
+                    await _rcon(srv, f"execute in {DIM} run item replace block {x} {y} {z} container.{i} with minecraft:air")
+                else:
+                    left += 1                            # (didn't arrive: it stays in the pocket)
+        if left:
+            if not s.get("told"):
+                s["told"] = True
+                await _rcon(srv, f"tellraw {uuid} " + _msg(f"{left} more of your things are kept safe until you have room. "
+                                                           "Make some space and they'll arrive by themselves."))
             _save(d)
-            if move and s.get("back"):
-                bk = s["back"]
-                await _rcon(srv, f"execute in {bk['d']} run tp {uuid} {bk['x']} {bk['y']} {bk['z']}")
-            await _rcon(srv, f"gamemode {s.get('gm') or 'survival'} {uuid}")
-            await _rcon(srv, f"effect give {uuid} minecraft:instant_health 1 10 true")
-            await _rcon(srv, f"effect give {uuid} minecraft:saturation 1 10 true")
-        else:
-            log.error("giving %s's things back didn't check out; their copy stays in the vault", s["name"])
-        if not any(k.startswith(f"{srv.id}:") for k in d["stash"]):
-            await _rcon(srv, f"execute in {DIM} run forceload remove {v['x']} {v['z']}")
-        return ok
+            return
+        await _empty(srv, spots)
+    d["stash"].pop(key, None)
+    _save(d)
+
+
+def _msg(text: str) -> str:
+    from .control import component
+    return component([("★ ", "gold"), (text, "yellow")])
 
 
 def waiting(sid: str) -> list[dict]:
@@ -219,7 +326,11 @@ def waiting(sid: str) -> list[dict]:
 
 async def on_join(srv, name: str) -> None:
     """Back after leaving in the middle of a game (or after a crash): their things, a moment after they arrive."""
-    mine = [s for s in waiting(srv.id) if s["name"].lower() == name.lower() and not _in_live_game(s)]
+    mine = [s for s in waiting(srv.id) if s["name"].lower() == name.lower() and (s.get("restored") or not _in_live_game(s))]
+    if mine and mine[0].get("told"):                     # told again on a fresh join, if there's still no room
+        d = _load()
+        d["stash"].get(f"{srv.id}:{mine[0]['uuid']}", {}).pop("told", None)
+        _save(d)
     if mine:
         asyncio.get_running_loop().create_task(_welcome_back(srv, mine[0]))
 
@@ -227,9 +338,11 @@ async def on_join(srv, name: str) -> None:
 async def _welcome_back(srv, s: dict) -> None:
     await asyncio.sleep(3)                               # let them finish joining
     try:
-        if await give_back(srv, s["uuid"]):
+        if not s.get("restored") and await give_back(srv, s["uuid"]):
             from .games import _say
             await _say(srv, [("★ ", "gold"), ("Your things are back, just as you left them.", "yellow")], who=s["uuid"])
+        elif s.get("restored"):
+            await give_back(srv, s["uuid"])
     except Exception:
         log.exception("giving %s their things back failed (it's tried again in a moment)", s["name"])
 
@@ -243,8 +356,8 @@ async def tidy(srv, online: list[str]) -> None:
     """Every so often: anyone online with things still in the vault from a game that's over gets them back."""
     lower = {n.lower() for n in online}
     for s in waiting(srv.id):
-        if s["name"].lower() in lower and not _in_live_game(s):
-            await give_back(srv, s["uuid"])
+        if s["name"].lower() in lower and (s.get("restored") or not _in_live_game(s)):
+            await give_back(srv, s["uuid"], move=False)  # (Solstone's catching up: they may have gone somewhere since)
 
 
 # ------------------------------------------------------------------ the kits themselves

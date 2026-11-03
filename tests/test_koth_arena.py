@@ -4,7 +4,7 @@ import asyncio
 import re
 
 import pytest
-from test_kits import U1, U2, FakeGame, setup_vault
+from test_kits import U1, U2, FakeGame, own, setup_vault
 
 from app import arena, battle, control, games, kits, koth, settings_store
 
@@ -77,7 +77,7 @@ def test_koth_a_whole_game_and_everything_back(fight):
     asyncio.run(koth.start(fight, r))
     assert r["state"] == "running" and set(r["players"]) == {"Alex", ".LongBedrockNameX"}
     assert fight.rules["keepInventory"] == "true" and fight.rules["doImmediateRespawn"] == "true"
-    assert not fight.slots[U1] and not fight.slots[U2]                                # their own things are in the vault
+    assert not own(fight.slots[U1]) and not own(fight.slots[U2])                                # their own things are in the vault
     assert any("diamond_chestplate[minecraft:custom_data={solkit:1b}" in c for c in fight.said)   # the kit, marked as the game's
     for _ in range(3):                                                                 # Alex alone on the hill: 3 points
         asyncio.run(koth.tick(fight, r))
@@ -174,7 +174,7 @@ def test_elytra_race_things_kept_safe_wings_then_everything_back(fight):
     before = {u: dict(s) for u, s in fight.slots.items()}
     r = {"id": "e1", "name": "Sky loop (elytra)", "minutes": 5, "vehicle": "elytra", "rockets": 16, "safe_flying": True}
     racing = asyncio.run(races._wings(fight, r, ["Alex", ".LongBedrockNameX"]))
-    assert sorted(racing) == [".LongBedrockNameX", "Alex"] and not fight.slots[U1]                   # their own things in the vault
+    assert sorted(racing) == [".LongBedrockNameX", "Alex"] and not own(fight.slots[U1])             # their own things in the vault
     assert any(c.startswith(f"item replace entity {U1} armor.chest with minecraft:elytra[minecraft:custom_data={{solkit:1b}}") for c in fight.said)
     assert any(c.startswith(f"give {U2} minecraft:firework_rocket[") and c.endswith(" 16") for c in fight.said)
     assert fight.rules["keepInventory"] == "true"
