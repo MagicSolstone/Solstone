@@ -243,3 +243,16 @@ def test_people_not_playing_are_moved_out_of_the_arena(fight):
     fight.pos["Sam"] = ("minecraft:overworld", 0.0, 64.0, -3.0)                     # wandered back in, the other side
     asyncio.run(battle.keep_out(fight, r, {"Sam": fight.pos["Sam"]}))
     assert fight.pos["Sam"][3] < -12 and sum("moved just outside" in c for c in fight.said) == 1      # out again; told once
+
+
+def test_a_fast_flyer_going_through_a_checkpoint_between_looks_counts():
+    from app import races
+    tgt = {"x": 100.0, "y": 64.0, "z": 0.0, "radius": 4}
+    sky = {"vehicle": "elytra"}
+    # a second ago 30 blocks before it, now 30 blocks past it, 20 up: went right through its column
+    assert races._passed(sky, tgt, [70.0, 84.0, 1.0], (130.0, 84.0, -1.0))
+    assert not races._passed(sky, tgt, [70.0, 84.0, 20.0], (130.0, 84.0, 20.0))          # 20 blocks to the side: missed
+    assert not races._passed(sky, tgt, [70.0, 150.0, 0.0], (130.0, 150.0, 0.0))          # far too high over it
+    assert not races._passed(sky, tgt, [-500.0, 64.0, 0.0], (130.0, 64.0, 0.0))          # a teleport isn't flying through
+    assert not races._passed({"vehicle": "none"}, tgt, [70.0, 84.0, 0.0], (130.0, 84.0, 0.0))   # on foot: not 20 up
+    assert races._height_hint(sky, -60, 30) == " · ↓ 20 m lower" and races._height_hint(sky, -10, 30) == " · height's good"

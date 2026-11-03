@@ -322,6 +322,29 @@ async def _go(srv, r: dict) -> None:
     db.add_event(srv.id, time.time(), "race", f"{r['name']} started")
 
 
+def _passed(r: dict, tgt: dict, prev, pos) -> bool:
+    """Did they go through this point between the last look and now? The closest they came along that stretch
+    (straight from there to here): within its radius, and at the right height (by elytra: up to 40 above it)."""
+    def near(x, y, z):
+        dx, dz, dy = tgt["x"] - x, tgt["z"] - z, tgt["y"] - y
+        return math.hypot(dx, dz) <= tgt["radius"] and (-40 <= dy <= 5 if r.get("vehicle") == "elytra" else abs(dy) <= 10)
+    if near(*pos[:3]):
+        return True
+    if not prev or math.dist(prev, pos[:3]) > 120:       # nothing to go on, or a teleport (lined up, a respawn): just here
+        return False
+    sx, sz = pos[0] - prev[0], pos[2] - prev[2]
+    seg = sx * sx + sz * sz
+    t = 0.0 if not seg else max(0.0, min(1.0, ((tgt["x"] - prev[0]) * sx + (tgt["z"] - prev[2]) * sz) / seg))
+    return near(prev[0] + t * sx, prev[1] + t * (pos[1] - prev[1]), prev[2] + t * sz)
+
+
+def _height_hint(r: dict, dy: float, dist: float) -> str:
+    """By elytra, close to the next point: whether to come down to it (it counts up to 40 above it)."""
+    if r.get("vehicle") != "elytra" or dist > 80:
+        return ""
+    return f" · ↓ {int(-dy - 40)} m lower" if dy < -40 else " · height's good"
+
+
 async def _track(srv, r: dict) -> None:
     pts, last = r["points"], len(r["points"]) - 1
     online, _src = await S.online_players(srv)
@@ -335,11 +358,13 @@ async def _track(srv, r: dict) -> None:
         if not pos:
             continue
         st["at"] = [round(pos[0], 1), round(pos[2], 1)]
+        prev, st["last"] = st.get("last"), [pos[0], pos[1], pos[2]]
         tgt = pts[st["next"]]
         dx, dz, dy = tgt["x"] - pos[0], tgt["z"] - pos[2], tgt["y"] - pos[1]
         dist = math.hypot(dx, dz)
-        # on foot or by boat: near the point's height; by elytra: anywhere up its tall column
-        if dist <= tgt["radius"] and (-40 <= dy <= 5 if r.get("vehicle") == "elytra" else abs(dy) <= 10):
+        # anywhere along the way since the last look (an elytra covers 30 blocks a second): on foot or by boat, near
+        # the point's height; by elytra, anywhere up its tall column
+        if _passed(r, tgt, prev, pos):
             st["splits"].append(round(now - r["started_at"], 1))
             if st["next"] == last:
                 st["finished"] = st["splits"][-1]
@@ -353,11 +378,16 @@ async def _track(srv, r: dict) -> None:
                 continue
             await _rcon(srv, f"execute as {n} at @s run playsound minecraft:entity.experience_orb.pickup master @s ~ ~ ~ 1 1.2")
             await _say(srv, r, [("✔ ", "green"), (n, "aqua"), (f" reached {_label(r, st['next'])} ({_fmt(st['splits'][-1])})", None)])
+            # big and brief in the middle of their screen, so it's clear even flying flat out
+            await _rcon(srv, f"title {n} times 0 25 10")
+            await _rcon(srv, f"title {n} title {component([('✔', 'green')])}")
+            got, then = f"{_label(r, st['next'])} ", f"· next: {_label(r, st['next'] + 1)}"
+            await _rcon(srv, f"title {n} subtitle " + component([(got, "green"), (then, "white")]))
             st["next"] += 1
             tgt = pts[st["next"]]
-            dx, dz = tgt["x"] - pos[0], tgt["z"] - pos[2]
+            dx, dz, dy = tgt["x"] - pos[0], tgt["z"] - pos[2], tgt["y"] - pos[1]
             dist = math.hypot(dx, dz)
-        nxt = f"Next: {_label(r, st['next'])} · {int(dist)} m {_direction(dx, dz)} · {_fmt(r['ends_at'] - now)} left"
+        nxt = f"Next: {_label(r, st['next'])} · {int(dist)} m {_direction(dx, dz)}{_height_hint(r, dy, dist)} · {_fmt(r['ends_at'] - now)} left"
         await _rcon(srv, f"title {n} actionbar {component([(nxt, 'yellow')])}")
     # checkpoints everyone has passed leave the locator bar, so the nearest dot is the next one
     todo = {st["next"] for st in r["racers"].values() if not st["finished"]}
