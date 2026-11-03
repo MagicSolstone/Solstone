@@ -26,10 +26,17 @@ def active(today: date | None = None) -> list[tuple[dict, date]]:
         if not e["enabled"] or not e["reward"]["items"]:
             continue
         for start in fwshow._starts(e, today):
-            if start <= today < start + timedelta(days=e["days"]):
+            first, last = window(e, start)
+            if first <= today <= last:
                 out.append((e, start))
                 break
     return out
+
+
+def window(e: dict, start: date) -> tuple[date, date]:
+    """The first and last day the reward is given, for the holiday starting on `start`."""
+    r = e["reward"]
+    return start - timedelta(days=r.get("before", 0)), start + timedelta(days=e["days"] - 1 + r.get("after", 0))
 
 
 def _say(items: list[dict]) -> str:

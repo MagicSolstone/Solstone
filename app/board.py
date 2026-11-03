@@ -155,7 +155,7 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
                         "text": f"{e['name']} is {'tomorrow' if days == 1 else f'in {days} days'}", "detail": "",
                         "countdown": datetime.combine(nxt, datetime.min.time(), zone).timestamp(), "done_text": e["message"] or "It's here!"})
     th = fwshow.today_state(now)["theme"]
-    if th and (th.get("message") or th.get("name")):
+    if th and th.get("on_day", True) and (th.get("message") or th.get("name")):
         out.append({"id": f"h-{th['id']}-{now.date()}", "kind": "holiday", "emoji": th.get("emoji") or "🎉", "style": "party",
                     "text": th.get("message") or th["name"], "detail": "", "countdown": None})
     if names:

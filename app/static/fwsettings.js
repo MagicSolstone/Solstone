@@ -215,7 +215,7 @@ function renderCalendar(el) {
   el.innerHTML = `<section class="panel"><p class="muted" style="margin-bottom:12px">On these days the fireworks take on the day's colours and favourite kinds. A <b>scheduled show</b> fills the sky at a set time on every open page (and is listed on Events too); the New Year one counts down from 10.</p>
     <div class="fws-cal">${cal.map((e, i) => fws.editing === i ? calEditHtml(e, i) : `<div class="fws-cal-row ${e.enabled ? "" : "off"}" data-i="${i}">
       <span class="fws-emoji">${esc(e.emoji)}</span>
-      <div><b>${esc(e.name)}</b><div class="muted small">${esc(fwsDateText(e))}${e.finale.on ? ` · show at ${esc(fwsTime(e.finale.time))} for ${e.finale.minutes} min${e.finale.countdown ? " with a countdown" : ""}` : ""}${e.banner_days ? ` · banner ${e.banner_days} day${e.banner_days === 1 ? "" : "s"} before` : ""}${e.reward?.items?.length ? " · 🎁 reward" : ""}</div>
+      <div><b>${esc(e.name)}</b><div class="muted small">${esc(fwsDateText(e))}${e.finale.on ? ` · show at ${esc(fwsTime(e.finale.time))} for ${e.finale.minutes} min${e.finale.countdown ? " with a countdown" : ""}` : ""}${e.banner_days ? ` · banner ${e.banner_days} day${e.banner_days === 1 ? "" : "s"} before` : ""}${e.reward?.items?.length ? " · 🎁 reward" : ""}${e.colors_before || e.colors_after ? ` · colours ${e.colors_before} day${e.colors_before === 1 ? "" : "s"} before to ${e.colors_after} after` : ""}</div>
         ${fwsOverlapNote(e.id)}<div class="fwe-dots">${e.colors.map((c) => `<i style="background:${c}"></i>`).join("")}</div></div>
       <label class="check small"><input type="checkbox" data-en ${e.enabled ? "checked" : ""}> On</label>
       <button type="button" class="btn sm" data-edit>Edit</button></div>`).join("")}</div>
@@ -268,13 +268,20 @@ function calEditHtml(e, i) {
       <div class="fws-reward-items">${(e.reward?.items || []).map((it, k) => `<span class="fws-reward-item">${itemIcon({ id: it.item })}<b>${esc(it.count)} × ${esc(it.name || itemName({ id: it.item }))}</b>
         <button type="button" class="chip-x" data-rm-reward="${k}" aria-label="Remove ${esc(it.name || it.item)}">×</button></span>`).join("")}
         ${(e.reward?.items || []).length < 3 ? `<button type="button" class="btn sm" data-add-reward>＋ Add an item</button>` : ""}</div>
+      <label class="inl">Given from ${num("rbefore", e.reward?.before || 0, 0, 30)} days before to ${num("rafter", e.reward?.after || 0, 0, 30)} days after
+        <span class="muted small">(0 and 0: just ${e.days > 1 ? "its days" : "the day"}; Thursday's Thanksgiving through Sunday: 0 and 3)</span></label>
       <label>Message with it <input class="input sm" name="rmessage" maxlength="120" value="${esc(e.reward?.message || "")}" placeholder="${esc(e.message || "A present for being here")}"></label>
     </fieldset>
-    <details class="fws-more" ${fws.moreOpen ? "open" : ""}><summary>Fireworks for this day <span class="muted small">colours, favourite kinds and a scheduled show</span></summary>
+    <details class="fws-more" ${fws.moreOpen ? "open" : ""}><summary>Fireworks <span class="muted small">colours (for the day or the whole week), favourite kinds and a scheduled show</span></summary>
     <div class="fws-sub">Colours <span class="muted small">(leave none for the usual colours)</span></div>
     <div class="fwe-colors" data-cal-colors>${e.colors.map((c, k) => `<span class="fwe-color"><input type="color" value="${c}" data-cc="${k}"><button type="button" class="chip-x" data-rmcc="${k}" aria-label="Remove">×</button></span>`).join("")}
       ${e.colors.length < 6 ? `<button type="button" class="btn sm" data-addcc>+ Colour</button>` : ""}</div>
-    <div class="fws-sub">Favourite kinds <span class="muted small">(go off more often that day)</span></div>
+    <div class="fws-grid">
+      <label class="inl">These colours from ${num("cbefore", e.colors_before || 0, 0, 30)} days before to ${num("cafter", e.colors_after || 0, 0, 30)} days after
+        <span class="muted small">(a red, green and white week for Christmas: 3 and 3)</span></label>
+      <label class="check"><input type="checkbox" name="recolor" ${e.recolor !== false ? "checked" : ""}> Players' own fireworks take these colours too <span class="muted small">(when they go off by themselves; one launched by hand keeps its own)</span></label>
+    </div>
+    <div class="fws-sub">Favourite kinds <span class="muted small">(go off more often then)</span></div>
     <div class="fws-kinds">${[...FW_LABELS.map(([k, l]) => [k, l]), ...fws.designs.map((x) => [`custom:${x.id}`, `🎨 ${x.name}`])].map(([k, l]) =>
       `<label class="chip ${kinds.has(k) ? "on" : ""}"><input type="checkbox" value="${esc(k)}" data-kind ${kinds.has(k) ? "checked" : ""}> ${esc(l)}</label>`).join("")}</div>
     <div class="fws-sub">Scheduled show</div>
@@ -298,7 +305,11 @@ function wireCalEdit(el, i) {
     draft.name = f.get("name"); draft.emoji = f.get("emoji"); draft.message = f.get("message"); draft.days = +f.get("days") || 1;
     draft.banner_days = Math.max(0, Math.min(30, +f.get("banner_days") || 0));
     draft.detail = f.get("detail") || "";
-    draft.reward = { items: draft.reward?.items || [], message: f.get("rmessage") || "" };      // items: picked below
+    draft.reward = { items: draft.reward?.items || [], message: f.get("rmessage") || "",      // items: picked below
+      before: Math.max(0, Math.min(30, +f.get("rbefore") || 0)), after: Math.max(0, Math.min(30, +f.get("rafter") || 0)) };
+    draft.colors_before = Math.max(0, Math.min(30, +f.get("cbefore") || 0));
+    draft.colors_after = Math.max(0, Math.min(30, +f.get("cafter") || 0));
+    draft.recolor = !!f.get("recolor");
     const d = { type: dtype };
     if (dtype === draft.date.type) {
       if (f.get("month")) d.month = +f.get("month");

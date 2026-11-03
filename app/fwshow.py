@@ -215,6 +215,10 @@ def _clean_entry(e: dict, fallback_id: str | None = None) -> dict | None:
         "kinds": [k for k in (e.get("kinds") or []) if k in BUILTIN_KINDS or (isinstance(k, str) and k.startswith("custom:"))][:10],
         "message": str(e.get("message") or "").strip()[:80],
         "banner_days": num(e.get("banner_days"), 0, 30, 0),     # a countdown banner this many days before (0: just on the day)
+        # the fireworks' colours and favourite kinds: from this many days before the holiday to this many after
+        # (a red, green and white week for Christmas), and whether players' own fireworks take the colours too
+        "colors_before": num(e.get("colors_before"), 0, 30, 0), "colors_after": num(e.get("colors_after"), 0, 30, 0),
+        "recolor": e.get("recolor", True) is not False,
         # a longer description for the Events page, formatted like posts (bold, colours, links)
         "detail": str(e.get("detail") or "").replace("\r", "").strip()[:600],
         # everyone who plays during it gets this once (holidaygifts.py)
@@ -238,7 +242,14 @@ def _clean_reward(r) -> dict:
             p = None
         if p:
             items.append(p)
-    return {"items": items, "message": " ".join(str(r.get("message") or "").split())[:120]}
+    def days(v):
+        try:
+            return max(0, min(30, int(v)))
+        except (TypeError, ValueError):
+            return 0
+    # given from this many days before the holiday to this many after it (Thanksgiving through the weekend: 0 and 3)
+    return {"items": items, "message": " ".join(str(r.get("message") or "").split())[:120],
+            "before": days(r.get("before")), "after": days(r.get("after"))}
 
 
 def calendar() -> list[dict]:
@@ -318,9 +329,12 @@ def today_state(now: datetime | None = None) -> dict:
         if not e["enabled"]:
             continue
         for start in _starts(e, today):
-            if start <= today < start + timedelta(days=e["days"]) and theme is None and (e["colors"] or e["message"] or e["kinds"]):
-                theme = {"id": e["id"], "name": e["name"], "emoji": e["emoji"], "message": e["message"],
-                         "colors": e["colors"], "kinds": e["kinds"]}
+            on_day = start <= today < start + timedelta(days=e["days"])
+            near = start - timedelta(days=e["colors_before"]) <= today < start + timedelta(days=e["days"] + e["colors_after"])
+            if near and theme is None and (e["colors"] or (on_day and e["message"]) or e["kinds"]):
+                # the colours for its whole window; its message (the banner on every page) on the day itself
+                theme = {"id": e["id"], "name": e["name"], "emoji": e["emoji"], "message": e["message"] if on_day else "",
+                         "colors": e["colors"], "kinds": e["kinds"], "on_day": on_day, "recolor": e["recolor"]}
             f = e["finale"]
             if f["on"]:
                 hh, mm = (int(x) for x in f["time"].split(":"))

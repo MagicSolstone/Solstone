@@ -425,11 +425,15 @@ def main() -> int:
                         pie.click(); pg.fill("#gv-n", "3"); pg.click("#gv-go"); pg.wait_for_timeout(400)
                     if not pg.locator(".fws-reward-item").count():
                         problems.append("holidays: a picked reward item isn't shown")
+                    pg.fill('.fws-cal-edit [name="rafter"]', "3")
+                    pg.locator(".fws-cal-edit .fws-more summary").click(); pg.fill('.fws-cal-edit [name="cbefore"]', "2")
                     check(pg, "holiday-reward-edit")
                     pg.click(".fws-cal-edit button[type=submit]"); pg.wait_for_timeout(900)
                     hal = next((x for x in pg.request.get(f"{base}/api/fireworks/show", headers=H).json()["calendar"] if x["id"] == "halloween"), {})
                     if hal.get("detail") != "**Dress up and come trick-or-treat**" or (hal.get("reward", {}).get("items") or [{}])[0].get("item") != picked:
                         problems.append(f"holidays: the description or reward didn't save ({hal.get('detail')!r}, {hal.get('reward')})")
+                    if hal.get("reward", {}).get("after") != 3 or hal.get("colors_before") != 2 or hal.get("recolor") is not True:
+                        problems.append(f"holidays: the reward's days, the colours' days or players' colours didn't save ({hal.get('reward')}, {hal.get('colors_before')})")
 
             # fireworks settings: every tab, then edit a show (copy a step)
             pg.goto(f"{base}/app#/fireworks/settings"); pg.wait_for_timeout(1200)

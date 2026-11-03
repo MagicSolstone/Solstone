@@ -2314,3 +2314,4 @@ body.ui-hidden .manage-sub { display: none; }
 .fws-reward-item { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 8px; border-radius: 10px; background: var(--well); border: 1px solid var(--line); }
 .fws-reward-item .item-icon, .fws-reward-item img { width: 24px; height: 24px; }
 .fws-reward-item b { white-space: nowrap; }
+.fws-reward label.inl { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-weight: 400; }

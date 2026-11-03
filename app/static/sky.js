@@ -345,6 +345,7 @@ function startSkyScene(cv, opts = {}) {
     const sides = cardBox ? [[W * 0.06, cardBox.l - 10], [cardBox.r + 10, W * 0.94]].filter(([a, b]) => b - a > 20) : [];
     if (at) x = at.x;
     else if (sides.length && Math.random() < 0.8) { const [a, b] = pick(sides); x = rand(a, b); } else x = rand(W * 0.1, W * 0.9);
+    const chosen = !shape;                          // picked here (the show going off by itself), not launched by hand
     if (!shape) {
       const busy = figures.length || trees.length || rockets.some((r) => FW_SPECIALS.includes(r.shape));
       // Holiday favourites count extra; editor fireworks carry their own weight.
@@ -357,7 +358,7 @@ function startSkyScene(cv, opts = {}) {
       else if (regular.length) shape = pickWeighted(regular);
       else return null;                            // only show-pieces are on, and one is already up
     }
-    if (shape && typeof shape === "object") return launchDesign(shape, at?.x);
+    if (shape && typeof shape === "object") return launchDesign(chosen ? holidayColours(shape) : shape, at?.x);
     if (shape === "sparkler") {
       if (emitters.some((e) => e.kind === "sparkler")) shape = "ball";
       else return addEmitter("sparkler", { duration: rand(5, 8) }, watcher.x);
@@ -404,6 +405,14 @@ function startSkyScene(cv, opts = {}) {
   const surfaceAt = (x) => hill.length ? H - hill[Math.max(0, Math.min(hill.length - 1, Math.floor(x / 3)))] : groundY;
   const dv = (d, k, def) => (d[k] ?? def);
 
+  // A holiday's colours on a player's own firework (Manage → Holidays: "Players' own fireworks take these colours
+  // too"): every one of the holiday's colours, in a fresh order each time, and its "then…" steps too.
+  function holidayColours(d) {
+    const th = FW.theme;
+    if (!th?.colors?.length || th.recolor === false || d.color_mode === "rainbow") return d;
+    const mix = () => [...th.colors].sort(() => Math.random() - 0.5).slice(0, 4);
+    return { ...d, colors: mix(), stages: Array.isArray(d.stages) ? d.stages.map((st) => (st?.colors?.length ? { ...st, colors: mix() } : st)) : d.stages };
+  }
   function launchDesign(d, atX) {
     if (d.launch === "fountain" || d.launch === "wheel") {
       const x = atX ?? rand(W * 0.15, W * 0.85);
