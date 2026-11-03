@@ -1310,7 +1310,10 @@ async function viewWorld(sid) {
   const [w, pl] = await Promise.all([api(`/api/servers/${sid}/world`), api(`/api/servers/${sid}/players`)]);
   const ruleVal = (v) => v === "true" || v === true ? '<span class="on">On</span>' : v === "false" || v === false ? '<span class="off">Off</span>' : esc(v);
   const maxChunks = Math.max(1, ...w.dimensions.map((d) => d.chunks));
-  let located = pl.players.filter((p) => p.position);
+  // On the map: who's on now, and where everyone else who played in the last week left off (not anyone longer ago).
+  const MAP_DAYS = 7;
+  const onMap = (list) => list.filter((p) => p.position && (p.online || (p.last_seen && Date.now() / 1000 - p.last_seen < MAP_DAYS * 86400)));
+  let located = onMap(pl.players);
   // Two maps: Solstone's own (drawn from the world files, with everyone's last spot) and a web map (BlueMap...) if set
   // The web map's frame goes in only when it's picked (a hidden frame still loads, and one at a home-network
   // address makes the browser ask for local network access); from outside the home, a home address can't load at all.
@@ -1433,7 +1436,7 @@ async function viewWorld(sid) {
     if (document.hidden) return;
     const np = await api(`/api/servers/${sid}/players`).catch(() => null);
     if (!np) return;
-    located = np.players.filter((p) => p.position);
+    located = onMap(np.players);
     ownMap?.draw();
   });
   every(20000, async () => {

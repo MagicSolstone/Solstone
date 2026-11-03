@@ -62,8 +62,15 @@ def _is_log(key: str) -> bool:
     return key.endswith(("_log", "_stem", "_wood", "_hyphae")) and "stripped" not in key
 
 
+# "used" counts every swing of a tool and every bite of food too: a stone pickaxe isn't stone being placed
+_NOT_BLOCKS = ("_pickaxe", "_axe", "_shovel", "_hoe", "_sword", "_spear", "_helmet", "_chestplate", "_leggings", "_boots",
+               "bow", "shears", "flint_and_steel", "fishing_rod", "shield", "trident", "mace", "bucket", "_boat", "_raft",
+               "minecart", "brush", "spyglass", "_on_a_stick", "bundle", "_horse_armor", "elytra", "potion", "_stew", "_soup")
+
+
 def _placed(used: dict[str, int]) -> int:
-    return sum(n for k, n in used.items() if any(w in k for w in _BUILD_WORDS))
+    return sum(n for k, n in used.items() if any(w in k for w in _BUILD_WORDS) and not k.endswith(_NOT_BLOCKS)
+               and not any(w in k for w in ("bucket", "minecart", "_boat")))
 
 
 def _plural(n: int, word: str) -> str:
@@ -135,6 +142,9 @@ def progress_line(before: dict, after: dict) -> str | None:
     crops = sum(n for k, n in mined.items() if k in _CROPS)
     if crops >= 3:
         parts.append(f"harvested {crops} crops")
+    dug = sum(mined.values()) - logs - crops
+    if dug >= 10:
+        parts.append(f"dug {_plural(dug, 'block')}")
     placed = _placed(_delta(before, after, "minecraft:used"))
     if placed >= 10:
         parts.append(f"placed {_plural(placed, 'block')}")
@@ -283,7 +293,64 @@ def timeline(server_id: str, start: float, end: float) -> dict:
     events = [{"ts": e["ts"], "type": e["type"], "player": e["player"], "message": e["message"]}
               for e in db.q(f"SELECT ts, type, player, message FROM events WHERE server_id=? AND ts BETWEEN ? AND ? "
                             f"AND type IN ({marks}) ORDER BY ts", (server_id, start, end, *TIMELINE_TYPES))]
-    return {"start": start, "end": end, "trails": trails, "events": events}
+    return {"start": start, "end": end, "trails": trails, "events": events, "summary": summary(events, start, end)}
+
+
+# ------------------------------------------------------------------ the feed, summed up every ten minutes
+SUMMARY_STEP = 600
+# what each kind of thing in a statistics line adds up to: (pattern, what it counts)
+_TALLY = [(re.compile(r"defeated (.+?)(?: and (\d+) more kinds)?$"), "mobs"), (re.compile(r"^dug (\d+) blocks?$"), "mined"),
+          (re.compile(r"^mined (.+)$"), "ores"), (re.compile(r"^chopped (\d+) logs?$"), "logs"),
+          (re.compile(r"^harvested (\d+) crops$"), "crops"), (re.compile(r"^placed (\d+) blocks?$"), "placed"),
+          (re.compile(r"^opened (\d+) chests?$"), "chests"), (re.compile(r"^traded with villagers (\d+)×$"), "trades"),
+          (re.compile(r"^bred (\d+) animals$"), "bred"), (re.compile(r"^took (\d+) ❤ of damage$"), "damage"),
+          (re.compile(r"^travelled ([\d.]+) (km|blocks)$"), "travelled")]
+# kept as lines of their own in the summary: the moments worth seeing
+NOTABLE = {"join", "leave", "death", "advancement", "challenge", "race", "bigfish", "game"}
+
+
+def tally(line: str) -> dict[str, float]:
+    """A statistics line ("defeated 3 zombies · chopped 12 logs") as counts by kind ({"mobs": 3, "logs": 12})."""
+    out: dict[str, float] = {}
+    for part in (line or "").split(" · "):
+        for rx, kind in _TALLY:
+            m = rx.search(part)
+            if not m:
+                continue
+            if kind in ("mobs", "ores"):
+                n = sum(int(x) for x in re.findall(r"(?:^|, )(\d+) ", m.group(1)))
+            elif kind == "travelled":
+                n = float(m.group(1)) * (1000 if m.group(2) == "km" else 1)
+            else:
+                n = int(m.group(1))
+            out[kind] = out.get(kind, 0) + n
+            break
+    return out
+
+
+def summary(events: list[dict], start: float, end: float, step: int = SUMMARY_STEP) -> list[dict]:
+    """The feed in ten-minute blocks: what each player did in each (mobs, mining, logs, fish, chat...), and the
+    moments worth their own line (joins, deaths, advancements, big fish). Empty blocks are left out."""
+    blocks: dict[int, dict] = {}
+    for e in events:
+        i = int((e["ts"] - start) // step)
+        b = blocks.setdefault(i, {"start": start + i * step, "end": min(end, start + (i + 1) * step), "players": {}, "moments": []})
+        if e["type"] in NOTABLE:
+            b["moments"].append(e)
+        if not e.get("player"):
+            continue
+        who = b["players"].setdefault(e["player"], {})
+        add = tally(e["message"]) if e["type"] == "progress" else \
+            {"fish": 1} if e["type"] in ("fish", "bigfish") else {"chat": 1} if e["type"] in ("chat", "webchat") else {}
+        for k, v in add.items():
+            who[k] = who.get(k, 0) + v
+    out = []
+    for i in sorted(blocks):
+        b = blocks[i]
+        b["players"] = {p: {k: round(v, 1) for k, v in t.items()} for p, t in b["players"].items() if t}
+        if b["players"] or b["moments"]:
+            out.append(b)
+    return out
 
 
 def save(server_id: str, start: float, end: float, title: str, note: str, who: str, aid: int | None = None) -> dict:

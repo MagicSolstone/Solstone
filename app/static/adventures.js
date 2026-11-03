@@ -8,6 +8,29 @@ const ADV_COLOURS = ["#ffcf4a", "#5ac8ff", "#ff7a7a", "#8ce99a", "#d0a2ff", "#ff
 const ADV_ICONS = { join: "➡️", leave: "⬅️", chat: "💬", webchat: "💬", death: "💀", advancement: "🏅", challenge: "🏆", race: "🏁",
   fish: "🎣", bigfish: "🐟", game: "🎲", progress: "⚔️" };
 
+// The summary's kinds of thing, in order: icon, what it counts, how to say the number.
+const ADV_KINDS = [["mobs", "⚔️", "mobs defeated"], ["mined", "⛏️", "blocks dug"], ["ores", "💎", "ores mined"], ["logs", "🪓", "logs chopped"],
+  ["crops", "🌾", "crops harvested"], ["placed", "🧱", "blocks placed"], ["fish", "🎣", "fish caught"], ["trades", "💰", "trades"],
+  ["bred", "🐑", "animals bred"], ["chests", "📦", "chests opened"], ["damage", "💔", "hearts of damage taken"], ["travelled", "🧭", "travelled"], ["chat", "💬", "chat messages"]];
+function advKindChips(t) {
+  return ADV_KINDS.filter(([k]) => t[k]).map(([k, icon, say]) => {
+    const n = k === "travelled" ? (t[k] >= 1000 ? `${(t[k] / 1000).toFixed(1)} km` : `${Math.round(t[k])} blocks`) : Math.round(t[k]);
+    return `<span class="rp-chip" title="${esc(k === "travelled" ? `Travelled ${n}` : `${n} ${say}`)}">${icon} ${esc(String(n))}</span>`;
+  }).join("");
+}
+function advSummaryHtml(d) {
+  if (!d.summary?.length) return '<p class="muted small">Nothing in the feed for this stretch.</p>';
+  return d.summary.map((b) => `<button type="button" class="rp-ev rp-block" data-ts="${b.start}" data-end="${b.end}">
+      <span class="rp-ev-t">${esc(advClock(b.start))}</span>
+      <span class="rp-block-body">${Object.entries(b.players).map(([p, t]) => `<span class="rp-block-who">${faceHtml({ name: p }, 16)}<b>${esc(p)}</b>${advKindChips(t)}</span>`).join("")}
+        ${b.moments.map((e) => `<span class="rp-moment">${ADV_ICONS[e.type] || "•"} ${esc(e.message)}</span>`).join("")}</span></button>`).join("");
+}
+function advEverythingHtml(d) {
+  return d.events.map((e) => `<button type="button" class="rp-ev" data-ts="${e.ts}" data-player="${esc(e.player || "")}">
+      <span class="rp-ev-t">${esc(advClock(e.ts))}</span><span>${ADV_ICONS[e.type] || "•"}</span><span>${e.type === "chat" || e.type === "webchat" ? `<b>${esc(e.player || "")}</b>: ` : ""}${esc(e.message)}</span></button>`).join("")
+    || '<p class="muted small">Nothing in the feed for this stretch.</p>';
+}
+
 function advDay(ts) {
   return new Date(ts * 1000).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
 }
@@ -106,8 +129,8 @@ async function viewAdventure(sid, key) {
             ${dims.length > 1 ? `<select class="input sm" id="rp-dim" aria-label="Dimension">${dims.map((x) => `<option value="${esc(x)}">${esc(dimName(x))}</option>`).join("")}</select>` : ""}</div>
           ${players.length ? "" : `<p class="muted small">No trail for this session (Solstone needs RCON to follow where players are, and trails start from this update).</p>`}
         </div>
-        <aside class="rp-feed panel" id="rp-feed" aria-label="What happened">${d.events.map((e, i) => `<button type="button" class="rp-ev" data-i="${i}">
-            <span class="rp-ev-t">${esc(advClock(e.ts))}</span><span>${ADV_ICONS[e.type] || "•"}</span><span>${e.type === "chat" || e.type === "webchat" ? `<b>${esc(e.player || "")}</b>: ` : ""}${esc(e.message)}</span></button>`).join("") || '<p class="muted small">Nothing in the feed for this stretch.</p>'}</aside>
+        <div class="rp-feedcol"><div class="seg rp-feed-mode" role="group" aria-label="Feed"><button type="button" data-feed="summary" aria-pressed="true">Every 10 minutes</button><button type="button" data-feed="all" aria-pressed="false">Everything</button></div>
+        <aside class="rp-feed panel" id="rp-feed" aria-label="What happened">${advSummaryHtml(d)}</aside></div>
       </div>
       ${isPlayer() ? (saved?.note ? `<section class="panel"><h3>${esc(saved.title)}</h3><p>${esc(saved.note)}</p></section>` : "") : `<form class="panel rp-save" id="rp-save">
         <h3>${saved ? "This adventure" : "Save this adventure"}</h3>
@@ -158,7 +181,7 @@ async function viewAdventure(sid, key) {
     }
     map.draw();
     let last = null;
-    feed.querySelectorAll(".rp-ev").forEach((b) => { const past = d.events[+b.dataset.i].ts <= st.t; b.classList.toggle("future", !past); if (past) last = b; });
+    feed.querySelectorAll(".rp-ev").forEach((b) => { const past = +b.dataset.ts <= st.t; b.classList.toggle("future", !past); if (past) last = b; });
     feed.querySelectorAll(".rp-ev.now").forEach((b) => b.classList.remove("now"));
     if (last) { last.classList.add("now"); if (st.playing) last.scrollIntoView({ block: "nearest" }); }
   };
@@ -188,11 +211,16 @@ async function viewAdventure(sid, key) {
     document.querySelectorAll("[data-follow]").forEach((x) => x.classList.toggle("on", x.dataset.follow === st.follow));
     show();
   }));
+  document.querySelectorAll("[data-feed]").forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll("[data-feed]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    feed.innerHTML = b.dataset.feed === "all" ? advEverythingHtml(d) : advSummaryHtml(d);
+    show();
+  }));
   feed.addEventListener("click", (e) => {
     const b = e.target.closest(".rp-ev"); if (!b) return;
-    const ev = d.events[+b.dataset.i];
-    st.t = ev.ts;
-    const tr = ev.player && d.trails[ev.player];
+    st.t = +b.dataset.ts;
+    const who = b.dataset.player || b.querySelector(".rp-block-who b")?.textContent;
+    const tr = who && d.trails[who];
     const now = tr && where(tr, st.t);
     if (now) { if (now[1] !== st.dim) setDim(now[1]); map.view.cx = now[2]; map.view.cz = now[4]; }
     show();

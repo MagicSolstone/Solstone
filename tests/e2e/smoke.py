@@ -450,8 +450,12 @@ def main() -> int:
                 problems.append("adventures: no sessions listed")
             else:
                 pg.locator(".rp-row").first.click(); pg.wait_for_timeout(1200)
-                if not pg.locator("#rp-map canvas").count() or pg.locator(".rp-ev").count() < 5:
-                    problems.append("adventures: replay didn't show the map and the feed")
+                if not pg.locator("#rp-map canvas").count() or not pg.locator(".rp-ev.rp-block .rp-chip").count():
+                    problems.append("adventures: replay didn't show the map and the feed summed up every 10 minutes")
+                check(pg, "adventure-replay-summary")
+                pg.click('[data-feed="all"]'); pg.wait_for_timeout(200)
+                if pg.locator(".rp-ev").count() < 5:
+                    problems.append("adventures: Everything doesn't list the feed")
                 pg.locator(".rp-ev").nth(3).click(); pg.wait_for_timeout(300)
                 check(pg, "adventure-replay")
                 pg.fill("#rp-save input[name=title]", "Smoke test cave"); pg.click("#rp-save button[type=submit]"); pg.wait_for_timeout(800)

@@ -96,7 +96,8 @@ def test_more_of_what_happened_and_what_they_are_up_to():
     from app import adventures as A
     before = {"minecraft:mined": {"minecraft:oak_log": 2}, "minecraft:used": {}, "minecraft:custom": {"minecraft:walk_one_cm": 0}}
     after = {"minecraft:mined": {"minecraft:oak_log": 14, "minecraft:diamond_ore": 2, "minecraft:wheat": 5},
-             "minecraft:used": {"minecraft:oak_planks": 30, "minecraft:diamond_pickaxe": 40},
+             "minecraft:used": {"minecraft:oak_planks": 30, "minecraft:diamond_pickaxe": 40, "minecraft:stone_pickaxe": 90,
+                                "minecraft:stone_sword": 12, "minecraft:water_bucket": 3},     # tools: not blocks placed
              "minecraft:custom": {"minecraft:walk_one_cm": 120000, "minecraft:open_chest": 3, "minecraft:traded_with_villager": 2}}
     line = A.progress_line(before, after)
     for bit in ("mined 2 diamond ore", "chopped 12 logs", "harvested 5 crops", "placed 30 blocks", "opened 3 chests",
@@ -106,3 +107,19 @@ def test_more_of_what_happened_and_what_they_are_up_to():
     assert A.doing(before, before) is None
     fishing = {"minecraft:custom": {"minecraft:fish_caught": 3}}
     assert A.doing({}, fishing) == "🎣 Fishing"
+
+
+def test_the_feed_summed_up_every_ten_minutes():
+    from app import adventures as A
+    t = 1_000_000.0
+    evs = [{"ts": t + 30, "type": "join", "player": "Alex", "message": "Alex joined the game"},
+           {"ts": t + 200, "type": "progress", "player": "Alex", "message": "defeated 3 zombies, 1 spider · dug 40 blocks · chopped 12 logs"},
+           {"ts": t + 400, "type": "progress", "player": "Alex", "message": "defeated 2 zombies · took 6 ❤ of damage"},
+           {"ts": t + 450, "type": "fish", "player": "Sam", "message": "Sam caught a Cod"},
+           {"ts": t + 460, "type": "chat", "player": "Sam", "message": "hi"},
+           {"ts": t + 1300, "type": "death", "player": "Alex", "message": "Alex was slain by a Zombie"}]
+    s = A.summary(evs, t, t + 1800)
+    assert [round(b["start"] - t) for b in s] == [0, 1200]                        # the empty block in between is left out
+    assert s[0]["players"]["Alex"] == {"mobs": 6, "mined": 40, "logs": 12, "damage": 6}
+    assert s[0]["players"]["Sam"] == {"fish": 1, "chat": 1}
+    assert [e["type"] for e in s[0]["moments"]] == ["join"] and s[1]["moments"][0]["type"] == "death"

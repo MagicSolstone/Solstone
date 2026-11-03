@@ -1647,7 +1647,7 @@ body.on-editor:not(.ui-hidden) .fwbar .fwb-launch, body.on-editor:not(.ui-hidden
 .rp-saved { color: var(--gold); font-size: 1.1rem; }
 .rp .section-head { flex-wrap: wrap; gap: 8px 14px; }
 .rp-note { white-space: pre-wrap; margin: 0 0 12px; }
-.rp-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; align-items: start; }
+.rp-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 12px; align-items: start; }
 @media (max-width: 900px) { .rp-grid { grid-template-columns: 1fr; } }
 .rp-map { position: relative; height: min(62vh, 560px); border-radius: var(--radius-m); overflow: hidden; background: #101826; }
 .rp-map .rm-canvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
@@ -2197,3 +2197,14 @@ a.glance-me:hover { border-color: var(--gold); }
 .hp-spark path { fill: none; stroke: var(--gold); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: .85; }
 .hp-spark circle { fill: var(--gold); }
 .hp-spark-note { margin: 6px 2px 0; font-size: .74rem; }
+
+/* Adventures: the feed every ten minutes */
+.rp-feedcol { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.rp-feed-mode { justify-self: start; }
+.rp-ev.rp-block { grid-template-columns: 70px 1fr; padding: 8px 6px; border-bottom: 1px solid var(--line); border-radius: 0; }
+.rp-block-body { display: grid; gap: 5px; min-width: 0; }
+.rp-block-who { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.rp-block-who b { margin-right: 2px; }
+.rp-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border-radius: 999px; background: var(--well); font-size: .82rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rp-moment { font-size: .86rem; color: var(--muted); }
+.rp-ev .rp-ev-t { white-space: nowrap; }
