@@ -278,15 +278,12 @@ async function home() {
 // What's planned, for everyone (no names: nobody's sign-up). Signed in, the app's Events page has more.
 async function eventsPage() {
   const d = await getJSON("/api/public/upcoming");
-  const day = (iso) => { const [y, m, dd] = iso.split("-").map(Number); return new Date(y, m - 1, dd).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" }); };
-  const row = (it) => (it.kind === "event" ? upEventHtml(it) : `<li class="up-item ${it.live ? "live" : ""} ${it.then ? "up-then" : ""}"><span class="up-emoji" aria-hidden="true">${esc(it.emoji || "•")}</span>
+  const row = (it) => (it.kind === "event" ? upEventHtml(it) : `<li class="up-item ${it.live ? "live" : ""} ${it.then ? "up-then" : ""}${upLook(it).cls}"${upLook(it).style}><span class="up-emoji" aria-hidden="true">${esc(it.emoji || "•")}</span>
     <div class="up-main"><b>${upTitle(it)}</b>${it.then ? "" : `<span class="muted small">${esc([it.server, it.detail, it.days > 1 ? `${it.days} days` : ""].filter(Boolean).join(" · "))}</span>`}
       ${it.about ? `<span class="up-about">${inline(esc(it.about))}</span>` : ""}${rewardLineHtml(it.reward)}</div>
     <span class="up-when">${it.live ? "On now" : it.time ? esc(it.time) : '<span class="muted small">All day</span>'}</span></li>`);
-  const groups = [];
-  for (const it of d.items) { const g = groups[groups.length - 1]; if (g && g.date === it.date && !it.live) g.items.push(it); else groups.push({ date: it.date, live: it.live, items: [it] }); }
   return `<section><h1>Events</h1><p class="muted">Contests, races, holidays and fireworks shows coming up. <a href="/app#/events">Sign in</a> to say you're coming and see who else is.</p></section>
-    ${groups.length ? groups.map((g) => `<section><h2>${g.live ? "Happening now" : esc(day(g.date))}</h2><ul class="up-list glass">${g.items.map(row).join("")}</ul></section>`).join("")
+    ${d.items.length ? `<section>${upTimeline(d.items, row, "glass")}</section>`
       : '<section class="glass hp-empty"><p class="muted">Nothing planned yet. Check back soon!</p></section>'}`;
 }
 

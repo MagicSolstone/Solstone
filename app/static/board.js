@@ -46,6 +46,42 @@ function bnRewardHtml(it) {
 }
 // An Events row's title: formatted when it has formatting of its own (a holiday's name).
 const upTitle = (it) => (it.title_fmt ? annFmt(it.title_fmt) : esc(it.title));
+// A holiday's card on Events takes its banner's look (the same colours everywhere for that holiday).
+function upLook(it) {
+  if (!it.look) return { cls: "", style: "" };
+  return { cls: ` up-look bn-${esc(it.look.style)}`, style: annLook(it.look) };
+}
+// The Events page as a timeline down the page: today at the top (with what's on now), then a dot for each day
+// with something on, a dotted stretch and how long between them, and a gold stretch with the dates for a
+// holiday's reward. row(it) draws each card; cls: the list's own class ("panel" in the app, "glass" outside).
+function upTimeline(items, row, cls = "panel") {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const toDay = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d); };
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const long = (d) => d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+  const between = (a, b) => Math.round((b - a) / 86400000);
+  const now = items.filter((x) => x.live || x.date === iso(today) || toDay(x.date) < today);
+  const groups = [];
+  for (const it of items.filter((x) => !now.includes(x))) {
+    const g = groups[groups.length - 1];
+    if (g && g.date === it.date) g.items.push(it); else groups.push({ date: it.date, items: [it] });
+  }
+  const rewards = (list) => list.filter((x) => x.reward).map((x) => `<div class="tl-reward"><span aria-hidden="true">🎁</span> Reward: ${esc(x.reward.when)}</div>`).join("");
+  const list = (l) => `<ul class="up-list ${cls}">${l.map(row).join("")}</ul>`;
+  let html = `<ol class="tl"><li class="tl-step tl-now${now.some((x) => x.reward) ? " tl-has-reward" : ""}"><span class="tl-node" aria-hidden="true"></span>
+    <div class="tl-date"><b>Today</b><span>${esc(long(today))}</span></div>
+    ${now.length ? `${rewards(now)}${list(now)}` : `<p class="muted small tl-quiet">Nothing on right now.</p>`}</li>`;
+  let prev = today;
+  for (const g of groups) {
+    const d = toDay(g.date), gap = between(prev, d), until = between(today, d);
+    if (gap > 1) html += `<li class="tl-gap" aria-hidden="true"><span>${gap % 7 ? `${gap} days` : gap === 7 ? "a week" : `${gap / 7} weeks`}</span></li>`;
+    html += `<li class="tl-step${g.items.some((x) => x.reward) ? " tl-has-reward" : ""}"><span class="tl-node" aria-hidden="true"></span>
+      <div class="tl-date"><b>${esc(long(d))}</b><span>${until === 1 ? "Tomorrow" : until < 7 ? `In ${until} days` : until < 14 ? "Next week" : `In ${Math.round(until / 7)} weeks`}</span></div>
+      ${rewards(g.items)}${list(g.items)}</li>`;
+    prev = d;
+  }
+  return `${html}</ol>`;
+}
 // The same without the formatting, for places that only take plain text.
 function annPlain(text) {
   return String(text || "").replace(/\[([^\]]+)\]\([^)\s]+\)/g, "$1").replace(/\*\*([^*]+)\*\*/g, "$1")

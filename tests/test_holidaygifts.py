@@ -144,3 +144,20 @@ def test_a_prize_waits_for_room_instead_of_dropping(monkeypatch):
         assert not challenges._load()["gifts"]
     finally:
         challenges._save(keep)
+
+
+def test_events_keep_a_holiday_while_its_reward_is_still_on():
+    from datetime import timedelta
+    today = datetime.now(db.tz()).date()
+    keep = settings_store.load().get("fw_calendar")
+    try:
+        fwshow.save_calendar([{"id": "thanks", "name": "Thanksgiving", "days": 1, "date": {"type": "once", "iso": (today - timedelta(days=1)).isoformat()},
+                               "banner": {"style": "sunset"}, "reward": {"items": [{"item": "pumpkin_pie"}], "after": 3}}])
+        h = [i for i in upcoming.items({}) if i["kind"] == "holiday"]
+        assert len(h) == 1 and h[0]["live"] and "still being given" in h[0]["detail"] and h[0]["look"]["style"] == "sunset"
+        cal = fwshow.calendar()
+        cal[0]["reward"]["after"] = 0                        # no reward after it: gone from Events once it's over
+        fwshow.save_calendar(cal)
+        assert not [i for i in upcoming.items({}) if i["kind"] == "holiday"]
+    finally:
+        settings_store.save_section("fw_calendar", keep)

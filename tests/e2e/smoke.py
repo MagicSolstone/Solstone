@@ -454,10 +454,17 @@ def main() -> int:
             pg.request.put(f"{base}/api/fireworks/show", data={"calendar": [*cal, party]}, headers=H)
             ev = browser.new_page(viewport={"width": 1280, "height": 860})
             ev.goto(f"{base}/events"); ev.wait_for_timeout(1200)
-            line = ev.locator(".up-reward")
+            line = ev.locator('.up-item:has-text("Smoke weekend") .up-reward')
             if not line.count() or "3 × Pumpkin Pie" not in (line.first.text_content() or "") or not line.first.locator("b").count():
                 problems.append("events: a holiday's reward isn't on its own line with the item, amount and description")
-            check(ev, "events-reward"); ev.close()
+            if not ev.locator(".tl .tl-now .tl-node").count() or not ev.locator(".tl-now .tl-reward").count():
+                problems.append("events: no timeline starting from today, or no reward dates on it")
+            if not ev.locator(".up-item.up-look").count():
+                problems.append("events: a holiday's card doesn't take its banner's look")
+            check(ev, "events-reward")
+            if os.environ.get("SMOKE_SHOTS"):
+                ev.screenshot(path=os.path.join(os.environ["SMOKE_SHOTS"], "events-timeline-full.png"), full_page=True)
+            ev.close()
             pg.goto(f"{base}/app#/events"); pg.reload(); pg.wait_for_timeout(1500)
             if pg.locator('.bn[data-id^="hol-smokeparty"]').count() != 1 or not pg.locator('.bn[data-id^="hol-smokeparty"] .bn-reward .rw-item').count():
                 problems.append("banners: a holiday with a reward isn't one banner showing the reward")

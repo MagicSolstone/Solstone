@@ -178,15 +178,7 @@ async function viewUpcoming() {
   document.title = `Events · ${SITE_NAME}`;
   fillServersMenu(state.servers, null);
   const d = await api("/api/upcoming");
-  const zone = new Date();
-  const dayKey = (iso) => {
-    const [y, m, dd] = iso.split("-").map(Number), day = new Date(y, m - 1, dd);
-    const today = new Date(zone.getFullYear(), zone.getMonth(), zone.getDate());
-    const diff = Math.round((day - today) / 86400000);
-    const name = day.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
-    return diff === 0 ? `Today · ${name}` : diff === 1 ? `Tomorrow · ${name}` : diff < 7 ? name : diff < 14 ? `Next week · ${name}` : name;
-  };
-  const row = (it) => (it.kind === "event" ? upEventHtml(it, true) : `<li class="up-item ${it.live ? "live" : ""} up-${esc(it.kind)} ${it.then ? "up-then" : ""}">
+  const row = (it) => (it.kind === "event" ? upEventHtml(it, true) : `<li class="up-item ${it.live ? "live" : ""} up-${esc(it.kind)} ${it.then ? "up-then" : ""}${upLook(it).cls}"${upLook(it).style}>
       <span class="up-emoji" aria-hidden="true">${esc(it.emoji || "•")}</span>
       <div class="up-main"><b>${it.link ? `<a href="${esc(it.link)}">${upTitle(it)}</a>` : upTitle(it)}</b>
         ${it.then ? "" : `<span class="muted small">${esc([UP_KIND[it.kind], it.server, it.detail, it.days > 1 ? `${it.days} days` : ""].filter(Boolean).join(" · "))}</span>`}
@@ -195,14 +187,9 @@ async function viewUpcoming() {
       <span class="up-when">${it.live ? '<span class="state-pill live"><span class="status-dot on"></span>On now</span>' : it.time ? esc(it.time) : '<span class="muted small">All day</span>'}
         ${UP_SIGNUP.has(it.kind) ? `<button type="button" class="btn sm up-coming ${it.me ? "on" : ""}" data-coming="${esc(it.key)}" aria-pressed="${it.me}"
 >${it.me ? "✅ I'm coming" : "🙋 I'm coming!"}${it.coming ? ` · ${it.coming}` : ""}</button>` : ""}</span></li>`);
-  const live = d.items.filter((x) => x.live), ahead = d.items.filter((x) => !x.live);
-  const groups = [];
-  for (const it of ahead) { const g = groups[groups.length - 1]; if (g && g.date === it.date) g.items.push(it); else groups.push({ date: it.date, items: [it] }); }
   setView(`<div class="fwe-head"><h1>Events</h1>
       <p class="muted">Everything planned for the next ${d.days} days: contests, races and games, holidays and their fireworks shows, and announcements counting down.${isAdmin() ? ` Add things from a server's <b>Contests</b> page, <a href="#/manage/holidays">Holidays</a> or <a href="#/manage/announcements">Announcements</a>.` : ""}</p></div>
-    ${live.length ? `<section class="section"><div class="section-head"><h2>Happening now</h2></div><ul class="up-list panel">${live.map(row).join("")}</ul></section>` : ""}
-    ${groups.length ? groups.map((g) => `<section class="section up-day"><div class="section-head"><h2>${esc(dayKey(g.date))}</h2></div><ul class="up-list panel">${g.items.map(row).join("")}</ul></section>`).join("")
-      : live.length ? "" : `<div class="panel up-empty"><span class="up-empty-emoji" aria-hidden="true">🗓️</span><h2>No events scheduled</h2>
+    ${d.items.length ? upTimeline(d.items, row, "panel") : `<div class="panel up-empty"><span class="up-empty-emoji" aria-hidden="true">🗓️</span><h2>No events scheduled</h2>
           <p class="muted">Nothing's planned for the next ${Math.round(d.days / 30)} months yet. Contests, races and holidays show up here when they're added.</p>
           ${isAdmin() ? `<p class="muted small">Add a contest from a server's <b>Contests</b> page, a holiday on <a href="#/manage/holidays">Holidays</a>, or a countdown in <a href="#/manage/announcements">Announcements</a>.</p>` : ""}</div>`}`);
   const every = [...d.items, ...d.items.flatMap((x) => x.parts || [])];
