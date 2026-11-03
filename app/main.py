@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, games, holidaygifts, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
+from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, arena, fishpack, gamemsg, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -3264,7 +3264,25 @@ async def get_games(sid: str, request: Request):
             pack = None
     w = await asyncio.to_thread(S.world_info, srv, False) if srv.is_java else {}
     return {"runs": eventgroups.tag(optin.annotate("game", games.runs_for(srv.id))), "rcon": bool(srv.rcon_conf()), "pack": pack, "pack_needed": 2, "pack_needed_spleef": 10,
-            "spawn": w.get("spawn"), "now": time.time(), "rcon_echo": _rcon_echo(srv)}
+            "spawn": w.get("spawn"), "now": time.time(), "rcon_echo": _rcon_echo(srv),
+            "mobs": arena.MOBS, "presets": {lvl: arena.preset(lvl) for lvl in ("easy", "normal", "hard")},     # the mob arena's
+            "kit_tiers": {"sword": list(kits.TIERS), "armour": [*kits.ARMOUR, "none"]},
+            "in_vault": [s["name"] for s in kits.waiting(srv.id)]}                  # players whose things are kept safe
+
+
+@app.post("/api/servers/{sid}/kits/give-back")
+async def kit_give_back(sid: str, request: Request):
+    """An admin, by hand: give a player their own things back from the vault now (they need to be online)."""
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    name = str((await _body(request)).get("player") or "").lower()
+    s = next((x for x in kits.waiting(srv.id) if x["name"].lower() == name), None)
+    if not s:
+        raise HTTPException(404, "Nothing of theirs is in the vault")
+    if not await kits.give_back(srv, s["uuid"]):
+        raise HTTPException(409, f"{s['name']} needs to be online (they'll get everything back automatically when they are)")
+    auth.audit(user, srv.id, "kit_give_back", s["name"])
+    return {"ok": True}
 
 
 @app.post("/api/servers/{sid}/games")

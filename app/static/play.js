@@ -900,7 +900,10 @@ const GAME_INFO = {
   treasure: ["💰", "Treasure hunt", "A chest of prizes hidden somewhere in an area. Everyone's hotbar says how warm they are. First to take the treasure wins."],
   archery: ["🎯", "Archery", "Longest bullseye, most points, or HORSE: make the setter's shot from the same spot or take a letter. Needs the Solstone data pack."],
   spleef: ["❄️", "Spleef", "A snow arena high in the sky, a shovel each: dig the floor out from under everyone else. Last one standing wins the round. Teams, layers, a shrinking floor. Needs the Solstone data pack."],
+  koth: ["👑", "King of the Hill", "Hold the hill to score, with a kit (sword, bow, armour). Teams, or everyone for themselves. Everyone's own things are kept safe and given back exactly afterwards."],
+  arena: ["⚔️", "Mob arena", "Waves of monsters, harder each time, in an arena you set. Fight together or for the most defeated. Everyone's own things are kept safe and given back exactly afterwards."],
 };
+const FIGHTS = new Set(["koth", "arena"]);
 
 async function viewGames(sid) {
   if (!isAdmin()) { location.replace(`#/s/${encodeURIComponent(sid)}`); return; }
@@ -924,6 +927,13 @@ async function viewGames(sid) {
     } else if (r.game === "spleef" && Object.keys(r.players || {}).length) {
       const rows = Object.entries(r.players).sort((a, b) => b[1].wins - a[1].wins || a[0].localeCompare(b[0]));
       body = `${r.teams ? `<p class="muted small">Red ${r.team_wins?.red || 0} · Blue ${r.team_wins?.blue || 0}</p>` : ""}<ol class="ch-scores">${rows.map(([n, p], i) => `<li><span class="rank">${i + 1}</span>${faceHtml({ name: n }, 22)}<b>${esc(n)}${r.teams ? ` <span class="gm-team ${esc(p.team || "")}">${esc(p.team || "")}</span>` : ""}</b><span class="val">${live ? (p.alive ? "standing" : "out") : ""}${r.teams ? "" : ` · ${p.wins} won`}</span></li>`).join("")}</ol>`;
+    } else if (FIGHTS.has(r.game) && Object.keys(r.players || {}).length) {
+      const team = r.teams && Object.keys(r.teams).length;
+      const rows = Object.entries(r.players).sort((a, b) => (r.game === "arena" ? (b[1].kills || 0) - (a[1].kills || 0) : b[1].score - a[1].score));
+      body = `${team ? `<p class="muted small">${Object.entries(r.teams).map(([t, v]) => `<span class="gm-team ${esc(t)}">${esc(t)}</span> ${v}`).join(" · ")}</p>` : ""}
+        ${r.game === "arena" ? `<p class="muted small">Wave ${r.wave || 0} of ${(r.waves || []).length}</p>` : ""}
+        <ol class="ch-scores">${rows.map(([n, p], i) => `<li><span class="rank">${i + 1}</span>${faceHtml({ name: n }, 22)}<b>${esc(n)}${p.team ? ` <span class="gm-team ${esc(p.team)}">${esc(p.team)}</span>` : ""}</b>
+          <span class="val">${r.game === "arena" ? `${p.kills || 0} defeated` : team ? "" : `${p.score} pts`}${p.out ? " · left" : p.back_at ? " · down" : ""}</span></li>`).join("")}</ol>`;
     } else if (r.game === "treasure" && r.items) {
       body = `<div class="ch-prize">${r.items.map((it) => `${itemIcon({ id: it.item })}<span>${it.count} × ${esc(it.name || itemName({ id: it.item }))}</span>`).join(" ")}</div>`;
     }
@@ -943,6 +953,9 @@ async function viewGames(sid) {
       ${adding ? egBanner(adding, "a game") + `<p class="muted">${adding.iid ? "Change it below." : "Press <b>Set up</b> on the game to play."}</p>` : ""}
       ${d.rcon ? "" : `<p class="notice">Games need RCON turned on for this server (⚙ settings).</p>`}
       ${live.length ? `<section class="section"><div class="section-head"><h2>Playing now</h2></div><div class="ch-list">${live.map(runCard).join("")}</div></section>` : ""}
+      ${(d.in_vault || []).length && !live.some((r) => FIGHTS.has(r.game)) ? `<section class="section"><div class="panel gm-vault"><b>🔒 Things kept safe</b>
+        <span class="muted small">These players left during a game. Their own things are safe in the vault and come back automatically the next time they're on.</span>
+        <div class="btn-row">${d.in_vault.map((n) => `<button type="button" class="btn sm" data-giveback="${esc(n)}">Give ${esc(n)}'s things back now</button>`).join("")}</div></div></section>` : ""}
       <section class="section"><div class="ch-list">${Object.entries(GAME_INFO).map(([k, [e, t, about]]) => `<div class="ch-card panel gm-pick">
         <div class="ch-head"><span class="ch-emoji">${e}</span><div><h3>${esc(t)}</h3></div></div><p class="muted">${esc(about)}</p>
         ${needsPack(k) ? `<p class="notice small">Add the Solstone data pack to the world first (on the <a href="#/s/${encodeURIComponent(sid)}/challenges">Contests</a> page${d.pack ? ": it needs the newer version" : ""}).</p>` : ""}
@@ -951,6 +964,10 @@ async function viewGames(sid) {
       ${past.length ? `<section class="section"><div class="section-head"><h2>Finished</h2></div><div class="ch-list">${past.map(runCard).join("")}</div></section>` : ""}`);
     wireHeader(s);
     $$("[data-setup]").forEach((b) => b.addEventListener("click", () => openSetup(b.dataset.setup)));
+    $$("[data-giveback]").forEach((b) => b.addEventListener("click", async () => {
+      try { await post(`/api/servers/${encodeURIComponent(sid)}/kits/give-back`, { player: b.dataset.giveback }); showToast(`${esc(b.dataset.giveback)} has everything back`, 3000); await reload(); }
+      catch (err) { showError(esc(err.message), 6000); }
+    }));
     $("[data-eg-cancel]")?.addEventListener("click", () => egBack(sid));
     $$("[data-gid]").forEach((el) => el.querySelector("[data-stop]")?.addEventListener("click", async () => {
       const r = d.runs.find((x) => x.id === el.dataset.gid);
@@ -969,17 +986,33 @@ async function viewGames(sid) {
       hide_secs: 60, minutes: game === "treasure" ? 15 : game === "archery" ? 10 : 6, seeker: "", no_dig: true, marco: true, infect: true,
       mode: "bullseye", word: "HORSE", give_bow: true, hint_after: 5, items: [], prize: null, hot: false, hot_bonus: 2, hot_far: 40, hot_on: 45, hot_off: 20,
       underwater: false, g: { on: false, spot: null, r: 4 }, layers: 1, best_of: 3, teams: false, snowballs: false, shrink: true, shrink_after: 60,
-      seconds: 120, rounds: 1, peaceful: true, optin: true };
+      seconds: 120, rounds: 1, peaceful: true, optin: true,
+      // King of the Hill and the mob arena
+      spawns: [], mob_spots: [], pick: "center", team_count: 2, respawn_secs: 5, level: "normal", coop: true, waves: [{ zombie: 3 }, { zombie: 4, skeleton: 2 }],
+      kit: { sword: "iron", armour: "iron", bow: true, arrows: 16, shield: false, food: true } };
     if (adding?.body?.game === game) {                   // changing an event's game: its own settings
       const b = adding.body;
       Object.assign(f, b, { prize: b.prizes?.[0] || null, items: b.items || [], g: b.gather ? { on: true, spot: b.gather, r: b.gather.r || 4 } : { on: false, spot: null, r: 4 } });
     }
     if (game === "spleef") f.radius = 10;
+    if (game === "koth") { f.radius = 5; f.minutes = 8; }
+    if (game === "arena") f.radius = 15;
     const at = (() => { const t = new Date(Date.now() + 15 * 60e3); t.setSeconds(0, 0); return new Date(t.getTime() - t.getTimezoneOffset() * 60e3).toISOString().slice(0, 16); })();
     f.at = at;
     let map = null;
     const pickBtn = (p, empty) => (p ? `${itemIcon({ id: p.item })}<span>${p.count} × ${esc(p.name)}</span>` : `<span class="muted">${empty}</span>`);
-    const where = () => (game === "archery"
+    const spotList = (list, key, label) => `<div class="gm-spots"><span class="lbl">${label}</span>${list.length ? list.map((p, i) => `<span class="chip">${i + 1}: ${Math.round(p.x)}, ${Math.round(p.z)} <button type="button" class="chip-x" data-rmspot="${key}:${i}" aria-label="Remove">×</button></span>`).join("") : '<span class="muted small">None yet</span>'}</div>`;
+    const fightWhere = () => `<div class="gm-where"><span class="lbl">Where</span>
+        <div class="seg gm-pick-what" role="group" aria-label="Clicking the map sets">${[["center", game === "koth" ? "👑 The hill" : "⚔️ The arena"], ["spawns", game === "koth" ? (f.team_count ? "🚩 Team spawns" : "🚩 Spawn spots") : "🚩 Player spawn"], ...(game === "arena" ? [["mob_spots", "💀 Monster spots"]] : [])]
+          .filter(([k]) => !(game === "arena" && k === "spawns")).map(([k, l]) => `<button type="button" data-pickwhat="${k}" aria-pressed="${f.pick === k}">${l}</button>`).join("")}</div>
+        <p class="muted small">Click the map to set ${f.pick === "center" ? (game === "koth" ? "the hill" : "the middle of the arena") : f.pick === "spawns" ? `a spawn spot${f.team_count ? " (one per team, in team order: red, blue, green, yellow)" : " (players come in at one at random)"}` : "a spot monsters come out of (each picks one at random)"}. Up to 8 spots.</p>
+        <div class="btn-row"><select class="input sm" id="gm-player">${online().map((n) => `<option>${esc(n)}</option>`).join("") || "<option value=''>Nobody online</option>"}</select>
+          <button class="btn sm" type="button" id="gm-here">Use where they're standing</button></div>
+        <label>Size: <input type="range" name="radius" min="${game === "koth" ? 2 : 6}" max="${game === "koth" ? 30 : 60}" step="1" value="${f.radius}"> <b id="gm-r">${f.radius}</b> blocks from the middle</label>
+        <p class="gm-chosen" id="gm-chosen">${f.center ? `${game === "koth" ? "Hill" : "Arena"} at ${Math.round(f.center.x)}, ${Math.round(f.center.z)}` : `No ${game === "koth" ? "hill" : "arena"} yet`}</p>
+        ${game === "koth" ? spotList(f.spawns, "spawns", "Spawn spots") : spotList(f.mob_spots, "mob_spots", "Monster spots")}
+        ${game === "arena" ? '<p class="muted small">Players come in at the middle of the arena, and are kept inside it. So are the monsters.</p>' : ""}</div>`;
+    const where = () => (FIGHTS.has(game) ? fightWhere() : game === "archery"
       ? `<div class="gm-where"><span class="lbl">Target</span>
           <div class="btn-row"><select class="input sm" id="gm-player">${online().map((n) => `<option>${esc(n)}</option>`).join("") || "<option value=''>Nobody online</option>"}</select>
             <button class="btn sm" type="button" id="gm-under">Use the target block they're standing on</button></div>
@@ -992,7 +1025,32 @@ async function viewGames(sid) {
           ${game === "spleef" ? `<p class="muted small">The arena is built high in the sky above this spot (well clear of anything there) and taken down afterwards.</p>` : ""}
           <label>Size: <input type="range" name="radius" min="${game === "treasure" ? 30 : game === "spleef" ? 6 : 10}" max="${game === "treasure" ? 500 : game === "spleef" ? 20 : 150}" step="${game === "spleef" ? 1 : 5}" value="${f.radius}"> <b id="gm-r">${f.radius}${game === "spleef" ? ` (${f.radius * 2 + 1} × ${f.radius * 2 + 1})` : ""}</b> blocks from the middle</label>
           <p class="gm-chosen" id="gm-chosen">${f.center ? `Middle at ${Math.round(f.center.x)}, ${Math.round(f.center.z)}${f.spot ? ` · treasure at ${Math.round(f.spot.x)}, ${Math.round(f.spot.z)}` : ""}` : "No area yet"}</p></div>`);
-    const options = () => game === "hideseek" ? `
+    const kitHtml = () => `<fieldset class="gm-kit gm-wide"><legend>The kit <small class="muted">Everyone's own things are kept safe in a sealed vault first, and given back exactly afterwards (even if they leave mid-game)</small></legend>
+        <label>Sword <select class="input sm" name="kit_sword">${(d.kit_tiers?.sword || ["wooden", "stone", "iron", "diamond", "netherite"]).map((t) => `<option value="${t}" ${f.kit.sword === t ? "selected" : ""}>${humanize(t)}</option>`).join("")}</select></label>
+        <label>Armour <select class="input sm" name="kit_armour">${(d.kit_tiers?.armour || ["leather", "chainmail", "iron", "diamond", "netherite", "none"]).map((t) => `<option value="${t}" ${f.kit.armour === t ? "selected" : ""}>${t === "none" ? "None" : humanize(t)}</option>`).join("")}</select></label>
+        <label class="check"><input type="checkbox" name="kit_bow" ${f.kit.bow ? "checked" : ""}> Bow and <select class="input sm" name="kit_arrows">${[8, 16, 32, 64].map((v) => `<option value="${v}" ${f.kit.arrows === v ? "selected" : ""}>${v}</option>`).join("")}</select> arrows</label>
+        <label class="check"><input type="checkbox" name="kit_shield" ${f.kit.shield ? "checked" : ""}> Shield</label>
+        <label class="check"><input type="checkbox" name="kit_food" ${f.kit.food ? "checked" : ""}> Food</label></fieldset>`;
+    const mobName = (m) => (d.mobs || {})[m] || humanize(m);
+    const wavesHtml = () => `<div class="gm-waves gm-wide">${f.waves.map((w, i) => `<div class="gm-wave"><b>Wave ${i + 1}</b>
+        ${Object.entries(w).map(([m, n]) => `<span class="chip">${esc(mobName(m))} × <input class="input sm num-in" type="number" min="1" max="20" value="${n}" data-wave="${i}" data-mob="${esc(m)}" aria-label="How many"><button type="button" class="chip-x" data-rmmob="${i}:${esc(m)}" aria-label="Remove">×</button></span>`).join("")}
+        <select class="input sm" data-addmob="${i}"><option value="">＋ Add a monster…</option>${Object.entries(d.mobs || {}).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select>
+        <button type="button" class="icon-btn" data-rmwave="${i}" aria-label="Remove wave ${i + 1}">✕</button></div>`).join("")}
+        ${f.waves.length < 20 ? '<button type="button" class="btn sm" data-addwave>＋ Add a wave</button>' : ""}</div>`;
+    const presetText = (lvl) => ((d.presets || {})[lvl] || []).map((w, i) => `${i + 1}: ${Object.entries(w).map(([m, n]) => `${n} ${mobName(m).toLowerCase()}`).join(", ")}`).join(" · ");
+    const fightOptions = () => (game === "koth" ? `
+        <label>Teams <select class="input" name="team_count">${[[0, "Everyone for themselves"], [2, "2 teams"], [3, "3 teams"], [4, "4 teams"]].map(([v, l]) => `<option value="${v}" ${f.team_count === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+          <small class="muted">${f.team_count ? "Picked at random. The team with the most players on the hill scores a point a second; a tie scores nothing." : "Whoever's on the hill alone scores a point a second."}</small></label>
+        <label>Time <select class="input" name="minutes">${[3, 5, 8, 10, 15].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>`
+      : `<label>How <select class="input" name="coop"><option value="1" ${f.coop ? "selected" : ""}>Together: survive the waves as a team</option><option value="0" ${f.coop ? "" : "selected"}>Everyone for themselves: most monsters defeated wins</option></select>
+          <small class="muted">${f.coop ? "Someone who falls watches until the wave is cleared, then comes back. Everyone down: it's over." : "Falling means a few seconds watching, then back in."}</small></label>
+        <label>Waves <select class="input" name="level">${[["easy", "Easy (5 waves)"], ["normal", "Normal (7 waves)"], ["hard", "Hard (10 waves)"], ["custom", "My own waves"]].map(([v, l]) => `<option value="${v}" ${f.level === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+          ${f.level !== "custom" ? `<small class="muted">${esc(presetText(f.level))}</small>` : ""}</label>
+        ${f.level === "custom" ? wavesHtml() : ""}`) + `
+        ${f.coop && game === "arena" ? "" : `<label>Back in after <select class="input" name="respawn_secs">${[3, 5, 8, 10].map((v) => `<option value="${v}" ${f.respawn_secs === v ? "selected" : ""}>${v} seconds</option>`).join("")}</select></label>`}
+        <label class="check"><input type="checkbox" name="no_dig" ${f.no_dig ? "checked" : ""}> No digging or building (Adventure mode during the game)</label>
+        ${kitHtml()}`;
+    const options = () => FIGHTS.has(game) ? fightOptions() : game === "hideseek" ? `
         <label>Seeker <select class="input" name="seeker"><option value="">Random</option>${online().map((n) => `<option ${f.seeker === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
         <label>Hiding time <select class="input" name="hide_secs">${[30, 45, 60, 90, 120].map((v) => `<option value="${v}" ${f.hide_secs === v ? "selected" : ""}>${v} seconds</option>`).join("")}</select></label>
         <label>Seeking time <select class="input" name="minutes">${[3, 5, 6, 8, 10, 15].map((v) => `<option value="${v}" ${f.minutes === v ? "selected" : ""}>${v} minutes</option>`).join("")}</select></label>
@@ -1032,7 +1090,8 @@ async function viewGames(sid) {
         <div class="gm-map" id="gm-map"></div>
         ${where()}
         <div class="gm-opts">${options()}</div>
-        ${game === "archery" || game === "treasure" ? gatherHtml(f.g, online()) : game === "hideseek" ? `<p class="muted small">Everyone is brought to the middle of the area when it starts, and back to where they were when it's over.</p>` : ""}
+        ${game === "archery" || game === "treasure" ? gatherHtml(f.g, online()) : game === "hideseek" ? `<p class="muted small">Everyone is brought to the middle of the area when it starts, and back to where they were when it's over.</p>`
+          : FIGHTS.has(game) ? `<p class="muted small">Everyone is sent to their spawn when it starts, and back to exactly where they were, with exactly what they had, when it's over.</p>` : ""}
         ${game !== "treasure" ? `<div class="gm-prize"><span class="lbl">Prize for the winner${game === "hideseek" ? "s" : ""}</span><button type="button" class="btn ch-pick" id="gm-prize">${pickBtn(f.prize, "Optional")}</button></div>` : ""}
         ${adding ? `<p class="muted small">Part of <b>${esc(adding.title)}</b>: it starts when its turn comes.</p>` : `<div class="ch-when"><span class="lbl">When</span>
           <label class="check"><input type="radio" name="when" value="now" ${f.when === "now" ? "checked" : ""}> Right now</label>
@@ -1045,6 +1104,11 @@ async function viewGames(sid) {
       for (const k of ["seeker", "mode", "word"]) if (fm[k]) f[k] = fm[k].value;
       for (const k of ["hide_secs", "minutes", "seconds", "rounds", "hint_after", "radius", "hot_bonus", "hot_far", "hot_on", "hot_off", "layers", "best_of", "shrink_after"]) if (fm[k]) f[k] = +fm[k].value;
       for (const k of ["no_dig", "marco", "infect", "give_bow", "hot", "teams", "snowballs", "shrink", "underwater", "peaceful", "optin"]) if (fm[k]) f[k] = fm[k].checked;
+      for (const k of ["team_count", "respawn_secs"]) if (fm[k]) f[k] = +fm[k].value;
+      if (fm.coop) f.coop = fm.coop.value === "1";
+      if (fm.level) f.level = fm.level.value;
+      if (fm.kit_sword) f.kit = { sword: fm.kit_sword.value, armour: fm.kit_armour.value, bow: fm.kit_bow.checked, arrows: +fm.kit_arrows.value, shield: fm.kit_shield.checked, food: fm.kit_food.checked };
+      fm.querySelectorAll("[data-wave]").forEach((i) => { f.waves[+i.dataset.wave][i.dataset.mob] = Math.max(1, Math.min(20, +i.value || 1)); });
       if (fm.when) { f.when = fm.when.value; f.at = fm.at.value; }
     };
     const show = () => openModal(body(), (m) => {
@@ -1064,6 +1128,10 @@ async function viewGames(sid) {
             const [x, y] = toScreen(f.target.x, f.target.z);
             ctx.fillStyle = "rgba(255, 110, 40, .16)"; ctx.beginPath(); ctx.arc(x, y, f.hot_far * view.scale, 0, Math.PI * 2); ctx.arc(x, y, 18 * view.scale, 0, Math.PI * 2, true); ctx.fill();
           }
+          const TEAM = ["#e0503f", "#4f8be0", "#4cbf5a", "#e6c12f"];
+          f.spawns.forEach((p, i) => { const [x, y] = toScreen(p.x, p.z); ctx.fillStyle = f.team_count && game === "koth" ? TEAM[i % 4] : "#9fd4ff"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#000"; ctx.font = "bold 10px system-ui"; ctx.textAlign = "center"; ctx.fillText(String(i + 1), x, y + 3.5); });
+          f.mob_spots.forEach((p) => { const [x, y] = toScreen(p.x, p.z); ctx.font = "16px system-ui"; ctx.textAlign = "center"; ctx.fillText("💀", x, y + 6); });
+          ctx.textAlign = "start";
           for (const [p, c] of [[f.spot, "#ffd84a"], [f.target, "#e0503f"]]) {
             if (!p) continue;
             const [x, y] = toScreen(p.x, p.z);
@@ -1073,7 +1141,8 @@ async function viewGames(sid) {
         onClick: async (x, z) => {
           sync(m);
           const spot = await api(`/api/servers/${encodeURIComponent(sid)}/races/spot?x=${x}&z=${z}`).catch(() => ({ x, y: 64, z }));
-          if (game === "archery") { f.target = spot; f.place_target = true; }
+          if (FIGHTS.has(game) && f.pick !== "center") { const list = f[f.pick]; if (list.length < 8) list.push(spot); else showToast("8 spots at most", 2000); }
+          else if (game === "archery") { f.target = spot; f.place_target = true; }
           else if (game === "treasure" && clickShift && f.center) f.spot = spot;
           else { f.center = spot; f.spot = null; }
           show();
@@ -1087,8 +1156,19 @@ async function viewGames(sid) {
       fm.mode?.addEventListener("change", () => { sync(m); if (f.mode === "horse" && f.minutes < 30) f.minutes = 30; show(); });
       $("#gm-here", m)?.addEventListener("click", async () => {
         sync(m);
-        try { f.center = await api(`/api/servers/${encodeURIComponent(sid)}/races/spot?player=${encodeURIComponent($("#gm-player", m).value)}`); f.spot = null; show(); } catch (e) { showError(esc(e.message), 4000); }
+        try {
+          const spot = await api(`/api/servers/${encodeURIComponent(sid)}/races/spot?player=${encodeURIComponent($("#gm-player", m).value)}`);
+          if (FIGHTS.has(game) && f.pick !== "center") { if (f[f.pick].length < 8) f[f.pick].push(spot); } else { f.center = spot; f.spot = null; }
+          show();
+        } catch (e) { showError(esc(e.message), 4000); }
       });
+      m.querySelectorAll("[data-pickwhat]").forEach((b) => b.addEventListener("click", () => { sync(m); f.pick = b.dataset.pickwhat; show(); }));
+      m.querySelectorAll("[data-rmspot]").forEach((b) => b.addEventListener("click", () => { sync(m); const [k, i] = b.dataset.rmspot.split(":"); f[k].splice(+i, 1); show(); }));
+      for (const k of ["team_count", "coop", "level"]) fm[k]?.addEventListener("change", () => { sync(m); show(); });
+      m.querySelectorAll("[data-addmob]").forEach((sel) => sel.addEventListener("change", () => { if (!sel.value) return; sync(m); f.waves[+sel.dataset.addmob][sel.value] = (f.waves[+sel.dataset.addmob][sel.value] || 0) + 1; show(); }));
+      m.querySelectorAll("[data-rmmob]").forEach((b) => b.addEventListener("click", () => { sync(m); const [i, mob] = b.dataset.rmmob.split(":"); delete f.waves[+i][mob]; show(); }));
+      m.querySelectorAll("[data-rmwave]").forEach((b) => b.addEventListener("click", () => { sync(m); f.waves.splice(+b.dataset.rmwave, 1); show(); }));
+      m.querySelector("[data-addwave]")?.addEventListener("click", () => { sync(m); f.waves.push({ ...(f.waves[f.waves.length - 1] || { zombie: 3 }) }); show(); });
       $("#gm-under", m)?.addEventListener("click", async () => {
         sync(m);
         try {
@@ -1104,8 +1184,11 @@ async function viewGames(sid) {
       m.querySelectorAll("[data-rmitem]").forEach((b) => b.addEventListener("click", () => { sync(m); f.items.splice(+b.dataset.rmitem, 1); show(); }));
       fm.addEventListener("submit", async (e) => {
         e.preventDefault(); sync(m);
-        if (game === "archery" ? !f.target : !f.center) { showToast(game === "archery" ? "Choose the target first" : "Choose the play area first", 3000); return; }
+        if (game === "archery" ? !f.target : !f.center) { showToast(game === "archery" ? "Choose the target first" : game === "koth" ? "Choose the hill first" : game === "arena" ? "Choose the arena first" : "Choose the play area first", 3000); return; }
         if (game === "treasure" && !f.items.length) { showToast("Put something in the treasure chest", 3000); return; }
+        if (game === "koth" && !f.spawns.length) { showToast("Set at least one spawn spot (Spawn spots, then click the map)", 3500); return; }
+        if (game === "arena" && !f.mob_spots.length) { showToast("Set at least one spot for the monsters (Monster spots, then click the map)", 3500); return; }
+        if (game === "arena" && f.level === "custom" && !f.waves.some((w) => Object.keys(w).length)) { showToast("Add a monster to a wave", 3000); return; }
         if (f.g.on && !f.g.spot) { showToast("Pick the spot to teleport everyone to (or untick teleporting)", 3000); return; }
         const start = f.when === "now" ? Date.now() / 1000 : new Date(f.at).getTime() / 1000;
         try {

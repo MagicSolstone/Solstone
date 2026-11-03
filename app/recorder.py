@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import accounts, adventures, backups, board, challenges, db, eventgroups, fishing, fwshow, gamemsg, games, holidaygifts, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome
+from . import accounts, adventures, backups, board, challenges, db, eventgroups, fishing, fwshow, gamemsg, games, holidaygifts, kits, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -341,6 +341,7 @@ class Recorder:
             for n in joined:
                 await challenges.on_join(srv, n)        # prizes won while away
                 await games.on_join(srv, n)             # back from a game that ended while they were away
+                await kits.on_join(srv, n)              # their own things, kept safe during a game they left
                 await gather.on_join(srv, n)            # back from an event they were taken to
                 welcome.on_join(srv, n)                 # the server's welcome message, if it has one
                 gamemsg.on_join(srv, n)                 # messages an admin left for them (Website → Game messages)
@@ -355,6 +356,11 @@ class Recorder:
                 await holidaygifts.tick(srv, names)          # a holiday's reward for everyone playing during it
             except Exception:
                 log.exception("holiday rewards failed on %s", srv.id)
+            try:
+                if kits.waiting(srv.id):
+                    await kits.tidy(srv, names)              # things still in the vault from a game that's over
+            except Exception:
+                log.exception("giving things back from the vault failed on %s", srv.id)
 
         prev = self._running_state.get(srv.id)
         if prev is not None and prev != running:

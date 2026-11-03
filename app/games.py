@@ -37,7 +37,8 @@ from .races import _direction, _fmt, _pos, _rcon
 
 log = logging.getLogger("solstone.games")
 SECTION = "games"
-KINDS = {"hideseek": ("Hide and seek", "🙈"), "treasure": ("Treasure hunt", "💰"), "archery": ("Archery", "🎯"), "spleef": ("Spleef", "❄️")}
+KINDS = {"hideseek": ("Hide and seek", "🙈"), "treasure": ("Treasure hunt", "💰"), "archery": ("Archery", "🎯"), "spleef": ("Spleef", "❄️"),
+         "koth": ("King of the Hill", "👑"), "arena": ("Mob arena", "⚔️")}
 ACTIVE = ("countdown", "hiding", "running")
 
 
@@ -108,6 +109,14 @@ def create(server: str, body: dict) -> dict:
         from . import spleef
         r.update(center=_point(body.get("center"), "spot for the arena"), **spleef.settings(body, _num))
         r["name"] = "Team spleef" if r["teams"] else "Spleef"
+    elif kind == "koth":                               # everyone's own things kept safe: kits.py
+        from . import koth
+        r.update(koth.settings(body, _num, _point))
+        r["teams"] = {}
+    elif kind == "arena":
+        from . import arena
+        r.update(arena.settings(body, _num, _point))
+        r["name"] = "Mob arena (together)" if r["coop"] else "Mob arena"
     else:
         mode = body.get("mode") if body.get("mode") in ("bullseye", "points", "horse") else "bullseye"
         word = "".join(c for c in str(body.get("word") or "HORSE").upper() if c.isalpha())[:10] or "HORSE"
@@ -191,7 +200,7 @@ async def _countdown(srv, r: dict) -> None:
     if r["game"] == "hideseek" and r["state"] == "hiding":
         title, total, color = "Hide!", r["hide_secs"], "green"
     else:
-        title, total, color = r["name"], r["minutes"] * 60, {"hideseek": "red", "treasure": "yellow", "archery": "blue"}[r["game"]]
+        title, total, color = r["name"], r["minutes"] * 60, {"hideseek": "red", "treasure": "yellow", "archery": "blue", "koth": "purple"}[r["game"]]
     if r.get("bar_title") != title:                   # new phase: a fresh bar
         await bossbar.hide(srv, r)
         r["bar_title"] = title
@@ -912,7 +921,7 @@ async def on_join(srv, player: str) -> None:
 
 
 async def _tick(servers: list) -> None:
-    from . import gather, spleef
+    from . import arena, gather, koth, spleef
     d = _load()
     live = [r for r in d["runs"] if r["state"] in ("scheduled", *ACTIVE)]
     if not live:
@@ -935,9 +944,10 @@ async def _tick(servers: list) -> None:
                     continue
                 if r.get("gather"):
                     r["gathered"] = await gather.send(srv, r["gather"], r["entrants"])
-                await {"hideseek": _hs_start, "treasure": _th_start, "archery": _ar_start, "spleef": spleef.start}[r["game"]](srv, r)
+                await {"hideseek": _hs_start, "treasure": _th_start, "archery": _ar_start, "spleef": spleef.start,
+                       "koth": koth.start, "arena": arena.start}[r["game"]](srv, r)
             elif srv and srv.rcon_conf() and 0 < r["start"] - now <= gather.LEAD:
-                moved = r.get("gather") or r["game"] in ("hideseek", "spleef")
+                moved = r.get("gather") or r["game"] in ("hideseek", "spleef", "koth", "arena")
                 who = await entrants(srv, r) if r.get("optin") else None
                 await gather.lead_in(srv, r, now, r["name"], "you'll be teleported there" if moved else "", who)
             else:
@@ -945,9 +955,10 @@ async def _tick(servers: list) -> None:
             changed = True
         elif srv:
             try:
-                await {"hideseek": _hs_tick, "treasure": _th_tick, "archery": _ar_tick, "spleef": spleef.tick}[r["game"]](srv, r)
-                if r["game"] == "spleef":
-                    pass                             # rounds, not a clock: no countdown bar
+                await {"hideseek": _hs_tick, "treasure": _th_tick, "archery": _ar_tick, "spleef": spleef.tick,
+                       "koth": koth.tick, "arena": arena.tick}[r["game"]](srv, r)
+                if r["game"] in ("spleef", "arena"):
+                    pass                             # rounds or waves, not a clock: no countdown bar
                 elif r["state"] in ACTIVE:
                     await _countdown(srv, r)
                 else:
@@ -985,6 +996,10 @@ async def _cancel(srv, rid: str) -> bool:
     if r["state"] in ACTIVE and r["game"] == "spleef":
         from . import spleef
         await spleef.cancel(srv, r)
+    elif r["state"] in ACTIVE and r["game"] in ("koth", "arena"):
+        from . import arena, koth
+        await bossbar.hide(srv, r)
+        await {"koth": koth, "arena": arena}[r["game"]].cancel(srv, r)
     elif r["state"] in ACTIVE:
         await bossbar.hide(srv, r)
         if r["game"] == "hideseek":
@@ -1038,6 +1053,9 @@ def live(sid: str) -> list[dict]:
             rows = [{"name": n, "value": label.get(p["role"], p["role"])} for n, p in sorted(r["players"].items(), key=lambda kv: (order.get(kv[1]["role"], 3), kv[0].lower()))]
             hidden = sum(1 for p in r["players"].values() if p["role"] == "hider")
             sub = "Hiders are hiding..." if r["state"] == "hiding" else f"{hidden} still hidden"
+        elif r["game"] in ("koth", "arena"):
+            from . import arena, koth
+            rows, sub = {"koth": koth, "arena": arena}[r["game"]].live_rows(r)
         elif r["game"] == "spleef":
             from . import spleef
             rows, sub = spleef.live_rows(r)

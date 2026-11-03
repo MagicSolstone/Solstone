@@ -2334,3 +2334,16 @@ body.ui-hidden .manage-sub { display: none; }
 .ask-badge a { color: var(--gold); }
 .deny-form { display: grid; gap: 10px; }
 .deny-form label { display: grid; gap: 4px; }
+
+/* King of the Hill and the mob arena: spots, the kit, waves */
+.gm-pick-what { flex-wrap: wrap; margin: 4px 0; }
+.gm-spots { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.gm-spots .lbl { margin-right: 4px; }
+.gm-kit { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.gm-kit legend { font-weight: 700; padding: 0 6px; }
+.gm-kit legend small { font-weight: 400; display: block; }
+.gm-waves { display: grid; gap: 6px; }
+.gm-wave { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 8px; background: var(--well); }
+.gm-wave .num-in { width: 52px; }
+.gm-vault { display: grid; gap: 6px; }
+.gm-team.green { background: rgba(76, 191, 90, .25); } .gm-team.yellow { background: rgba(230, 193, 47, .25); }
