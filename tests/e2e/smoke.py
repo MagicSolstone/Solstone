@@ -581,6 +581,14 @@ def main() -> int:
                 pg.locator(".turned-away.asked").scroll_into_view_if_needed() if pg.locator(".turned-away.asked").count() else None
                 check(pg, "control-asked")
                 pg.goto(f"{base}/app#/manage/whitelist"); pg.wait_for_timeout(1500)
+                if not pg.locator("#bell-count:not([hidden])").count():
+                    problems.append("bell: no number on the bell with someone asking to join")
+                else:
+                    pg.click("#bell"); pg.wait_for_timeout(300)
+                    if not pg.locator('#bell-menu a[href="#/manage/whitelist"]:has-text("ask")').count():
+                        problems.append("bell: it doesn't say someone asked to join, with a link to the whitelist")
+                    check(pg, "bell-open")
+                    pg.keyboard.press("Escape")
                 if not pg.locator('.wl-req [data-let="Smoke_Kid"]').count():
                     problems.append("whitelist page: someone who asked to join has no Let in button")
                 if not pg.locator(".wl-grid .panel").count():

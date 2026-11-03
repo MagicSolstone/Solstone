@@ -169,6 +169,38 @@ function wireDropMenu(btn, menu) {
   addEventListener("scroll", close, { passive: true });
   return close;
 }
+// The bell: one place for everything waiting for you, each with what it is and a link straight to it (messages,
+// votes, and for admins: asks to join and messages to the admins). The same on the website's pages and in the app.
+// `n` is /api/community/unread; `app` says the links can stay inside the app (#/...).
+function renderBell(n, app = false) {
+  const acct = document.querySelector(".hp-top .account");
+  if (!acct || !n) return;
+  let wrap = document.getElementById("bell");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.className = "bell-wrap";
+    wrap.innerHTML = `<button class="btn sm bell-btn" id="bell" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Notifications">🔔<span class="cm-badge" id="bell-count" hidden></span></button>
+      <div class="account-menu bell-menu" id="bell-menu" role="menu" hidden></div>`;
+    acct.before(wrap);
+    wireDropMenu(wrap.querySelector("#bell"), wrap.querySelector("#bell-menu"));
+  }
+  const to = (h) => (app ? h : `/app${h}`);
+  const items = [
+    [n.requests, "🙋", (k) => `${k} ${k === 1 ? "ask" : "asks"} to join the server`, "Let them in, or say no", to("#/manage/whitelist")],
+    [n.admin, "📨", (k) => `${k} new ${k === 1 ? "message" : "messages"} for the admins`, "Read and answer", to("#/manage/messages")],
+    [n.mine, "✉️", (k) => `${k} new ${k === 1 ? "message" : "messages"} for you`, "Read them", to("#/messages")],
+    [n.votes, "🗳️", (k) => `${k} ${k === 1 ? "vote" : "votes"} waiting for you`, "Have your say", to("#/votes")],
+  ].filter(([k]) => k);
+  const total = items.reduce((t, [k]) => t + k, 0);
+  const count = document.getElementById("bell-count");
+  count.textContent = total ? String(total) : ""; count.hidden = !total;
+  document.getElementById("bell").classList.toggle("ring", total > 0);
+  document.getElementById("bell").setAttribute("aria-label", total ? `Notifications: ${total}` : "Notifications: nothing new");
+  document.getElementById("bell-menu").innerHTML = `<div class="account-role">Notifications</div>${items.length
+    ? items.map(([k, icon, say, act, href]) => `<a role="menuitem" class="bell-item" href="${href}"><span class="bell-icon" aria-hidden="true">${icon}</span><span><b>${esc(say(k))}</b><small>${esc(act)} →</small></span></a>`).join("")
+    : '<p class="bell-none">✨ You\'re all caught up.</p>'}`;
+}
+
 // Signed in, the links for signed-in people (and admins) appear.
 function showNavFor(user) {
   document.querySelectorAll("[data-signed-in]").forEach((el) => { el.hidden = !user; });
@@ -191,7 +223,7 @@ function showSignedIn() {
     const u = d.user, admin = u.role === "admin";
     const own = (u.players || []).some((p) => p.name.toLowerCase() === String(u.username).toLowerCase());
     const role = { player: "Player", trusted: "Trusted", admin: "Admin" }[u.role] || "Signed in";
-    wrap.innerHTML = `<button class="btn sm" id="hp-account" type="button" aria-haspopup="menu" aria-expanded="false">👤 ${esc(u.shown || u.username)}<span class="cm-badge" id="hp-unread" hidden></span></button>
+    wrap.innerHTML = `<button class="btn sm" id="hp-account" type="button" aria-haspopup="menu" aria-expanded="false">👤 ${esc(u.shown || u.username)}</button>
       <div class="account-menu" id="hp-account-menu" role="menu" hidden>
         <div class="account-role">${esc(role)} · signed in as ${esc(u.username)}</div>
         <a role="menuitem" href="/app#/messages">✉️ Messages <span class="cm-badge" id="hp-menu-unread" hidden></span></a>
@@ -205,9 +237,9 @@ function showSignedIn() {
     fetch("/api/community/unread", { credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null)).then((n) => {
       if (!n) return;
       const set = (id, v) => { const el = document.getElementById(id); if (el) { el.textContent = v ? String(v) : ""; el.hidden = !v; } };
-      set("hp-unread", n.mine + (n.admin || 0) + (n.requests || 0) + (n.votes || 0));
       set("hp-menu-unread", n.mine);
       set("hp-menu-votes", n.votes);
+      renderBell(n);
     }).catch(() => {});
     b.replaceWith(wrap);
     const close = wireDropMenu(wrap.querySelector("#hp-account"), wrap.querySelector("#hp-account-menu"));

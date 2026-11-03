@@ -2241,3 +2241,17 @@ body.ui-hidden .manage-sub { display: none; }
 .hp-today { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 10px 0 0; font-size: .86rem; }
 .hp-today-label { font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-right: 2px; }
 .hp-today-bit { padding: 2px 9px; border-radius: 999px; background: rgba(255, 255, 255, .06); white-space: nowrap; }
+
+/* The bell: everything waiting for you, in one place */
+.bell-wrap { margin-left: auto; display: flex; }
+.hp-top .bell-wrap + .account { margin-left: 8px; }
+.bell-btn { position: relative; padding-inline: 10px; }
+.bell-btn .cm-badge { position: absolute; top: -6px; right: -6px; }
+.bell-btn.ring { animation: bell-ring 3.5s ease-in-out 1; }
+@keyframes bell-ring { 0%, 12%, 100% { transform: none; } 3% { transform: rotate(14deg); } 6% { transform: rotate(-12deg); } 9% { transform: rotate(8deg); } }
+@media (prefers-reduced-motion: reduce) { .bell-btn.ring { animation: none; } }
+.bell-menu { min-width: 260px; max-width: min(340px, calc(100vw - 16px)); }
+.bell-item { display: grid !important; grid-template-columns: 28px 1fr; gap: 8px; align-items: center; }
+.bell-item small { display: block; color: var(--muted); font-size: .8rem; }
+.bell-icon { font-size: 1.2rem; text-align: center; }
+.bell-none { margin: 6px 10px 8px; color: var(--muted); }

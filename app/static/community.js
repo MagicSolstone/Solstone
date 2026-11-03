@@ -5,14 +5,13 @@ const cm = { tid: null };
 const cmWhen = (ts) => new Date(ts * 1000).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const cmPara = (t) => esc(t).replace(/\n/g, "<br>");
 
-// ---------------------------------------------------------------- unread badge (account button and menu)
+// ---------------------------------------------------------------- unread: the bell, and the numbers in the menus
 async function cmRefreshUnread() {
   if (!me.user) return;
   try {
     const n = await api("/api/community/unread");
-    const total = n.mine + (n.admin || 0) + (n.requests || 0) + (n.votes || 0);
     const badge = (el, count) => { if (el) { el.textContent = count ? String(count) : ""; el.hidden = !count; } };
-    badge($("#account-unread"), total);
+    renderBell(n, true);
     badge($("#menu-unread"), n.mine);
     badge($("#menu-votes"), n.votes);
     badge($("#menu-admin-unread"), n.admin);
