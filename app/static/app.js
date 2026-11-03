@@ -818,14 +818,16 @@ function serverHeader(s, tab) {
   ].filter(Boolean).join("");
   const base = `#/s/${encodeURIComponent(s.id)}`;
   const java = !s.game || s.game === "minecraft-java";
-  // Sections in groups: the everyday ones on their own, the extras under Play, the running of it under Server.
+  // Sections in groups: the everyday ones on their own (Adventures, Fishing, and Contests for admins), the running of
+  // it under Server.
   // The group you're in shows its own row of tabs underneath.
   const groups = [
     ["overview", "Overview", [["overview", "Overview", base]]],
     ...(java ? [...(isPlayer() && !s.player_map ? [] : [["world", "World", [["world", "World", `${base}/world`]]]]),
       ["leaderboards", "Leaderboards", [["leaderboards", "Leaderboards", `${base}/leaderboards`]]],
-      ["play", "Play", [...(s.fishing && (isAdmin() || s.fishing_journal) ? [["fishing", "Fishing", `${base}/fishing`]] : []), ["adventures", "Adventures", `${base}/adventures`],
-        ...(isAdmin() ? [["challenges", "Challenges", `${base}/challenges`]] : [])]]] : []),
+      ["adventures", "Adventures", [["adventures", "Adventures", `${base}/adventures`]]],
+      ...(s.fishing && (isAdmin() || s.fishing_journal) ? [["fishing", "Fishing", [["fishing", "Fishing", `${base}/fishing`]]]] : []),
+      ...(isAdmin() ? [["challenges", "Contests", [["challenges", "Contests", `${base}/challenges`]]]] : [])] : []),
     ["server", "Server", [["performance", "Performance", `${base}/performance`], ...(java ? [["mods", "Mods", `${base}/mods`], ...(isPlayer() ? [] : [["chat", "Chat", `${base}/chat`]])] : []),
       ...(isAdmin() ? [["control", "Control", `${base}/control`]] : []), ...(isAdmin() && java ? [["check", "Check", `${base}/check`]] : [])]],
   ].filter(([, , items]) => items.length);
