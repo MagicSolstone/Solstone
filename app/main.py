@@ -3265,7 +3265,7 @@ async def get_games(sid: str, request: Request):
     w = await asyncio.to_thread(S.world_info, srv, False) if srv.is_java else {}
     return {"runs": eventgroups.tag(optin.annotate("game", games.runs_for(srv.id))), "rcon": bool(srv.rcon_conf()), "pack": pack, "pack_needed": 2, "pack_needed_spleef": 10,
             "spawn": w.get("spawn"), "now": time.time(), "rcon_echo": _rcon_echo(srv),
-            "mobs": arena.MOBS, "presets": {lvl: arena.preset(lvl) for lvl in ("easy", "normal", "hard")},     # the mob arena's
+            "mobs": arena.MOBS, "specials": arena.specials_for(srv), "presets": {lvl: arena.preset(lvl) for lvl in ("easy", "normal", "hard")},     # the mob arena's
             "kit_tiers": {"sword": list(kits.TIERS), "armour": [*kits.ARMOUR, "none"]},
             "in_vault": [s["name"] for s in kits.waiting(srv.id)]}                  # players whose things are kept safe
 

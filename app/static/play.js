@@ -1046,10 +1046,11 @@ async function viewGames(sid) {
         <label class="check"><input type="checkbox" name="kit_bow" ${f.kit.bow ? "checked" : ""}> Bow and ${numIn("kit_arrows", f.kit.arrows, 1, 64, "arrows", { label: "Arrows" })}</label>
         <label class="check"><input type="checkbox" name="kit_shield" ${f.kit.shield ? "checked" : ""}> Shield</label>
         <label class="check"><input type="checkbox" name="kit_food" ${f.kit.food ? "checked" : ""}> Food</label></fieldset>`;
-    const mobName = (m) => (d.mobs || {})[m] || humanize(m);
+    const mobName = (m) => (d.mobs || {})[m] || (d.specials || {})[m] || humanize(m);
     const wavesHtml = () => `<div class="gm-waves gm-wide">${f.waves.map((w, i) => `<div class="gm-wave"><b>Wave ${i + 1}</b>
         ${Object.entries(w).map(([m, n]) => `<span class="chip">${esc(mobName(m))} × <input class="input sm num-in" type="number" min="1" max="20" value="${n}" data-wave="${i}" data-mob="${esc(m)}" aria-label="How many"><button type="button" class="chip-x" data-rmmob="${i}:${esc(m)}" aria-label="Remove">×</button></span>`).join("")}
-        <select class="input sm" data-addmob="${i}"><option value="">＋ Add a monster…</option>${Object.entries(d.mobs || {}).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select>
+        <select class="input sm" data-addmob="${i}"><option value="">＋ Add a monster…</option><optgroup label="Monsters">${Object.entries(d.mobs || {}).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</optgroup>
+          ${Object.keys(d.specials || {}).length ? `<optgroup label="Specials: dressed up, babies, riders">${Object.entries(d.specials).map(([k, l]) => `<option value="${k}">✨ ${esc(l)}</option>`).join("")}</optgroup>` : ""}</select>
         <button type="button" class="icon-btn" data-rmwave="${i}" aria-label="Remove wave ${i + 1}">✕</button></div>`).join("")}
         ${f.waves.length < 20 ? '<button type="button" class="btn sm" data-addwave>＋ Add a wave</button>' : ""}</div>`;
     // a difficulty's waves, one row each, easy to read; "Change these" starts your own waves from them

@@ -202,3 +202,20 @@ def test_boat_and_elytra_races_are_set_up(client, sid):
         for r in races.runs_for(sid):
             asyncio.run(races.cancel(type("S", (), {"id": sid})(), r["id"]))
         races.delete_course(sid, c["id"])
+
+
+def test_arena_monsters_come_with_their_gear_and_specials():
+    class New:
+        mc_version = "1.21.11"
+
+    class Old:
+        mc_version = "1.21.4"
+    what, nbt = arena.summon_nbt(New(), "skeleton", "solarena_t")                  # a plain skeleton still has its bow
+    assert what == "minecraft:skeleton" and 'mainhand:{id:"minecraft:bow"' in nbt and "drop_chances:{mainhand:0f}" in nbt
+    what, nbt = arena.summon_nbt(New(), "spider_jockey", "solarena_t")             # the rider's the arena's too
+    assert what == "minecraft:spider" and nbt.count('Tags:["solarena_t"]') == 2 and 'Passengers:[{id:"minecraft:skeleton"' in nbt
+    assert "spear_zombie" in arena.specials_for(New()) and "spear_zombie" not in arena.specials_for(Old())
+    _w, nbt = arena.summon_nbt(Old(), "spear_zombie", "t")                        # an older server: a sword, the old way
+    assert 'HandItems:[{id:"minecraft:iron_sword",count:1},{}]' in nbt and "ArmorDropChances" in nbt
+    assert arena.clean_waves([{"baby_zombie": 2, "charged_creeper": 1}]) == [{"baby_zombie": 2, "charged_creeper": 1}]
+    assert arena.battle_name("spear_zombie", 3) == "zombies with spears" and arena.battle_name("baby_zombie", 1) == "baby zombie"

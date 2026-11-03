@@ -29,7 +29,70 @@ MOBS = {"zombie": "Zombie", "husk": "Husk", "drowned": "Drowned", "zombie_villag
         "stray": "Stray", "spider": "Spider", "cave_spider": "Cave spider", "creeper": "Creeper", "slime": "Slime",
         "witch": "Witch", "pillager": "Pillager", "vindicator": "Vindicator", "blaze": "Blaze", "wither_skeleton": "Wither skeleton",
         "piglin_brute": "Piglin brute", "magma_cube": "Magma cube", "ravager": "Ravager", "breeze": "Breeze"}
+# Special monsters: the game's own, dressed up. (key: label, what it is, its gear, anything else, and the version it needs)
+SPECIALS = {
+    "baby_zombie": ("Baby zombie", "zombie", {}, "IsBaby:1b", None),
+    "armoured_zombie": ("Zombie in iron armour", "zombie", {"mainhand": "iron_sword", "head": "iron_helmet", "chest": "iron_chestplate"}, "", None),
+    "spear_zombie": ("Zombie with a spear", "zombie", {"mainhand": "iron_spear"}, "", (1, 21, 11)),
+    "baby_spear_zombie": ("Baby zombie with a spear", "zombie", {"mainhand": "iron_spear"}, "IsBaby:1b", (1, 21, 11)),
+    "pumpkin_skeleton": ("Skeleton with a pumpkin head", "skeleton", {"mainhand": "bow", "head": "carved_pumpkin"}, "", None),
+    "armoured_skeleton": ("Skeleton in chainmail", "skeleton", {"mainhand": "bow", "head": "chainmail_helmet", "chest": "chainmail_chestplate"}, "", None),
+    "sword_skeleton": ("Skeleton with a sword", "skeleton", {"mainhand": "iron_sword"}, "", None),
+    "spider_jockey": ("Spider jockey (a skeleton riding a spider)", "spider", {}, "RIDER:skeleton", None),
+    "charged_creeper": ("Charged creeper", "creeper", {}, "powered:1b", None),
+    "big_slime": ("Big slime", "slime", {}, "Size:3", None),
+    "baby_husk": ("Baby husk", "husk", {}, "IsBaby:1b", None),
+    "trident_drowned": ("Drowned with a trident", "drowned", {"mainhand": "trident"}, "", None),
+}
+# what each monster normally carries: summoned with anything extra (like the arena's mark), the game leaves them empty-handed
+GEAR = {"skeleton": {"mainhand": "bow"}, "stray": {"mainhand": "bow"}, "wither_skeleton": {"mainhand": "stone_sword"},
+        "pillager": {"mainhand": "crossbow"}, "vindicator": {"mainhand": "iron_axe"}, "piglin_brute": {"mainhand": "golden_axe"}}
+PLURALS = {"baby_zombie": "baby zombies", "armoured_zombie": "zombies in iron armour", "spear_zombie": "zombies with spears",
+           "baby_spear_zombie": "baby zombies with spears", "pumpkin_skeleton": "skeletons with pumpkin heads",
+           "armoured_skeleton": "skeletons in chainmail", "sword_skeleton": "skeletons with swords", "spider_jockey": "spider jockeys",
+           "charged_creeper": "charged creepers", "big_slime": "big slimes", "baby_husk": "baby husks", "trident_drowned": "drowned with tridents"}
+FALLBACK = {"iron_spear": "iron_sword"}          # an older server without spears: a sword instead
+SPLITS = ("slime", "magma_cube")                  # their smaller selves come without the arena's mark
 MAX_PER_WAVE = 40
+
+
+def _version(srv) -> tuple:
+    nums = [int(x) for x in re.findall(r"\d+", getattr(srv, "mc_version", "") or "")[:3]]
+    return tuple(nums + [0] * (3 - len(nums))) if nums else (99, 0, 0)        # unknown: assume it's new
+
+
+def specials_for(srv) -> dict[str, str]:
+    """The special monsters this server can have (spears need 1.21.11)."""
+    v = _version(srv)
+    return {k: x[0] for k, x in SPECIALS.items() if not x[4] or v >= x[4]}
+
+
+def _gear(srv, gear: dict) -> str:
+    """Their gear, in the game's words for this version, and never dropped (no farming the arena for armour)."""
+    if not gear:
+        return ""
+    if _version(srv) < (1, 21, 11):
+        gear = {k: FALLBACK.get(v, v) for k, v in gear.items()}
+    if _version(srv) >= (1, 21, 5):
+        eq = ",".join(f'{k}:{{id:"minecraft:{v}",count:1}}' for k, v in gear.items())
+        return f"equipment:{{{eq}}},drop_chances:{{{','.join(f'{k}:0f' for k in gear)}}}"
+    item = lambda slot: f'{{id:"minecraft:{gear[slot]}",count:1}}' if gear.get(slot) else "{}"      # noqa: E731
+    return (f"HandItems:[{item('mainhand')},{{}}],ArmorItems:[{item('feet')},{item('legs')},{item('chest')},{item('head')}],"
+            "HandDropChances:[0f,0f],ArmorDropChances:[0f,0f,0f,0f]")
+
+
+def summon_nbt(srv, kind: str, tag: str) -> tuple[str, str]:
+    """What to summon for a wave's monster (plain or special), and its NBT: marked as the arena's, kept, geared."""
+    base, gear, extra = kind, GEAR.get(kind, {}), ""
+    if kind in SPECIALS:
+        _label, base, gear, extra, _v = SPECIALS[kind]
+    mark = f'Tags:["{tag}"],PersistenceRequired:1b'
+    if extra.startswith("RIDER:"):                     # a jockey: the rider's marked and geared too
+        rider = extra.split(":", 1)[1]
+        parts = [mark, f"Passengers:[{{id:\"minecraft:{rider}\",{','.join(x for x in (mark, _gear(srv, GEAR.get(rider, {}))) if x)}}}]"]
+    else:
+        parts = [mark, _gear(srv, gear), extra]
+    return f"minecraft:{base}", "{" + ",".join(x for x in parts if x) + "}"
 
 
 def preset(level: str) -> list[dict]:
@@ -54,7 +117,7 @@ def clean_waves(raw) -> list[dict]:
                 n = max(0, min(20, int(n)))
             except (TypeError, ValueError):
                 continue
-            if m in MOBS and n:
+            if (m in MOBS or m in SPECIALS) and n:
                 wave[m] = n
         if wave and sum(wave.values()) <= MAX_PER_WAVE:
             waves.append(wave)
@@ -112,16 +175,27 @@ def _mob_tag(r: dict) -> str:
 async def _summon(srv, r: dict, wave: dict) -> None:
     tag = _mob_tag(r)
     for mob, n in wave.items():
+        what, nbt = summon_nbt(srv, mob, tag)
         for _ in range(n):
             s = random.choice(r["mob_spots"])
-            await battle._rcon(srv, f"execute in {r['dim']} run summon minecraft:{mob} {s['x'] + random.uniform(-1, 1):.1f} {s['y']} "
-                               f"{s['z'] + random.uniform(-1, 1):.1f} {{Tags:[\"{tag}\"],PersistenceRequired:1b}}")
+            await battle._rcon(srv, f"execute in {r['dim']} run summon {what} {s['x'] + random.uniform(-1, 1):.1f} {s['y']} "
+                               f"{s['z'] + random.uniform(-1, 1):.1f} {nbt}")
     # no burning up in the daylight, and no wandering off
     await battle._rcon(srv, f"effect give @e[tag={tag}] minecraft:fire_resistance infinite 0 true")
     # they come for the players from anywhere in the arena: a monster usually only notices someone within about
     # 16 blocks (the attribute's name changed in 1.21.2: one of these two works, the other's ignored)
     for attr in ("minecraft:follow_range", "minecraft:generic.follow_range"):
         await battle._rcon(srv, f"execute as @e[tag={tag}] run attribute @s {attr} base set {FOLLOW}")
+
+
+async def _mark_splits(srv, r: dict) -> None:
+    """A slime that splits: its smaller selves are the arena's too (counted, kept in, and removed at the end)."""
+    if not any(SPECIALS.get(m, (0, m))[1] in SPLITS for w in r["waves"] for m in w):
+        return
+    c, tag = r["zone"], _mob_tag(r)
+    for t in SPLITS:
+        await battle._rcon(srv, f"execute in {r['dim']} positioned {c['x']} {c['y']} {c['z']} as @e[type=minecraft:{t},distance=..{c['r'] + 8},"
+                           f"tag=!{tag}] run tag @s add {tag}")
 
 
 async def _left(srv, r: dict) -> int:
@@ -180,6 +254,7 @@ async def tick(srv, r: dict) -> None:
                 if not p.get("out"):
                     await hud.status(srv, r, p["uuid"], f"⚔️ Wave {r['wave'] + 1} in {left}...", "gold")
     else:
+        await _mark_splits(srv, r)
         mobs = await _left(srv, r)
         for p in r["players"].values():
             if not p.get("out") and not p.get("back_at"):
@@ -201,6 +276,8 @@ async def tick(srv, r: dict) -> None:
 
 
 def battle_name(mob: str, n: int) -> str:
+    if mob in SPECIALS:
+        return SPECIALS[mob][0].split(" (")[0].lower() if n == 1 else PLURALS[mob]
     name = MOBS.get(mob, mob).lower()
     return name if n == 1 else (name[:-1] + "ies" if name.endswith("y") else name + ("es" if name.endswith("ch") else "s"))
 
