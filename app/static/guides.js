@@ -5,7 +5,7 @@
 
 const GUIDE_PLACEHOLDERS = [["name", "The site's name"], ["java_address", "Java address"], ["bedrock_address", "Bedrock address"],
   ["bedrock_port", "Bedrock port"], ["java_version", "The server's Minecraft version"], ["discord", "Discord invite link"], ["ask", "A link to the Ask to join form"],
-  ["rules", "A link to the rules"], ["contact", "The contact email (Site details)"]];
+  ["rules", "A link to the rules"], ["contact", "The contact email (Site details)"], ["xbox_friend", "The Xbox gamertag Bedrock players add as a friend"]];
 
 const GUIDES = {
   join: {
@@ -14,12 +14,12 @@ const GUIDES = {
     body: (s) => {
       const java = s.java_address || "the address an admin gives you";
       const bed = s.bedrock_address || s.java_address || "the address an admin gives you";
-      const ask = s.join_requests ? "Use the [Ask to join](#ask) form at the bottom of this page"
+      const ask = s.join_requests ? "Use the [Ask to join](#ask) form at the bottom of this page (or on the home page)"
         : s.discord ? `Send your exact in-game name to an admin on [Discord](${s.discord})` : "Send your exact in-game name to an admin";
       return `${s.name} is a Minecraft server you can join from Java Edition or Bedrock Edition. Everyone plays together in the same world.
 
 ## First: get on the list
-The server only lets in people on its list (the whitelist). Read [the rules](/guides/rules) first. ${ask}. On Bedrock that's your Xbox gamertag.
+The server only lets in people on its list (the whitelist). Read ${rulesLink(s)} first. ${ask}. On Bedrock that's your Xbox gamertag.
 
 ## Java Edition (Windows, Mac, Linux)
 You need Minecraft **${s.java_version || "the version shown on the home page"}**. If the launcher plays a newer one, pick this version in its **Installations** tab.
@@ -28,7 +28,13 @@ You need Minecraft **${s.java_version || "the version shown on the home page"}**
 3. Choose **Done**, then pick the server and **Join Server**.
 
 ## Bedrock Edition (phone, tablet, Windows, Xbox, PlayStation, Switch)
-1. Open Minecraft and choose **Play**, then the **Servers** tab.
+${s.xbox_friend ? `### The easy way: add us as a friend (works on consoles too)
+1. Add **${s.xbox_friend}** as a friend on Xbox: in Minecraft, **Play → Friends → Add Friend**, or in the Xbox app.
+2. In Minecraft, choose **Play**, then the **Friends** tab. The server shows under *Joinable Friends* (or *Joinable Cross-Platform Friends*) as **${s.xbox_friend}**'s world.
+3. Join it. You sign in with your Microsoft (Xbox) account as usual.
+
+### Or add the server by its address
+` : ""}1. Open Minecraft and choose **Play**, then the **Servers** tab.
 2. Scroll down and choose **Add Server**.
 3. Give it any name. Server Address: **${bed}**. Port: **${s.bedrock_port}**.
 4. Choose **Save**, then join it. You sign in with your Microsoft (Xbox) account as usual.
@@ -36,7 +42,7 @@ You need Minecraft **${s.java_version || "the version shown on the home page"}**
 Good to know on Bedrock:
 - Keep Minecraft up to date: the server follows the newest Bedrock version, so an up-to-date game always works.
 - Your name on the server starts with a dot, like *.Steve*. That's how the server tells Bedrock players apart, and it's the name to use on this website.
-- Xbox, PlayStation and Switch don't have **Add Server** for outside servers. A common way round it is *BedrockConnect*: search for it to find the steps for your console. Or join from a phone, tablet or Windows PC instead.
+- Xbox, PlayStation and Switch don't have **Add Server** for outside servers. ${s.xbox_friend ? `Use the friend way above (add **${s.xbox_friend}**).` : "A common way round it is *BedrockConnect*: search for it to find the steps for your console. Or join from a phone, tablet or Windows PC instead."}
 
 ## It won't let me in
 - **"You are not white-listed"**: you're not on the list yet. ${ask}.
@@ -50,8 +56,8 @@ Good to know on Bedrock:
     body: (s) => s.signup ? `Your account here shows the servers, who's on, the leaderboards and your own page: your inventory and stats.
 
 ## Make one
-1. Join the server and stay in the game (see [How to join](/guides/join)).
-2. Go to [Sign in](/app) and choose **Make an account**.
+1. Join the server and stay in the game.
+2. On the [home page](/), choose **Make a website account** (or **Make a new account** on the sign-in page).
 3. Type your Minecraft name as it shows in the game. On Bedrock it starts with a dot, like *.Steve*.
 4. A six-digit code appears in your game chat. Only you can see it, and it works for 10 minutes.
 5. Type the code and pick a password for this website. **Don't use your Microsoft password.** You sign in with your Minecraft name and this password.
@@ -94,6 +100,15 @@ Admins can usually see who changed what, and put it back. Breaking the rules can
   },
 };
 
+// Is there a page for this guide: a post standing in for it, or Solstone's own (unless it's been taken off)?
+function guideOn(site, key) {
+  return !!(site.guide_posts?.[key] || (GUIDES[key] && !(site.builtin_off || []).includes(key)));
+}
+// A link to the rules, or plain words when there's no rules page.
+function rulesLink(site, text = "the rules") {
+  return guideOn(site, "rules") ? `[${text}](/guides/rules)` : text;
+}
+
 // {java_address} and the other fill-ins, in any post or guide: the main server's details from Site details (the
 // first card on the home page), so the text stays right when an address, a port or the version changes.
 // onJoinPage: {ask} jumps to the form further down that page; anywhere else it links to it.
@@ -104,8 +119,8 @@ function contactLink(site) {
 function fillPostVars(text, site, onJoinPage = false) {
   const vals = { name: site.name, java_address: site.java_address || "", bedrock_address: site.bedrock_address || site.java_address || "",
     bedrock_port: site.bedrock_port, java_version: site.java_version || "the version shown on the home page", discord: site.discord || "",
-    ask: onJoinPage ? "[Ask to join](#ask)" : "[Ask to join](/guides/join#ask)", rules: "[the rules](/guides/rules)",
-    contact: contactLink(site) };
+    ask: onJoinPage ? "[Ask to join](#ask)" : "[Ask to join](/#ask)", rules: rulesLink(site),
+    contact: contactLink(site), xbox_friend: site.xbox_friend || "" };
   return String(text || "").replace(/\{(\w+)\}/g, (m, k) => (k in vals ? String(vals[k]) : m));
 }
 
@@ -119,5 +134,5 @@ function guideText(key, site) {
 function guideTemplate(key, site) {
   const ph = Object.fromEntries(GUIDE_PLACEHOLDERS.map(([k]) => [k, `{${k}}`]));
   return GUIDES[key].body({ ...site, ...ph, bedrock_port: "{bedrock_port}", java_version: "{java_version}", join_requests: site.join_requests })
-    .replace("[Ask to join](#ask) form", "{ask} form").replace("[the rules](/guides/rules)", "{rules}");
+    .replace("[Ask to join](#ask) form", "{ask} form").replace("[the rules](/guides/rules)", "{rules}").replace("the rules first", "{rules} first");
 }

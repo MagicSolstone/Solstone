@@ -540,21 +540,27 @@ def main() -> int:
             anon.unroute("**/api/public/site")
             pg.request.put(f"{base}/api/servers/{sid}/settings", data={"join_address": "", "join_note": "", "join_mods": False}, headers=H)
             anon.reload(); anon.wait_for_timeout(1000)
-            if not anon.locator(".hp-join .hp-ask-btn").count():
-                problems.append("home: no Ask to join button by the addresses")
-            else:
-                check(anon, "site-home-ask-button")
-                anon.click(".hp-join .hp-ask-btn"); anon.wait_for_timeout(1200)
-                if not anon.url.endswith("/guides/join#ask"):
-                    problems.append("home: the Ask to join button didn't lead to the form")
+            if not anon.locator(".hp-join .hp-ask-btn.glow").count() or not anon.locator(".hp-steps #step-play .hp-addr").count():
+                problems.append("home: no glowing Ask to join step, or no addresses in the Get in the game step")
+            if anon.locator('.hp-join a[href="/guides/join"], .hp-join a[href="/guides/account"]').count():
+                problems.append("home: the join section still links to the step-by-step guides")
+            check(anon, "site-home-ask-button")
+            anon.goto(f"{base}/guides/join"); anon.wait_for_timeout(1000)
             if not anon.locator("#ask-form").count() or not anon.locator('.hp-body a[href="#ask"]').count():
                 problems.append("join guide: no Ask to join form (or link to it) with it turned on")
+            anon.goto(f"{base}/"); anon.wait_for_timeout(1200)
+            anon.click(".hp-join .hp-ask-btn"); anon.wait_for_timeout(500)
+            if not anon.locator("#hp-pop[open] #ask-form").count():
+                problems.append("home: Ask to join didn't open its form in a pop-up")
             else:
+                check(anon, "site-home-ask-popup")
                 anon.fill("#ask-form [name=player]", "Smoke_Kid"); anon.fill("#ask-form [name=note]", "Tyler's friend")
                 anon.check("#ask-form [name=rules]")
-                anon.click("#ask-form button[type=submit]"); anon.wait_for_timeout(800)
-                if not anon.locator(".hp-ask-done").count():
-                    problems.append("join guide: asking to join didn't go through")
+                anon.click("#ask-form button[type=submit]"); anon.wait_for_timeout(900)
+                if anon.locator("#hp-pop[open]").count() or "waiting" not in (anon.locator("#step-ask").get_attribute("class") or ""):
+                    problems.append("home: asking to join didn't close the pop-up and show the request waiting")
+                if "Waiting for an admin" not in (anon.locator("#step-ask").text_content() or ""):
+                    problems.append("home: the first step doesn't say it's waiting for an admin")
                 check(anon, "site-guide-ask")
                 pg.goto(f"{base}/app#/s/{sid}/control"); pg.wait_for_timeout(1800)
                 if "Smoke_Kid" not in (pg.locator(".turned-away.asked").text_content() if pg.locator(".turned-away.asked").count() else ""):
@@ -569,7 +575,7 @@ def main() -> int:
                 check(pg, "manage-whitelist-asked")
                 pg.goto(f"{base}/app#/s/{sid}/control"); pg.wait_for_timeout(1500)
                 anon.goto(f"{base}/"); anon.wait_for_timeout(1200)
-                if "waiting" not in (anon.locator("#ask-status").get_attribute("class") or ""):
+                if "waiting" not in (anon.locator("#step-ask").get_attribute("class") or ""):
                     problems.append("home: someone who asked doesn't see their request waiting")
                 if "Request sent" not in (anon.locator("#ask-badge").text_content() if anon.locator("#ask-badge").count() else ""):
                     problems.append("home: no Request sent badge while waiting")
@@ -578,13 +584,13 @@ def main() -> int:
                 pg.locator('.turned-away.asked [data-allow="Smoke_Kid"]').click(); pg.wait_for_timeout(300)
                 pg.click("#cf-yes"); pg.wait_for_timeout(1500)
                 anon.reload(); anon.wait_for_timeout(1200)
-                if "waiting" not in (anon.locator("#ask-status").get_attribute("class") or ""):
+                if "waiting" not in (anon.locator("#step-ask").get_attribute("class") or ""):
                     problems.append("home: a request that couldn't be let in shows as let in")
                 # let in from the game instead (their name on the whitelist): the page notices
                 wl = root / "servers" / sid / "whitelist.json"
                 wl.write_text(json.dumps([{"uuid": "00000000-0000-0000-0000-000000000001", "name": "Smoke_Kid"}]))
                 anon.reload(); anon.wait_for_timeout(1500)
-                if "in" not in (anon.locator("#ask-status").get_attribute("class") or "").split():
+                if "done" not in (anon.locator("#step-ask").get_attribute("class") or "").split() or "You're in" not in (anon.locator("#step-play [data-step-title]").text_content() or ""):
                     problems.append("home: someone let in doesn't see that they're in")
                 if "in" not in (anon.locator("#ask-badge").get_attribute("class") or "").split():
                     problems.append("home: the badge didn't turn to You're in")
@@ -666,6 +672,16 @@ def main() -> int:
             for x in pg.request.get(f"{base}/api/posts", headers=H).json()["posts"]:
                 if x.get("role") == "join":
                     pg.request.delete(f"{base}/api/posts/{x['id']}", headers=H)
+            anon.goto(f"{base}/guides/join"); anon.wait_for_timeout(900)          # deleted: gone, not Solstone's wording in its place
+            if not anon.url.endswith("/help") or "How to join the server" in (anon.locator(".hp-posts").text_content() if anon.locator(".hp-posts").count() else ""):
+                problems.append("help: a deleted guide came back as Solstone's own")
+            pg.goto(f"{base}/app#/manage/website"); pg.reload(); pg.wait_for_timeout(1500)
+            pg.click('.fws-tabs [data-tab="posts"]'); pg.wait_for_timeout(800)
+            if not pg.locator('[data-builtin="join"] [data-builtin-on]').count():
+                problems.append("website: no Bring it back for a removed built-in guide")
+            else:
+                check(pg, "website-builtin-guides")
+                pg.click('[data-builtin="join"] [data-builtin-on]'); pg.wait_for_timeout(800)
             # the rules page, and a welcome message in the game
             anon.goto(f"{base}/guides/rules"); anon.wait_for_timeout(900)
             if "Leave other people's things alone" not in (anon.locator(".hp-body").text_content() or ""):
@@ -705,6 +721,8 @@ def main() -> int:
                 pass                                         # reported just below
             if "Smoke SMP" not in (anon.locator(".login-title h1").text_content() or ""):
                 problems.append("sign-in: the site name isn't shown")
+            if anon.locator('.login-card a[href="/guides/join"]').count() or not anon.locator('.login-home a[href="/"]').count():
+                problems.append("sign-in: still links to the join guide, or no Back to home")
             if not anon.locator("#btn-signup").is_visible():
                 problems.append("sign-in: no Make an account button with sign-up on")
             else:
@@ -712,6 +730,16 @@ def main() -> int:
                 check(anon, "signup")
                 if not anon.locator("#su-start").count():
                     problems.append("sign-up: the form didn't open")
+            anon.goto(f"{base}/"); anon.wait_for_timeout(1200)
+            if not anon.locator("#step-account [data-open-signup]").count():
+                problems.append("home: no Make a website account step with sign-up on")
+            else:
+                anon.click("#step-account [data-open-signup]"); anon.wait_for_timeout(400)
+                anon.fill("#su-start [name=player]", "Nobody_Here"); anon.click("#su-start button[type=submit]"); anon.wait_for_timeout(900)
+                if "join the server first" not in (anon.locator("#su-start .login-error").text_content() or "").lower():
+                    problems.append("home: making an account for someone not in the game doesn't say to join first")
+                check(anon, "site-home-signup-popup")
+                anon.keyboard.press("Escape")
             u = pg.request.post(f"{base}/api/users", data={"username": "smoke_player", "password": "player-pass-1", "role": "player"}, headers=H).json()
             pg.request.patch(f"{base}/api/users/{u['id']}", data={"player": "Tyler"}, headers=H)
             pl = browser.new_page(viewport={"width": 1280, "height": 860})

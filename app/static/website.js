@@ -103,8 +103,21 @@ function wsPosts(el) {
     const list = posts.filter((p) => p.category === k);
     return list.length ? `<h3 class="ws-kind">${esc(label)} <small class="muted">${ordered(k) ? "in this order on the Help page and the home page: ↑ ↓ to move" : "newest first, by their date"}</small></h3>${list.map(row).join("")}` : "";
   }).join("");
+  // Solstone's own guides, where no post stands in for them: on the Help page unless taken off here.
+  const off = ws.data.site.builtin_off || [];
+  const builtins = Object.entries(GUIDES).filter(([k]) => !posts.some((p) => p.role === k && p.published)).map(([k, g]) => `<div class="ws-post ws-builtin" data-builtin="${k}">
+      <div><b>${esc(g.title)}</b> <span class="chip">Solstone's own</span><div class="muted">${off.includes(k) ? "Taken off: not on the Help page, and nothing links to it" : "On the Help page"}</div></div>
+      <span class="btn-row">${off.includes(k) ? `<button class="btn sm" type="button" data-builtin-on>Bring it back</button>`
+        : `<a class="btn sm" href="/guides/${k}" target="_blank" rel="noopener">View</a><button class="btn sm danger" type="button" data-builtin-off>Remove</button>`}</span></div>`).join("");
   el.innerHTML = `<section class="panel"><div class="ws-list">${rows || `<p class="muted">No posts yet. News is for updates and events. On the Help page, guides are for how-tos (the rules, starting out) and questions are for quick answers.</p>`}</div>
+    ${builtins ? `<h3 class="ws-kind">Solstone's built-in guides <small class="muted">Shown when no post is used for them. Remove one and it's gone from Help, with no links to it. To write your own, make a guide and pick it under <b>Use as</b>.</small></h3><div class="ws-list">${builtins}</div>` : ""}
     ${ws.editing === "new" ? wsEditHtml({ category: "news", published: true }) : `<button class="btn primary" id="ws-new" style="margin-top:12px">+ New post</button>`}</section>`;
+  el.querySelectorAll("[data-builtin]").forEach((row) => row.querySelector("button")?.addEventListener("click", async (e) => {
+    const k = row.dataset.builtin, on = e.currentTarget.hasAttribute("data-builtin-on");
+    const next = on ? off.filter((x) => x !== k) : [...new Set([...off, k])];
+    try { await post("/api/settings/site", { builtin_off: next }, "PUT"); ws.data = await api("/api/posts"); renderWebsite(); showToast(on ? "Back on the Help page" : "Removed", 2000); }
+    catch (err) { showError(esc(err.message), 4000); }
+  }));
   $("#ws-new")?.addEventListener("click", () => { ws.editing = "new"; renderWebsite(); $("#ws-edit input[name=title]")?.focus(); });
   el.querySelectorAll(".ws-post[data-id]").forEach((row) => {
     const id = +row.dataset.id;
@@ -323,6 +336,7 @@ function wsSite(el) {
         <div class="ws-row"><label>Java<input class="input" data-j="join_address" maxlength="80" placeholder="${i === 0 ? "play.example.net" : "mods.example.net:25566"}"></label>
           <label>Bedrock<input class="input" data-j="join_bedrock_address" maxlength="80"></label>
           <label>Port<input class="input" data-j="join_bedrock_port" inputmode="numeric" placeholder="19132"></label></div>
+        <label>Xbox friend for Bedrock <small>Optional. With the MCXboxBroadcast Geyser extension: its Xbox account's gamertag. Bedrock players add it as a friend, then join the server from the <b>Friends</b> tab (consoles too, no address needed). Shown first for Bedrock, and <code>{xbox_friend}</code> puts it in any post.</small><input class="input" data-j="join_xbox" maxlength="20" placeholder="fbcmclink"></label>
         <label>Address for the up/down check <small>Optional. What the offline page checks to see if this server is up: only the Java side, since it's the same server for Bedrock. Use the direct address if the one above goes through DNS tricks, like playit's <code>something.ply.gg:12345</code>. Empty: the Java address above.</small><input class="input" data-j="join_check" maxlength="80" placeholder="something.ply.gg:12345"></label>
         <label>About this server <small>Optional, shown on its card: what it is, who it's for. For example: Our survival world for the whole family, or: Modded adventures, needs the modpack.</small><textarea class="input" data-j="join_note" maxlength="300" rows="2"></textarea></label>
         <label class="check"><input type="checkbox" data-j="join_mods"> List the mods players need</label></div>`).join("")}

@@ -638,11 +638,12 @@ async def public_site():
     for srv in ordered:
         st = srv.settings
         java, bed, port = st.get("join_address") or "", st.get("join_bedrock_address") or "", st.get("join_bedrock_port") or ""
+        xbox = st.get("join_xbox") or ""          # MCXboxBroadcast: Bedrock players add this gamertag as a friend and join through it
         if not (java or bed) and not main_used and (cfg["java_address"] or cfg["bedrock_address"]):
             java, bed, port, main_used = cfg["java_address"], cfg["bedrock_address"], cfg["bedrock_port"], True
-        if not (java or bed):
+        if not (java or bed or xbox):
             continue
-        joins.append({"id": srv.id, "name": srv.display_name, "java": java, "bedrock": bed, "bedrock_port": port or 19132,
+        joins.append({"id": srv.id, "name": srv.display_name, "java": java, "bedrock": bed, "bedrock_port": port or 19132, "xbox": xbox,
                       "note": st.get("join_note") or "", "mods": _mods_for_players(srv) if st.get("join_mods") or modpack.get(srv.id)["public_download"] else None,
                       "status": status.get(srv.id), "main": srv.id == cfg.get("main_server"),
                       "color": st.get("join_color") or "",
@@ -651,7 +652,8 @@ async def public_site():
         cfg = {**cfg, "java_address": joins[0]["java"], "bedrock_address": joins[0]["bedrock"],  # the first server's
                "bedrock_port": joins[0]["bedrock_port"]}
     # the join guide's {java_version}: the main (first) server's Minecraft version, when it's known
-    cfg = {**cfg, "java_version": next((j["version"] for j in joins if j["java"] and j["version"]), "")}
+    cfg = {**cfg, "java_version": next((j["version"] for j in joins if j["java"] and j["version"]), ""),
+           "xbox_friend": next((j["xbox"] for j in joins if j["xbox"]), "")}
     asks = [{"id": s.id, "name": s.display_name, "main": s.id == cfg.get("main_server")} for s in ordered if s.is_java] if cfg["join_requests"] else []
     return JSONResponse({**cfg, "logo": site.logo_url(), "servers": servers, "joins": joins, "ask_servers": asks,
                          "guide_posts": site.guide_posts(), "roles": site.ROLES,
@@ -880,7 +882,7 @@ async def signup_start(request: Request):
     _signup_on()
     body = await _body(request)
     await S.registry.refresh()
-    return {"message": await signup.start(request, str(body.get("player") or ""), _public_servers_list())}
+    return await signup.start(request, str(body.get("player") or ""), _public_servers_list())
 
 
 @app.post("/api/public/signup/finish")
@@ -2243,9 +2245,11 @@ async def put_settings(sid: str, request: Request):
     if "join_color" in body:                 # a border colour for its card: #rrggbb, or nothing
         c = str(body["join_color"] or "").strip().lower()
         body["join_color"] = c if re.fullmatch(r"#[0-9a-f]{6}", c) else ""
-    for k, n in (("join_address", 80), ("join_bedrock_address", 80), ("join_note", 300), ("join_check", 80)):
+    for k, n in (("join_address", 80), ("join_bedrock_address", 80), ("join_note", 300), ("join_check", 80), ("join_xbox", 20)):
         if k in body:
             body[k] = " ".join(str(body[k] or "").split())[:n]
+    if body.get("join_xbox") and not re.fullmatch(r"[A-Za-z0-9 #]{1,20}", body["join_xbox"]):
+        raise HTTPException(400, "An Xbox gamertag is letters, numbers and spaces")
     if "welcome" in body:                    # the message when someone joins (welcome.py)
         body["welcome"] = welcome.clean(body["welcome"])
         settings_store.save_section("welcome_site", _public_base(request))      # for {rules} and {site} in the game

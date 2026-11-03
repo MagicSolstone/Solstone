@@ -38,9 +38,10 @@ def test_signup_with_a_code_from_the_game(client, anon, game):
     assert anon.post("/api/public/signup/start", json={"player": "Tyler"}).status_code == 404     # off by default
     _signup_on(client)
     try:
-        nobody = anon.post("/api/public/signup/start", json={"player": "Nobody"}).json()["message"]
+        nobody = anon.post("/api/public/signup/start", json={"player": "Nobody"}).json()
+        assert nobody["state"] == "offline" and "join the server first" in nobody["message"].lower()   # told to get in the game
         r = anon.post("/api/public/signup/start", json={"player": "tyler"})
-        assert r.status_code == 200 and r.json()["message"] == nobody     # same answer: can't tell who's online
+        assert r.status_code == 200 and r.json()["state"] == "sent" and r.json()["player"] == "Tyler"
         assert len(game) == 1 and game[0].startswith("tellraw Tyler ")
         code = re.search(r"\b(\d{6})\b", game[0]).group(1)
 

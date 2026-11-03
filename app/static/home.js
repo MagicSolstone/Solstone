@@ -84,8 +84,9 @@ function joinCard(site) {
   const cards = (site.joins || []).map((j) => {
     const r = [];
     if (j.java) r.push(["Java", j.java, j.version ? `Minecraft ${j.version}` : ""]);
-    if (j.bedrock) r.push(["Bedrock", j.bedrock, `Port ${j.bedrock_port} · newest version`]);
-    const kind = j.java && j.bedrock ? "Java and Bedrock" : j.java ? "Java only" : "Bedrock only";
+    if (j.xbox) r.push(["Bedrock", j.xbox, "Add as a friend on Xbox, then join from the Friends tab"]);
+    if (j.bedrock) r.push([j.xbox ? "Bedrock (or)" : "Bedrock", j.bedrock, `Port ${j.bedrock_port} · add as a server`]);
+    const kind = j.java && (j.bedrock || j.xbox) ? "Java and Bedrock" : j.java ? "Java only" : "Bedrock only";
     const icon = j.status?.has_icon ? `<img class="px" src="/api/public/icon/${encodeURIComponent(j.id)}.png" alt="" width="40" height="40">` : "";
     return `<article class="hp-join-card ${j.main ? "main" : ""}" ${j.color ? `style="--accent:${esc(j.color)}"` : ""}>
       <header>${icon}<div><h3>${esc(j.name)}</h3><span class="chip">${kind}</span></div></header>
@@ -93,11 +94,112 @@ function joinCard(site) {
 </article>`;
   });
   if (!cards.length) return "";
-  return `<section class="hp-join glass"><h2>Join the server${cards.length > 1 ? "s" : ""}</h2>
-    <div class="hp-join-cards ${cards.length > 1 ? "many" : ""}">${cards.join("")}</div>
-    ${site.join_requests ? `<div class="hp-ask-cta"><a class="btn primary hp-ask-btn" href="/guides/join#ask">🙋 Ask to join</a>
-      <span class="muted">New here? The server only lets in people on its list. Ask, and an admin will add you.</span></div>` : ""}
-    <p class="muted"><a href="/guides/join">Step-by-step guide</a>${site.signup ? ' · <a href="/guides/account">Make an account on this website</a>' : ""}${site.discord ? ` · Questions? <a href="${esc(site.discord)}" target="_blank" rel="noopener">Join us on Discord</a>` : ""}</p></section>`;
+  const servers = `<div class="hp-join-cards ${cards.length > 1 ? "many" : ""}">${cards.join("")}</div>`;
+  const discord = site.discord ? `<p class="muted">Questions? <a href="${esc(site.discord)}" target="_blank" rel="noopener">Join us on Discord</a></p>` : "";
+  // Signed in already (or nothing to ask for): just how to get on.
+  if (hp.me || (!site.join_requests && !site.signup)) return `<section class="hp-join glass"><h2>Join the server${cards.length > 1 ? "s" : ""}</h2>${servers}${discord}</section>`;
+  // New here: the steps, one after another, each a button on this page.
+  const steps = [];
+  if (site.join_requests) steps.push(`<li class="hp-step" id="step-ask"><span class="hp-step-dot">1</span><div class="hp-step-body">
+      <h3>Ask to join</h3><p class="muted" data-step-text>The server only lets in people on its list. Send your name, and an admin will add you.</p>
+      <button class="btn primary hp-ask-btn glow" type="button" data-open-ask>🙋 Ask to join</button></div></li>`);
+  steps.push(`<li class="hp-step" id="step-play"><span class="hp-step-dot">${steps.length + 1}</span><div class="hp-step-body">
+      <h3 data-step-title>Get in the game</h3><p class="muted" data-step-text>${site.join_requests ? "Once you're let in, join with the address for your Minecraft:" : "Join with the address for your Minecraft:"}</p>
+      ${servers}</div></li>`);
+  if (site.signup) steps.push(`<li class="hp-step" id="step-account"><span class="hp-step-dot">${steps.length + 1}</span><div class="hp-step-body">
+      <h3>Make your website account</h3><p class="muted">While you're playing, we send a code to your game chat. Then pick a password, and you're in here too.</p>
+      <button class="btn hp-step-btn" type="button" data-open-signup>🌐 Make a website account</button>
+      <p class="muted small">Have one already? <a href="/app">Sign in</a></p></div></li>`);
+  return `<section class="hp-join glass"><h2>Get started</h2><ol class="hp-steps">${steps.join("")}</ol>${discord}</section>`;
+}
+
+// The step-by-step on the home page follows a request that's out: waiting, then let in.
+function stepState(d) {
+  const ask = $("#step-ask"), play = $("#step-play");
+  if (!ask || !play) return;
+  const state = d?.state || "";
+  ask.classList.toggle("done", state === "in" || state === "partly");
+  ask.classList.toggle("waiting", state === "waiting");
+  ask.classList.toggle("denied", state === "denied");
+  play.classList.toggle("now", state === "in" || state === "partly");
+  const btn = $("[data-open-ask]", ask), text = $("[data-step-text]", ask);
+  btn.hidden = state === "waiting" || state === "in" || state === "partly";
+  text.innerHTML = state === "waiting" ? `<span class="spin" aria-hidden="true"></span> Request sent for <b>${esc(d.player)}</b>. Waiting for an admin to let you in. You can leave this page: we'll show it here when you come back.`
+    : state === "in" ? `✅ <b>${esc(d.player)}</b> is on the list.`
+    : state === "partly" ? `✅ <b>${esc(d.player)}</b> is in on some servers, and waiting on the rest.`
+    : state === "denied" ? `Your request for <b>${esc(d.player)}</b> wasn't accepted this time. Ask an admin you know, or send a new one.`
+    : "The server only lets in people on its list. Send your name, and an admin will add you.";
+  $("[data-step-title]", play).textContent = state === "waiting" ? "Then get in the game" : state === "in" || state === "partly" ? "You're in! Join the game" : "Get in the game";
+}
+
+// Pop-ups on the home page (Ask to join, Make an account): a <dialog>, closed with ×, Esc or a click outside.
+function openPop(html, wire) {
+  let d = $("#hp-pop");
+  if (!d) {
+    d = document.createElement("dialog"); d.id = "hp-pop"; d.className = "hp-pop glass";
+    d.addEventListener("click", (e) => { if (e.target === d || e.target.closest("[data-pop-close]")) d.close(); });
+    document.body.append(d);
+  }
+  d.innerHTML = `<button type="button" class="hp-pop-x" data-pop-close aria-label="Close">×</button><div class="hp-pop-body">${html}</div>`;
+  d.showModal();
+  wire?.($(".hp-pop-body", d));
+  $("input:not([type=radio]):not([type=checkbox])", d)?.focus();
+}
+const closePop = () => $("#hp-pop")?.close();
+
+async function postJSON(url, body) {
+  const r = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-Solstone": "1" }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : "That didn't work. Try again in a moment.");
+  return d;
+}
+
+// Making a website account: their name (they must be in the game), a code sent to their game chat, then a password.
+function openSignup() {
+  let player = "";
+  const step1 = (note = "") => `<h2>Make a website account</h2>
+    <p class="muted">Join the server first and stay in the game. We'll send a code to your game chat, so only you can see it.</p>
+    <form id="su-start" autocomplete="off"><label>Your name in the game <small>Exactly as it shows. Bedrock names may start with a dot, like .Steve</small>
+      <input class="input" name="player" required maxlength="18" autocapitalize="off" value="${esc(player)}"></label>
+      <p class="login-error" role="alert">${note}</p>
+      <div class="actions"><button type="button" class="btn" data-pop-close>Cancel</button><button class="btn primary" type="submit">Send me a code</button></div></form>`;
+  const step2 = (msg) => `<h2>Check the game chat</h2><p class="hp-pop-ok">📨 ${esc(msg)}</p>
+    <form id="su-finish" autocomplete="off"><label>The six-digit code<input class="input" name="code" inputmode="numeric" maxlength="7" required autocomplete="one-time-code"></label>
+      <p class="su-login">You'll sign in with your Minecraft name, <b>${esc(player)}</b>, and the password you pick now.</p>
+      <label>Pick a password <small>8 or more characters. Not the one for your Microsoft account.</small><input class="input" type="password" name="password" minlength="8" required autocomplete="new-password"></label>
+      <label>Your first name <small>Optional. Only the admins see it, so they know who you are.</small><input class="input" name="real_name" maxlength="40" autocomplete="given-name"></label>
+      <p class="login-error" role="alert"></p>
+      <div class="actions"><button type="button" class="btn" data-su-back>Send a new code</button><button class="btn primary" type="submit">Make my account</button></div></form>`;
+  openPop(step1(), (box) => {
+    const wire1 = () => $("#su-start", box).addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = $("button[type=submit]", e.target), err = $(".login-error", e.target);
+      player = new FormData(e.target).get("player").trim();
+      btn.disabled = true; err.textContent = "";
+      try {
+        const r = await postJSON("/api/public/signup/start", { player });
+        if (r.state === "offline") { err.textContent = r.message; btn.disabled = false; return; }
+        if (r.player) player = r.player;
+        render2(r.message);
+      } catch (x) { err.textContent = x.message; btn.disabled = false; }
+    });
+    const render2 = (msg) => {
+      box.innerHTML = step2(msg);
+      $("[data-su-back]", box).addEventListener("click", () => { box.innerHTML = step1(); wire1(); $("input", box).focus(); });
+      $("#su-finish", box).addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const f = new FormData(e.target);
+        try {
+          await postJSON("/api/public/signup/finish", { player, code: f.get("code"), password: f.get("password"), real_name: f.get("real_name") || "" });
+          box.innerHTML = `<h2>🎉 Welcome, ${esc(player)}!</h2><p>Your account is ready, and you're signed in.</p>
+            <div class="actions"><a class="btn primary" href="/app">Go to the servers</a><button type="button" class="btn" data-pop-close>Stay here</button></div>`;
+          $("#hp-pop").addEventListener("close", () => location.reload(), { once: true });
+        } catch (x) { $(".login-error", e.target).textContent = x.message; }
+      });
+      $("#su-finish input", box).focus();
+    };
+    wire1();
+  });
 }
 
 function postCards(posts, empty) {
@@ -120,7 +222,7 @@ const BUILTIN = GUIDES;
 
 // Solstone's own guides, except where a post stands in for one (it's listed with the other posts instead).
 function builtinCards() {
-  return Object.entries(BUILTIN).filter(([k]) => !hp.site.guide_posts?.[k])
+  return Object.entries(BUILTIN).filter(([k]) => !hp.site.guide_posts?.[k] && guideOn(hp.site, k))
     .map(([k, g]) => ({ slug: k, title: g.title, excerpt: g.excerpt, builtin: true }));
 }
 
@@ -129,6 +231,7 @@ async function home() {
   const s = hp.site;
   // a few of each (Site details says how many), and a button to the rest when there are more
   const nNews = s.home_news ?? 3, nGuides = s.home_guides ?? 4;
+  hp.me = await getJSON("/api/auth/me").then((d) => d.user || null, () => null);
   const [news, guides] = await Promise.all([nNews ? getJSON(`/api/public/posts?category=news&limit=${nNews + 1}`) : [],
     nGuides ? getJSON(`/api/public/posts?category=guide&limit=${nGuides + 1}`) : []]);
   const help = [...builtinCards(), ...guides];
@@ -216,14 +319,15 @@ let askTimer = 0;
 async function showAskStatus() {
   clearTimeout(askTimer);
   const t = askTicket();
-  if (!t?.token) { renderAskBadge(null); return; }
+  if (!t?.token) { renderAskBadge(null); stepState(null); return; }
   let d = null;
   try {
     const r = await fetch("/api/public/join-request/status", { method: "POST", headers: { "Content-Type": "application/json", "X-Solstone": "1" }, body: JSON.stringify({ token: t.token }) });
     d = r.ok ? await r.json() : null;
   } catch { askTimer = setTimeout(showAskStatus, 60000); return; }
   if (!d || d.state === "unknown") { forgetAsk(); return; }
-  const box = $("#ask-status");
+  stepState(d);
+  const box = $("#step-ask") ? null : $("#ask-status");
   if (box) {
     box.hidden = false;
     box.className = `hp-ask-status ${d.state}`;
@@ -259,9 +363,12 @@ function forgetAsk() {
   renderAskBadge(null);
   const box = $("#ask-status");
   if (box) box.hidden = true;
+  stepState(null);
 }
 document.addEventListener("click", (e) => {
   if (e.target.closest("[data-ask-forget]")) { forgetAsk(); return; }
+  if (e.target.closest("[data-open-ask]")) { openPop(askFormHtml(true)); return; }
+  if (e.target.closest("[data-open-signup]")) { openSignup(); return; }
   if (e.target.closest("[data-ask-hide]")) {          // hide the badge only: the request is still waiting
     const t = askTicket();
     if (t) { try { localStorage.setItem("solstone-ask", JSON.stringify({ ...t, hidden: true })); } catch { /* fine */ } }
@@ -271,10 +378,10 @@ document.addEventListener("click", (e) => {
 document.addEventListener("visibilitychange", () => { if (!document.hidden && askTicket()) showAskStatus(); });
 
 // Ask to join: their name goes to the admins' notifications, ready to let in from Control.
-function askFormHtml() {
-  return `<section class="hp-ask glass" id="ask"><h2>Ask to join</h2>
-    <p class="hp-ask-status" id="ask-status" hidden></p>
-    <p class="muted">The admins get a message with your name and can let you in. Then try joining again.</p>
+function askFormHtml(pop = false) {
+  return `<section class="hp-ask ${pop ? "" : "glass"}" id="ask"><h2>Ask to join</h2>
+    ${pop ? "" : '<p class="hp-ask-status" id="ask-status" hidden></p>'}
+    <p class="muted">The admins get a message with your name and can let you in. Then you can join the game.</p>
     <form id="ask-form" autocomplete="off">
       <fieldset class="hp-ask-ed"><legend>I play on</legend>
         <label class="check"><input type="radio" name="edition" value="java" checked> Java (PC or Mac)</label>
@@ -284,7 +391,7 @@ function askFormHtml() {
       <label>Your name in the game <small>Exactly as it shows. On Bedrock that's your Xbox gamertag.</small><input class="input" name="player" required maxlength="20" autocapitalize="off"></label>
       <label>Your first name <small>Optional, so the admins know who you are</small><input class="input" name="name" maxlength="40"></label>
       <label>A note <small>Optional: who you know here, for example</small><textarea class="input" name="note" rows="3" maxlength="300"></textarea></label>
-      <label class="check hp-ask-rules"><input type="checkbox" name="rules" required> I've read <a href="/guides/rules" target="_blank" rel="noopener">the rules</a> and I'll follow them</label>
+      <label class="check hp-ask-rules"><input type="checkbox" name="rules" required> ${guideOn(hp.site, "rules") ? `I've read <a href="/guides/rules" target="_blank" rel="noopener">the rules</a> and I'll follow them` : "I'll be kind and follow the server's rules"}</label>
       <p class="login-error" role="alert"></p>
       <button class="btn primary" type="submit">Send</button></form></section>`;
 }
@@ -298,7 +405,7 @@ document.addEventListener("submit", async (e) => {
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || "That didn't send. Try again in a moment.");
     try { localStorage.setItem("solstone-ask", JSON.stringify({ token: d.token, player: d.player, at: Date.now() })); } catch { /* private window */ }
-    e.target.outerHTML = `<p class="hp-ask-done">✅ ${esc(d.message)}</p>`;
+    if (e.target.closest("#hp-pop")) { closePop(); toast("✅ Request sent"); } else e.target.outerHTML = `<p class="hp-ask-done">✅ ${esc(d.message)}</p>`;
     showAskStatus();
   } catch (x) { err.textContent = x.message; }
 });
@@ -312,7 +419,8 @@ async function route() {
     if (path === "/") html = await home();
     else if (path.startsWith("/post/")) { nav = ""; html = await article(decodeURIComponent(path.slice(6))); }
     else if (path === "/guides" || path === "/faq") { history.replaceState(null, "", path === "/faq" ? "/help#faq" : "/help"); route(); return; }   // the old pages
-    else if (path.startsWith("/guides/") && BUILTIN[path.slice(8)]) { nav = "help"; html = await builtinArticle(path.slice(8)); }
+    else if (path.startsWith("/guides/") && BUILTIN[path.slice(8)] && guideOn(hp.site, path.slice(8))) { nav = "help"; html = await builtinArticle(path.slice(8)); }
+    else if (path.startsWith("/guides/")) { history.replaceState(null, "", "/help"); route(); return; }       // a guide that's been taken off
     else if (SECTIONS[path.slice(1)]) { nav = path.slice(1); html = await section(nav); }
     else { nav = ""; html = `<section><h1>Not found</h1><p class="muted"><a href="/">Back home</a></p></section>`; }
   } catch {
@@ -322,7 +430,9 @@ async function route() {
   main.innerHTML = html;
   document.querySelectorAll("[data-nav]").forEach((a) => a.toggleAttribute("aria-current", a.dataset.nav === nav));
   showAskStatus();
-  if (["#faq", "#ask", "#contact"].includes(location.hash)) $(location.hash)?.scrollIntoView(); else window.scrollTo(0, 0);
+  if (path === "/" && location.hash === "#ask" && hp.site.join_requests) { history.replaceState(null, "", "/"); openPop(askFormHtml(true)); }
+  else if (path === "/" && location.hash === "#account" && hp.site.signup) { history.replaceState(null, "", "/"); openSignup(); }
+  else if (["#faq", "#ask", "#contact"].includes(location.hash)) $(location.hash)?.scrollIntoView(); else window.scrollTo(0, 0);
 }
 
 // The status panel keeps itself current while the home page is open (the server is only asked every 15 s).
@@ -343,6 +453,11 @@ document.addEventListener("click", (e) => {
   if (!a || e.defaultPrevented || a.target || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
   const url = new URL(a.href, location.href);
   if (url.origin !== location.origin) return;
+  if (url.pathname === "/" && (url.hash === "#ask" || url.hash === "#account") && location.pathname === "/") {     // the pop-ups, right here
+    e.preventDefault();
+    if (url.hash === "#ask" && hp.site.join_requests) openPop(askFormHtml(true)); else if (url.hash === "#account" && hp.site.signup) openSignup();
+    return;
+  }
   if (url.pathname === location.pathname && url.hash) return;          // a spot on this page: the browser scrolls to it
   if (url.pathname === "/" || url.pathname.startsWith("/post/") || url.pathname.startsWith("/guides") || url.pathname === "/faq" || SECTIONS[url.pathname.slice(1)]) {
     e.preventDefault();

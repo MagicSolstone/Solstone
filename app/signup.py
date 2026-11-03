@@ -7,8 +7,9 @@
 3. They type the code with a login and password of their choice, and get a "player" account
    linked to that Minecraft player, which sees the server they signed up on (an admin can add more).
 
-The answer to step 1 is the same whether or not the player is online, so the page can't be used
-to see who's playing. Codes last ten minutes, take five tries, and are stored only as a hash.
+If the name isn't playing right now, step 1 says so ("join the game first, and check the spelling"), so a new
+player isn't left waiting for a code that never comes. Asking is limited to a few times an hour per address, so
+it can't be used to watch who's playing. Codes last ten minutes, take five tries, and are stored only as a hash.
 A player can be sent a few codes an hour, so nobody can flood their chat.
 """
 from __future__ import annotations
@@ -37,6 +38,9 @@ _sent: dict[str, list[float]] = {}      # rate limits: "p:<uuid>" and "ip:<addre
 
 SENT_TEXT = ("If you're playing on the server right now, a code is waiting for you in the game chat. "
              "Nothing there? Check you're in the game and the name is spelled as it shows there.")
+CODE_SENT = "A six-digit code is waiting for you in the game chat. Type it below."
+NOT_ONLINE = ("We can't see {name} in the game right now. Join the server first (and stay in), then try again. "
+              "Check the name is spelled exactly as it shows in the game; Bedrock names may start with a dot.")
 
 
 def _hash(code: str) -> str:
@@ -82,7 +86,8 @@ async def _find_online(servers: list[S.Server], typed: str) -> tuple[S.Server, s
     return None
 
 
-async def start(request: Request, typed: str, servers: list[S.Server]) -> str:
+async def start(request: Request, typed: str, servers: list[S.Server]) -> dict:
+    """{"state": "sent" | "offline", "message"}: a code sent to them in the game, or they aren't playing right now."""
     typed = (typed or "").strip()
     if not NAME_RE.match(typed):
         raise HTTPException(400, "Type your Minecraft name as it shows in the game")
@@ -90,10 +95,10 @@ async def start(request: Request, typed: str, servers: list[S.Server]) -> str:
         raise HTTPException(429, "Too many tries. Wait an hour and try again")
     found = await _find_online(servers, typed)
     if not found:
-        return SENT_TEXT
+        return {"state": "offline", "message": NOT_ONLINE.format(name=typed)}
     srv, uuid, name = found
     if _hit(f"p:{uuid}", PER_PLAYER):
-        return SENT_TEXT
+        return {"state": "sent", "message": "We've sent a few codes already. Use the newest one in the game chat, or wait an hour."}
     existing = auth.user_for_player(uuid)
     if existing:
         msg = component([("[Website] ", "gold"), ("You already have an account: ", "yellow"), (existing, "white"),
@@ -107,7 +112,8 @@ async def start(request: Request, typed: str, servers: list[S.Server]) -> str:
         await srv.rcon(f"tellraw {name} {msg}")
     except Exception:
         _codes.pop(uuid, None)
-    return SENT_TEXT
+        return {"state": "offline", "message": "We couldn't reach the game just now. Try again in a moment."}
+    return {"state": "sent", "message": CODE_SENT, "player": name}
 
 
 def finish(typed: str, code: str, username: str, password: str, real_name: str = "") -> auth.User:

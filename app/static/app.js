@@ -54,7 +54,8 @@ function showLogin(message = "") {
       <label>Password<input class="input" type="password" name="password" autocomplete="current-password" required></label>
       <p class="login-error" role="alert">${esc(message)}</p>
       <button class="btn primary" type="submit">Sign in</button>
-      <p class="login-alt"><span id="login-signup" hidden>New here? <button type="button" class="link-btn" id="btn-signup">Make an account</button> · </span><a href="/guides/join">How to join the server</a> · <a href="/">Home</a></p>
+      <div class="login-new" id="login-signup" hidden><span class="muted">New here?</span><button type="button" class="btn" id="btn-signup">🌐 Make a new account</button></div>
+      <p class="login-home"><a href="/">← Back to home</a></p>
       <p class="login-made">Made with Solstone</p>
     </form></div>`;
   const form = $("#login-form");
@@ -89,7 +90,7 @@ function openSignup() {
       <input class="input" name="player" required maxlength="18" autocapitalize="off" autocomplete="off" value="${esc(player)}"></label>
       <p class="login-error" role="alert"></p>
       <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Send me a code</button></div></form>
-    <p class="muted small" style="margin-top:12px">Not on the server yet? <a href="/guides/join">How to join</a></p>`;
+    <p class="muted small" style="margin-top:12px">Not on the server yet? <a href="/#ask">Ask to join</a> on the home page first.</p>`;
   const step2 = (msg) => `<h2>Check the game chat</h2><p class="muted">${esc(msg)}</p>
     <form id="su-finish" autocomplete="off"><label>The six-digit code<input class="input" name="code" inputmode="numeric" maxlength="7" required autocomplete="one-time-code"></label>
       <p class="su-login">You'll sign in here with your Minecraft name, <b>${esc(player)}</b>, and the password you pick now.</p>
@@ -101,8 +102,12 @@ function openSignup() {
     const wire1 = () => $("#su-start", m).addEventListener("submit", async (e) => {
       e.preventDefault();
       player = new FormData(e.target).get("player").trim();
-      try { const r = await post("/api/public/signup/start", { player }); render2(r.message); }
-      catch (err) { $(".login-error", e.target).textContent = err.message; }
+      try {
+        const r = await post("/api/public/signup/start", { player });
+        if (r.state === "offline") { $(".login-error", e.target).textContent = r.message; return; }
+        if (r.player) player = r.player;
+        render2(r.message);
+      } catch (err) { $(".login-error", e.target).textContent = err.message; }
     });
     const container = m;
     const render2 = (msg) => {

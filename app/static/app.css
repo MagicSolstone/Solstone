@@ -2140,3 +2140,55 @@ a.glance-me:hover { border-color: var(--gold); }
 .hp-stat b small { font-size: .75em; color: var(--muted); font-weight: 600; }
 .hp-stat small { font-size: .78rem; }
 @media (max-width: 480px) { .hp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Sign-in page: a clear way to make an account, and home */
+.login-new { display: grid; gap: 6px; justify-items: center; margin-top: 6px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.1); }
+.login-new[hidden] { display: none; }
+.login-new .btn { width: 100%; justify-content: center; }
+.login-home { text-align: center; margin: 4px 0 0; font-size: .92rem; }
+.login-home a { color: #9fb6f0; }
+
+/* Home page: getting started, one step after another */
+.hp-steps { list-style: none; margin: 8px 0 6px; padding: 0; display: grid; gap: 0; }
+.hp-step { display: grid; grid-template-columns: 40px 1fr; gap: 14px; position: relative; padding-bottom: 20px; }
+.hp-step:last-child { padding-bottom: 4px; }
+.hp-step:not(:last-child)::before { content: ""; position: absolute; left: 19px; top: 40px; bottom: 0; width: 2px; background: var(--line); }
+.hp-step-dot { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 1.1rem;
+  background: rgba(242, 193, 78, .14); border: 2px solid rgba(242, 193, 78, .6); color: var(--gold); }
+.hp-step-body { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.hp-step-body h3 { margin: 6px 0 0; font-size: 1.15rem; }
+.hp-step-body p { margin: 0; }
+.hp-step-body .btn { justify-self: start; }
+.hp-step.done .hp-step-dot { background: rgba(76, 217, 100, .2); border-color: rgba(76, 217, 100, .7); color: transparent; position: relative; }
+.hp-step.done .hp-step-dot::after { content: "✓"; color: #6fe08a; position: absolute; }
+.hp-step.waiting .hp-step-dot { border-style: dashed; }
+.hp-step.now .hp-step-dot { box-shadow: 0 0 0 4px rgba(242, 193, 78, .18); }
+.hp-step.denied .hp-step-dot { border-color: rgba(255, 140, 90, .7); color: #ff9d6e; }
+.hp-step-btn { font-size: 1.02rem; padding: 9px 16px; }
+/* the Ask to join button glows slowly, to catch the eye */
+.glow { animation: hp-glow 2.8s ease-in-out infinite; }
+@keyframes hp-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(242, 193, 78, .0), 0 0 10px rgba(242, 193, 78, .25); }
+  50% { box-shadow: 0 0 0 6px rgba(242, 193, 78, .12), 0 0 26px rgba(242, 193, 78, .55); }
+}
+@media (prefers-reduced-motion: reduce) { .glow { animation: none; box-shadow: 0 0 18px rgba(242, 193, 78, .45); } }
+
+/* Home page pop-ups (Ask to join, Make an account) */
+.hp-pop { width: min(560px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--glass-edge); border-radius: 16px;
+  color: var(--bone); background: rgba(16, 20, 34, .96); overflow: auto; }
+.hp-pop::backdrop { background: rgba(5, 7, 14, .6); backdrop-filter: blur(3px); }
+.hp-pop-body { padding: 22px 22px 20px; display: grid; gap: 12px; }
+.hp-pop-body h2 { margin: 0 32px 0 0; }
+.hp-pop-body form { display: grid; gap: 12px; }
+.hp-pop-body label { display: grid; gap: 4px; font-weight: 700; }
+.hp-pop-body label.check { display: flex; font-weight: 400; }
+.hp-pop-body small { color: var(--muted); font-weight: 400; }
+.hp-pop-body .hp-ask { padding: 0; margin: 0; }
+.hp-pop-body .actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.hp-pop-ok { margin: 0; padding: 10px 12px; border-radius: 10px; background: rgba(76, 217, 100, .12); border: 1px solid rgba(76, 217, 100, .4); }
+.hp-pop-x { position: absolute; top: 10px; right: 12px; width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(255,255,255,.08);
+  color: var(--bone); font-size: 1.4rem; line-height: 1; cursor: pointer; }
+.hp-pop-x:hover { background: rgba(255,255,255,.16); }
+.hp-pop .login-error { margin: 0; color: #ffb38a; min-height: 0; }
+@media (max-width: 520px) { .hp-step { grid-template-columns: 32px 1fr; gap: 10px; } .hp-step-dot { width: 32px; height: 32px; font-size: .95rem; }
+  .hp-step:not(:last-child)::before { left: 15px; top: 32px; } .hp-pop-body { padding: 18px 16px; } }

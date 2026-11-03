@@ -26,6 +26,9 @@ DEFAULTS = {"name": "Solstone", "tagline": "", "java_address": "", "bedrock_addr
             # like are filled in from the details above, so the guides stay right when an address or port changes
             "guide_join": "", "guide_account": "", "guide_rules": "",
             "join_requests": False,       # an "Ask to join" form on the join guide, sent to the admins' notifications
+            # Solstone's own guides that are taken off (deleted, or never wanted): gone from Help and their links.
+            # Making an account starts off: the home page walks people through it.
+            "builtin_off": ["account"],
             "main_server": ""}            # shown first everywhere (home page, Ask to join), starred; its addresses feed the join guide
 GUIDE_MAX = 8000
 _EMAIL = re.compile(r"^[^@\s<>()\[\]\\,;:\"]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$")
@@ -194,6 +197,8 @@ def clean_config(body: dict) -> dict:
                 out[k] = max(0, min(12, int(body[k])))
             except (TypeError, ValueError):
                 pass
+    if "builtin_off" in body:
+        out["builtin_off"] = sorted({k for k in body["builtin_off"] or [] if k in ROLES})
     for k in ("home_live", "signup", "join_requests", "home_title"):
         if k in body:
             out[k] = bool(body[k])
@@ -374,6 +379,8 @@ def save(body: dict, author: str, pid: int | None = None) -> dict:
             db.x("UPDATE posts SET created_ts=? WHERE id=?", (when, pid))
     if role:                                    # one post per role: this one takes it over
         db.x("UPDATE posts SET role=NULL WHERE role=? AND id<>?", (role, pid))
+        if role in config()["builtin_off"]:
+            builtin(role, True)
     return _row(db.q("SELECT * FROM posts WHERE id=?", (pid,))[0])
 
 
@@ -436,7 +443,23 @@ def move_guides_to_posts() -> None:
 
 
 def delete(pid: int) -> bool:
-    if not db.q("SELECT id FROM posts WHERE id=?", (pid,)):
+    """A post deleted is gone: one standing in for a built-in guide takes the built-in with it (Solstone's own
+    wording doesn't come back in its place; Website → Posts can bring it back)."""
+    rows = db.q("SELECT role FROM posts WHERE id=?", (pid,))
+    if not rows:
         return False
     db.x("DELETE FROM posts WHERE id=?", (pid,))
+    role = rows[0]["role"] if "role" in rows[0].keys() else None
+    if role and not db.q("SELECT 1 FROM posts WHERE role=?", (role,)):
+        builtin(role, False)
     return True
+
+
+def builtin(key: str, on: bool) -> list[str]:
+    """Turn one of Solstone's built-in guides on or off. Returns the ones that are off."""
+    cfg = settings_store.load().get("site") or {}
+    off = set(cfg.get("builtin_off", DEFAULTS["builtin_off"]))
+    (off.discard if on else off.add)(key)
+    cfg["builtin_off"] = sorted(k for k in off if k in ROLES)
+    settings_store.save_section("site", cfg)
+    return cfg["builtin_off"]
