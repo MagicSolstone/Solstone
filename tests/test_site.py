@@ -486,5 +486,13 @@ def test_up_since_doesnt_trust_a_start_time_in_the_future(sid):
         from datetime import datetime
         when = datetime.fromtimestamp(now - 3500, db.tz()).strftime("%Y-%m-%d %H:%M:%S")
         assert abs(main._up_since("up-test", when) - (now - 3500)) < 2                           # believable: Crafty's own
+        stale = datetime.fromtimestamp(now - 14 * 3600, db.tz()).strftime("%Y-%m-%d %H:%M:%S")
+        assert abs(main._up_since("up-test", stale) - (now - 3600)) < 1                          # from before the restart we saw
+        db.x("DELETE FROM metrics WHERE server_id='up-test'")                                    # a quick restart between checks
+        for ts in (now - 20 * 3600, now - 1800):
+            db.x("INSERT INTO metrics(server_id, ts, running, players) VALUES (?,?,?,0)", ("up-test", ts, 1))
+        db.add_event("up-test", now - 3000, "server", "Server started")
+        assert abs(main._up_since("up-test", stale) - (now - 3000)) < 1
     finally:
         db.x("DELETE FROM metrics WHERE server_id='up-test'")
+        db.x("DELETE FROM events WHERE server_id='up-test'")

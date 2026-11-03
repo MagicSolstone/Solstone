@@ -537,19 +537,25 @@ async def public_status():
 
 def _up_since(sid: str, started) -> float | None:
     """When the server last started, as a timestamp. Crafty's start time has no time zone (it's read in this
-    container's, which can differ from Crafty's or the visitor's), so it's used only when it lands in the past and
-    agrees with Solstone's own checks; otherwise it's when Solstone's checks have seen it running since."""
+    container's, which can differ from Crafty's or the visitor's) and can be stale (left over from before a restart),
+    so it's used only when it lands in the past and after the last stop or start Solstone saw; otherwise it's when
+    Solstone's checks have seen it running since."""
     rows = db.q("SELECT ts FROM metrics WHERE server_id=? AND running=0 ORDER BY ts DESC LIMIT 1", (sid,))
-    after = db.q("SELECT MIN(ts) AS t FROM metrics WHERE server_id=? AND running=1 AND ts>?", (sid, rows[0]["ts"] if rows else 0))
+    stopped = rows[0]["ts"] if rows else 0
+    after = db.q("SELECT MIN(ts) AS t FROM metrics WHERE server_id=? AND running=1 AND ts>?", (sid, stopped))
     seen = after[0]["t"] if after and after[0]["t"] else None
+    ev = db.q("SELECT MAX(ts) AS t FROM events WHERE server_id=? AND type='server'", (sid,))
+    changed = max(stopped, (ev[0]["t"] if ev and ev[0]["t"] else 0))       # the last stop or start Solstone saw
     try:
         from datetime import datetime
         t = datetime.fromisoformat(str(started).replace("T", " ")).replace(tzinfo=db.tz()).timestamp() if started else None
     except (TypeError, ValueError):
         t = None
     now = time.time()
-    if t and t <= now + 60 and (seen is None or t <= seen + 900):
+    if t and t <= now + 60 and t >= changed - 300 and (seen is None or t <= seen + 900):
         return min(t, now)
+    if seen and changed > seen:                     # a start Solstone saw after its checks began (a quick restart)
+        return changed
     return seen
 
 
