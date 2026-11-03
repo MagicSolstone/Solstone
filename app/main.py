@@ -2258,7 +2258,13 @@ async def get_players(sid: str, removed: bool = False):
     if not _shows_play_time():
         data = _no_durations(data)
     see_map = _players_see_map()
+    st = await asyncio.to_thread(stacks.stacks)       # an account's other Minecraft names go under its main one
     for p in data["players"]:
+        info = st.get(p["name"].lower())
+        if info and info["name"].lower() != p["name"].lower():
+            p["under"] = info["name"]
+        elif info:
+            p["linked"] = [n for n in info["names"] if n.lower() != p["name"].lower()]
         if not see_map and not _own(p.get("uuid") or ""):          # a player account doesn't see where anyone else is (unless the map is on for them)
             p.pop("position", None)
             p.pop("dimension", None)
@@ -2269,7 +2275,10 @@ async def get_players(sid: str, removed: bool = False):
 async def get_player(sid: str, uuid: str):
     if not _own(uuid):
         raise HTTPException(404, "Player not found")
-    data = await S.player_detail(await _server(sid), uuid)
+    srv = await _server(sid)
+    data = await S.player_detail(srv, uuid)
+    if data:                                     # their other Minecraft accounts, and everyone's progress added up
+        data["together"] = await asyncio.to_thread(stacks.together, srv, data["name"])
     if data and not _shows_play_time():
         data = _no_durations(data)
     if not data:

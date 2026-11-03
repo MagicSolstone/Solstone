@@ -56,7 +56,7 @@ function showLogin(message = "") {
       <button class="btn primary" type="submit">Sign in</button>
       <div class="login-new" id="login-signup" hidden><span class="muted">New here?</span><button type="button" class="btn" id="btn-signup">🌐 Make a new account</button></div>
       <p class="login-home"><a href="/">← Back to home</a></p>
-      <p class="login-made">Made with Solstone</p>
+      <p class="login-made">Solstone made by Tyler J.</p>
     </form></div>`;
   const form = $("#login-form");
   form.querySelector("input").focus();
@@ -896,26 +896,33 @@ function wireHeader(s) {
 
 // ---------------------------------------------------------------- overview tab
 // Players down the side, play time and the activity timeline in the main column.
-function playerRow(p) {
+function playerRow(p, sub = false) {
   const href = p.uuid && isMine(p.uuid) ? `#/s/${encodeURIComponent(curSid)}/p/${p.uuid}` : null;
   const h = p.headline || {};
-  const sub = p.online
+  const line = p.online
     ? `<span class="live-tag"><span class="status-dot on"></span>Playing</span>${p.dimension ? `<span>${esc(dimName(p.dimension))}</span>` : ""}`
     : `<span>Last seen ${esc(fmtAgo(p.last_seen))}</span>${p.removed ? '<span class="chip" title="Not on the whitelist any more">Removed</span>' : ""}`;
   const vitals = p.online && p.health != null
     ? `<span title="Health">❤ ${p.health}</span>${p.food != null ? `<span title="Hunger">🍗 ${p.food}</span>` : ""}`
     : "";
   const inner = `${headHtml(p, 40)}
-    <div class="pr-main"><div class="pr-name">${esc(p.name)}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}${p.op ? '<span class="op-badge">OP</span>' : ""}</div>
-      <div class="pr-sub">${sub}${vitals}</div></div>`;
-  const cls = `pl-row ${p.online ? "is-online" : ""}`;
+    <div class="pr-main"><div class="pr-name">${esc(p.name)}${p.linked?.length ? `<sup class="stack-plus" title="Also plays as ${esc(p.linked.join(", "))}">+</sup>` : ""}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}${p.op ? '<span class="op-badge">OP</span>' : ""}</div>
+      <div class="pr-sub">${sub ? `<span class="pl-also" title="Linked to ${esc(p.under)}'s account">↳ ${esc(p.under)}'s other account</span>` : ""}${line}${vitals}</div></div>`;
+  const cls = `pl-row ${p.online ? "is-online" : ""} ${sub ? "pl-sub" : ""}`;
   return href ? `<a class="${cls}" href="${href}">${inner}</a>` : `<div class="${cls}">${inner}</div>`;
 }
 function playersListHtml(data) {
-  const on = data.players.filter((p) => p.online), off = data.players.filter((p) => !p.online);
   if (!data.players.length) return `<div class="empty"><h3>Nobody has joined yet</h3><p>Players appear here after their first visit.</p></div>`;
-  return `${on.length ? `<div class="pl-group"><div class="pl-label">Playing now · ${on.length}</div>${on.map(playerRow).join("")}</div>` : `<p class="muted pl-none">Nobody is playing right now.</p>`}
-    ${off.length ? `<div class="pl-group"><div class="pl-label">${on.length ? "Everyone else" : "Players"}</div>${off.map(playerRow).join("")}</div>` : ""}`;
+  // Each person once: their main Minecraft account, with their other ones (linked to the same website account) tucked
+  // in just under it. A family is "playing now" when any of its accounts is.
+  const here = new Set(data.players.map((p) => p.name.toLowerCase()));
+  const fams = data.players.filter((p) => !p.under || !here.has(p.under.toLowerCase()))
+    .map((p) => [p, ...data.players.filter((x) => x.under && x.under.toLowerCase() === p.name.toLowerCase())]);
+  const html = (list) => list.map(([main, ...rest]) => playerRow(main) + rest.map((x) => playerRow(x, true)).join("")).join("");
+  const on = fams.filter((f) => f.some((p) => p.online)), off = fams.filter((f) => !f.some((p) => p.online));
+  const playing = data.players.filter((p) => p.online).length;
+  return `${on.length ? `<div class="pl-group"><div class="pl-label">Playing now · ${playing}</div>${html(on)}</div>` : `<p class="muted pl-none">Nobody is playing right now.</p>`}
+    ${off.length ? `<div class="pl-group"><div class="pl-label">${on.length ? "Everyone else" : "Players"}</div>${html(off)}</div>` : ""}`;
 }
 // Players taken off the whitelist are left out; admins can show them again for a look (?removed=1).
 let showRemoved = false;
@@ -947,7 +954,7 @@ async function viewOverview(sid) {
 // The overview for a Player account: a few cards about the server right now, then who played which days.
 function mountPlayerGlance(el, daysEl, s, data) {
   const sid = s.id;
-  const mine = data.players.find((p) => isMine(p.uuid));
+  const mine = data.players.find((p) => isMine(p.uuid) && !p.under) || data.players.find((p) => isMine(p.uuid));     // their main account
   const phase = (t) => (t < 6000 ? "Morning" : t < 12000 ? "Afternoon" : t < 13000 ? "Sunset" : t < 23000 ? "Night" : "Sunrise");
   const tps = s.perf?.tps;
   const load = async () => {
@@ -1030,6 +1037,10 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
     else if (tab === "fishing") renderPlayerFishing(el, sid, p);
   };
   renderTab();
+  $("#strip").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-strip]");
+    if (b) { stripAlone = b.dataset.strip === "one"; $("#strip").innerHTML = statStrip(p); }
+  });
   $("#hero").addEventListener("click", (e) => { if (e.target.closest("[data-give]")) openGiveItem(sid, p.name); });
   $("#hero").addEventListener("change", async (e) => {
     const sel = e.target.closest("[data-tp]");
@@ -1110,14 +1121,21 @@ function fishingChip(p) {
   return `<a class="chip chip-link" href="#/s/${encodeURIComponent(curSid)}/fishing/${encodeURIComponent(p.name)}" title="${esc(tip)}">🎣 Fishing <b>Lv ${f.level}</b> ${esc(f.title)}</a>`;
 }
 
+// One person with more than one Minecraft account: their progress all together (the default), or one account's.
+// What's one character's own (level, health, inventory, advancements) stays on that account's page.
+let stripAlone = false;
 function statStrip(p) {
-  const h = p.headline || {};
+  const t = p.together;
+  const h = (t && !stripAlone ? t.headline : p.headline) || {};
+  const switcher = t ? `<div class="strip-together"><span>${t.accounts.map((a) => a.uuid === p.uuid ? `<b>${esc(a.name)}</b>`
+      : `<a href="#/s/${encodeURIComponent(curSid)}/p/${a.uuid}">${esc(a.name)}</a>`).join(" + ")}</span>
+    <span class="seg" role="group" aria-label="Whose numbers"><button type="button" data-strip="all" aria-pressed="${!stripAlone}">All together</button><button type="button" data-strip="one" aria-pressed="${stripAlone}">Just ${esc(p.name)}</button></span></div>` : "";
   const cells = [
     ...(typeof h.play_time === "number" ? [[fmtDuration(h.play_time), "Time played"]] : []),     // admins only
     [fmtNum(h.mob_kills), "Mobs defeated"], [fmtNum(h.deaths), "Deaths"],
     [fmtNum(h.blocks_mined), "Blocks mined"], [fmtDistance(h.distance_cm), "Distance travelled"], [fmtNum(h.items_crafted), "Items crafted"],
   ];
-  return `<div class="stat-strip">${cells.map(([v, k]) => `<div><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div></div>`).join("")}</div>`;
+  return `${switcher}<div class="stat-strip">${cells.map(([v, k]) => `<div><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div></div>`).join("")}</div>`;
 }
 
 function inventoryHtml(p) {

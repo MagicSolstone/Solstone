@@ -88,3 +88,22 @@ def recap(r: dict | None) -> dict | None:
             m["first"] = p["first"]
     players = sorted(merged.values(), key=lambda p: -(p.get("seconds") or 0))
     return {**r, "players": players}
+
+
+def together(srv, name: str) -> dict | None:
+    """For a player page: the person's Minecraft accounts on this server (main first) and their progress added up
+    (time played, mobs, blocks mined, distance...). What belongs to one character (level, health, inventory) isn't
+    added: that stays on each account's own page. None for someone with one account here."""
+    from . import servers as S
+    info = stacks().get(name.lower())
+    if not info:
+        return None
+    known = {p["name"].lower(): u for u, p in S.known_players(srv).items()}
+    names = [n for n in sorted(info["names"], key=lambda n: n.lower() != info["name"].lower()) if n.lower() in known]
+    if len(names) < 2:
+        return None
+    total: dict[str, int] = {}
+    for n in names:
+        for k, v in S.headline_stats(S.player_stats(srv, known[n.lower()])).items():
+            total[k] = max(total.get(k, 0), v) if k in BEST_OF else total.get(k, 0) + v
+    return {"main": info["name"], "accounts": [{"name": n, "uuid": known[n.lower()]} for n in names], "headline": total}

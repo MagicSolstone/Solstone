@@ -2268,3 +2268,11 @@ body.ui-hidden .manage-sub { display: none; }
 .ann-colors[hidden] { display: none; }
 .ann-color { display: inline-flex; align-items: center; gap: 4px; }
 .ann-color input[type=color] { width: 40px; height: 30px; padding: 0; border: 1px solid var(--glass-edge); border-radius: 6px; background: none; cursor: pointer; }
+
+/* A person's other Minecraft accounts, tucked in under their main one */
+.pl-row.pl-sub { margin-left: 24px; margin-top: -2px; grid-template-columns: 32px minmax(0, 1fr); padding-block: 6px; border-left: 3px solid rgba(242, 193, 78, .45); }
+.pl-row.pl-sub .head, .pl-row.pl-sub img { width: 32px; height: 32px; }
+.pl-also { color: var(--muted); font-size: .8rem; }
+
+.strip-together { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 0 0 8px; }
+.strip-together a { color: var(--gold); }

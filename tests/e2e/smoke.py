@@ -701,7 +701,7 @@ def main() -> int:
                 if x.get("role") == "join":
                     pg.request.delete(f"{base}/api/posts/{x['id']}", headers=H)
             anon.goto(f"{base}/guides/join"); anon.wait_for_timeout(900)          # deleted: gone, not Solstone's wording in its place
-            if not anon.url.endswith("/help") or "How to join the server" in (anon.locator(".hp-posts").text_content() if anon.locator(".hp-posts").count() else ""):
+            if not anon.url.endswith("/help") or "How to join the server" in (anon.locator("#guides").text_content() if anon.locator("#guides").count() else ""):
                 problems.append("help: a deleted guide came back as Solstone's own")
             pg.goto(f"{base}/app#/manage/website"); pg.reload(); pg.wait_for_timeout(1500)
             pg.click('.fws-tabs [data-tab="posts"]'); pg.wait_for_timeout(800)
@@ -804,7 +804,19 @@ def main() -> int:
             hrefs = " ".join(pl.eval_on_selector_all("nav[aria-label='Server sections'] a", "els => els.map(e => e.getAttribute('href'))"))
             if "World" in tabs or "/chat" in hrefs or pl.locator("nav[aria-label='Server sections'] a").count() < 2:
                 problems.append(f"player account: wrong tabs ({tabs.strip()})")
+            lr = pg.request.patch(f"{base}/api/users/{u['id']}", data={"add_player": "Gimli_Jr"}, headers=H)     # their second account
+            if not lr.ok:
+                problems.append(f"linking a second account failed: {lr.status} {lr.text()[:200]}")
+            pl.goto(f"{base}/app#/s/{sid}"); pl.reload(); pl.wait_for_timeout(1500)
+            rows = [x.strip() for x in pl.locator("#players-body .pl-row .pr-name").all_text_contents()]
+            subs = pl.locator("#players-body .pl-row.pl-sub").all_text_contents()
+            ti = next((i for i, x in enumerate(rows) if x.startswith("Tyler")), -1)
+            if not subs or "Gimli_Jr" not in subs[0] or ti < 0 or not rows[ti + 1].startswith("Gimli_Jr"):
+                problems.append(f"players list: a second account isn't tucked in under the main one ({rows})")
+            check(pl, "players-linked")
             pl.goto(f"{base}/app#/s/{sid}/p/{puuid}"); pl.wait_for_timeout(1300)
+            if not pl.locator(".strip-together [data-strip=one]").count():
+                problems.append("player page: no All together / Just this one for someone with two accounts")
             check(pl, "player-account-own-page")
             # a player is shown by their Minecraft name, and has no display name of their own to pick
             pl.click("#btn-account"); pl.wait_for_timeout(300)

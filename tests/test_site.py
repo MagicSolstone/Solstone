@@ -414,7 +414,7 @@ def test_home_counts_and_version_at_the_bottom(client, anon):
     try:
         cfg = anon.get("/api/public/site").json()
         assert cfg["home_news"] == 12 and cfg["home_guides"] == 0                      # 12 at most; 0 leaves it off
-        assert f"Made with Solstone {VERSION}" in anon.get("/").text
+        assert f"Solstone {VERSION} · made by Tyler J." in anon.get("/").text
         assert f"Solstone {VERSION}" in client.get("/app").text
     finally:
         client.put("/api/settings/site", json={"home_news": 3, "home_guides": 4})

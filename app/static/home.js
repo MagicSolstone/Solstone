@@ -6,7 +6,7 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const hp = { site: null };
 // Two kinds of page: News (what's happening) and Help (guides, then questions and answers).
-const SECTIONS = { news: ["News", "news"], help: ["Help", "help"], events: ["Events", "events"] };
+const SECTIONS = { news: ["News", "news"], help: ["News & Help", "help"], events: ["Events", "events"] };
 
 // Old bookmarks into the app (/#/s/...) still work: the app lives at /app now.
 if (location.hash.startsWith("#/")) location.replace(`/app${location.hash}`);
@@ -267,7 +267,7 @@ async function home() {
     <p class="hp-ask-status" id="ask-status" hidden></p>
     ${statusPanel(s)}
     ${joinCard(s)}
-    ${nNews ? `<section><div class="hp-head"><h2>News</h2><a href="/news">All news →</a></div>${postCards(news.slice(0, nNews), "No news yet.")}${more(news, nNews, "/news", "More news")}</section>` : ""}
+    ${nNews ? `<section><div class="hp-head"><h2>News</h2><a href="/help#news">All news →</a></div>${postCards(news.slice(0, nNews), "No news yet.")}${more(news, nNews, "/help#news", "More news")}</section>` : ""}
     ${nGuides ? `<section><div class="hp-head"><h2>Help</h2><a href="/help">All guides and questions →</a></div>${postCards(help.slice(0, nGuides), "")}${more(help, nGuides, "/help", "More guides and questions")}</section>` : ""}
     ${s.about ? `<section class="hp-about glass"><h2>About</h2><div class="hp-body">${markdown(s.about)}</div></section>` : ""}`;
 }
@@ -289,10 +289,14 @@ async function eventsPage() {
 async function section(key) {
   if (key === "events") return eventsPage();
   if (key === "help") {
-    const [guides, faq] = await Promise.all([getJSON("/api/public/posts?category=guide&limit=100"), getJSON("/api/public/posts?category=faq&limit=100")]);
-    return `<section><h1>Help</h1><p class="muted">How to join, how things work here, and answers to common questions.</p></section>
-      <section><h2>Guides</h2>${postCards([...builtinCards(), ...guides], "")}</section>
-      <section id="faq"><h2>Questions</h2>${faqList(faq)}</section>
+    // News and Help together: what's new, then the guides, then questions (only when there are some)
+    const [news, guides, faq] = await Promise.all([getJSON("/api/public/posts?category=news&limit=100"),
+      getJSON("/api/public/posts?category=guide&limit=100"), getJSON("/api/public/posts?category=faq&limit=100")]);
+    const help = [...builtinCards(), ...guides];
+    return `<section><h1>News &amp; Help</h1><p class="muted">What's new on the server, how to join, and how things work here.</p></section>
+      <section id="news"><h2>News</h2>${postCards(news, "No news yet.")}</section>
+      ${help.length ? `<section id="guides"><h2>Guides</h2>${postCards(help, "")}</section>` : ""}
+      ${faq.length ? `<section id="faq"><h2>Questions</h2>${faqList(faq)}</section>` : ""}
       ${hp.site.contact ? `<section id="contact" class="hp-contact glass"><h2>Contact</h2><p>A problem with your account, a question (parents too), or something stolen or broken in the game? Email <a href="mailto:${esc(hp.site.contact)}">${esc(hp.site.contact)}</a>.</p></section>` : ""}`;
   }
   const [title, cat] = SECTIONS[key];
@@ -304,7 +308,7 @@ async function article(slug) {
   let p;
   if (slug === "__preview__") return previewArticle();
   try { p = await getJSON(`/api/public/posts/${encodeURIComponent(slug)}`); } catch { return `<section><h1>Not found</h1><p class="muted">That post isn't here any more. <a href="/">Back home</a></p></section>`; }
-  const back = { news: ["/news", "News"], guide: ["/help", "Help"], faq: ["/help", "Help"] }[p.category] || ["/", "Home"];
+  const back = { news: ["/help", "News & Help"], guide: ["/help", "News & Help"], faq: ["/help", "News & Help"] }[p.category] || ["/", "Home"];
   document.title = `${p.title} · ${hp.site.name}`;
   const join = p.role === "join";            // the join guide: the Ask to join form goes under it
   return `<article class="hp-article glass"><a class="back" href="${back[0]}">← ${esc(back[1])}</a>
@@ -320,7 +324,7 @@ function previewArticle() {
   if (!p) return `<section><h1>Nothing to preview</h1><p class="muted">Press 👁 Preview in the post editor (Website → Posts).</p></section>`;
   document.title = `Preview: ${p.title} · ${hp.site.name}`;
   return `<p class="hp-preview-note glass">👁 <b>Preview.</b> Only you can see this. Nobody else sees the post until it's published and saved. Press Preview again after changes, or reload this tab.</p>
-    <article class="hp-article glass"><a class="back" href="${p.category === "news" ? "/news" : "/help"}">← ${p.category === "news" ? "News" : "Help"}</a>
+    <article class="hp-article glass"><a class="back" href="/help">← News &amp; Help</a>
     <h1>${esc(p.title)}</h1><p class="hp-post-meta">${esc(dateText(p.created))}${p.author ? ` · ${esc(p.author)}` : ""}</p>
     <div class="hp-body">${markdown(fillPostVars(p.body, hp.site, p.role === "join"))}</div></article>`;
 }
@@ -330,7 +334,7 @@ async function builtinArticle(key) {
   if (slug) return article(slug);             // a post stands in for this guide
   const g = BUILTIN[key];
   document.title = `${g.title} · ${hp.site.name}`;
-  return `<article class="hp-article glass"><a class="back" href="/help">← Help</a>
+  return `<article class="hp-article glass"><a class="back" href="/help">← News &amp; Help</a>
     <h1>${esc(g.title)}</h1><div class="hp-body">${markdown(guideText(key, hp.site))}</div></article>
     ${key === "join" && hp.site.join_requests ? askFormHtml() : ""}`;
 }
@@ -339,7 +343,7 @@ async function builtinArticle(key) {
 // anyone else being able to see who's on the list.
 function askTicket() { try { return JSON.parse(localStorage.getItem("solstone-ask") || "null"); } catch { return null; } }
 // A small badge in the corner while a request is out: sent, waiting (it can take a while), then "you're in".
-// It checks once a minute, and never gets stuck: × hides it, a ticket the server no longer knows is dropped,
+// It checks every 15 seconds while the page is open (a minute when it's in the background), and never gets stuck: × hides it, a ticket the server no longer knows is dropped,
 // and after a week of waiting the badge stops (the request still shows on the join guide).
 const ASK_BADGE_DAYS = 7;
 let askTimer = 0;
@@ -351,7 +355,7 @@ async function showAskStatus() {
   try {
     const r = await fetch("/api/public/join-request/status", { method: "POST", headers: { "Content-Type": "application/json", "X-Solstone": "1" }, body: JSON.stringify({ token: t.token }) });
     d = r.ok ? await r.json() : null;
-  } catch { askTimer = setTimeout(showAskStatus, 60000); return; }
+  } catch { askTimer = setTimeout(showAskStatus, 30000); return; }
   if (!d || d.state === "unknown") { forgetAsk(); return; }
   stepState(d);
   const box = $("#step-ask") ? null : $("#ask-status");
@@ -369,7 +373,7 @@ async function showAskStatus() {
   }
   const old = Date.now() - (t.at || Date.now()) > ASK_BADGE_DAYS * 86400000;
   renderAskBadge(d.state === "in" || d.state === "denied" || (!old && !t.hidden) ? d : null);
-  if (d.state !== "in" && d.state !== "denied") askTimer = setTimeout(showAskStatus, document.hidden ? 180000 : 60000);
+  if (d.state !== "in" && d.state !== "denied") askTimer = setTimeout(showAskStatus, document.hidden ? 60000 : 15000);
 }
 function renderAskBadge(d) {
   let b = $("#ask-badge");
@@ -445,7 +449,7 @@ async function route() {
   try {
     if (path === "/") html = await home();
     else if (path.startsWith("/post/")) { nav = ""; html = await article(decodeURIComponent(path.slice(6))); }
-    else if (path === "/guides" || path === "/faq") { history.replaceState(null, "", path === "/faq" ? "/help#faq" : "/help"); route(); return; }   // the old pages
+    else if (path === "/guides" || path === "/faq" || path === "/news") { history.replaceState(null, "", { "/faq": "/help#faq", "/news": "/help#news" }[path] || "/help"); route(); return; }   // the old pages
     else if (path.startsWith("/guides/") && BUILTIN[path.slice(8)] && guideOn(hp.site, path.slice(8))) { nav = "help"; html = await builtinArticle(path.slice(8)); }
     else if (path.startsWith("/guides/")) { history.replaceState(null, "", "/help"); route(); return; }       // a guide that's been taken off
     else if (SECTIONS[path.slice(1)]) { nav = path.slice(1); html = await section(nav); }
@@ -459,7 +463,7 @@ async function route() {
   showAskStatus();
   if (path === "/" && location.hash === "#ask" && hp.site.join_requests) { history.replaceState(null, "", "/"); openPop(askFormHtml(true)); }
   else if (path === "/" && location.hash === "#account" && hp.site.signup) { history.replaceState(null, "", "/"); openSignup(); }
-  else if (["#faq", "#ask", "#contact"].includes(location.hash)) $(location.hash)?.scrollIntoView(); else window.scrollTo(0, 0);
+  else if (["#faq", "#ask", "#contact", "#news", "#guides"].includes(location.hash)) $(location.hash)?.scrollIntoView(); else window.scrollTo(0, 0);
 }
 
 // The status panel keeps itself current while the home page is open (the server is only asked every 15 s).
