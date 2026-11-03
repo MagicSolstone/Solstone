@@ -1,3 +1,12 @@
+# Solstone 1.15.1
+
+- **Safer giving back after games:** only the game's own kit is taken away. Nothing else of a player's is ever cleared.
+  - Anything else they're carrying (picked up in the game, a prize or holiday reward given during it, or things gathered while Solstone was down) is kept safe and checked first, then put back in their empty slots after their own things return.
+  - Whatever doesn't fit waits until they make room, then arrives by itself. Nothing is dropped on the ground.
+  - Their own things still come back exactly, slot for slot.
+- **No surprise teleports:** someone whose things were kept from before Solstone last restarted gets them back where they are, not where they stood before the game.
+- **One more check before a game:** if something changes in a player's inventory while it's being copied, they sit that game out and nothing of theirs is touched.
+
 # Solstone 1.15.0
 
 - **Players' things are kept safe during games:**
