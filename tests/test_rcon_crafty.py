@@ -180,3 +180,14 @@ def test_crafty_false_placeholders_are_unknown():
         assert st["running"] is True and st["desc"] is None and st["icon"] is None and st["version"] is None
         await c.close()
     asyncio.run(run())
+
+
+def test_long_bedrock_names_go_by_uuid_in_commands(monkeypatch):
+    """The game takes 16 characters at most for a name in a command; a Bedrock name with its dot can be 17."""
+    from app import servers as S
+    srv = S.Server.__new__(S.Server)
+    monkeypatch.setattr(S, "known_players", lambda s: {"00000000-0000-0000-0009-01f2a3b4c5d6": {"name": ".ABCDEFGHIJKLMNOP"}})
+    assert S.long_names_to_uuids(srv, "effect give .ABCDEFGHIJKLMNOP minecraft:instant_health 1 10 true") == \
+        "effect give 00000000-0000-0000-0009-01f2a3b4c5d6 minecraft:instant_health 1 10 true"
+    assert S.long_names_to_uuids(srv, "tp .Short Tyler") == "tp .Short Tyler"                       # short names as they were
+    assert S.long_names_to_uuids(srv, "whitelist add .ABCDEFGHIJKLMNOP").endswith(".ABCDEFGHIJKLMNOP")

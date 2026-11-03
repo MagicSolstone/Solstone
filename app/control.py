@@ -184,6 +184,16 @@ async def broadcast(srv: S.Server, message: str, sender: str, on_screen: bool) -
 
 
 async def player_action(srv: S.Server, player: str, action: str, body: dict, sender: str) -> list[dict]:
+    """A button for one player. The game answering "No player was found" (they've left, or the name didn't match)
+    counts as not done, so the page says so instead of "done"."""
+    res = await _player_action(srv, player, action, body, sender)
+    for r in res:
+        if any(h in (r.get("output") or "").lower() for h in ("no player was found", "no entity was found", "invalid name or uuid")):
+            r["ok"] = False
+    return res
+
+
+async def _player_action(srv: S.Server, player: str, action: str, body: dict, sender: str) -> list[dict]:
     p = check_name(player)
     if action == "message":
         return await run_all(srv, [f"tellraw {p} {component([(f'[{sender} → you] ', 'light_purple'), (clean_text(body.get('message', '')), None)])}"])

@@ -194,6 +194,7 @@ class Server:
         conf = self.rcon_conf()
         if not conf:
             return None
+        cmd = long_names_to_uuids(self, cmd)
         if time.monotonic() < self._rcon_backoff:
             raise RconError(self.rcon_error or "RCON unavailable (retrying shortly)")
         if self._rcon is None or (self._rcon.host, self._rcon.port, self._rcon.password) != conf:
@@ -829,6 +830,21 @@ def _dirs(srv: Server) -> dict[str, Path]:
         "stats": _first_dir(w, "stats", "players/stats"),
         "advancements": _first_dir(w, "advancements", "players/advancements"),
     }
+
+
+# The game takes at most 16 characters for a player's name in a command ("Invalid name or UUID" otherwise), but a
+# Bedrock player's name through Floodgate can be 17: a 16-character gamertag with the dot in front. Their UUID works
+# wherever a name does for a player on the server, so a command naming one of them goes out with their UUID instead.
+# (Not for whitelist, op and ban, which look a name up rather than find someone online.)
+_BY_NAME_ONLY = ("whitelist ", "fwhitelist ", "op ", "deop ", "ban ", "pardon ", "ban-ip ", "pardon-ip ")
+
+
+def long_names_to_uuids(srv: "Server", cmd: str) -> str:
+    words = cmd.split(" ")
+    if cmd.startswith(_BY_NAME_ONLY) or not any(len(w) > 16 and w[0] == "." for w in words):
+        return cmd
+    by_name = {p["name"].lower(): u for u, p in known_players(srv).items()}
+    return " ".join(by_name.get(w.lower(), w) if len(w) > 16 and w[0] == "." else w for w in words)
 
 
 def known_players(srv: Server) -> dict[str, dict]:

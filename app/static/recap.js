@@ -3,9 +3,31 @@
 "use strict";
 
 // A "+" after a name that stands for more than one Minecraft account (an account's Java and Bedrock names, say).
+// Hover shows the other names; a tap (phones) shows them in a small bubble.
 function stackMark(p) {
-  return p?.also?.length ? `<sup class="stack-plus" title="Also plays as ${esc(p.also.join(", "))}">+</sup>` : "";
+  const also = p?.also || p?.linked;
+  return also?.length ? `<sup class="stack-plus" role="button" tabindex="0" data-also="${esc(also.join(", "))}" title="Also plays as ${esc(also.join(", "))}" aria-label="Also plays as ${esc(also.join(", "))}">+</sup>` : "";
 }
+function showAlso(el) {
+  let tip = document.getElementById("also-tip");
+  if (!tip) { tip = document.createElement("div"); tip.id = "also-tip"; tip.className = "also-tip"; tip.setAttribute("role", "status"); document.body.append(tip); }
+  tip.textContent = `Also plays as ${el.dataset.also}`;
+  tip.hidden = false;
+  const r = el.getBoundingClientRect(), w = tip.offsetWidth;
+  tip.style.left = `${Math.max(8, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 8))}px`;
+  tip.style.top = `${r.bottom + 6 + scrollY}px`;
+  clearTimeout(showAlso.t); showAlso.t = setTimeout(() => { tip.hidden = true; }, 3500);
+}
+// in the capture phase, so a + inside a link shows the names instead of following the link
+document.addEventListener("click", (e) => {
+  const plus = e.target.closest?.(".stack-plus[data-also]");
+  if (plus) { e.preventDefault(); e.stopPropagation(); showAlso(plus); return; }
+  const tip = document.getElementById("also-tip"); if (tip) tip.hidden = true;
+}, true);
+document.addEventListener("keydown", (e) => {
+  const plus = e.target.closest?.(".stack-plus[data-also]");
+  if (plus && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); showAlso(plus); }
+});
 
 function recapSpan(sec) {
   sec = Math.round(sec || 0);

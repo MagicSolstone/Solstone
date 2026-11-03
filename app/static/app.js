@@ -906,7 +906,7 @@ function playerRow(p, sub = false) {
     ? `<span title="Health">❤ ${p.health}</span>${p.food != null ? `<span title="Hunger">🍗 ${p.food}</span>` : ""}`
     : "";
   const inner = `${headHtml(p, 40)}
-    <div class="pr-main"><div class="pr-name">${esc(p.name)}${p.linked?.length ? `<sup class="stack-plus" title="Also plays as ${esc(p.linked.join(", "))}">+</sup>` : ""}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}${p.op ? '<span class="op-badge">OP</span>' : ""}</div>
+    <div class="pr-main"><div class="pr-name">${esc(p.name)}${stackMark(p)}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}${p.op ? '<span class="op-badge">OP</span>' : ""}</div>
       <div class="pr-sub">${sub ? `<span class="pl-also" title="Linked to ${esc(p.under)}'s account">↳ ${esc(p.under)}'s other account</span>` : ""}${line}${vitals}</div></div>`;
   const cls = `pl-row ${p.online ? "is-online" : ""} ${sub ? "pl-sub" : ""}`;
   return href ? `<a class="${cls}" href="${href}">${inner}</a>` : `<div class="${cls}">${inner}</div>`;
@@ -1022,6 +1022,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
     ...(s.fishing_journal ? [["fishing", "Fishing"]] : [])];
   setView(`<a class="back" href="#/s/${encodeURIComponent(sid)}">← ${esc(s.name)}</a>
     <div id="hero">${playerHero(p)}</div>
+    <div id="hero-acts">${giveBtn(p)}</div>
     <div id="strip">${statStrip(p)}</div>
     <nav class="tabs" aria-label="Player sections">${tabs.map(([k, l]) => `<a href="${base}${k === "inventory" ? "" : "/" + k}" ${k === tab ? 'aria-current="page"' : ""}>${l}</a>`).join("")}</nav>
     <div id="player-tab"></div>`);
@@ -1041,18 +1042,35 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
     const b = e.target.closest("[data-strip]");
     if (b) { stripAlone = b.dataset.strip === "one"; $("#strip").innerHTML = statStrip(p); }
   });
-  $("#hero").addEventListener("click", (e) => { if (e.target.closest("[data-give]")) openGiveItem(sid, p.name); });
-  $("#hero").addEventListener("change", async (e) => {
-    const sel = e.target.closest("[data-tp]");
-    if (!sel?.value) return;
-    const [action, target] = sel.value.split(":");
-    const text = sel.selectedOptions[0].textContent;
-    sel.value = "";
+  const acts = $("#hero-acts");
+  const doIt = async (action, body, said) => {
     try {
-      const r = await post(`/api/servers/${encodeURIComponent(sid)}/control/player/${encodeURIComponent(p.name)}/${action}`, { target });
+      const r = await post(`/api/servers/${encodeURIComponent(sid)}/control/player/${encodeURIComponent(p.name)}/${action}`, body);
       const bad = (r.results || []).find((x) => x.ok === false);
-      showToast(bad ? esc((bad.output || "The game said no").slice(0, 160)) : `${esc(text)}: done`, bad ? 5000 : 2500);
-    } catch (err) { showError(esc(err.message), 5000); }
+      if (bad) showError(esc((bad.output || "The game said no").slice(0, 160)), 6000); else showToast(esc(said), 2500);
+      return !bad;
+    } catch (err) { showError(esc(err.message), 5000); return false; }
+  };
+  acts.addEventListener("click", async (e) => {
+    if (e.target.closest("[data-give]")) { openGiveItem(sid, p.name); return; }
+    const b = e.target.closest("button[data-pa]");
+    if (!b) return;
+    if (b.dataset.pa === "kick") {
+      if (await confirmBox(`Kick ${p.name}?`, "They can join again right away unless bedtime or a screen-time limit is on.", "Kick")) doIt("kick", { reason: "Kicked by an admin" }, `Kicked ${p.name}`);
+      return;
+    }
+    doIt(b.dataset.pa, {}, b.dataset.pa === "heal" ? `${p.name} healed and fed` : "Done");
+  });
+  acts.addEventListener("change", (e) => {
+    const sel = e.target.closest("[data-tp], [data-gm]");
+    if (!sel?.value) return;
+    if (sel.matches("[data-gm]")) doIt("gamemode", { mode: sel.value }, `${p.name} is now in ${sel.value}`);
+    else { const [action, target] = sel.value.split(":"); doIt(action, { target }, `${sel.selectedOptions[0].textContent}: done`); }
+    sel.value = "";
+  });
+  acts.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (await doIt("message", { message: new FormData(e.target).get("message") }, "Message sent")) e.target.reset();
   });
   if (p.online) {
     let last = JSON.stringify(p.data);
@@ -1061,6 +1079,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
       if (!n || !$("#hero")) return;
       const sig = JSON.stringify(n.data);
       $("#hero").innerHTML = playerHero(n);
+      if (n.online !== p.online && !acts.contains(document.activeElement)) { acts.innerHTML = giveBtn(n); p.online = n.online; }     // they left
       if (sig !== last) {
         last = sig; p = n;
         $("#strip").innerHTML = statStrip(n);
@@ -1072,14 +1091,19 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
 
 // Giving needs the player in the game, and only admins can do it.
 // Teleporting likewise; "others" are the other players online now.
+// An admin's buttons for someone playing now, on their own page: the same as the Control tab has for them.
 const giveBtn = (p) => {
   if (!isAdmin() || !p.online) return "";
   const others = (state.servers.find((x) => x.id === curSid)?.online || []).filter((n) => n.toLowerCase() !== p.name.toLowerCase());
-  return `<div class="btn-row hero-actions"><button class="btn sm" type="button" data-give>🎁 Give items</button>
+  return `<div class="btn-row hero-actions"><button class="btn sm" type="button" data-pa="heal">❤ Heal &amp; feed</button>
+    <button class="btn sm" type="button" data-give>🎁 Give items</button>
     <select class="input sm" data-tp aria-label="Teleport ${esc(p.name)}"><option value="">📍 Teleport…</option>
       <option value="tp_spawn">Send to spawn</option><option value="tp_bed">Send to their bed</option>
       ${others.map((n) => `<option value="tp_to_player:${esc(n)}">Send to ${esc(n)}</option>`).join("")}
-      ${others.map((n) => `<option value="bring:${esc(n)}">Bring ${esc(n)} here</option>`).join("")}</select></div>`;
+      ${others.map((n) => `<option value="bring:${esc(n)}">Bring ${esc(n)} here</option>`).join("")}</select>
+    <select class="input sm" data-gm aria-label="Game mode for ${esc(p.name)}"><option value="">🎮 Game mode…</option>${["survival", "creative", "adventure", "spectator"].map((m) => `<option value="${m}">${humanize(m)}</option>`).join("")}</select>
+    <button class="btn sm danger" type="button" data-pa="kick">Kick</button></div>
+    <form class="btn-row hero-msg" data-msg><input class="input sm grow" name="message" placeholder="A private message to ${esc(p.name)}" maxlength="256" required><button class="btn sm">Send</button></form>`;
 };
 
 function playerHero(p) {
@@ -1091,7 +1115,7 @@ function playerHero(p) {
       ? `<span class="live-tag"><span class="status-dot on"></span>Playing now · live</span>`
       : `<span class="live-tag"><span class="status-dot on"></span>Playing now</span><span>Inventory from last save, ${esc(fmtAgo(p.as_of))}${p.live_available ? "" : " (turn on RCON for live data)"}</span>`;
   } else presence = `<span>Last seen ${esc(fmtAgo(p.last_seen))}</span>`;
-  if (!d) return `<div class="player-hero"><div class="body-render">${body}</div><div><h1>${esc(p.name)}</h1><div class="presence">${presence}</div><p class="muted" style="margin-top:12px">No saved player data yet.</p>${giveBtn(p)}</div></div>`;
+  if (!d) return `<div class="player-hero"><div class="body-render">${body}</div><div><h1>${esc(p.name)}</h1><div class="presence">${presence}</div><p class="muted" style="margin-top:12px">No saved player data yet.</p></div></div>`;
   const pos = d.position;
   const effects = (d.effects || []).map((e) => `<span class="chip"><img src="${textureUrl(`mob_effect/${splitId(e.id)[1]}`)}" alt="" data-fail="remove"><b>${esc(effectName(e.id))} ${roman(e.amplifier + 1)}</b> ${e.duration > 0 && e.duration < 1e6 ? fmtDuration(e.duration) : ""}</span>`).join("");
   return `<div class="player-hero">
@@ -1109,7 +1133,7 @@ function playerHero(p) {
         ${fishingChip(p)}
         ${effects}
       </div>
-      ${giveBtn(p)}
+
     </div></div>`;
 }
 
@@ -1302,7 +1326,7 @@ async function viewLeaderboards(sid) {
     return html ? `<section class="board-group" id="lb-${esc(g.replace(/\W+/g, "-").toLowerCase())}"><h2>${esc(g)}</h2><div class="boards">${html}</div></section>` : "";
   }).filter(Boolean);
   const ranked = Object.values(medals).sort((a, b) => b.n[0] - a.n[0] || b.n[1] - a.n[1] || b.n[2] - a.n[2] || a.r.name.localeCompare(b.r.name));
-  const medalRow = (m, i) => `<li><span class="rank">${i + 1}</span>${miniHead(m.r)}<a href="#/s/${encodeURIComponent(sid)}/p/${m.r.uuid}">${esc(m.r.name)}</a>
+  const medalRow = (m, i) => `<li><span class="rank">${i + 1}</span>${miniHead(m.r)}<a href="#/s/${encodeURIComponent(sid)}/p/${m.r.uuid}">${esc(m.r.name)}${stackMark(m.r)}</a>
       <span class="medals">${m.n[0] ? `<span title="1st places">🥇 ${m.n[0]}</span>` : ""}${m.n[1] ? `<span title="2nd places">🥈 ${m.n[1]}</span>` : ""}${m.n[2] ? `<span title="3rd places">🥉 ${m.n[2]}</span>` : ""}</span></li>`;
   const medalHtml = ranked.length > 1 ? `<section class="board-group medal-table"><h2>Most medals</h2><p class="muted small">1st, 2nd and 3rd places across every leaderboard below.</p>
       <ol class="medal-list">${ranked.slice(0, 5).map(medalRow).join("")}</ol>

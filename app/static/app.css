@@ -2287,3 +2287,14 @@ body.ui-hidden .manage-sub { display: none; }
 .up-about { display: block; font-size: .9rem; margin-top: 2px; }
 .up-about a { color: var(--gold); }
 .up-reward { display: inline-block; margin-top: 4px; padding: 2px 9px; border-radius: 999px; background: rgba(242, 193, 78, .14); border: 1px solid rgba(242, 193, 78, .4); font-size: .82rem; }
+
+#hero-acts { margin: -6px 0 14px; display: grid; gap: 8px; }
+#hero-acts:empty { display: none; }
+#hero-acts .hero-actions { margin-top: 0; }
+.hero-msg { max-width: 560px; }
+
+.stack-plus[data-also] { display: inline-block; min-width: 1.2em; text-align: center; padding: 0 2px; }
+@media (pointer: coarse) { .stack-plus[data-also] { min-width: 1.8em; padding: 2px 4px; } }
+.also-tip { position: absolute; z-index: 60; max-width: min(280px, calc(100vw - 16px)); padding: 6px 10px; border-radius: 8px;
+  background: rgba(16, 20, 34, .96); border: 1px solid var(--glass-edge); color: var(--bone); font-size: .86rem; box-shadow: 0 6px 18px rgba(0,0,0,.4); }
+.also-tip[hidden] { display: none; }

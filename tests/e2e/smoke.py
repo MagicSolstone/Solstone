@@ -437,6 +437,15 @@ def main() -> int:
                 pg.click(".fws-show-edit [data-cancel]"); pg.wait_for_timeout(300)
             check(pg, "fireworks-shows")
 
+            # an admin on someone's page while they play: the same buttons as Control (faked online: no game here)
+            def online_now(route):
+                d = json.loads(route.fetch().text()); d["online"] = True; route.fulfill(json=d)
+            pg.route(f"**/api/servers/{sid}/players/{puuid}", online_now)
+            pg.goto(f"{base}/app#/s/{sid}/p/{puuid}"); pg.reload(); pg.wait_for_timeout(1500)
+            if not pg.locator('#hero-acts [data-pa="heal"]').count() or not pg.locator("#hero-acts [data-gm]").count() or not pg.locator("#hero-acts [data-msg]").count():
+                problems.append("player page: an admin doesn't get Heal, Game mode and a message for someone playing")
+            check(pg, "player-admin-actions")
+            pg.unroute(f"**/api/servers/{sid}/players/{puuid}")
             # the fireworks launch list, and the give-items dialog
             pg.goto(f"{base}/app#/"); pg.wait_for_timeout(1000)
             pg.click(".fwbar [data-sky='pick']"); pg.wait_for_timeout(300)
@@ -827,6 +836,16 @@ def main() -> int:
             if not pl.locator(".strip-together [data-strip=one]").count():
                 problems.append("player page: no All together / Just this one for someone with two accounts")
             check(pl, "player-account-own-page")
+            pl.goto(f"{base}/app#/s/{sid}/leaderboards"); pl.wait_for_timeout(1500)
+            plus = pl.locator(".medal-list .stack-plus")
+            if not plus.count():
+                problems.append("leaderboards: no + by a name with two accounts in Most medals")
+            else:
+                before = pl.url
+                plus.first.click(); pl.wait_for_timeout(300)
+                if pl.url != before or "Gimli_Jr" not in (pl.locator("#also-tip:not([hidden])").text_content() if pl.locator("#also-tip:not([hidden])").count() else ""):
+                    problems.append("leaderboards: tapping the + doesn't show the other names (or opened the page)")
+                check(pl, "stack-plus-tap")
             # a player is shown by their Minecraft name, and has no display name of their own to pick
             pl.click("#btn-account"); pl.wait_for_timeout(300)
             if (pl.locator("#account-name").text_content() or "").strip() != "Tyler" or pl.locator("#btn-display-name").is_visible():
