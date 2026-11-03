@@ -505,12 +505,13 @@ async function viewAdmin(section = "users") {
     const sz = (n) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(1)} GB` : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
     const PART = { "solstone.db": "The database (history, accounts, posts)", backups: "Solstone's own backups", site: "Pictures in posts and the logo",
       skins: "Players' skins (fetched again if deleted)", assets: "Item pictures, one set per Minecraft version (old versions' can be deleted)",
-      mrpack: "The modpack download", maptiles: "Map colours", "tide-guide": "The tackle guide", "settings.json": "Settings" };
+      mrpack: "The modpack download", maptiles: "The world map's pictures (one per 512 × 512 blocks explored)", "tide-guide": "The tackle guide", "settings.json": "Settings" };
     const top = Math.max(1, ...d.parts.map((p) => p.bytes));
     box.innerHTML = `<p><b>${esc(sz(d.total))}</b> in <code>${esc(d.folder)}</code> · <span class="muted">${esc(sz(d.disk.free))} free on that disk</span></p>
       <ul class="st-list">${d.parts.filter((p) => p.bytes > 0).map((p) => `<li><span>${esc(PART[p.name] || p.name)}</span><span class="st-bar"><i style="width:${(p.bytes / top) * 100}%"></i></span><b>${esc(sz(p.bytes))}</b></li>`).join("")}</ul>
       <details><summary>Inside the database</summary><table class="data st-table"><thead><tr><th>What</th><th>Rows</th><th>Size</th><th>Kept</th></tr></thead><tbody>
         ${d.tables.map((t) => `<tr><td>${esc(t.what || t.name)}</td><td>${fmtNum(t.rows)}</td><td>${t.bytes ? esc(sz(t.bytes)) : "–"}</td><td class="muted">${esc(t.kept || "")}</td></tr>`).join("")}</tbody></table>
+        <p class="muted small">The world map's pictures grow with the world, not with time: one picture for each 512 × 512 blocks someone has explored (plus smaller zoomed-out ones), redrawn in place when that part changes. Clearing a server's map history (below) deletes them; they're drawn again when the map is looked at.</p>
         <p class="muted small">Adventures trails are the part that grows: a row every few seconds for each player while anyone plays. Old ones are cleared each day, so it levels off. The database file doesn't shrink when rows are cleared; it reuses the room.</p></details>`;
   })();
   $("#self-backups")?.addEventListener("click", async (e) => {
