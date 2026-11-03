@@ -1,3 +1,22 @@
+# Solstone 1.15.2
+
+- **Events as a timeline:** today at the top with what's on now, then a dot for each day with something on, dotted stretches with how long between, and a gold stretch with the dates for a holiday's reward.
+  - A holiday stays on Events while its reward is still being given after the day.
+  - Holiday cards take their banner's look (or your own colours).
+- **Times are typed in, not picked from a list:** every time in the contest, race and game setups is a number box with its unit (minutes or seconds). That covers:
+  - contest length and breaks, and a night's breaks;
+  - time limits, hiding and seeking, spleef's shrinking, the treasure hunt's hint, and hot zones;
+  - "back in after" in King of the Hill and the mob arena;
+  - the kit's arrows.
+- **Mob arena:**
+  - **Special monsters:** baby zombies, zombies in iron armour, zombies with spears (1.21.11+), skeletons with pumpkin heads, in chainmail or with swords, spider jockeys, charged creepers, big slimes, baby husks and drowned with tridents. Their gear never drops.
+  - **Every monster has its weapon:** skeletons and strays have bows, pillagers crossbows, vindicators axes. Before, the arena's monsters came empty-handed.
+  - **Night while it runs** (on by default), so spiders fight. The time of day goes back afterwards.
+  - **Monsters come for players from anywhere in the arena,** not just within 16 blocks.
+  - **The edge is marked every few blocks,** however big the arena is.
+  - **The ready-made waves are a row each,** with **Change these** to start your own from them.
+  - **A slime's smaller selves are the arena's too:** counted, kept in, and removed at the end.
+
 # Solstone 1.15.1
 
 - **Safer giving back after games:** only the game's own kit is taken away. Nothing else of a player's is ever cleared.
