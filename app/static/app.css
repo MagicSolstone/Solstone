@@ -2308,3 +2308,9 @@ body.ui-hidden .manage-sub { display: none; }
 .st-table td:nth-child(2), .st-table td:nth-child(3) { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 520px) { .st-list li { grid-template-columns: minmax(0, 1fr) 60px; } .st-bar { display: none; } }
 .st-table td:nth-child(3), .st-table td:nth-child(2) { white-space: nowrap; }
+.together-note { margin: 0 0 10px; }
+
+.fws-reward-items { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fws-reward-item { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 8px; border-radius: 10px; background: var(--well); border: 1px solid var(--line); }
+.fws-reward-item .item-icon, .fws-reward-item img { width: 24px; height: 24px; }
+.fws-reward-item b { white-space: nowrap; }

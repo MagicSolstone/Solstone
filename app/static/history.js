@@ -476,27 +476,29 @@ function renderDaysPlayed(el, daily, names) {
 }
 
 // ================================================================ player history tab
-async function renderPlayerHistory(el, sid, p) {
+async function renderPlayerHistory(el, sid, p, together = false) {
   el.innerHTML = `<section class="section"><div class="section-head"><h2>Time played per day</h2><span class="muted" id="h-total"></span></div>
       <div class="panel"><div class="chart" id="p-daily"></div></div></section>
     <section class="section"><div class="section-head"><h2>Sessions and activity</h2></div><div id="p-feed"></div></section>`;
   const all = await api(`/api/servers/${sid}/players`).catch(() => ({ players: [] }));
   setPlayerSlots(all.players.map((x) => x.name));
-  const h = await api(`/api/servers/${sid}/players/${p.uuid}/history?days=30`);
+  const h = await api(`/api/servers/${sid}/players/${p.uuid}/history?days=30${together ? "&together=1" : ""}`);
+  const names = h.names || [p.name], who = names.join(",");        // all of a person's accounts, or just this one
   if (h.durations === false) {           // which days they played, not for how long
     el.querySelector(".section-head h2").textContent = "Days played";
     const n = h.daily.filter((d) => d.played).length;
     $("#h-total").textContent = `${n} of the last ${h.daily.length} days`;
     renderDaysPlayed($("#p-daily"), h.daily.map((d) => ({ date: d.date, players: d.played ? { [p.name]: 1 } : {} })), [p.name]);
-    mountTimeline($("#p-feed"), sid, p.name);
+    mountTimeline($("#p-feed"), sid, who);
     return;
   }
   const total = h.daily.reduce((a, d) => a + d.seconds, 0);
   const week = h.daily.slice(-7).reduce((a, d) => a + d.seconds, 0);
   $("#h-total").textContent = `${fmtSeconds(week)} this week · ${fmtSeconds(total)} in 30 days`;
   if (!total) $("#p-daily").innerHTML = `<div class="empty"><p>No play time recorded yet. Daily totals build up from when Solstone started recording.</p></div>`;
+  else if (names.length > 1) renderDailyBars($("#p-daily"), h.daily.map((d) => ({ date: d.date, players: d.players || {} })), names, { label: `Time played per day by ${names.join(" and ")}` });
   else renderDailyBars($("#p-daily"), h.daily.map((d) => ({ date: d.date, players: { [p.name]: d.seconds } })), [p.name], { color: playerColor(p.name), label: `${p.name}'s time played per day` });
-  mountTimeline($("#p-feed"), sid, p.name);
+  mountTimeline($("#p-feed"), sid, who);
 }
 
 // ================================================================ notification settings

@@ -265,7 +265,9 @@ function calEditHtml(e, i) {
         ${POST_COLOURS.map(([k, l]) => `<button type="button" class="ann-col pf-swatch-${k}" data-wrap="{${k}}|{/${k}}" title="${l}" aria-label="${l}"></button>`).join("")}</span>
       <textarea class="input" name="detail" rows="2" maxlength="600" placeholder="Log in any time this week for a present!">${esc(e.detail || "")}</textarea></label>
     <fieldset class="fws-reward"><legend>🎁 Reward <span class="muted small">Everyone who plays during it gets this once (each server, each year). Nothing here: no reward.</span></legend>
-      ${[0, 1, 2].map((k) => { const it = (e.reward?.items || [])[k] || {}; return `<div class="fws-reward-row"><input class="input sm" name="ritem${k}" maxlength="80" value="${esc(it.item ? it.item.replace(/^minecraft:/, "") : "")}" placeholder="${["diamond", "cake", "firework_rocket"][k]}" aria-label="Item ${k + 1}"> × ${num(`rcount${k}`, it.count || 1, 1, 64)}</div>`; }).join("")}
+      <div class="fws-reward-items">${(e.reward?.items || []).map((it, k) => `<span class="fws-reward-item">${itemIcon({ id: it.item })}<b>${esc(it.count)} × ${esc(it.name || itemName({ id: it.item }))}</b>
+        <button type="button" class="chip-x" data-rm-reward="${k}" aria-label="Remove ${esc(it.name || it.item)}">×</button></span>`).join("")}
+        ${(e.reward?.items || []).length < 3 ? `<button type="button" class="btn sm" data-add-reward>＋ Add an item</button>` : ""}</div>
       <label>Message with it <input class="input sm" name="rmessage" maxlength="120" value="${esc(e.reward?.message || "")}" placeholder="${esc(e.message || "A present for being here")}"></label>
     </fieldset>
     <details class="fws-more" ${fws.moreOpen ? "open" : ""}><summary>Fireworks for this day <span class="muted small">colours, favourite kinds and a scheduled show</span></summary>
@@ -296,8 +298,7 @@ function wireCalEdit(el, i) {
     draft.name = f.get("name"); draft.emoji = f.get("emoji"); draft.message = f.get("message"); draft.days = +f.get("days") || 1;
     draft.banner_days = Math.max(0, Math.min(30, +f.get("banner_days") || 0));
     draft.detail = f.get("detail") || "";
-    draft.reward = { items: [0, 1, 2].map((k) => ({ item: (f.get(`ritem${k}`) || "").trim(), count: +f.get(`rcount${k}`) || 1 })).filter((x) => x.item),
-      message: f.get("rmessage") || "" };
+    draft.reward = { items: draft.reward?.items || [], message: f.get("rmessage") || "" };      // items: picked below
     const d = { type: dtype };
     if (dtype === draft.date.type) {
       if (f.get("month")) d.month = +f.get("month");
@@ -320,6 +321,21 @@ function wireCalEdit(el, i) {
     const url = prompt("The link's address (https://…, or a page here like /help)");
     if (url && /^(https?:\/\/|\/)/.test(url.trim())) wrap("[", `](${url.trim()})`, "this link");
   });
+  // the reward: picked from the server's own items (with their pictures), like a contest's prize
+  form.querySelector("[data-add-reward]")?.addEventListener("click", () => {
+    const sid = (state.servers || []).find((x) => !x.game || x.game === "minecraft-java")?.id;
+    if (!sid) { showError("Add a Java server first: the items come from it", 4000); return; }
+    read();
+    openGiveItem(sid, "", { title: `A reward for ${draft.name}`, pick: (item, count) => {
+      draft.reward = { ...(draft.reward || {}), items: [...(draft.reward?.items || []), { item: item.id, count, name: item.name }].slice(0, 3) };
+      fws.data.calendar[i] = draft; fws.moreOpen = !!form.querySelector(".fws-more")?.open; renderCalendar(el);
+    } });
+  });
+  form.querySelectorAll("[data-rm-reward]").forEach((b) => b.addEventListener("click", () => {
+    read();
+    draft.reward.items = draft.reward.items.filter((_, k) => k !== +b.dataset.rmReward);
+    fws.data.calendar[i] = draft; renderCalendar(el);
+  }));
   form.querySelector('[name="dtype"]').addEventListener("change", redraw);
   form.querySelector('[name="days"]').addEventListener("change", redraw);
   form.querySelectorAll("[data-kind]").forEach((c) => c.addEventListener("change", () => c.closest(".chip").classList.toggle("on", c.checked)));

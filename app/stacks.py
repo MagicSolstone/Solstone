@@ -103,7 +103,26 @@ def together(srv, name: str) -> dict | None:
     if len(names) < 2:
         return None
     total: dict[str, int] = {}
+    stats: dict[str, dict[str, int]] = {}
+    advs: dict[str, dict] = {}
     for n in names:
-        for k, v in S.headline_stats(S.player_stats(srv, known[n.lower()])).items():
+        raw = S.player_stats(srv, known[n.lower()])
+        for k, v in S.headline_stats(raw).items():
             total[k] = max(total.get(k, 0), v) if k in BEST_OF else total.get(k, 0) + v
-    return {"main": info["name"], "accounts": [{"name": n, "uuid": known[n.lower()]} for n in names], "headline": total}
+        # every statistic added up (how long since a death: the longest of them)
+        for group, vals in raw.items():
+            if not isinstance(vals, dict):
+                continue
+            into = stats.setdefault(group, {})
+            for k, v in vals.items():
+                if isinstance(v, (int, float)):
+                    into[k] = max(into.get(k, 0), v) if k == "minecraft:time_since_death" else into.get(k, 0) + v
+        # an advancement either of them has, from whichever got it first (and who)
+        for k, a in S.player_advancements(srv, known[n.lower()]).items():
+            had = advs.get(k)
+            if a["done"] and (not had or not had["done"] or (a["completed_at"] or "~") < (had["completed_at"] or "~")):
+                advs[k] = {**a, "by": n}
+            elif not had:
+                advs[k] = {**a, "by": n}
+    return {"main": info["name"], "accounts": [{"name": n, "uuid": known[n.lower()]} for n in names], "headline": total,
+            "stats": stats, "advancements": advs}

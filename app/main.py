@@ -2626,7 +2626,9 @@ async def server_metrics(sid: str, range: str = "24h"):  # noqa: A002 - query pa
 
 
 @app.get("/api/servers/{sid}/players/{uuid}/history")
-async def player_history(sid: str, uuid: str, days: int = 30):
+async def player_history(sid: str, uuid: str, days: int = 30, together: bool = False):
+    """One player's days, sessions and activity; with together=1, all of their person's linked accounts at once
+    (each day's time split by account, so the chart can show whose it was)."""
     if not _own(uuid):
         raise HTTPException(404, "Player not found")
     srv = await _server(sid)
@@ -2634,15 +2636,23 @@ async def player_history(sid: str, uuid: str, days: int = 30):
     if not p:
         raise HTTPException(404, "Player not found")
     days = max(1, min(days, 90))
-    daily = db.daily_playtime(srv.id, days, p["name"])
+    t = await asyncio.to_thread(stacks.together, srv, p["name"]) if together else None
+    names = [a["name"] for a in t["accounts"]] if t else [p["name"]]
+    daily: dict[str, dict[str, float]] = {}
+    for n in names:
+        for d in db.daily_playtime(srv.id, days, n):
+            daily.setdefault(d["date"], {})[n] = sum(d["players"].values())
+    days_list = [{"date": k, "players": v} for k, v in sorted(daily.items())]
+    events = sorted((e for n in names for e in db.events(srv.id, None, n, 60)), key=lambda e: -e["ts"])[:60]
     if not _shows_play_time():             # which days they played, not for how long
-        return {"daily": [{"date": d["date"], "played": sum(d["players"].values()) > 0} for d in daily], "sessions": [],
-                "events": db.events(srv.id, None, p["name"], 60), "durations": False}
+        return {"daily": [{"date": d["date"], "played": sum(d["players"].values()) > 0} for d in days_list], "sessions": [],
+                "events": events, "durations": False, "names": names}
     return {
-        "daily": [{"date": d["date"], "seconds": sum(d["players"].values())} for d in daily],
-        "sessions": db.sessions(srv.id, p["name"], limit=30),
-        "events": db.events(srv.id, None, p["name"], 60),
+        "daily": [{"date": d["date"], "seconds": sum(d["players"].values()), "players": d["players"]} for d in days_list],
+        "sessions": sorted((x for n in names for x in db.sessions(srv.id, n, limit=30)), key=lambda x: -x["start"])[:30],
+        "events": events,
         "durations": True,
+        "names": names,
     }
 
 

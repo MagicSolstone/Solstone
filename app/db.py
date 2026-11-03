@@ -363,9 +363,10 @@ def timeline(server_id: str, player: str | None = None, before: float | None = N
     before = before or now + 60
     sql = "SELECT * FROM sessions WHERE server_id=? AND start_ts < ?"
     args: list = [server_id, before]
-    if player:
-        sql += " AND lower(player)=lower(?)"
-        args.append(player)
+    if player:                                   # one name, or a few (a person's linked accounts) with commas
+        names = [n.strip().lower() for n in player.split(",") if n.strip()]
+        sql += f" AND lower(player) IN ({','.join('?' * len(names))})"
+        args.extend(names)
     sql += " ORDER BY start_ts DESC LIMIT ?"
     args.append(sessions_limit)
     page = q(sql, tuple(args))

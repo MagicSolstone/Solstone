@@ -421,8 +421,10 @@ function dimClass(id) {
 // ================================================================ assets
 function iconUrl(id) {
   const [ns, n] = splitId(id);
-  const a = state.assets[curSid] || {};
-  return `/api/servers/${encodeURIComponent(curSid)}/assets/item/${encodeURIComponent(ns)}/${encodeURIComponent(n)}.png?v=${encodeURIComponent(a.version || "")}&s=${a.state || ""}`;
+  // off a server's pages (Manage → Holidays, say): the first Java server's pictures
+  const sid = curSid || (state.servers || []).find((x) => !x.game || x.game === "minecraft-java")?.id || "";
+  const a = state.assets[sid] || {};
+  return `/api/servers/${encodeURIComponent(sid)}/assets/item/${encodeURIComponent(ns)}/${encodeURIComponent(n)}.png?v=${encodeURIComponent(a.version || "")}&s=${a.state || ""}`;
 }
 function textureUrl(path) {
   const a = state.assets[curSid] || {};
@@ -1031,17 +1033,24 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
     state.items.clear();
     const el = $("#player-tab");
     if (!el) return;
+    // All together (someone with more than one Minecraft account): statistics added up, advancements from whichever
+    // got each first, and every account's play history. The inventory is always this one character's.
+    const all = !!p.together && !stripAlone;
+    const shown = all ? { ...p, stats: p.together.stats, advancements: p.together.advancements } : p;
+    const note = all && tab !== "inventory" ? `<p class="muted small together-note">All of ${esc(p.together.accounts.map((a) => a.name).join(" + "))} together. <button type="button" class="link-btn" data-strip="one">Just ${esc(p.name)}</button></p>` : "";
     if (tab === "inventory") el.innerHTML = inventoryHtml(p);
-    else if (tab === "stats") renderStats(el, p);
-    else if (tab === "advancements") el.innerHTML = advancementsHtml(p);
-    else if (tab === "history") renderPlayerHistory(el, sid, p);
+    else if (tab === "stats") { renderStats(el, shown); el.insertAdjacentHTML("afterbegin", note); }
+    else if (tab === "advancements") el.innerHTML = note + advancementsHtml(shown);
+    else if (tab === "history") { renderPlayerHistory(el, sid, p, all); }
     else if (tab === "fishing") renderPlayerFishing(el, sid, p);
   };
   renderTab();
-  $("#strip").addEventListener("click", (e) => {
+  const flip = (e) => {
     const b = e.target.closest("[data-strip]");
-    if (b) { stripAlone = b.dataset.strip === "one"; $("#strip").innerHTML = statStrip(p); }
-  });
+    if (b) { stripAlone = b.dataset.strip === "one"; $("#strip").innerHTML = statStrip(p); renderTab(); }
+  };
+  $("#strip").addEventListener("click", flip);
+  $("#player-tab").addEventListener("click", flip);
   const acts = $("#hero-acts");
   const doIt = async (action, body, said) => {
     try {
@@ -1284,7 +1293,7 @@ function advancementsHtml(p) {
           <div class="frame ${esc(d.frame)}">${d.icon && !secret ? itemIcon({ id: d.icon }) : ""}</div>
           <div><div class="t">${secret ? "Hidden advancement" : esc(compText(d.title))}</div>
             <div class="d">${secret ? "Keep playing to discover this one." : esc(compText(d.description))}</div>
-            ${isDone && m.completed_at ? `<div class="when">${esc(new Date(m.completed_at.replace(" ", "T").replace(/ ([+-]\d\d)(\d\d)$/, "$1:$2")).toLocaleDateString() || m.completed_at)}</div>` : ""}
+            ${isDone && m.completed_at ? `<div class="when">${esc(new Date(m.completed_at.replace(" ", "T").replace(/ ([+-]\d\d)(\d\d)$/, "$1:$2")).toLocaleDateString() || m.completed_at)}${m.by && p.together ? ` · ${esc(m.by)}` : ""}</div>` : ""}
           </div></div>`;
       }).join("")}</div></section>`;
   }).join("")}</div>`;

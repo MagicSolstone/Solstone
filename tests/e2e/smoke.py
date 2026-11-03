@@ -415,11 +415,20 @@ def main() -> int:
                 else:
                     pg.fill('.fws-cal-edit [name="detail"]', "Dress up and come trick-or-treat")
                     pg.locator('.fws-cal-edit [name="detail"]').select_text(); pg.click('.fws-cal-edit [data-wrap="**|**"]')
-                    pg.fill('.fws-cal-edit [name="ritem0"]', "pumpkin_pie"); pg.fill('.fws-cal-edit [name="rcount0"]', "3")
+                    pg.click(".fws-cal-edit [data-add-reward]"); pg.wait_for_timeout(600)
+                    pg.fill("#gv-q", "a"); pg.wait_for_timeout(300)
+                    pie = pg.locator(".gv-item").first
+                    picked = pie.get_attribute("data-id") if pie.count() else None
+                    if not picked:
+                        problems.append("holidays: the reward's item picker shows no items")
+                    else:
+                        pie.click(); pg.fill("#gv-n", "3"); pg.click("#gv-go"); pg.wait_for_timeout(400)
+                    if not pg.locator(".fws-reward-item").count():
+                        problems.append("holidays: a picked reward item isn't shown")
                     check(pg, "holiday-reward-edit")
                     pg.click(".fws-cal-edit button[type=submit]"); pg.wait_for_timeout(900)
                     hal = next((x for x in pg.request.get(f"{base}/api/fireworks/show", headers=H).json()["calendar"] if x["id"] == "halloween"), {})
-                    if hal.get("detail") != "**Dress up and come trick-or-treat**" or hal.get("reward", {}).get("items", [{}])[0].get("item") != "minecraft:pumpkin_pie":
+                    if hal.get("detail") != "**Dress up and come trick-or-treat**" or (hal.get("reward", {}).get("items") or [{}])[0].get("item") != picked:
                         problems.append(f"holidays: the description or reward didn't save ({hal.get('detail')!r}, {hal.get('reward')})")
 
             # fireworks settings: every tab, then edit a show (copy a step)

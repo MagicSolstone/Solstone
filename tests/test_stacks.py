@@ -25,3 +25,28 @@ def test_linked_names_stack_under_the_main_name():
     finally:
         auth.delete_user(u.id)
     assert stacks.stacks() == {} or "javakid" not in stacks.stacks()
+
+
+def test_player_page_all_together(client, sid):
+    from app import servers as S
+    u = auth.create_user("together_kid", "long-enough-1", "player", check=False)
+    tyler, gimli = "069a79f4-44e9-4726-a5be-fca90e38aaf5", "853c80ef-3c37-49fd-aa49-938b674adae6"
+    auth.add_player(u.id, (tyler, "Tyler"))
+    auth.add_player(u.id, (gimli, "Gimli_Jr"))
+    try:
+        p = client.get(f"/api/servers/{sid}/players/{tyler}").json()
+        t = p["together"]
+        assert [a["name"] for a in t["accounts"]] == ["Tyler", "Gimli_Jr"]
+        srv = S.registry.servers[sid]
+        one, two = S.player_stats(srv, tyler), S.player_stats(srv, gimli)
+        k = "minecraft:mob_kills"
+        assert t["stats"]["minecraft:custom"].get(k, 0) == (one.get("minecraft:custom") or {}).get(k, 0) + (two.get("minecraft:custom") or {}).get(k, 0)
+        mine, theirs = S.player_advancements(srv, tyler), S.player_advancements(srv, gimli)
+        for key in {k for k, v in {**mine, **theirs}.items() if v["done"]}:
+            assert t["advancements"][key]["done"] and t["advancements"][key]["by"] in ("Tyler", "Gimli_Jr")
+        h = client.get(f"/api/servers/{sid}/players/{tyler}/history?together=1").json()
+        assert h["names"] == ["Tyler", "Gimli_Jr"]
+        assert client.get(f"/api/servers/{sid}/players/{tyler}/history").json()["names"] == ["Tyler"]
+        assert client.get(f"/api/servers/{sid}/timeline?player=Tyler,Gimli_Jr").status_code == 200
+    finally:
+        auth.delete_user(u.id)
