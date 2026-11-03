@@ -1,3 +1,31 @@
+# Solstone 1.14.0
+
+- **Getting started on the home page:** the join section is now three steps, one after another, all on the home page:
+  1. **Ask to join:** a button with a slow glow. It opens the form in a pop-up. Once sent, the step says *Waiting for an admin to let you in*, then *You're in!*
+  2. **Get in the game:** the server addresses, inside the step.
+  3. **Make a website account:** a pop-up. If the name isn't in the game right now, it says to join first and check the spelling. Once the code is in their game chat, they type it and pick a password.
+  - Both are switched on together in Website → Site details, under **Getting started**.
+- **Bedrock through an Xbox friend (MCXboxBroadcast):** each server in Site details → *How to join each server* has an **Xbox friend** field. The gamertag shows first for Bedrock players (add it as a friend, join from the Friends tab, consoles too), and the join guide explains it. `{xbox_friend}` puts it in any post.
+- **Sign-in page:** a clear **Make a new account** button and a centred **Back to home**. The guide links are gone.
+- **Guides you delete stay gone:** deleting a post that stands in for a guide takes that guide off Help, with no links left to it. Solstone's built-in guides are listed in Website → Posts with **Remove** and **Bring it back**. The *making an account* guide starts off.
+- **Home page status:**
+  - little graphs of the last 6 hours for players, TPS and CPU;
+  - a **Today** line: players, mobs defeated, blocks dug, logs, fish, advancements and distance, added up, never who.
+  - **Never slow when Crafty is down:** the page shows the last status straight away and refreshes it in the background, and an unreachable Crafty isn't asked again for 30 seconds.
+- **Manage in six tabs:** Players (Accounts, Whitelist), Website, Announcements (Banners, Holidays), Community (Messages, Votes), Play time, and Solstone (Servers & history, Notifications, Activity log). The old *live on the home page* switches, which did nothing any more, are gone.
+- **Game messages** (was *Welcome in the game*): a new **Send a message** section with colours and a preview. Send it to everyone on now, to everyone the next time they join, or to one player (now, or when they next log in). A list shows what's waiting and who it reached.
+- **Announcements can be formatted:** bold, italic, links and colours, with a formatting bar. The game gets the plain words.
+- **One person, one line:** an account's Minecraft names (Java and Bedrock, say) count as one player on the leaderboards, the time-played chart and the daily recap, under its main name with a **+**.
+- **Server tabs:** Adventures and Fishing are tabs of their own; contests, races and games are an admins' **Contests** tab.
+- **Adventures:**
+  - Tools no longer count as blocks placed (a stone pickaxe was counted as stone).
+  - The feed opens summed up **every 10 minutes**: each player's mobs, blocks dug, logs, fish and damage as icons, with joins, deaths and advancements on their own lines. **Everything** shows the full feed.
+- **World map:** players not seen in a week are left off.
+- **Sounds:** a loaded sound can be saved over (**Save**) or copied (**Save as new**).
+- **Fishing journal:** *Family record* now says *Server record*.
+- **Player colours:** past 16 players, lighter and darker shades instead of grey.
+- **Up for:** a Crafty start time from before a restart Solstone saw isn't used.
+
 # Solstone 1.13.1
 
 - **Up for is right:**
