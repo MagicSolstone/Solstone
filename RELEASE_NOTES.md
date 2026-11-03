@@ -1,3 +1,19 @@
+# Solstone 1.14.2
+
+- **All together on a player's page covers every tab but the inventory** (for someone with more than one Minecraft account):
+  - **Play history:** each account's time stacked in its own colour, and every account's sessions and activity.
+  - **Statistics:** added up across their accounts.
+  - **Advancements:** from whichever account got each one first, and which account that was.
+  - **Just one account** shows that account alone. The inventory is always that one character's.
+- **Holiday rewards are picked from the item list,** with pictures and an amount, like a contest's prize.
+- **A holiday's reward window:** given from some days before to some days after (Thanksgiving through Sunday: 0 and 3). The Events page shows the dates.
+- **A holiday's colours window:** its firework colours from some days before to some days after (a red, green and white week for Christmas). The message banner stays on the day itself.
+- **Players' own fireworks take a holiday's colours** when they go off by themselves (it can be switched off per holiday). One launched by hand keeps its own.
+- **Storage in Manage → Solstone → Servers & history:**
+  - how much room Solstone takes, part by part;
+  - what's in its database and how long each kind is kept;
+  - the disk's free space.
+
 # Solstone 1.14.1
 
 - **Bedrock players with long names:** the game takes a name of 16 characters at most in a command, and a Bedrock name through Floodgate can be 17 (a 16-character gamertag with its dot). Heal, teleport, messages, prizes and the rest now reach them by their UUID instead. When the game answers *No player was found*, the page says so instead of *done*.
