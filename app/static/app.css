@@ -2036,7 +2036,7 @@ a.glance-me:hover { border-color: var(--gold); }
 /* Manage on phones: one dropdown instead of rows of tabs */
 .manage-select { display: none; }
 @media (max-width: 700px) {
-  .manage-nav a[data-m] { display: none; }
+  .manage-nav a[data-g] { display: none; }
   .manage-select { display: block; width: 100%; font-weight: 600; }
 }
 .cm-new[hidden], .cmv-form[hidden] { display: none; }
@@ -2228,3 +2228,13 @@ a.glance-me:hover { border-color: var(--gold); }
 .pf-swatch-purple { background: #b197fc; } .pf-swatch-pink { background: #f783ac; } .pf-swatch-gray { background: #adb5bd; }
 .bn-text a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .stack-plus { margin-left: 2px; font-weight: 800; color: var(--gold); cursor: help; }
+
+/* Manage: the group's pages as sub-tabs under its tab */
+.manage-nav { flex-wrap: nowrap; overflow-x: auto; }
+.manage-sub { width: calc(100% - 2 * var(--gutter)); max-width: calc(var(--page) - 2 * var(--gutter)); margin: 18px auto -12px; }
+.manage-sub[hidden] { display: none; }
+body.ui-hidden .manage-sub { display: none; }
+@media (max-width: 700px) { .manage-nav a[data-g] { display: none; } .manage-sub { display: none; } }
+.ws-start { display: grid; gap: 10px; }
+.ws-start { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin: 0; }
+.ws-start legend { font-weight: 700; padding: 0 6px; }

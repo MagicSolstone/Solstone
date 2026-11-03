@@ -166,18 +166,39 @@ function wireMobileMenu() {
   addEventListener("hashchange", markNav);
   markNav();
 }
+// Manage's pages in six groups: the group's tab on top, its pages as sub-tabs under it (one dropdown on phones).
+const MANAGE_GROUPS = [
+  ["players", "👥 Players", [["users", "Accounts"], ["whitelist", "Whitelist"]]],
+  ["website", "🌐 Website", [["website", "Website"]]],
+  ["announce", "📣 Announcements", [["announcements", "Banners"], ["holidays", "Holidays"]]],
+  ["community", "💬 Community", [["messages", "Messages"], ["votes", "Votes"]]],
+  ["playtime", "⏰ Play time", [["playtime", "Play time"]]],
+  ["solstone", "⚙️ Solstone", [["servers", "Servers & history"], ["notifications", "Notifications"], ["activity", "Activity log"]]],
+];
 function setManageNav(tab) {
-  const nav = $("#manage-nav");
+  const nav = $("#manage-nav"), sub = $("#manage-sub");
   if (!nav) return;
+  setManageNav.cur = tab;
   nav.hidden = !tab || !isAdmin();
-  nav.querySelectorAll("[data-m]").forEach((a) => a.toggleAttribute("aria-current", a.dataset.m === tab));
-  // on phones the tabs are one dropdown (the same pages, with the unread count)
+  const group = MANAGE_GROUPS.find(([, , pages]) => pages.some(([k]) => k === tab));
+  nav.querySelectorAll("[data-g]").forEach((a) => {
+    a.toggleAttribute("aria-current", a.dataset.g === group?.[0]);
+    const g = MANAGE_GROUPS.find(([k]) => k === a.dataset.g);
+    let last = null;
+    try { last = localStorage.getItem(`solstone-manage-${a.dataset.g}`); } catch { /* private window */ }
+    a.setAttribute("href", `#/manage/${(g[2].find(([k]) => k === last) || g[2][0])[0]}`);     // back to the page you were on there
+  });
+  if (group && group[2].length > 1) { try { localStorage.setItem(`solstone-manage-${group[0]}`, tab); } catch { /* private window */ } }
+  if (sub) {
+    sub.hidden = nav.hidden || !group || group[2].length < 2;
+    sub.innerHTML = group && group[2].length > 1 ? group[2].map(([k, l]) => `<a href="#/manage/${k}" ${k === tab ? 'aria-current="page"' : ""}>${esc(l)}${k === "whitelist" ? ' <span class="cm-badge" data-badge="menu-requests" hidden></span>' : k === "messages" ? ' <span class="cm-badge" data-badge="menu-admin-unread" hidden></span>' : ""}</a>`).join("") : "";
+    sub.querySelectorAll("[data-badge]").forEach((b) => { const from = $(`#${b.dataset.badge}`); if (from && !from.hidden) { b.textContent = from.textContent; b.hidden = false; } });
+  }
+  // on phones it's one dropdown of every page (with the counts)
   const sel = $("#manage-select");
   if (sel && tab) {
-    sel.innerHTML = [...nav.querySelectorAll("a[data-m]")].map((a) => {
-      const n = a.querySelector(".cm-badge:not([hidden])")?.textContent;
-      return `<option value="${esc(a.getAttribute("href"))}" ${a.dataset.m === tab ? "selected" : ""}>${esc(a.childNodes[0].textContent.trim())}${n ? ` (${esc(n)})` : ""}</option>`;
-    }).join("");
+    const count = (id) => { const el = $(`#${id}`); return el && !el.hidden ? ` (${el.textContent})` : ""; };
+    sel.innerHTML = MANAGE_GROUPS.map(([g, label, pages]) => pages.map(([k, l]) => `<option value="#/manage/${k}" ${k === tab ? "selected" : ""}>${esc(pages.length > 1 ? `${label} · ${l}` : label)}${k === "whitelist" ? count("menu-requests") : k === "messages" ? count("menu-admin-unread") : ""}</option>`).join("")).join("");
     sel.onchange = () => { location.hash = sel.value; };
   }
 }

@@ -344,8 +344,11 @@ function wsSite(el) {
     <label>Contact email <small>Where players and parents can reach you: account problems, questions, something stolen or broken. Shown on the Help page and at the bottom of every page, and <code>{contact}</code> puts it in any post.</small><input class="input" type="email" name="contact" maxlength="120" value="${esc(s.contact || "")}" placeholder="contact@example.com"></label>
     <label>Discord invite <small>A discord.gg or discord.com link</small><input class="input" name="discord" maxlength="200" value="${esc(s.discord)}" placeholder="https://discord.gg/..."></label>
     <label>About <small>Shown at the bottom of the home page. Same formatting as posts.</small><textarea class="input" name="about" rows="6" maxlength="4000">${esc(s.about)}</textarea></label>
-    <label class="check"><input type="checkbox" name="join_requests" ${s.join_requests ? "checked" : ""}> An <b>Ask to join</b> form on the join guide <small>People send their name in the game (and, if they like, a first name and a note). You get a notification, and they show in Manage → Whitelist.${ws.data.notify_ready === false ? " Set up notifications first (Manage → Notifications)." : ""}</small></label>
-    <label class="check"><input type="checkbox" name="home_live" ${s.home_live ? "checked" : ""}> Show the public servers' status on the home page <small>Running or not and how many are on. Private servers are never shown.</small></label>
+    <fieldset class="ws-start"><legend>Getting started <small class="muted">The steps on the home page for someone new</small></legend>
+      <label class="check"><input type="checkbox" name="join_requests" ${s.join_requests ? "checked" : ""}> <b>Ask to join</b> <small>A button that opens a form: their name in the game (and, if they like, a first name and a note). You get a notification, and they show in Manage → Players → Whitelist.${ws.data.notify_ready === false ? " Set up notifications first (Manage → Solstone → Notifications)." : ""}</small></label>
+      <label class="check"><input type="checkbox" name="signup" ${s.signup ? "checked" : ""}> <b>Make a website account</b> <small>Players make their own: they type their name while they're playing, get a code in the game chat, and pick a password. They start as Players. Your whitelist decides who can.</small></label>
+    </fieldset>
+    <label class="check"><input type="checkbox" name="home_live" ${s.home_live ? "checked" : ""}> Show each server's status at the top of the home page <small>Up or not, how many are playing (never who), TPS, version, how long it's been up and CPU, with little graphs. Private servers are never shown.</small></label>
     <div class="actions"><a class="btn" href="/" target="_blank" rel="noopener">Open the home page</a><button class="btn primary" type="submit">Save</button></div>
   </form>
   <section class="panel ws-offline"><h3>If this website goes down</h3>
@@ -412,6 +415,7 @@ function wsSite(el) {
     body.home_title = !!f.get("home_title");
     body.home_news = +f.get("home_news"); body.home_guides = +f.get("home_guides");
     body.join_requests = !!f.get("join_requests");
+    body.signup = !!f.get("signup");
     try {
       for (const row of $$(".ws-join")) {               // each server's own way in, kept in its settings (first, so
         const v = {};                                   // the old main address is only cleared once it's moved)

@@ -43,7 +43,7 @@ async function viewFireworkSettings() {
   setView(`<div class="fwe-head"><h1>Fireworks</h1>
       ${fireworksTabs("show")}
       <p class="muted" id="fws-today"></p>
-      <p class="muted small">Holidays, their colours and their shows: <a href="#/manage/holidays">Manage → Holidays</a></p></div>
+      <p class="muted small">Holidays, their colours and their shows: <a href="#/manage/holidays">Manage → Announcements → Holidays</a></p></div>
     <nav class="fwe-tabs fws-tabs" role="tablist" aria-label="Show settings">${FWS_TABS.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${fws.tab === k}">${l}</button>`).join("")}</nav>
     <div id="fws-body"></div>`);
   $$(".fws-tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
@@ -53,7 +53,7 @@ async function viewFireworkSettings() {
   renderFws();
 }
 function renderToday() {
-  if (!$("#fws-today")) return;                     // Manage → Holidays has no "today" line
+  if (!$("#fws-today")) return;                     // Manage → Announcements → Holidays has no "today" line
   const t = fws.data.today, bits = [];
   if (t.theme) bits.push(`Today: <b>${esc(t.theme.emoji)} ${esc(t.theme.name)}</b>`);
   const next = t.finales.find((f) => f.end * 1000 > Date.now());
@@ -181,7 +181,7 @@ function renderJoin(el) {
   }));
 }
 
-// ---------------------------------------------------------------- calendar (Manage → Holidays)
+// ---------------------------------------------------------------- calendar (Manage → Announcements → Holidays)
 // Holidays and special days: the ones switched on show on the Events page, put their message on every page
 // that day and give the fireworks their colours. Kept in the fireworks settings (fw_calendar), edited here.
 async function viewHolidays() {

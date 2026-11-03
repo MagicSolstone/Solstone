@@ -17,8 +17,7 @@ async function cmRefreshUnread() {
     badge($("#menu-votes"), n.votes);
     badge($("#menu-admin-unread"), n.admin);
     badge($("#menu-requests"), n.requests);
-    const cur = $("#manage-nav [aria-current]")?.dataset.m;
-    if (cur) setManageNav(cur);                       // the phone dropdown's count too
+    if (setManageNav.cur) setManageNav(setManageNav.cur);     // the sub-tabs' and the phone dropdown's counts too
   } catch { /* offline for a moment */ }
 }
 
@@ -52,7 +51,7 @@ async function viewVotes() {
   fillServersMenu(state.servers, null);
   const d = await api("/api/community/votes");
   setView(`<div class="fwe-head"><h1>Votes</h1>
-      <p class="muted">Have your say! Pick one choice in each vote. Nobody sees who voted for what, only how many votes each one has.${isAdmin() ? ' Make a new vote in <a href="#/manage/votes">Manage → Votes</a>.' : ""}</p></div>
+      <p class="muted">Have your say! Pick one choice in each vote. Nobody sees who voted for what, only how many votes each one has.${isAdmin() ? ' Make a new vote in <a href="#/manage/votes">Manage → Community → Votes</a>.' : ""}</p></div>
     <div id="cm-votes">${d.open.map((p) => cmVoteCard(p)).join("") || '<div class="panel"><p class="muted">No votes open right now.</p></div>'}</div>
     ${d.closed.length ? `<section class="section"><div class="section-head"><h2>Finished</h2></div>${d.closed.map((p) => cmVoteCard(p)).join("")}</section>` : ""}`);
   $$("[data-vote]", view()).forEach((b) => b.addEventListener("click", async () => {
@@ -124,7 +123,7 @@ async function viewMessages(tid) {
   }
   const d = await api("/api/community/messages");
   setView(`<div class="fwe-head"><h1>Messages</h1>
-      <p class="muted">${isAdmin() ? 'You\'re an admin: players\' messages, and writing to them, are in <a href="#/manage/messages">Manage → Messages</a>. Notices for you come here.'
+      <p class="muted">${isAdmin() ? 'You\'re an admin: players\' messages, and writing to them, are in <a href="#/manage/messages">Manage → Community → Messages</a>. Notices for you come here.'
         : "Write to the admins: an idea, something that's wrong, a question. Only the admins see it, and their answers come here. Notices (a vote closed, you won) come here too."}</p></div>
     <div class="panel"><button type="button" class="btn primary" id="cm-new" ${isAdmin() ? "hidden" : ""}>✉️ Write to the admins</button>
       <form id="cm-new-form" class="cm-new" hidden>
@@ -147,7 +146,7 @@ async function viewMessages(tid) {
   cmRefreshUnread();
 }
 
-// ---------------------------------------------------------------- Manage → Messages
+// ---------------------------------------------------------------- Manage → Community → Messages
 async function viewManageMessages(tid) {
   if (!isAdmin()) { location.replace("#/"); return; }
   curSid = null;
@@ -189,7 +188,7 @@ async function viewManageMessages(tid) {
   cmRefreshUnread();
 }
 
-// ---------------------------------------------------------------- Manage → Votes
+// ---------------------------------------------------------------- Manage → Community → Votes
 async function viewManageVotes() {
   if (!isAdmin()) { location.replace("#/"); return; }
   curSid = null;

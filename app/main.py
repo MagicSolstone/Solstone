@@ -143,7 +143,7 @@ PLAYER_ROUTES: dict[str, set[str]] = {
 }
 
 
-# With "Players can see the map" on (Manage → Users), players also get the World tab: the map, with where everyone is.
+# With "Players can see the map" on (Manage → Players), players also get the World tab: the map, with where everyone is.
 PLAYER_MAP_ROUTES = {"/api/servers/{sid}/world": {"GET"}}
 
 
@@ -879,7 +879,7 @@ async def join_request(request: Request):
     site.add_join_request(player, name, note, hashlib.sha256(token.encode()).hexdigest(), picked)
     where = ", ".join(public[x].display_name for x in picked)
     msg = f"{player} would like to join {where}" + (f" ({name})" if name else "") + (f": {note}" if note else "")
-    await notify.send("Asking to join", msg + "\nTap to let them in (Manage → Whitelist).", "wave",
+    await notify.send("Asking to join", msg + "\nTap to let them in (Manage → Players → Whitelist).", "wave",
                       click=f"{_public_base(request)}/app#/manage/whitelist")
     return {"ok": True, "token": token, "player": player,
             "message": "Thanks! The admins have your request. This page shows here when you've been let in."}
@@ -2484,7 +2484,7 @@ def _open_requests(servers: list) -> list[dict]:
     return reqs
 
 
-# ---- forgetting a player (Manage → Whitelist → Removing a player): forget.py
+# ---- forgetting a player (Manage → Players → Whitelist → Removing a player): forget.py
 @app.get("/api/players/forget")
 async def forget_preview(name: str, request: Request):
     """What forgetting this player would remove (nothing is changed)."""
@@ -2535,7 +2535,7 @@ async def forget_player(request: Request):
 
 @app.get("/api/whitelist")
 async def whitelist_overview(request: Request):
-    """Manage → Whitelist: everyone who asked to join (with each server they asked for, in or not yet), everyone the
+    """Manage → Players → Whitelist: everyone who asked to join (with each server they asked for, in or not yet), everyone the
     whitelist turned away lately, and each server's list, all in one place."""
     auth.require_admin(request)
     await S.registry.refresh()
@@ -2707,7 +2707,7 @@ async def community_send(request: Request):
     """A player writes to the admins: a new message (an idea, something wrong, a question)."""
     user = request.state.user
     if user.role == "admin":
-        raise HTTPException(400, "You're an admin: players' messages are in Manage → Messages, and you write to them from there")
+        raise HTTPException(400, "You're an admin: players' messages are in Manage → Community → Messages, and you write to them from there")
     body = await _body(request)
     if await asyncio.to_thread(community.recent_from, user.id) >= 10:
         raise HTTPException(429, "That's a lot of messages! Wait a little before sending more.")

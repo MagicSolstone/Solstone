@@ -49,18 +49,14 @@
     <!-- Manage (admins): everything about the whole site in one place, each part a tab -->
     <nav class="manage-nav tabs" id="manage-nav" aria-label="Manage" hidden>
       <select class="input manage-select" id="manage-select" aria-label="Manage: which page"></select>
-      <a href="#/manage/announcements" data-m="announcements">📣 Announcements</a>
-      <a href="#/manage/website" data-m="website">🌐 Website</a>
-      <a href="#/manage/users" data-m="users">👥 Users</a>
-      <a href="#/manage/whitelist" data-m="whitelist">✅ Whitelist <span class="cm-badge" id="menu-requests" title="Asks to join waiting" hidden></span></a>
-      <a href="#/manage/servers" data-m="servers">🖥 Servers &amp; live info</a>
-      <a href="#/manage/activity" data-m="activity">📜 Activity log</a>
-      <a href="#/manage/votes" data-m="votes">🗳️ Votes</a>
-      <a href="#/manage/messages" data-m="messages">✉️ Messages <span class="cm-badge" id="menu-admin-unread" hidden></span></a>
-      <a href="#/manage/playtime" data-m="playtime">⏰ Play time</a>
-      <a href="#/manage/holidays" data-m="holidays">📅 Holidays</a>
-      <a href="#/manage/notifications" data-m="notifications">🔔 Notifications</a>
+      <a href="#/manage/users" data-g="players">👥 Players <span class="cm-badge" id="menu-requests" title="Asks to join waiting" hidden></span></a>
+      <a href="#/manage/website" data-g="website">🌐 Website</a>
+      <a href="#/manage/announcements" data-g="announce">📣 Announcements</a>
+      <a href="#/manage/messages" data-g="community">💬 Community <span class="cm-badge" id="menu-admin-unread" hidden></span></a>
+      <a href="#/manage/playtime" data-g="playtime">⏰ Play time</a>
+      <a href="#/manage/servers" data-g="solstone">⚙️ Solstone</a>
     </nav>
+    <nav class="subtabs manage-sub" id="manage-sub" aria-label="Manage: pages" hidden></nav>
     <main id="view" tabindex="-1"></main>
     <footer class="app-foot muted">Solstone {{VERSION}}</footer>
   </div>

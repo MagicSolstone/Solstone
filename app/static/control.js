@@ -423,7 +423,7 @@ function rulesHtml(rules, canRcon) {
     : `<label class="switch-row"><span>${esc(r.label)}</span><input class="input sm num-in" type="number" min="0" max="100" data-rule="${esc(r.key)}" value="${esc(r.value)}"></label>`).join("")}</div>`;
 }
 
-// What Solstone keeps about a server that Manage → Servers can clear (db.clear_server, worldmap.clear_tiles).
+// What Solstone keeps about a server that Manage → Solstone can clear (db.clear_server, worldmap.clear_tiles).
 const CLEAR_KINDS = [
   ["chat", "Chat", "Everything said in the game's chat and from the website."],
   ["activity", "Activity", "Joins, leaves, deaths, advancements, contests and the like: recent activity and players' timelines."],
@@ -435,19 +435,19 @@ const CLEAR_KINDS = [
 ];
 
 // ================================================================ Users & activity
-// Manage → Users, Servers & live info, Activity log (one section each).
+// Manage → Players, Servers & live info, Activity log (one section each).
 async function viewAdmin(section = "users") {
   if (!isAdmin()) { location.replace("#/"); return; }
   curSid = null;
-  document.title = `${{ users: "Users", servers: "Servers & live info", activity: "Activity log" }[section] || "Manage"} · ${SITE_NAME}`;
+  document.title = `${{ users: "Players", servers: "Servers & history", activity: "Activity log" }[section] || "Manage"} · ${SITE_NAME}`;
   fillServersMenu(state.servers, null);
-  const [users, lp, hiddenSrv, siteCfg, playerCfg, ptCfg] = await Promise.all([api("/api/users"), api("/api/settings/status"), api("/api/servers-hidden").catch(() => []), api("/api/posts").then((d) => d.site).catch(() => ({})), api("/api/settings/players").catch(() => ({})), section === "users" ? api("/api/settings/playtime").catch(() => null) : null]);
+  const [users, lp, hiddenSrv, siteCfg, playerCfg, ptCfg] = await Promise.all([api("/api/users"), Promise.resolve(null), api("/api/servers-hidden").catch(() => []), api("/api/posts").then((d) => d.site).catch(() => ({})), api("/api/settings/players").catch(() => ({})), section === "users" ? api("/api/settings/playtime").catch(() => null) : null]);
   const roleOpts = (cur) => ROLE_NAMES.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("");
   const fmtWhen = (ts) => ts ? fmtAgo(ts) : "never";
   const srvName = (id) => state.servers.find((x) => x.id === id)?.name || id;
   const usersHtml = `<section class="section"><div class="section-head"><h2>Users</h2><span class="muted">Players see the servers, who's on, the leaderboards and their own page. Trusted can see everything (chat, where everyone is, inventories) but can't change anything. Admins can also control servers.</span></div>
       <div class="panel rules-ctl" id="signup-ctl" style="max-width:720px;margin-bottom:12px">
-        <label class="switch-row"><span><b>Let players make their own account</b><br><small class="muted">From the sign-in page: they type their Minecraft name while they're playing on a public server, get a code in the game chat, and choose a login. They start as Players. Your whitelist decides who can do this.</small></span><input type="checkbox" role="switch" id="signup-on" ${siteCfg.signup ? "checked" : ""}></label>
+        <p class="muted small">Players making their own account (and the Ask to join form) are switched on in <a href="#/manage/website">Website → Site details</a>, under <b>Getting started</b>.</p>
         <label class="switch-row"><span><b>Players can see the map</b><br><small class="muted">Gives Players the World tab: the map of the world with where everyone is (and the web map, if the server has one). The world's seed stays hidden.</small></span><input type="checkbox" role="switch" id="players-map-on" ${playerCfg.see_map ? "checked" : ""}></label></div>
       <div class="table-wrap"><table class="data users-table"><thead><tr><th>Username</th><th>Level</th><th>Minecraft player</th><th>Servers</th><th>Last signed in</th><th></th></tr></thead><tbody>
       ${users.map((u) => `<tr data-uid="${u.id}"><td><b>${esc(u.username)}</b>${u.shown && u.shown !== u.username ? ` <span class="muted">shown as ${esc(u.shown)}</span>` : ""}${u.real_name ? `<br><small class="muted" title="Their real name: only admins see it">👤 ${esc(u.real_name)}</small>` : ""}${u.id === me.user.id ? ' <span class="muted">(you)</span>' : ""}</td>
@@ -465,14 +465,6 @@ async function viewAdmin(section = "users") {
     </section>`;
   const serversHtml = `${hiddenSrv.length ? `<section class="section" id="hidden-servers"><div class="section-head"><h2>Hidden servers</h2><span class="muted">Hidden from Solstone and the home page. Nothing about the server itself changes.</span></div>
       <div class="panel hidden-list">${hiddenSrv.map((x) => `<div class="hidden-row" data-hsid="${esc(x.id)}"><b>${esc(x.name)}</b><span class="muted small">${esc(x.game || "")}</span><button class="btn sm" type="button" data-unhide>Show it again</button></div>`).join("")}</div></section>` : ""}
-    <section class="section"><div class="section-head"><h2>Live on the home page</h2><span class="muted">Who's playing right now, for anyone visiting, without signing in</span></div>
-      <div class="panel rules-ctl" id="status-page-settings" style="max-width:720px">
-        <label class="switch-row"><span><b>Show the servers live on the home page</b><br><small class="muted">Under Help on <a href="/#live" target="_blank" rel="noopener">the home page</a>: who's playing, their health and level, the in-game day, leaderboards and the recap. Never shows chat, and never how long anyone played.</small></span><input type="checkbox" role="switch" data-sp="enabled" ${lp.enabled ? "checked" : ""}></label>
-        <label class="switch-row"><span>Show coordinates and the position map<br><small class="muted">Only to people signed in (Trusted and Admins, and Players when “Players can see the map” is on in Users). Visitors who aren't signed in never see where anyone is, or the map.</small></span><input type="checkbox" role="switch" data-sp="show_positions" ${lp.show_positions ? "checked" : ""}></label>
-        <label class="switch-row"><span>Show held items and armour</span><input type="checkbox" role="switch" data-sp="show_items" ${lp.show_items ? "checked" : ""}></label>
-        <label class="switch-row"><span>Show recent joins, deaths and advancements</span><input type="checkbox" role="switch" data-sp="show_activity" ${lp.show_activity ? "checked" : ""}></label>
-        <p class="muted small" style="margin-top:8px">Anyone visiting the home page sees this. Hidden and private servers are never shown.</p>
-      </div></section>
     <section class="section"><div class="section-head"><h2>Recap history</h2></div>
       <div class="panel" style="max-width:720px"><p class="muted small">Every day is summarised and kept for good, so “on this day” can look back years. When Solstone first starts it also reads each server's old logs (the <code>logs/*.log.gz</code> files Minecraft keeps) to fill in the days before it was installed. If you've copied older logs in, read them again here.</p>
         <button class="btn" id="ann-backfill" type="button" style="margin-top:8px">Read old logs again</button></div></section>
@@ -491,12 +483,6 @@ async function viewAdmin(section = "users") {
   setView({ users: usersHtml, servers: serversHtml, activity: activityHtml }[section] || usersHtml);
   if ($("#audit-browse")) mountAuditBrowser($("#audit-browse"));
 
-  $("#status-page-settings")?.addEventListener("change", async () => {
-    const body = {};
-    $$("[data-sp]").forEach((i) => { body[i.dataset.sp] = i.checked; });
-    try { await post("/api/settings/status", body, "PUT"); showToast(body.enabled ? 'Saved. <a href="/#live" target="_blank" rel="noopener">See it on the home page</a>' : "Live info is off the home page", 3500); }
-    catch (err) { showError(esc(err.message), 5000); }
-  });
   const selfBackups = async () => {
     const box = $("#self-backups");
     if (!box) return;
@@ -710,14 +696,14 @@ function wireFireworksSettings(el, fw) {
   });
 }
 
-// Say no to someone who asked to join (Manage → Whitelist and Control): their page tells them it wasn't accepted.
+// Say no to someone who asked to join (Manage → Players → Whitelist and Control): their page tells them it wasn't accepted.
 async function denyRequest(player) {
   if (!await confirmBox(`Deny ${player}'s request?`, "It comes off Asked to join, and their page says it wasn't accepted. They aren't added to any whitelist, and can ask again later.", "Deny")) return false;
   try { await post("/api/whitelist/deny", { player }); showToast(`Denied ${esc(player)}'s request`, 2500); return true; }
   catch (err) { showError(esc(err.message), 6000); return false; }
 }
 
-// ================================================================ Manage → Whitelist
+// ================================================================ Manage → Players → Whitelist
 // Everyone who asked to join (each server they asked for, in or not), everyone the whitelist turned away, and each
 // server's list, across all servers. Letting someone in runs the game's own whitelist command on that server.
 async function viewWhitelist() {
@@ -818,7 +804,7 @@ function removePlayerHtml() {
             <li><code>advancements/&lt;ID&gt;.json</code>: their advancements</li></ul>
           With the server stopped, you can also delete their line from <code>usercache.json</code> in the server folder (the game's list of names it has seen).</li>
         <li><b>Other mods</b> may keep their own files by the same ID (a search of the world's <code>data</code> folder for the ID finds them). Distant Horizons and BlueMap don't keep anything per player.</li>
-        <li><b>Their website account</b>, if they made one: Manage → Users → delete. Their fireworks and messages go with it.</li>
+        <li><b>Their website account</b>, if they made one: Manage → Players → delete. Their fireworks and messages go with it.</li>
         <li><b>Forget them in Solstone</b>, below. It can be done before or after the steps above. If they ever join again, Solstone starts a fresh history for them.</li>
       </ol>
     </div>
@@ -842,13 +828,13 @@ function wireForgetPlayer(el) {
     out.innerHTML = `<div class="rm-plan">
       <p><b>${esc(p.name)}</b>${p.uuid ? ` · ID <code>${esc(p.uuid)}</code>` : " · not seen on any server"}${p.names.length > 1 ? ` · also played as ${esc(p.names.filter((n) => n !== p.name.toLowerCase()).join(", "))}` : ""}</p>
       ${p.total ? `<ul class="rm-counts">${rows}</ul>` : `<p class="muted">Solstone has nothing kept about them.</p>`}
-      ${p.account ? `<p class="notice small">They have a website account (<b>${esc(p.account)}</b>). That isn't removed here: delete it in Manage → Users.</p>` : ""}
+      ${p.account ? `<p class="notice small">They have a website account (<b>${esc(p.account)}</b>). That isn't removed here: delete it in Manage → Players.</p>` : ""}
       ${p.online.length ? `<p class="notice small">They're playing on ${esc(p.online.join(", "))} right now. Wait until they've left.</p>` : ""}
       ${p.total && !p.online.length ? `<div class="rm-confirm">
         <label class="check"><input type="checkbox" name="backed_up"> I've taken a server backup (Solstone makes its own backup just before, too)</label>
         <label>To be sure, type <b>${esc(p.name)}</b> again<input class="input sm" name="confirm" autocomplete="off" spellcheck="false"></label>
         <button class="btn danger" type="button" data-forget disabled>Forget ${esc(p.name)} in Solstone</button>
-        <p class="muted small">This can't be undone here. To get it back, restore the Solstone backup made just before (see Solstone's backups in Manage → Servers).</p></div>` : ""}
+        <p class="muted small">This can't be undone here. To get it back, restore the Solstone backup made just before (see Solstone's backups in Manage → Solstone).</p></div>` : ""}
     </div>`;
     const go = out.querySelector("[data-forget]");
     if (!go) return;

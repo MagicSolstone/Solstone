@@ -692,6 +692,19 @@ def main() -> int:
             else:
                 check(pg, "website-builtin-guides")
                 pg.click('[data-builtin="join"] [data-builtin-on]'); pg.wait_for_timeout(800)
+            # Manage: six group tabs on one row, the group's pages under it
+            pg.goto(f"{base}/app#/manage/whitelist"); pg.wait_for_timeout(1200)
+            if pg.locator("#manage-nav a[data-g]").count() != 6 or "Players" not in (pg.locator("#manage-nav a[aria-current]").text_content() or ""):
+                problems.append("manage: not six group tabs, or Whitelist isn't under Players")
+            if [a.strip() for a in pg.locator("#manage-sub a").all_text_contents()][:2] != ["Accounts", "Whitelist"]:
+                problems.append("manage: Players doesn't show Accounts and Whitelist under it")
+            tops = {round(b["y"]) for b in pg.eval_on_selector_all("#manage-nav a[data-g]", "els => els.map(e => e.getBoundingClientRect())")}
+            if len(tops) > 1:
+                problems.append("manage: the group tabs wrap onto two rows")
+            check(pg, "manage-groups")
+            pg.goto(f"{base}/app#/manage/servers"); pg.wait_for_timeout(1000)
+            if "Live on the home page" in (pg.locator("main#view").text_content() or ""):
+                problems.append("manage: the old live-on-the-home-page switches are still there")
             # the rules page, and a welcome message in the game
             anon.goto(f"{base}/guides/rules"); anon.wait_for_timeout(900)
             if "Leave other people's things alone" not in (anon.locator(".hp-body").text_content() or ""):
