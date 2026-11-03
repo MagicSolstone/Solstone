@@ -55,6 +55,17 @@ function sinceText(started) {
 
 // The servers' status at the top of the home page: up or down, how many are playing (never who), how smoothly it
 // runs, its version, how long it's been up, and what it's using. The same for everyone; refreshed while it's open.
+// Today on the server, added up (never who): a line of small counts, so the page feels alive.
+const TODAY_BITS = [["players", "👥", (n) => (n === 1 ? "player" : "players")], ["mobs", "⚔️", () => "mobs defeated"],
+  ["mined", "⛏️", () => "blocks dug"], ["logs", "🪓", () => "logs chopped"], ["crops", "🌾", () => "crops harvested"],
+  ["placed", "🧱", () => "blocks placed"], ["fish", "🎣", () => "fish caught"], ["advancements", "🏅", (n) => (n === 1 ? "advancement" : "advancements")],
+  ["travelled", "🧭", (n) => (n >= 1000 ? "km travelled" : "blocks travelled")]];
+function todayHtml(t) {
+  const num = (k, n) => (k === "travelled" && n >= 1000 ? (n / 1000).toFixed(1) : n.toLocaleString());
+  const bits = TODAY_BITS.filter(([k]) => t?.[k]).map(([k, icon, say]) => `<span class="hp-today-bit">${icon} <b>${esc(num(k, t[k]))}</b> ${esc(say(t[k]))}</span>`);
+  return bits.length > 1 ? `<p class="hp-today"><span class="hp-today-label">Today</span>${bits.join("")}</p>` : "";
+}
+
 // A little line graph of the last few hours (gaps where the server was off), for a status tile.
 function sparkline(values, lo, hi, label) {
   const v = values || [];
@@ -87,7 +98,7 @@ function statusPanel(site) {
       s.cpu != null ? tile("CPU", `${Math.round(Number(s.cpu))}%`, "", sparkline(tr.cpu, 0, 100, `CPU over ${hrs}`)) : "",
     ].join("");
     return `<article class="hp-status-card"><header><span class="hp-dot on"></span><h3>${esc(s.name)}</h3><span class="hp-status-word">Online</span></header>
-      <div class="hp-stats">${tiles}</div>${tr.players ? `<p class="hp-spark-note muted small">Graphs: ${esc(hrs)}</p>` : ""}</article>`;
+      <div class="hp-stats">${tiles}</div>${todayHtml(s.today)}${tr.players ? `<p class="hp-spark-note muted small">Graphs: ${esc(hrs)}</p>` : ""}</article>`;
   };
   return `<section class="hp-status" id="hp-status" aria-label="Server status"><div class="hp-status-cards ${site.servers.length > 1 ? "many" : ""}">${site.servers.map(card).join("")}</div></section>`;
 }

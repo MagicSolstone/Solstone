@@ -531,7 +531,8 @@ def main() -> int:
                 d = json.loads(route.fetch().text())
                 up = {"running": True, "online": 3, "max": 10, "tps": 19.9, "started": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 3 * 3600 - 600)),
                       "cpu": 23, "trend": {"hours": 6, "players": [None] * 6 + [0, 1, 1, 2, 3, 3, 2, 2, 3, 4, 3, 3] * 2 + [3] * 6,
-                                           "tps": [None] * 6 + [20, 19.8, 19.9, 18.2, 20, 20] * 5, "cpu": [None] * 6 + [12, 18, 25, 40, 22, 19] * 5}}
+                                           "tps": [None] * 6 + [20, 19.8, 19.9, 18.2, 20, 20] * 5, "cpu": [None] * 6 + [12, 18, 25, 40, 22, 19] * 5},
+                      "today": {"players": 4, "mobs": 37, "mined": 1240, "logs": 64, "fish": 9, "advancements": 3, "travelled": 5400}}
                 for x in d.get("servers", []):
                     x.update(up)
                 for j in d.get("joins", []):
@@ -544,6 +545,8 @@ def main() -> int:
                 problems.append("home: the status panel at the top doesn't say the server is online")
             if anon.locator("#hp-status .hp-spark").count() < 3:
                 problems.append("home: no little graphs for players, TPS and CPU")
+            if "37 mobs defeated" not in (anon.locator("#hp-status .hp-today").text_content() if anon.locator("#hp-status .hp-today").count() else ""):
+                problems.append("home: no Today line (what everyone did, added up)")
             if "mods.example.net:25566" not in (anon.locator(".hp-join .hp-join-card").text_content() if anon.locator(".hp-join .hp-join-card").count() else ""):
                 problems.append("home: a second server's own join address isn't shown")
             check(anon, "site-home-two-servers")

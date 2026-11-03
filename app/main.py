@@ -621,7 +621,8 @@ async def _site_status() -> list:
                         "mspt": perf.get("mspt"), "cpu": summ.get("cpu") if summ["running"] else None,
                         "mem": summ.get("mem") if summ["running"] else None,
                         "mem_percent": summ.get("mem_percent") if summ["running"] else None,
-                        "loader": summ.get("loader"), "uptime_7d": _uptime(srv.id, 7), "trend": _trend(srv.id)})
+                        "loader": summ.get("loader"), "uptime_7d": _uptime(srv.id, 7), "trend": _trend(srv.id),
+                        "today": _today(srv.id)})
     _site_cache = (time.monotonic(), servers)
     return servers
 
@@ -639,6 +640,21 @@ async def _site_servers() -> list:
         return await asyncio.wait_for(asyncio.shield(_site_task), 3)
     except Exception:
         return []
+
+
+def _today(sid: str) -> dict:
+    """What everyone did on a server today, added up, never who: for the home page, so it feels alive."""
+    start = datetime.now(db.tz()).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    out: dict[str, float] = {}
+    for r in db.q("SELECT type, message FROM events WHERE server_id=? AND ts>=? AND type IN ('progress', 'fish', 'bigfish', 'advancement')",
+                  (sid, start)):
+        add = adventures.tally(r["message"]) if r["type"] == "progress" else {"fish": 1} if r["type"] in ("fish", "bigfish") else {"advancements": 1}
+        for k, v in add.items():
+            out[k] = out.get(k, 0) + v
+    out["players"] = db.q("SELECT COUNT(DISTINCT lower(player)) AS n FROM sessions WHERE server_id=? AND COALESCE(end_ts, last_seen_ts) >= ?",
+                          (sid, start))[0]["n"]
+    keep = ("players", "mobs", "mined", "logs", "crops", "placed", "fish", "advancements", "travelled")
+    return {k: round(out[k]) for k in keep if out.get(k)}
 
 
 def _trend(sid: str, hours: int = 6, points: int = 36) -> dict:

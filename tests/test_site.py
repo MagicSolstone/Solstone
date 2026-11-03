@@ -496,3 +496,21 @@ def test_up_since_doesnt_trust_a_start_time_in_the_future(sid):
     finally:
         db.x("DELETE FROM metrics WHERE server_id='up-test'")
         db.x("DELETE FROM events WHERE server_id='up-test'")
+
+
+def test_today_on_the_server_adds_up_and_names_nobody():
+    import time
+
+    from app import db, main
+    now = time.time()
+    db.x("DELETE FROM events WHERE server_id='today-test'")
+    try:
+        db.add_event("today-test", now - 6, "progress", "defeated 3 zombies · dug 40 blocks", "Kid", None)
+        db.add_event("today-test", now - 5, "progress", "defeated 2 skeletons · chopped 12 logs", "Other", None)
+        db.add_event("today-test", now - 4, "fish", "Kid caught a Cod", "Kid", None)
+        db.add_event("today-test", now - 3, "advancement", "Kid made the advancement Stone Age", "Kid", None)
+        t = main._today("today-test")
+        assert t == {"mobs": 5, "mined": 40, "logs": 12, "fish": 1, "advancements": 1}
+        assert "Kid" not in str(t)
+    finally:
+        db.x("DELETE FROM events WHERE server_id='today-test'")
