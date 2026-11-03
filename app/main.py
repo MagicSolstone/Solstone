@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, games, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
+from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, games, stacks, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -1023,7 +1023,7 @@ async def public_leaderboard(sid: str, request: Request):
     hit = _lb_cache.get(srv.id)
     if hit and time.monotonic() - hit[0] < 120:
         return hit[1]
-    data = await S.leaderboard(srv)
+    data = stacks.leaderboard(await S.leaderboard(srv))       # an account's Minecraft names as one player
     _lb_cache[srv.id] = (time.monotonic(), data)
     return data
 
@@ -1035,10 +1035,10 @@ def _recap_payload(sid: str, day_s: str | None) -> dict:
         day = min(today, date.fromisoformat(day_s)) if day_s else today
     except ValueError:
         raise HTTPException(400, "Use a date like 2026-10-20") from None
-    out = {"day": day.isoformat(), "today": today.isoformat(), "recap": recap.day_recap(sid, day),
+    out = {"day": day.isoformat(), "today": today.isoformat(), "recap": stacks.recap(recap.day_recap(sid, day)),
            "on_this_day": recap.on_this_day(sid, day), **recap.neighbours(sid, day)}
     if day == today:
-        out["yesterday"] = recap.day_recap(sid, today - timedelta(days=1))
+        out["yesterday"] = stacks.recap(recap.day_recap(sid, today - timedelta(days=1)))
     return out
 
 
@@ -2263,7 +2263,7 @@ async def get_player(sid: str, uuid: str):
 
 @app.get("/api/servers/{sid}/leaderboard")
 async def get_leaderboard(sid: str):
-    return await S.leaderboard(await _server(sid))
+    return stacks.leaderboard(await S.leaderboard(await _server(sid)))
 
 
 @app.get("/api/servers/{sid}/icon.png")
@@ -2444,13 +2444,14 @@ async def activity(sid: str, days: int = 14):
     days = max(1, min(days, 90))
     gone = S.removed_names(srv)                  # taken off the whitelist: left out of who played
     if not _shows_play_time():
-        daily = [{"date": d["date"], "players": {n: 1 for n, v in d["players"].items() if v > 0 and n.lower() not in gone}}
-                 for d in db.daily_playtime(srv.id, days)]
+        daily = [{"date": d["date"], "players": {n: 1 for n, v in d["players"].items() if v > 0}}
+                 for d in stacks.daily([{**d, "players": {n: v for n, v in d["players"].items() if n.lower() not in gone}}
+                                        for d in db.daily_playtime(srv.id, days)])]
         return {"daily": daily, "sessions": [], "durations": False,
                 "recorder_since": (db.q("SELECT MIN(ts) AS t FROM metrics WHERE server_id=?", (srv.id,))[0]["t"])}
     return {
         "durations": True,
-        "daily": [{**d, "players": {n: v for n, v in d["players"].items() if n.lower() not in gone}} for d in db.daily_playtime(srv.id, days)],
+        "daily": stacks.daily([{**d, "players": {n: v for n, v in d["players"].items() if n.lower() not in gone}} for d in db.daily_playtime(srv.id, days)]),
         "sessions": [x for x in db.sessions(srv.id, limit=40) if (x.get("player") or "").lower() not in gone],
         "recorder_since": (db.q("SELECT MIN(ts) AS t FROM metrics WHERE server_id=?", (srv.id,))[0]["t"]),
     }

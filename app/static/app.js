@@ -1253,7 +1253,7 @@ async function viewLeaderboards(sid) {
     }
     const top = rows.slice(0, 8), max = top[0][k];
     return `<div class="board"><h3>${esc(title)}</h3><ol>${top.map((r, i) => `<li>
-      <span class="rank">${i + 1}</span>${miniHead(r)}<a href="#/s/${encodeURIComponent(sid)}/p/${r.uuid}">${esc(r.name)}</a><span class="val">${esc(fmtStat(kind, r[k]))}</span>
+      <span class="rank">${i + 1}</span>${miniHead(r)}<a href="#/s/${encodeURIComponent(sid)}/p/${r.uuid}">${esc(r.name)}${stackMark(r)}</a><span class="val">${esc(fmtStat(kind, r[k]))}</span>
       <span></span><span></span><div class="bar-bg"><span style="width:${(r[k] / max) * 100}%"></span></div></li>`).join("")}</ol></div>`;
   };
   const groups = (data.groups || ["More"]).map((g) => {

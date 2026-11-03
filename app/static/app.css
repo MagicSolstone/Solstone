@@ -2227,3 +2227,4 @@ a.glance-me:hover { border-color: var(--gold); }
 .pf-swatch-green { background: #69db7c; } .pf-swatch-aqua { background: #66d9e8; } .pf-swatch-blue { background: #74c0fc; }
 .pf-swatch-purple { background: #b197fc; } .pf-swatch-pink { background: #f783ac; } .pf-swatch-gray { background: #adb5bd; }
 .bn-text a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.stack-plus { margin-left: 2px; font-weight: 800; color: var(--gold); cursor: help; }

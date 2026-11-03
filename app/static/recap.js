@@ -2,6 +2,11 @@
    app's Overview tab and the live section of the home page. */
 "use strict";
 
+// A "+" after a name that stands for more than one Minecraft account (an account's Java and Bedrock names, say).
+function stackMark(p) {
+  return p?.also?.length ? `<sup class="stack-plus" title="Also plays as ${esc(p.also.join(", "))}">+</sup>` : "";
+}
+
 function recapSpan(sec) {
   sec = Math.round(sec || 0);
   const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
@@ -47,7 +52,7 @@ function recapCardHtml(r, title, o = {}) {
     return `<div class="rc-card ${o.big ? "big" : ""}"><div class="rc-head"><h3>${esc(title)}</h3></div><p class="muted">Nobody played${title.startsWith("Today") ? " yet today" : ""}.</p></div>`;
   }
   const lines = recapHighlights(r, o.max || 6);
-  const who = r.players.map((p) => `<span class="rc-who" title="${esc(p.name)}${hasTime(p.seconds) ? ` · ${esc(recapSpan(p.seconds))}` : ""}">${faceHtml(p, o.big ? 44 : 30)}<span><b>${esc(p.name)}</b>${hasTime(p.seconds) ? `<small>${esc(recapSpan(p.seconds))}</small>` : ""}</span></span>`).join("");
+  const who = r.players.map((p) => `<span class="rc-who" title="${esc(p.name)}${hasTime(p.seconds) ? ` · ${esc(recapSpan(p.seconds))}` : ""}">${faceHtml(p, o.big ? 44 : 30)}<span><b>${esc(p.name)}${stackMark(p)}</b>${hasTime(p.seconds) ? `<small>${esc(recapSpan(p.seconds))}</small>` : ""}</span></span>`).join("");
   return `<div class="rc-card ${o.big ? "big" : ""}">
     <div class="rc-head"><h3>${esc(title)}</h3><span class="muted">${r.players.length} ${r.players.length === 1 ? "player" : "players"}${hasTime(r.total_seconds) ? ` · ${esc(recapSpan(r.total_seconds))} played` : ""}${r.source === "logs" ? ' · <span title="Read from the server\'s old logs">from the logs</span>' : ""}</span></div>
     ${who ? `<div class="rc-players">${who}</div>` : ""}
