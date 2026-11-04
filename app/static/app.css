@@ -2408,3 +2408,29 @@ body.ui-hidden .manage-sub { display: none; }
 .gm-preset li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px; background: var(--well); }
 .gm-preset li b { min-width: 64px; font-size: .88rem; }
 .gm-preset .chip { font-size: .82rem; padding: 2px 8px; }
+
+/* Which Minecraft: the pixel badges, and the join card in two parts (Java, Bedrock) */
+.ed-ico { image-rendering: pixelated; flex: none; vertical-align: -2px; border-radius: 2px; }
+.ed-badge { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; padding: 1px 7px 1px 4px; border-radius: 999px;
+  font-size: .7rem; font-weight: 700; letter-spacing: .02em; vertical-align: 1px; border: 1px solid; }
+.ed-badge.java { color: #8fdc6a; border-color: rgba(127, 217, 79, .35); background: rgba(91, 191, 58, .12); }
+.ed-badge.bedrock { color: #c4c9ce; border-color: rgba(169, 173, 178, .35); background: rgba(142, 147, 153, .14); }
+.hp-ed-blocks { display: grid; gap: 10px; }
+.hp-ed-block { display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px; background: rgba(10, 14, 26, .3); border-left: 3px solid; }
+.hp-ed-block.java { border-left-color: #5bbf3a; }
+.hp-ed-block.bedrock { border-left-color: #8e9399; }
+.hp-ed-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+.hp-ed-head .muted { font-size: .85rem; }
+.hp-ver { margin-left: auto; font-variant-numeric: tabular-nums; }
+.hp-how { margin: 0; }
+.hp-friend { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border-radius: 10px;
+  background: rgba(79, 191, 58, .1); border: 1px solid rgba(127, 217, 79, .4); }
+.hp-friend-label { font-weight: 700; color: #8fdc6a; }
+.hp-gamertag { font-size: 1.05rem; font-weight: 700; color: #a6ef7e; background: rgba(10, 14, 26, .45); padding: 3px 10px; border-radius: var(--radius-s); }
+.hp-port { color: var(--muted); font-size: .9rem; }
+.hp-port b { color: var(--bone, #fff); font-variant-numeric: tabular-nums; }
+.hp-alt summary { cursor: pointer; color: var(--muted); font-size: .88rem; }
+.hp-alt[open] summary { margin-bottom: 6px; }
+.hp-alt .hp-join-row { margin-bottom: 4px; }
+.hp-eds { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 2px; font-size: .78rem; color: var(--muted); }
+.hp-eds span { display: inline-flex; align-items: center; gap: 4px; }

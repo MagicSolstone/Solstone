@@ -918,7 +918,7 @@ function playerRow(p, sub = false) {
     ? `<span title="Health">❤ ${p.health}</span>${p.food != null ? `<span title="Hunger">🍗 ${p.food}</span>` : ""}`
     : "";
   const inner = `${headHtml(p, 40)}
-    <div class="pr-main"><div class="pr-name">${esc(p.name)}${stackMark(p)}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}${p.op ? '<span class="op-badge">OP</span>' : ""}</div>
+    <div class="pr-main"><div class="pr-name">${esc(p.name)}${edBadge(isBedrockPlayer(p))}${stackMark(p)}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}${p.op ? '<span class="op-badge">OP</span>' : ""}</div>
       <div class="pr-sub">${sub ? `<span class="pl-also" title="Linked to ${esc(p.under)}'s account">↳ ${esc(p.under)}'s other account</span>` : ""}${line}${vitals}</div></div>`;
   const cls = `pl-row ${p.online ? "is-online" : ""} ${sub ? "pl-sub" : ""}`;
   return href ? `<a class="${cls}" href="${href}">${inner}</a>` : `<div class="${cls}">${inner}</div>`;

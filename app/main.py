@@ -469,6 +469,7 @@ async def _site_status() -> list:
             continue
         perf = summ.get("perf") or {}
         servers.append({"id": srv.id, "name": summ["name"], "running": summ["running"], "online": len(summ["online"]),
+                        "on_bedrock": sum(1 for n in summ["online"] if mcname.is_bedrock(str(n))),     # a count, never names
                         "max": summ["max_players"], "version": summ.get("version"), "has_icon": summ["has_icon"],
                         "started": summ.get("started") if summ["running"] else None, "tps": perf.get("tps"),
                         "up_since": _up_since(srv.id, summ.get("started")) if summ["running"] else None,

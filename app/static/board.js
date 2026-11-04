@@ -97,6 +97,26 @@ function upTimeline(items, row, cls = "panel") {
   });
   return `${html}</ol>`;
 }
+// Which Minecraft: small pixel pictures of our own (not the official logos), the same everywhere.
+//   java: a grass block · bedrock: a stone block · friend: a game controller (joining through a friend)
+const ED_PIX = {
+  java: ["GGGGGGGG", "GgGGGgGG", "dGdGGdGd", "DdddDddd", "ddDdddDd", "dddDdddd", "dDddddDd", "ddddDddd"],
+  bedrock: ["SsSSsSSs", "SSSsSSSs", "sSkSSsSS", "SSSSkSsS", "SsSSSSSk", "kSSsSSsS", "SSkSSkSS", "sSSSsSSs"],
+  friend: ["........", ".XXXXXX.", "XXbXXXaX", "XbbbXcXy", "XXbXXXzX", "XXXXXXXX", "XX....XX", "........"],
+};
+const ED_COL = { G: "#5bbf3a", g: "#7fd94f", d: "#8a5a35", D: "#6e4426", S: "#8e9399", s: "#a9adb2", k: "#5d6166",
+  X: "#2f3b33", b: "#e8f2ea", a: "#7fd94f", c: "#4fb3ff", y: "#ffd34f", z: "#ff6b5b" };
+function edIcon(kind, size = 16) {
+  const rows = ED_PIX[kind] || [];
+  const rects = rows.flatMap((row, y) => [...row].map((ch, x) => (ED_COL[ch] ? `<rect x="${x}" y="${y}" width="1" height="1" fill="${ED_COL[ch]}"/>` : ""))).join("");
+  return `<svg class="ed-ico" viewBox="0 0 8 8" width="${size}" height="${size}" shape-rendering="crispEdges" aria-hidden="true">${rects}</svg>`;
+}
+// Bedrock players come in through Floodgate: a "." before their name, and an id starting with zeros.
+const isBedrockPlayer = (p) => !!(p?.bedrock || p?.name?.startsWith(".") || /^00000000-0000-0000-000/.test(p?.uuid || ""));
+// A player's edition, as a small badge beside their name.
+function edBadge(bedrock) {
+  return `<span class="ed-badge ${bedrock ? "bedrock" : "java"}" title="${bedrock ? "Playing on Bedrock" : "Playing on Java"}">${edIcon(bedrock ? "bedrock" : "java", 12)}${bedrock ? "Bedrock" : "Java"}</span>`;
+}
 // The same without the formatting, for places that only take plain text.
 function annPlain(text) {
   return String(text || "").replace(/\[([^\]]+)\]\([^)\s]+\)/g, "$1").replace(/\*\*([^*]+)\*\*/g, "$1")

@@ -91,7 +91,8 @@ function statusPanel(site) {
     const smooth = tps == null ? "" : tps >= 19.5 ? "Smooth" : tps >= 15 ? "A little laggy" : "Laggy";
     const tr = s.trend || {}, hrs = `the last ${tr.hours || 6} hours`;
     const tiles = [
-      tile("Playing now", `${s.online}${s.max ? ` <small>/ ${s.max}</small>` : ""}`, "", sparkline(tr.players, 0, 4, `Players over ${hrs}`)),
+      tile("Playing now", `${s.online}${s.max ? ` <small>/ ${s.max}</small>` : ""}`, "", sparkline(tr.players, 0, 4, `Players over ${hrs}`)
+        + (s.online ? `<span class="hp-eds">${s.online - (s.on_bedrock || 0) ? `<span>${edIcon("java", 12)} ${s.online - (s.on_bedrock || 0)} on Java</span>` : ""}${s.on_bedrock ? `<span>${edIcon("bedrock", 12)} ${s.on_bedrock} on Bedrock</span>` : ""}</span>` : "")),
       tps != null ? tile("TPS", tps.toFixed(1), `${smooth}${s.mspt != null ? ` · ${Number(s.mspt).toFixed(0)} ms a tick` : ""}`, sparkline(tr.tps, 0, 20, `TPS over ${hrs}`)) : "",
       s.version ? tile("Minecraft", esc(s.version), s.loader ? s.loader.charAt(0).toUpperCase() + s.loader.slice(1) : "") : "",
       s.up_since ? tile("Up for", esc(sinceText(s.up_since * 1000)), s.uptime_7d != null ? `${Math.round(s.uptime_7d * 1000) / 10}% of the last 7 days` : "") : "",
@@ -104,20 +105,29 @@ function statusPanel(site) {
 }
 
 function joinCard(site) {
-  const rowsHtml = (rows) => `<div class="hp-join-rows">${rows.map(([ed, addr, extra]) => `<div class="hp-join-row">
-      <span class="hp-ed">${esc(ed)}</span><code class="hp-addr">${esc(addr)}</code>${extra ? `<span class="muted">${esc(extra)}</span>` : ""}
-      <button class="btn sm" type="button" data-copy="${esc(addr)}">Copy</button></div>`).join("")}</div>`;
   // One card per server: what it is, how it's doing, and how to get on it.
+  // Each way in by edition: Java on PC or Mac (the address), Bedrock everywhere else. On Bedrock the friend's
+  // gamertag comes first when there is one (it works on every device, consoles too); the address is the other way.
+  const copyBtn = (v, what) => `<button class="btn sm" type="button" data-copy="${esc(v)}" aria-label="Copy the ${what}">Copy</button>`;
+  const javaBlock = (j) => `<div class="hp-ed-block java">
+      <div class="hp-ed-head">${edIcon("java", 20)}<b>Java Edition</b><span class="muted">PC or Mac</span>${j.version ? `<span class="chip hp-ver" title="Launch this version">${esc(j.version)}</span>` : ""}</div>
+      <div class="hp-join-row"><code class="hp-addr">${esc(j.java)}</code>${copyBtn(j.java, "address")}</div>
+      <p class="hp-how muted small">Multiplayer → Add Server → paste the address.</p></div>`;
+  const bedrockBlock = (j) => {
+    const server = j.bedrock ? `<div class="hp-join-row"><code class="hp-addr">${esc(j.bedrock)}</code><span class="hp-port">Port <b>${esc(String(j.bedrock_port))}</b></span>${copyBtn(j.bedrock, "address")}</div>` : "";
+    return `<div class="hp-ed-block bedrock">
+      <div class="hp-ed-head">${edIcon("bedrock", 20)}<b>Bedrock Edition</b><span class="muted">phones, tablets, consoles, Windows</span></div>
+      ${j.xbox ? `<div class="hp-friend">${edIcon("friend", 22)}<span class="hp-friend-label">Add as a friend</span><code class="hp-gamertag">${esc(j.xbox)}</code>${copyBtn(j.xbox, "gamertag")}</div>
+        <p class="hp-how muted small">Then Play → Friends, and join the server from there. Works on every device, consoles too.</p>
+        ${server ? `<details class="hp-alt"><summary>Or add it as a server</summary>${server}<p class="hp-how muted small">Play → Servers → Add Server.</p></details>` : ""}`
+      : `${server}<p class="hp-how muted small">Play → Servers → Add Server, with the address and port.</p>`}</div>`;
+  };
   const cards = (site.joins || []).map((j) => {
-    const r = [];
-    if (j.java) r.push(["Java", j.java, j.version ? `Minecraft ${j.version}` : ""]);
-    if (j.xbox) r.push(["Bedrock", j.xbox, "Add as a friend on Xbox, then join from the Friends tab"]);
-    if (j.bedrock) r.push([j.xbox ? "Bedrock (or)" : "Bedrock", j.bedrock, `Port ${j.bedrock_port} · add as a server`]);
-    const kind = j.java && (j.bedrock || j.xbox) ? "Java and Bedrock" : j.java ? "Java only" : "Bedrock only";
     const icon = j.status?.has_icon ? `<img class="px" src="/api/public/icon/${encodeURIComponent(j.id)}.png" alt="" width="40" height="40">` : "";
     return `<article class="hp-join-card ${j.main ? "main" : ""}" ${j.color ? `style="--accent:${esc(j.color)}"` : ""}>
-      <header>${icon}<div><h3>${esc(j.name)}</h3><span class="chip">${kind}</span></div></header>
-      ${rowsHtml(r)}${j.note ? `<p class="hp-join-note">${esc(j.note)}</p>` : ""}${modsHtml(j.mods)}
+      <header>${icon}<div><h3>${esc(j.name)}</h3></div></header>
+      <div class="hp-ed-blocks">${j.java ? javaBlock(j) : ""}${j.xbox || j.bedrock ? bedrockBlock(j) : ""}</div>
+      ${j.note ? `<p class="hp-join-note">${esc(j.note)}</p>` : ""}${modsHtml(j.mods)}
 </article>`;
   });
   if (!cards.length) return "";

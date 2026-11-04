@@ -447,8 +447,9 @@ def main() -> int:
 
             # a holiday on today with a reward: its own line on Events (with the item's picture), and its banner
             cal = pg.request.get(f"{base}/api/fireworks/show", headers=H).json()["calendar"]
-            today_iso = time.strftime("%Y-%m-%d")
-            party = {"id": "smokeparty", "name": "Smoke weekend", "emoji": "🥧", "days": 1, "date": {"type": "once", "iso": today_iso},
+            # (from yesterday, three days long: on whatever "today" is for the server's time zone and the browser's)
+            party = {"id": "smokeparty", "name": "Smoke weekend", "emoji": "🥧", "days": 3,
+                     "date": {"type": "once", "iso": time.strftime("%Y-%m-%d", time.localtime(time.time() - 86400))},
                      "detail": "Come and play!", "reward": {"items": [{"item": "minecraft:pumpkin_pie", "count": 3}], "after": 3,
                                                             "note": "Reward for playing **Smoke weekend**", "banner": True}}
             soon_iso = time.strftime("%Y-%m-%d", time.localtime(time.time() + 6 * 86400))
@@ -651,7 +652,7 @@ def main() -> int:
             pg.request.put(f"{base}/api/servers/{sid}/settings", data={"join_address": "mods.example.net:25566", "join_note": "Needs the modpack", "join_mods": True}, headers=H)
             def running(route):                  # the server as if it were up (there's no game here)
                 d = json.loads(route.fetch().text())
-                up = {"running": True, "online": 3, "max": 10, "tps": 19.9, "started": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 3 * 3600 - 600)),
+                up = {"running": True, "online": 3, "on_bedrock": 1, "max": 10, "tps": 19.9, "started": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 3 * 3600 - 600)),
                       "cpu": 23, "trend": {"hours": 6, "players": [None] * 6 + [0, 1, 1, 2, 3, 3, 2, 2, 3, 4, 3, 3] * 2 + [3] * 6,
                                            "tps": [None] * 6 + [20, 19.8, 19.9, 18.2, 20, 20] * 5, "cpu": [None] * 6 + [12, 18, 25, 40, 22, 19] * 5},
                       "today": {"players": 4, "mobs": 37, "mined": 1240, "logs": 64, "fish": 9, "advancements": 3, "travelled": 5400}}
@@ -659,6 +660,8 @@ def main() -> int:
                     x.update(up)
                 for j in d.get("joins", []):
                     j["status"] = {**(j.get("status") or {}), **up}
+                if d.get("joins"):                   # Bedrock too: through a friend's gamertag, or the address and port
+                    d["joins"][0].update(xbox="SmokeRealm", bedrock="play.example.net", bedrock_port=19132)
                 route.fulfill(json=d)
             anon.route("**/api/public/site", running)
             anon.goto(f"{base}/"); anon.reload(); anon.wait_for_timeout(1200)
@@ -671,6 +674,14 @@ def main() -> int:
                 problems.append("home: no Today line (what everyone did, added up)")
             if "mods.example.net:25566" not in (anon.locator(".hp-join .hp-join-card").text_content() if anon.locator(".hp-join .hp-join-card").count() else ""):
                 problems.append("home: a second server's own join address isn't shown")
+            card = anon.locator(".hp-join-card").first
+            if not card.locator(".hp-ed-block.java .ed-ico").count() or not card.locator(".hp-ed-block.bedrock .hp-friend .hp-gamertag").count() \
+                    or "SmokeRealm" not in (card.locator(".hp-gamertag").text_content() or "") or not card.locator(".hp-ed-block.bedrock details.hp-alt").count():
+                problems.append("home: the join card isn't in two parts (Java's address; Bedrock's gamertag first, the address as the other way)")
+            if "2 on Java" not in (anon.locator("#hp-status .hp-eds").text_content() if anon.locator("#hp-status .hp-eds").count() else "") \
+                    or "1 on Bedrock" not in anon.locator("#hp-status .hp-eds").text_content():
+                problems.append("home: 'Playing now' doesn't say how many are on Java and Bedrock")
+            card.scroll_into_view_if_needed(); check(anon, "site-home-join-editions")
             check(anon, "site-home-two-servers")
             anon.unroute("**/api/public/site")
             pg.request.put(f"{base}/api/servers/{sid}/settings", data={"join_address": "", "join_note": "", "join_mods": False}, headers=H)
