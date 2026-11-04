@@ -1,3 +1,18 @@
+# Solstone 1.15.7
+
+- **Xbox friend watcher:** is joining through the Xbox friend (MCXboxBroadcast) working?
+  - Solstone watches what MCXboxBroadcast writes in the server log. A dropped connection gets two minutes to reconnect, since it normally takes a second or two.
+  - Not back by then: a notification (with the server notifications), and another when it's working again.
+  - **Home page:** under the gamertag, it says Online, Reconnecting, Not working right now (the server address then unfolds), or that the server's off.
+  - **Server → Control:** a panel with the state and since when, reconnects in the last day, and the last problem it logged.
+- **Bedrock on the home page:**
+  - "Gamertag:" before the gamertag, so it's clear what to add as a friend.
+  - **Or add it as a server** says it's for phones, tablets and Windows, since consoles can't add servers.
+- **Console help:** a post can be used as Console help (Website → Posts → Use as). Once one is, the Bedrock part links to it ("On a console? Here's another way in"), more plainly while the Xbox friend is down. Without one, nothing shows.
+- **Saw it:** Manage → Whitelist lists requests answered lately, and whether they've seen the answer on the website ("Saw it 2 min ago"). A notification goes out the first time they see it.
+- **Events, simpler:** each day with something on is one dot. A holiday with a reward has a gold ring on its dot, and its card says the reward and when to play for it. A reward that's already started, for a holiday still ahead, is said under Today.
+- **The players graph ends at now:** it drops to 0 when everyone's gone.
+
 # Solstone 1.15.6
 
 - **Ask to join survives a restart:** someone waiting with the home page open gets "You're in!" after Solstone restarts, with no reload.
