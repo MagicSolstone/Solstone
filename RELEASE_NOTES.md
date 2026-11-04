@@ -1,3 +1,17 @@
+# Solstone 1.15.4
+
+- **The join card, by edition:** each server's card is in two clear parts.
+  - **Java Edition (PC or Mac):** the address, the version to launch, and where to put it.
+  - **Bedrock Edition (phones, tablets, consoles, Windows):** the friend's gamertag first, in green ("Add as a friend", works on every device, consoles too). The address and port are under **Or add it as a server**.
+  - Small pixel badges of our own: a grass block for Java, a stone block for Bedrock, a controller for joining through a friend.
+- **Who's on which edition:**
+  - "Playing now" on the home page says how many are on Java and on Bedrock (counts, never names).
+  - The players list has a Java or Bedrock badge beside each name.
+- **Races:**
+  - **A checkpoint flown through between looks counts.** An elytra covers about 30 blocks a second, so the whole stretch since the last look is checked, not just where they are now.
+  - **Each checkpoint can have its own height:** "counts from 60 to 100 blocks above it". Its glowing column shows exactly that band.
+  - **Clearer signs:** reaching a checkpoint flashes a big ✔ with the next one's name. Close to the next one, the line above the hotbar says to go higher or lower.
+
 # Solstone 1.15.3
 
 - **Setup windows keep their place:** adding a wave, a monster, a spot on the map or a checkpoint no longer jumps the window back to the top. That's every setup window.
