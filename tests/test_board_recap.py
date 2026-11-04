@@ -144,3 +144,20 @@ def test_announcement_looks_and_your_own_colours():
     assert it["style"] == "custom" and it["colors"] == ["#ff0000", "#00ff00"]        # only real colours, at most three looked at
     assert board.clean_item({"text": "Hi", "style": "ocean"})["style"] == "ocean"
     assert board.clean_item({"text": "Hi", "style": "glitter"})["style"] == "info"
+
+
+def test_game_banners_only_when_wanted(monkeypatch):
+    """Contests, races and games make banners only if an admin turns that on (Announcements): off to start."""
+    from app import board, challenges, games, races
+    one = [{"id": "chd-x", "kind": "challenge", "emoji": "🏆", "style": "party", "text": "Everyone survived!", "detail": "", "countdown": None}]
+    monkeypatch.setattr(challenges, "banners", lambda sid, now=None: one)
+    monkeypatch.setattr(games, "banners", lambda sid: [])
+    monkeypatch.setattr(races, "banners", lambda sid, now=None: [])
+    saved = board.config()
+    try:
+        assert board.config()["games"] is False
+        assert not any(b["kind"] == "challenge" for b in board.active("app", "sid-x", names=True, servers=[]))
+        board.save({"games": True})
+        assert any(b["kind"] == "challenge" for b in board.active("app", "sid-x", names=True, servers=[]))
+    finally:
+        board.save({"games": saved["games"]})

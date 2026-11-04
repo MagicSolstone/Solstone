@@ -2580,3 +2580,4 @@ body.ui-hidden .manage-sub { display: none; }
 .tr-slow summary { cursor: pointer; font-weight: 700; }
 .tr-slow ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; }
 .tr-slow code { font-size: .8rem; word-break: break-all; }
+.ann-games { margin: 14px 0 4px; font-size: .9rem; }

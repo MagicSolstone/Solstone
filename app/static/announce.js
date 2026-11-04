@@ -66,7 +66,9 @@ function annBanners(el) {
         <button class="btn sm" data-edit>Edit</button><button class="btn sm danger" data-del>Delete</button></span></div></div>`;
   }).join("");
   el.innerHTML = `<section class="panel"><div class="ann-list">${rows || `<p class="muted">No announcements yet. They're good for build contests, server restarts, movie night, or "dinner in 10 minutes".</p>`}</div>
+    <label class="check ann-games"><input type="checkbox" id="ann-games" ${d.games ? "checked" : ""}> Also show banners for contests, races and games: <span class="muted">starting soon, on now, and the result for half an hour after (signed-in pages only)</span></label>
     ${ann.editing === "new" ? annEditHtml({ text: "", detail: "", emoji: "📣", style: "info", where: ["home", "app", "login"], server: "", start: "", end: "", countdown: "", done_text: "", show: "", say: false, enabled: true }) : `<button class="btn primary" id="ann-new" style="margin-top:12px">+ New announcement</button>`}</section>`;
+  $("#ann-games")?.addEventListener("change", async (e) => { await annSave({ games: e.target.checked }, e.target.checked ? "Game banners on" : "Game banners off"); });
   $("#ann-new")?.addEventListener("click", () => { ann.editing = "new"; renderAnn(); $(".ann-edit input[name=text]")?.focus(); });
   el.querySelectorAll(".ann-row[data-i]").forEach((row) => {
     const i = +row.dataset.i;

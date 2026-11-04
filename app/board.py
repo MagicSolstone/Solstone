@@ -79,13 +79,17 @@ def config() -> dict:
         settings_store.save_section("board", saved)
     bt = saved.get("bedtime") or {}
     return {"items": [i for i in (clean_item(x) for x in saved.get("items") or []) if i],
-            "bedtime": {"show": bool(bt.get("show", True)), "minutes": max(5, min(180, int(bt.get("minutes", 30) or 30)))}}
+            "bedtime": {"show": bool(bt.get("show", True)), "minutes": max(5, min(180, int(bt.get("minutes", 30) or 30)))},
+            # contests, races and games in the banners (starting soon, on now, results): only if an admin wants them
+            "games": bool(saved.get("games", False))}
 
 
 def save(body: dict) -> dict:
     cur = config()
     if isinstance(body.get("items"), list):
         cur["items"] = [i for i in (clean_item(x) for x in body["items"][:60]) if i]
+    if "games" in body:
+        cur["games"] = bool(body["games"])
     if isinstance(body.get("bedtime"), dict):
         cur["bedtime"] = {"show": bool(body["bedtime"].get("show", True)),
                           "minutes": max(5, min(180, int(body["bedtime"].get("minutes", 30) or 30)))}
@@ -144,7 +148,7 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
                 out.append({"id": f"bta-{srv.id}", "kind": "bedtime", "emoji": "😴", "style": "info",
                             "text": f"{srv.display_name} is asleep", "detail": f"Back at {playtime.fmt_clock(bcfg['end'])}", "countdown": None})
     out += holiday_banners(now)                   # one banner per holiday: its countdown, the day, its reward days
-    if names:
+    if names and cfg["games"]:
         from . import challenges, games, races
         for one in ([sid] if sid or allowed is None else sorted(allowed)):
             out += challenges.banners(one) + races.banners(one) + games.banners(one)
