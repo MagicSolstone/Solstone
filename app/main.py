@@ -2124,10 +2124,17 @@ async def traffic_report(request: Request, days: int = 1):
 
 
 @app.get("/api/servers/{sid}/stats/history")
-async def stats_history(sid: str, since: float = 0):
-    """The Stats tab: each day's totals (kept for good), hours played by weekday and hour, and a few records."""
+async def stats_history(sid: str, request: Request, since: float = 0):
+    """The Stats tab: each day's totals (kept for good), hours played by weekday and hour, and a few records.
+    Hours played are for admins and trusted accounts only: on a small server, a day's hours (or when they were played)
+    can say who played how much. Players still see players in a day, most on at once and the rest."""
     srv = await _server(sid)
-    return await asyncio.to_thread(serverstats.history, srv.id, max(0.0, since))
+    out = await asyncio.to_thread(serverstats.history, srv.id, max(0.0, since))
+    user = getattr(request.state, "user", None)
+    if not user or user.role not in ("admin", "trusted"):
+        out = {**out, "days": [{k: v for k, v in d.items() if k != "play_hours"} for d in out["days"]], "heat": None,
+               "records": {}, "hours_hidden": True}
+    return out
 
 
 @app.get("/api/servers/{sid}/icon.png")
@@ -2425,12 +2432,23 @@ async def whitelist_overview(request: Request):
     let_in = []
     for r in site.join_requests():
         want = [x for x in (r.get("servers") or list(by_id)) if x in by_id]
+        if r.get("admin_cleared"):
+            continue
         if want and all(x in (r.get("done") or []) or S.whitelisted(by_id[x], None, r["player"]) for x in want):
             let_in.append({"player": r["player"], "name": r.get("name"), "ts": r.get("ts"), "ts_in": r.get("let_in_at") or r.get("ts"),
                            "denied": False, "reason": "", "seen": None})
     answered = sorted(let_in + site.answered_lately(), key=lambda a: -(a.get("ts_in") or 0))[:20]
     return {"servers": out_servers, "requests": reqs, "blocked": sorted(blocked.values(), key=lambda b: -b["ts"]),
             "answered": answered}
+
+
+@app.post("/api/whitelist/answered/clear")
+async def clear_answered(request: Request):
+    """Take one player (or everyone) off Answered lately: only the admins' list; their own page still knows."""
+    auth.require_admin(request)
+    body = await _body(request)
+    player = str(body.get("player") or "").strip() or None
+    return {"cleared": await asyncio.to_thread(site.clear_answered, player)}
 
 
 @app.post("/api/whitelist/deny")
@@ -3616,7 +3634,9 @@ def _html_escape(s: str) -> str:
 
 def _page(name: str) -> str:
     """An HTML page with ?v= on the CSS/JS links so browsers pick up new versions after an update."""
-    return _template(name).replace("{{VERSION}}", VERSION).replace("{{SITE_NAME}}", _html_escape(site.config()["name"])).replace("{{SITE_LOGO}}", _html_escape(site.logo_url()))
+    cfg = site.config()
+    return (_template(name).replace("{{VERSION}}", VERSION).replace("{{SITE_NAME}}", _html_escape(cfg["name"]))
+            .replace("{{SITE_LOGO}}", _html_escape(site.logo_url())).replace("{{UNITS}}", cfg.get("units") or "km"))
 
 
 async def _page_for(name: str, request: Request) -> str:

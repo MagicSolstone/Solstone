@@ -2494,3 +2494,4 @@ body.ui-hidden .manage-sub { display: none; }
 .tr-tiles { grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr)); }
 .tr-chart svg { height: 120px; }
 .tr-speed { margin: 4px 0 0; }
+.wl-ans-x { margin-left: auto; }

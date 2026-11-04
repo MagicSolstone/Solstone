@@ -80,7 +80,7 @@ function fmtStat(kind, v) {
     const s = Math.floor(v / 20), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
     return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : m ? `${m}m` : `${s}s`;
   }
-  if (kind === "cm") { const m = v / 100; return m >= 1000 ? `${n(m / 1000, m >= 100000 ? 0 : 1)} km` : `${Math.round(m)} m`; }
+  if (kind === "cm") { const m = v / 100; return typeof fmtDist === "function" && (m >= 1000 || USE_MILES) ? fmtDist(m) : m >= 1000 ? `${n(m / 1000, m >= 100000 ? 0 : 1)} km` : `${Math.round(m)} m`; }
   if (kind === "hearts") return `${n(v / 20)} ♥`;
   if (kind === "grams") {                         // a fish's weight: "0.16 oz", "5.3 oz", "3.4 lb", "1,298 lb" (as Tide+ shows it)
     const lb = v / 453.59237, oz = lb * 16;

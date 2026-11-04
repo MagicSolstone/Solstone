@@ -736,6 +736,14 @@ def main() -> int:
                 problems.append("home: no little graphs for players, TPS and CPU")
             if "37 mobs defeated" not in (anon.locator("#hp-status .hp-today").text_content() if anon.locator("#hp-status .hp-today").count() else ""):
                 problems.append("home: no Today line (what everyone did, added up)")
+            if "5.4 km travelled" not in (anon.locator("#hp-status .hp-today").text_content() or ""):
+                problems.append("home: the Today line's distance isn't in km")
+            pg.request.put(f"{base}/api/settings/site", data={"units": "miles"}, headers=H)
+            anon.reload(); anon.wait_for_timeout(1200)
+            if "3.4 mi travelled" not in (anon.locator("#hp-status .hp-today").text_content() if anon.locator("#hp-status .hp-today").count() else ""):
+                problems.append("home: with distances in miles, the Today line still isn't in miles")
+            pg.request.put(f"{base}/api/settings/site", data={"units": "km"}, headers=H)
+            anon.reload(); anon.wait_for_timeout(1200)
             if "mods.example.net:25566" not in (anon.locator(".hp-join .hp-join-card").text_content() if anon.locator(".hp-join .hp-join-card").count() else ""):
                 problems.append("home: a second server's own join address isn't shown")
             card = anon.locator(".hp-join-card").first
@@ -850,7 +858,11 @@ def main() -> int:
                         if "Nope_Kid" not in (pg.locator("#modal-root .wl-answered-list").text_content() if pg.locator("#modal-root .wl-answered-list").count() else ""):
                             problems.append("whitelist page: Answered lately doesn't open with the denied request in it")
                         check(pg, "whitelist-answered")
-                        pg.click("#modal-root [data-close]"); pg.wait_for_timeout(200)
+                        pg.click('#modal-root [data-clear-ans="Nope_Kid"]'); pg.wait_for_timeout(1500)
+                        if "Nope_Kid" in (pg.locator("#modal-root .wl-answered-list").text_content() if pg.locator("#modal-root .wl-answered-list").count() else ""):
+                            problems.append("whitelist page: ✕ didn't take someone off Answered lately")
+                        if pg.locator("#modal-root [data-close]").count():
+                            pg.click("#modal-root [data-close]"); pg.wait_for_timeout(200)
                 anon.reload(); anon.wait_for_timeout(1500)
                 step = anon.locator("#step-ask")
                 if "denied" not in (step.get_attribute("class") or "").split() or "real name in the note" not in (step.text_content() or "") or not step.locator("[data-ask-again]").count():

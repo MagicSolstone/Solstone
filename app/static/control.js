@@ -838,8 +838,20 @@ async function viewWhitelist() {
       <ul class="wl-list wl-answered-list">${d.answered.map((a) => `<li class="wl-req wl-answered"><div class="wl-who"><code class="ta-name">${esc(a.player)}</code>${a.player.startsWith(".") ? ' <span class="chip">Bedrock</span>' : ""}
         ${a.name ? `<span>${esc(a.name)}</span>` : ""}</div>
         <div class="wl-ans-line"><span class="${a.denied ? "wl-no" : "wl-in"}">${a.denied ? "❌ Not accepted" : "✅ Let in"} ${ago(a.ts_in)}</span>
-        ${a.seen ? `<span class="wl-seen">👀 Saw it ${ago(a.seen)}</span>` : '<span class="muted small">Hasn\'t seen it on the website yet</span>'}</div></li>`).join("")}</ul>
-      <div class="actions"><button class="btn" type="button" data-close>Close</button></div>`, (m) => $("[data-close]", m).addEventListener("click", closeModal)));
+        ${a.seen ? `<span class="wl-seen">👀 Saw it ${ago(a.seen)}</span>` : '<span class="muted small">Hasn\'t seen it on the website yet</span>'}
+        <button type="button" class="icon-btn wl-ans-x" data-clear-ans="${esc(a.player)}" aria-label="Take ${esc(a.player)} off this list" title="Take off this list">✕</button></div></li>`).join("")}</ul>
+      <p class="muted small">✕ only takes them off this list. Their own page still shows their answer.</p>
+      <div class="actions"><button class="btn danger" type="button" data-clear-all>Clear all</button><button class="btn" type="button" data-close>Close</button></div>`, (m) => {
+    $("[data-close]", m).addEventListener("click", closeModal);
+    const clear = async (player) => {
+      try { await post("/api/whitelist/answered/clear", player ? { player } : {}); } catch (err) { showError(esc(err.message), 4000); return; }
+      closeModal();
+      await viewWhitelist();
+      if (player) $("#wl-answered")?.click();               // back to the list, one shorter
+    };
+    m.querySelectorAll("[data-clear-ans]").forEach((b) => b.addEventListener("click", () => clear(b.dataset.clearAns)));
+    $("[data-clear-all]", m).addEventListener("click", () => clear(null));
+  }));
   view().addEventListener("click", async (e) => {
     const copy = e.target.closest("[data-copy-name]"), one = e.target.closest("[data-let]"), all = e.target.closest("[data-let-all]"), un = e.target.closest("[data-unlist]");
     const deny = e.target.closest("[data-deny]");

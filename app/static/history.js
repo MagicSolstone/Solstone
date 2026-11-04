@@ -202,7 +202,7 @@ function eventLineHtml(e, withName, colorNames = false) {
   const name = () => `<b${colorNames ? ` class="pname-c" style="color:${nameInk(e.player)}"` : ""}>${esc(e.player)}</b>`;
   if (e.type === "chat") msg = withName ? `${name()} ${esc(e.message)}` : esc(e.message);
   else {
-    msg = esc(e.message);
+    msg = esc(distText(e.message));
     if (e.player) msg = withName ? msg.replace(esc(e.player), name()) : msg.replace(`${esc(e.player)} `, "");
     if (e.type === "advancement") msg = msg.replace(/\[(.+)\]$/, '<span class="adv-name">$1</span>');
     if (!withName) msg = msg.charAt(0).toUpperCase() + msg.slice(1);

@@ -14,7 +14,7 @@ const ADV_KINDS = [["mobs", "⚔️", "mobs defeated"], ["mined", "⛏️", "blo
   ["bred", "🐑", "animals bred"], ["chests", "📦", "chests opened"], ["damage", "💔", "hearts of damage taken"], ["travelled", "🧭", "travelled"], ["chat", "💬", "chat messages"]];
 function advKindChips(t) {
   return ADV_KINDS.filter(([k]) => t[k]).map(([k, icon, say]) => {
-    const n = k === "travelled" ? (t[k] >= 1000 ? `${(t[k] / 1000).toFixed(1)} km` : `${Math.round(t[k])} blocks`) : Math.round(t[k]);
+    const n = k === "travelled" ? fmtDist(t[k]) : Math.round(t[k]);
     return `<span class="rp-chip" title="${esc(k === "travelled" ? `Travelled ${n}` : `${n} ${say}`)}">${icon} ${esc(String(n))}</span>`;
   }).join("");
 }
@@ -23,11 +23,11 @@ function advSummaryHtml(d) {
   return d.summary.map((b) => `<button type="button" class="rp-ev rp-block" data-ts="${b.start}" data-end="${b.end}">
       <span class="rp-ev-t">${esc(advClock(b.start))}</span>
       <span class="rp-block-body">${Object.entries(b.players).map(([p, t]) => `<span class="rp-block-who">${faceHtml({ name: p }, 16)}<b>${esc(p)}</b>${advKindChips(t)}</span>`).join("")}
-        ${b.moments.map((e) => `<span class="rp-moment">${ADV_ICONS[e.type] || "•"} ${esc(e.message)}</span>`).join("")}</span></button>`).join("");
+        ${b.moments.map((e) => `<span class="rp-moment">${ADV_ICONS[e.type] || "•"} ${esc(distText(e.message))}</span>`).join("")}</span></button>`).join("");
 }
 function advEverythingHtml(d) {
   return d.events.map((e) => `<button type="button" class="rp-ev" data-ts="${e.ts}" data-player="${esc(e.player || "")}">
-      <span class="rp-ev-t">${esc(advClock(e.ts))}</span><span>${ADV_ICONS[e.type] || "•"}</span><span>${e.type === "chat" || e.type === "webchat" ? `<b>${esc(e.player || "")}</b>: ` : ""}${esc(e.message)}</span></button>`).join("")
+      <span class="rp-ev-t">${esc(advClock(e.ts))}</span><span>${ADV_ICONS[e.type] || "•"}</span><span>${e.type === "chat" || e.type === "webchat" ? `<b>${esc(e.player || "")}</b>: ` : ""}${esc(distText(e.message))}</span></button>`).join("")
     || '<p class="muted small">Nothing in the feed for this stretch.</p>';
 }
 

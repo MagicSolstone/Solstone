@@ -336,7 +336,7 @@ function fmtDuration(ticks) {
 }
 function fmtDistance(cm) {
   const m = (cm || 0) / 100;
-  if (m >= 1000) return `${(m / 1000).toFixed(m >= 100000 ? 0 : 1)} km`;
+  if (m >= 1000 || USE_MILES) return fmtDist(m);
   return `${Math.round(m)} m`;
 }
 function fmtAgo(ts) {
@@ -857,7 +857,7 @@ function serverHeader(s, tab) {
   const groups = [
     ["overview", "Overview", [["overview", "Overview", base]]],
     ...(java ? [...(isPlayer() && !s.player_map ? [] : [["world", "World", [["world", "World", `${base}/world`]]]]),
-      ["leaderboards", "Leaderboards", [["leaderboards", "Leaderboards", `${base}/leaderboards`], ["stats", "Server stats", `${base}/stats`]]],
+      ["leaderboards", "Stats", [["leaderboards", "Leaderboards", `${base}/leaderboards`], ["stats", "Server stats", `${base}/stats`]]],
       ["adventures", "Adventures", [["adventures", "Adventures", `${base}/adventures`]]],
       ...(s.fishing && (isAdmin() || s.fishing_journal) ? [["fishing", "Fishing", [["fishing", "Fishing", `${base}/fishing`]]]] : []),
       ...(isAdmin() ? [["challenges", "Contests", [["challenges", "Contests", `${base}/challenges`]]]] : [])] : []),

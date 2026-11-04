@@ -143,6 +143,10 @@ def test_asking_shows_only_you_when_youre_in(client, anon, monkeypatch, sid):
         first = seen[0]["seen"]
         st(r["token"])
         assert [a for a in client.get("/api/whitelist").json()["answered"] if a["player"] == "Ticket_Kid"][0]["seen"] == first   # the first time
+        # taken off the admins' list: gone from it, but their own page still says they're in
+        assert client.post("/api/whitelist/answered/clear", json={"player": "Ticket_Kid"}).json()["cleared"] >= 1
+        assert not [a for a in client.get("/api/whitelist").json()["answered"] if a["player"] == "Ticket_Kid"]
+        assert st(r["token"])["state"] == "in"
     finally:
         client.put("/api/settings/site", json={"join_requests": False})
         main.settings_store.save_section("join_requests", [])
@@ -532,3 +536,15 @@ def test_a_denied_request_carries_the_admins_message(client, anon):
         assert d["state"] == "denied" and d["reason"] == "Ask again with your real name"
     finally:
         client.put("/api/settings/site", json={"join_requests": False})
+
+
+
+def test_distances_in_miles_reach_every_page(client, anon):
+    try:
+        client.put("/api/settings/site", json={"units": "miles"})
+        assert 'name="solstone-units" content="miles"' in anon.get("/").text
+        assert 'name="solstone-units" content="miles"' in client.get("/app").text
+        client.put("/api/settings/site", json={"units": "furlongs"})
+        assert 'content="km"' in anon.get("/").text                     # anything else: kilometres
+    finally:
+        client.put("/api/settings/site", json={"units": "km"})

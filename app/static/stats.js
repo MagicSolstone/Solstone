@@ -7,7 +7,7 @@
 const ST_KEYS = [
   ["play_hours", "Hours played", "⏱️", (v) => `${stNum(v, v < 10 ? 1 : 0)} h`, "sum"],
   ["mobs", "Monsters defeated", "⚔️", (v) => stNum(v), "sum"],
-  ["travelled", "Distance travelled", "🧭", (v) => (v >= 1000 ? `${stNum(v / 1000, 1)} km` : `${stNum(v)} blocks`), "sum"],
+  ["travelled", "Distance travelled", "🧭", (v) => fmtDist(v), "sum"],
   ["mined", "Blocks dug", "⛏️", (v) => stNum(v), "sum"],
   ["placed", "Blocks placed", "🧱", (v) => stNum(v), "sum"],
   ["logs", "Logs chopped", "🪓", (v) => stNum(v), "sum"],
@@ -135,7 +135,7 @@ function stRecords(days, rec) {
   const rows = [
     ["players", "👥", "Busiest day", (d) => `${stNum(d.players)} players`],
     ["peak", "📈", "Most on at once", (d) => `${stNum(d.peak)} players`],
-    ["play_hours", "⏱️", "Most hours played in a day", (d) => `${stNum(d.play_hours, 1)} h`],
+    ...(rec?.longest_session_hours != null ? [["play_hours", "⏱️", "Most hours played in a day", (d) => `${stNum(d.play_hours, 1)} h`]] : []),
     ["mobs", "⚔️", "Biggest monster-fighting day", (d) => `${stNum(d.mobs)} defeated`],
     ["mined", "⛏️", "Biggest digging day", (d) => `${stNum(d.mined)} blocks`],
     ["travelled", "🧭", "Farthest travelled in a day", (d) => stKey("travelled")[3](d.travelled)],
@@ -156,7 +156,10 @@ async function viewStats(sid) {
     const all = stv.data.days, days = stInRange(all);
     const seg = (name, opts, cur) => `<div class="seg" role="group" aria-label="${name}">${opts.map(([v, l]) => `<button type="button" data-${name}="${v}" aria-pressed="${v === cur}">${l}</button>`).join("")}</div>`;
     const sum = (key) => days.reduce((t, d) => t + Number(d[key] || 0), 0), allSum = (key) => all.reduce((t, d) => t + Number(d[key] || 0), 0);
-    const tiles = ST_TILES.map((key) => {
+    const hidden = !!stv.data.hours_hidden;                 // hours played: admins and trusted accounts only
+    if (hidden && stv.key === "play_hours") stv.key = "mobs";
+    const tileKeys = hidden ? [...ST_TILES.filter((x) => x !== "play_hours"), "new_players"] : ST_TILES;
+    const tiles = tileKeys.map((key) => {
       const [, label, icon, fmt] = stKey(key), v = sum(key), fun = ST_FUN[key]?.(v) || "";
       return `<button type="button" class="st-tile ${stv.key === key ? "on" : ""}" data-key="${key}" aria-pressed="${stv.key === key}">
         <span class="st-tile-label"><span aria-hidden="true">${icon}</span> ${esc(label)}</span><b>${esc(fmt(v))}</b>
@@ -170,12 +173,12 @@ async function viewStats(sid) {
         <span class="muted small">Since ${esc(stDate(first).toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" }))}. The whole server, no names.</span></div>
       <div class="st-tiles">${tiles}</div>
       <section class="panel st-panel">
-        <div class="st-pick"><label class="small">Chart <select class="input sm" id="st-key">${ST_KEYS.map(([kk, l, ic]) => `<option value="${kk}" ${kk === stv.key ? "selected" : ""}>${ic} ${esc(l)}</option>`).join("")}</select></label>
+        <div class="st-pick"><label class="small">Chart <select class="input sm" id="st-key">${ST_KEYS.filter(([kk]) => !(hidden && kk === "play_hours")).map(([kk, l, ic]) => `<option value="${kk}" ${kk === stv.key ? "selected" : ""}>${ic} ${esc(l)}</option>`).join("")}</select></label>
           ${k[4] === "sum" ? `<label class="check small"><input type="checkbox" id="st-running" ${stv.running ? "checked" : ""}> Running total</label>` : ""}</div>
         ${stChartHtml(stBuckets(days, k[0], stv.group, k[4]), k)}
       </section>
       <div class="st-two">
-        <section class="panel st-panel"><h3>When people play</h3>${stHeatHtml(stv.data.heat)}</section>
+        ${stv.data.heat ? `<section class="panel st-panel"><h3>When people play</h3>${stHeatHtml(stv.data.heat)}</section>` : ""}
         <section class="panel st-panel"><h3>Records</h3>${stRecords(all, stv.data.records)}<p class="muted small">All time, best days.</p></section>
       </div>`));
     const v = view();

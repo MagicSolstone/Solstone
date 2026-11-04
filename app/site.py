@@ -31,7 +31,8 @@ DEFAULTS = {"name": "Solstone", "tagline": "", "java_address": "", "bedrock_addr
             # Solstone's own guides that are taken off (deleted, or never wanted): gone from Help and their links.
             # Making an account starts off: the home page walks people through it.
             "builtin_off": ["account"],
-            "main_server": ""}            # shown first everywhere (home page, Ask to join), starred; its addresses feed the join guide
+            "main_server": "",
+            "units": "km"}                # distances everywhere: "km" or "miles"            # shown first everywhere (home page, Ask to join), starred; its addresses feed the join guide
 GUIDE_MAX = 8000
 _EMAIL = re.compile(r"^[^@\s<>()\[\]\\,;:\"]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$")
 _SLUG = re.compile(r"[^a-z0-9]+")
@@ -201,6 +202,8 @@ def clean_config(body: dict) -> dict:
                 pass
     if "builtin_off" in body:
         out["builtin_off"] = sorted({k for k in body["builtin_off"] or [] if k in ROLES})
+    if "units" in body:
+        out["units"] = "miles" if body["units"] == "miles" else "km"
     for k in ("home_live", "signup", "join_requests", "home_title"):
         if k in body:
             out[k] = bool(body[k])
@@ -263,11 +266,24 @@ def mark_seen(token_hash: str) -> dict | None:
     return None
 
 
+def clear_answered(player: str | None = None) -> int:
+    """Off the admins' Answered lately list (one player, or everyone): their own page still shows their answer."""
+    n = 0
+    for section in ("join_let_in", "join_requests"):
+        rows = settings_store.load().get(section) or []
+        for r in rows:
+            if (player is None or r.get("player", "").lower() == player.lower()) and not r.get("admin_cleared"):
+                r["admin_cleared"] = True
+                n += 1
+        settings_store.save_section(section, rows)
+    return n
+
+
 def answered_lately(days: int = 14) -> list[dict]:
     """Requests answered lately (let in, or denied), newest first, and whether they've seen the answer yet.
     (Never their private token.)"""
     since = time.time() - days * 86400
-    rows = [r for r in settings_store.load().get("join_let_in") or [] if (r.get("ts_in") or 0) >= since]
+    rows = [r for r in settings_store.load().get("join_let_in") or [] if (r.get("ts_in") or 0) >= since and not r.get("admin_cleared")]
     return [{k: r.get(k) for k in ("player", "name", "ts", "ts_in", "denied", "reason", "seen")} for r in rows[::-1]][:20]
 
 

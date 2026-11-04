@@ -59,9 +59,9 @@ function sinceText(started) {
 const TODAY_BITS = [["players", "👥", (n) => (n === 1 ? "player" : "players")], ["mobs", "⚔️", () => "mobs defeated"],
   ["mined", "⛏️", () => "blocks dug"], ["logs", "🪓", () => "logs chopped"], ["crops", "🌾", () => "crops harvested"],
   ["placed", "🧱", () => "blocks placed"], ["fish", "🎣", () => "fish caught"], ["advancements", "🏅", (n) => (n === 1 ? "advancement" : "advancements")],
-  ["travelled", "🧭", (n) => (n >= 1000 ? "km travelled" : "blocks travelled")]];
+  ["travelled", "🧭", () => "travelled"]];
 function todayHtml(t) {
-  const num = (k, n) => (k === "travelled" && n >= 1000 ? (n / 1000).toFixed(1) : n.toLocaleString());
+  const num = (k, n) => (k === "travelled" ? fmtDist(n) : n.toLocaleString());       // km or miles, as the site's set
   const bits = TODAY_BITS.filter(([k]) => t?.[k]).map(([k, icon, say]) => `<span class="hp-today-bit">${icon} <b>${esc(num(k, t[k]))}</b> ${esc(say(t[k]))}</span>`);
   return bits.length > 1 ? `<p class="hp-today"><span class="hp-today-label">Today</span>${bits.join("")}</p>` : "";
 }

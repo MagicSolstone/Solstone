@@ -122,6 +122,17 @@ function xboxStateHtml(x, cls = "hp-xbox-st") {
 function edBadge(bedrock) {
   return `<span class="ed-badge ${bedrock ? "bedrock" : "java"}" title="${bedrock ? "Playing on Bedrock" : "Playing on Java"}">${edIcon(bedrock ? "bedrock" : "java", 12)}${bedrock ? "Bedrock" : "Java"}</span>`;
 }
+// Distances, in kilometres or miles (Website → Site details → Distances in). A block is a metre: short ones stay in blocks.
+const USE_MILES = document.querySelector('meta[name="solstone-units"]')?.content === "miles";
+function fmtDist(meters, dp = 1) {
+  const m = Number(meters) || 0;
+  if (USE_MILES) return m >= 1609.344 ? `${(m / 1609.344).toLocaleString([], { maximumFractionDigits: m >= 160934 ? 0 : dp })} mi` : `${Math.round(m).toLocaleString()} blocks`;
+  return m >= 1000 ? `${(m / 1000).toLocaleString([], { maximumFractionDigits: m >= 100000 ? 0 : dp })} km` : `${Math.round(m).toLocaleString()} blocks`;
+}
+// Solstone's own activity lines say "travelled 1.5 km": in miles when that's chosen.
+function distText(text) {
+  return USE_MILES ? String(text || "").replace(/([\d.]+) km\b/g, (_, n) => `${(parseFloat(n) / 1.609344).toFixed(1)} mi`) : String(text || "");
+}
 // The same without the formatting, for places that only take plain text.
 function annPlain(text) {
   return String(text || "").replace(/\[([^\]]+)\]\([^)\s]+\)/g, "$1").replace(/\*\*([^*]+)\*\*/g, "$1")
