@@ -1,3 +1,19 @@
+# Solstone 1.15.12
+
+- **Firework editor, step by step:** the editor now walks through a firework in the order it happens. There are five numbered steps: 🚀 Launch → 💥 Burst → 🎨 Colours → ✨ Sparkle → 🔊 Sound.
+  - **Next →** buttons move through the steps. The step bar ticks off each step ✓ and shows what it's set to.
+  - **Launch** has big cards for Sky rocket, Fountain and Spinning wheel. Volley and lean settings fold under **More**.
+  - **Burst** becomes **Spray** for a fountain and **Spin** for a wheel. "Then…" steps and "Some pieces burst again" live here under **What happens next**.
+  - **Sparkle** has three parts: Sparkle; **Twinkle**, which is one slider with a style choice of Blink, Strobe or Breathe; and **How it ends**. Gravity, air and wind fold under More.
+  - Every firework already saved works and looks exactly the same.
+- **Picture fireworks need an admin's OK:** a picture drawn by a player or trusted account starts as ⏳ **Waiting for an admin**.
+  - The maker can watch it in the editor. Until it's approved, it stays out of the show, the Launch list, join fireworks and everyone else's list.
+  - Admins get a notification and a **Waiting for approval** list on the Fireworks page, with **Watch**, **Approve**, or **Not approved** with an optional reason the maker sees.
+  - Drawing a new picture on an approved firework asks again. Changing its colours or anything else doesn't. Admins' own pictures don't wait.
+- **Pictures in posts open big:** tap or click a picture in a news post or guide to see it full screen.
+  - Zoom with a pinch, the mouse wheel, a double-tap or the **+ / −** buttons, then drag or scroll around.
+  - ✕, Esc or tapping outside the picture closes it. Handy for screenshots with small writing.
+
 # Solstone 1.15.11
 
 - **Overview activity, readable with lots of people on:** the activity lines saved every few minutes per player ("defeated 3 zombies · dug 40 blocks") are added up into **one row of icons per player** in each play session, like "⚔️ 16 monsters · ⛏️ 1,980 dug · 🧭 8.6 km". The full name of each shows on hover.
