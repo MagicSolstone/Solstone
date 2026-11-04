@@ -96,6 +96,18 @@ def seed_adventure(path: Path, sid: str) -> None:
     c.close()
 
 
+
+def safely(handler):
+    """A stand-in for one of Solstone's answers that doesn't trip over a request already answered (a page's
+    background check still in flight when the test switches the stand-in off)."""
+    def wrapped(route):
+        try:
+            handler(route)
+        except Exception as e:                 # "Route is already handled": nothing to do
+            if "already handled" not in str(e):
+                raise
+    return wrapped
+
 def main() -> int:
     from playwright.sync_api import sync_playwright
 
@@ -461,10 +473,11 @@ def main() -> int:
             line = ev.locator('.up-item:has-text("Smoke weekend") .up-reward')
             if not line.count() or "3 × Pumpkin Pie" not in (line.first.text_content() or "") or not line.first.locator("b").count():
                 problems.append("events: a holiday's reward isn't on its own line with the item, amount and description")
-            if not ev.locator(".tl .tl-now .tl-node").count() or not ev.locator(".tl-now .tl-reward").count():
-                problems.append("events: no timeline starting from today, or no reward dates on it")
-            if not ev.locator('.tl-rstep .tl-rstart:has-text("Smoke feast")').count() or not ev.locator(".tl-gold").count():
-                problems.append("events: a reward that starts before its holiday has no gold dot of its own on the timeline")
+            if not ev.locator(".tl .tl-now .tl-node").count() or not ev.locator('.tl-now .up-item:has-text("Smoke weekend") .up-reward').count():
+                problems.append("events: no timeline starting from today, or a holiday on now without its reward on its card")
+            feast = ev.locator('.tl-step:has(.up-item:has-text("Smoke feast"))')
+            if not feast.count() or "tl-has-reward" not in (feast.first.get_attribute("class") or "") or ev.locator(".tl-rstep, .tl-gold, .tl-reward").count():
+                problems.append("events: a holiday with a reward isn't one simple dot (with a gold ring), or the reward's dates are drawn on the line")
             if not ev.locator(".up-item.up-look").count():
                 problems.append("events: a holiday's card doesn't take its banner's look")
             check(ev, "events-reward")
@@ -481,7 +494,7 @@ def main() -> int:
                 if route.request.method != "GET":
                     route.continue_(); return
                 d = json.loads(route.fetch().text()); d["rcon"] = True; d["pack"] = 99; route.fulfill(json=d)
-            pg.route(f"**/api/servers/{sid}/games", games_on)
+            pg.route(f"**/api/servers/{sid}/games", safely(games_on))
             pg.goto(f"{base}/app#/s/{sid}/challenges/games"); pg.reload(); pg.wait_for_timeout(1500)
             pg.click('[data-setup="koth"]'); pg.wait_for_timeout(800)
             box = pg.locator("#gm-map canvas").first.bounding_box() if pg.locator("#gm-map canvas").count() else None
@@ -538,7 +551,7 @@ def main() -> int:
             # an admin on someone's page while they play: the same buttons as Control (faked online: no game here)
             def online_now(route):
                 d = json.loads(route.fetch().text()); d["online"] = True; route.fulfill(json=d)
-            pg.route(f"**/api/servers/{sid}/players/{puuid}", online_now)
+            pg.route(f"**/api/servers/{sid}/players/{puuid}", safely(online_now))
             pg.goto(f"{base}/app#/s/{sid}/p/{puuid}"); pg.reload(); pg.wait_for_timeout(1500)
             if not pg.locator('#hero-acts [data-pa="heal"]').count() or not pg.locator("#hero-acts [data-gm]").count() or not pg.locator("#hero-acts [data-msg]").count():
                 problems.append("player page: an admin doesn't get Heal, Game mode and a message for someone playing")
@@ -561,7 +574,7 @@ def main() -> int:
                              "problem_at": time.time() - 900, "grace": 120}
                 d["xbox_gamertag"] = "SmokeRealm"
                 route.fulfill(json=d)
-            pg.route(f"**/api/servers/{sid}/control", xbox_on)
+            pg.route(f"**/api/servers/{sid}/control", safely(xbox_on))
             pg.goto(f"{base}/app#/s/{sid}/control"); pg.reload(); pg.wait_for_timeout(1200)
             if "Online" not in (pg.locator(".ctl-xbox").text_content() if pg.locator(".ctl-xbox").count() else "") \
                     or "Reconnected 4 times" not in pg.locator(".ctl-xbox").text_content():
@@ -575,7 +588,7 @@ def main() -> int:
             # picking an item shows what it does (the server's answer is faked here: there's no game running)
             tip = {"item": "x", "source": "game", "lines": [{"text": "Rod: +1 luck, +10% bite speed", "color": "#55FFFF"},
                                                              {"text": "Part of: Storm rig (1/3)", "color": "#FF55FF"}]}
-            pg.route("**/assets/describe*", lambda r: r.fulfill(json=tip))
+            pg.route("**/assets/describe*", safely(lambda r: r.fulfill(json=tip)))
             pg.locator(".gv-item").first.click(); pg.wait_for_timeout(400)
             if "Storm rig" not in (pg.locator(".gv-desc").text_content() or ""):
                 problems.append("give items: picking an item didn't show its description")
@@ -611,7 +624,7 @@ def main() -> int:
                                {"id": "tide:bamboo_fishing_rod", "name": "Bamboo Fishing Rod", "category": "Rods", "when": ["JUNGLE"], "rig": "",
                                 "lines": [{"text": "+5% casting range", "color": "#00AAAA"}, {"text": "+25% bite speed in jungles", "color": "#FF55FF"}],
                                 "recipe": {"kind": "found", "width": 0, "height": 0, "slots": [], "note": "Found in jungle temple chests."}}]}
-            pg.route("**/fishing/tackle", lambda r: r.fulfill(json=guide))
+            pg.route("**/fishing/tackle", safely(lambda r: r.fulfill(json=guide)))
             pg.evaluate(f"openTackleGuide({sid!r})"); pg.wait_for_timeout(600)
             if pg.locator(".tg-card").count() != 2:
                 problems.append(f"tackle guide: expected 2 items, saw {pg.locator('.tg-card').count()}")
@@ -630,6 +643,7 @@ def main() -> int:
             anon = browser.new_page(viewport={"width": 1280, "height": 800})
             anon.add_init_script("window.__csp = []; document.addEventListener('securitypolicyviolation', (e) => window.__csp.push(e.violatedDirective + ' ' + (e.blockedURI || 'inline')));")
             anon.on("pageerror", lambda e: problems.append(f"website: JS error: {e}"))
+            anon.on("console", lambda m: problems.append(f"website: {m.text}") if m.type == "error" and "Solstone:" in m.text else None)
             # the public website, signed out
             for name, url in (("site-home", "/"), ("site-news", "/news"), ("site-help", "/help"),
                               ("site-post", "/post/welcome-to-the-server")):
@@ -676,7 +690,7 @@ def main() -> int:
                 if d.get("joins"):                   # Bedrock too: through a friend's gamertag, or the address and port
                     d["joins"][0].update(xbox="SmokeRealm", bedrock="play.example.net", bedrock_port=19132, xbox_status={"state": "ok", "since": time.time() - 600})
                 route.fulfill(json=d)
-            anon.route("**/api/public/site", running)
+            anon.route("**/api/public/site", safely(running))
             anon.goto(f"{base}/"); anon.reload(); anon.wait_for_timeout(1200)
             anon.locator(".hp-mods summary").first.click() if anon.locator(".hp-mods summary").count() else None
             if "Online" not in (anon.locator("#hp-status").text_content() if anon.locator("#hp-status").count() else ""):
@@ -777,7 +791,7 @@ def main() -> int:
                 t = anon.request.post(f"{base}/api/public/join-request", data={"rules": True, "player": "Nope_Kid"}, headers={"X-Solstone": "1"}).json()["token"]
                 anon.evaluate("t => localStorage.setItem('solstone-ask', JSON.stringify({token: t, player: 'Nope_Kid', at: Date.now()}))", t)
                 # Solstone restarting while they wait: the proxy's error page mustn't make the page forget the request
-                anon.route("**/api/public/join-request/status", lambda route: route.fulfill(status=502, body="Bad gateway"))
+                anon.route("**/api/public/join-request/status", safely(lambda route: route.fulfill(status=502, body="Bad gateway")))
                 anon.reload(); anon.wait_for_timeout(1200)
                 anon.unroute("**/api/public/join-request/status")
                 if not anon.evaluate("() => localStorage.getItem('solstone-ask')"):
@@ -1119,7 +1133,7 @@ def main() -> int:
             m.goto(f"{base}/app#/manage/users"); m.wait_for_timeout(800)
             # A slow answer shows "Loading…" instead of a blank page, and the page once it comes
             held = []
-            m.route("**/api/users", lambda r: held.append(r))
+            m.route("**/api/users", safely(lambda r: held.append(r)))
             m.reload(); m.wait_for_timeout(1200)
             if "Loading" not in m.locator("#view").inner_text():
                 problems.append("app: a slow page stays blank instead of saying Loading…")
@@ -1134,7 +1148,7 @@ def main() -> int:
             def restarting(r):
                 tries.append(1)
                 r.fulfill(status=502, body="Bad gateway") if len(tries) == 1 else r.continue_()
-            m.route("**/api/auth/me", restarting)
+            m.route("**/api/auth/me", safely(restarting))
             m.reload(); m.wait_for_timeout(800)
             if "Waiting for Solstone" not in m.locator("#view").inner_text():
                 problems.append("app: Solstone not answering didn't say it's waiting")
@@ -1143,6 +1157,9 @@ def main() -> int:
                 problems.append("app: after Solstone answered again it didn't sign back in")
             m.unroute("**/api/auth/me")
             browser.close()
+    except Exception:
+        print("\napp log (the test stopped early):\n" + (root / "app.log").read_text()[-4000:])
+        raise
     finally:
         app.terminate()
         app.wait(timeout=10)

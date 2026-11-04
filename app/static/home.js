@@ -474,7 +474,8 @@ async function route() {
     else if (path.startsWith("/guides/")) { history.replaceState(null, "", "/help"); route(); return; }       // a guide that's been taken off
     else if (SECTIONS[path.slice(1)]) { nav = path.slice(1); html = await section(nav); }
     else { nav = ""; html = `<section><h1>Not found</h1><p class="muted"><a href="/">Back home</a></p></section>`; }
-  } catch {
+  } catch (e) {
+    console.error("Solstone: couldn't load this page:", e);
     html = `<section><h1>Couldn't load this page</h1><p class="muted">Try again in a moment.</p></section>`;
   }
   if (!path.startsWith("/post/") && !path.startsWith("/guides/")) document.title = nav && nav !== "home" ? `${SECTIONS[nav][0]} · ${hp.site.name}` : hp.site.name;
