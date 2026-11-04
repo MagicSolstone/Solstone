@@ -1,3 +1,10 @@
+# Solstone 1.15.6
+
+- **Ask to join survives a restart:** someone waiting with the home page open gets "You're in!" after Solstone restarts, with no reload.
+  - Before, the error page the proxy shows during a restart made the page forget the request.
+  - Now an error page or no answer is tried again shortly. The request is only forgotten when Solstone itself says it doesn't know it.
+- **A clear message for a read-only server folder:** adding a Bedrock player when the Solstone container can only read the server's folder says to set that folder's mapping to Read/Write, instead of a raw file system error.
+
 # Solstone 1.15.5
 
 - **Whitelisting Bedrock players works without Floodgate's `fwhitelist` command.** Floodgate on Fabric doesn't always have it, so adding a name like `.Lego8595` failed with "Unknown or incomplete command". Now, when the game says that:
