@@ -41,6 +41,30 @@ function rewardLineHtml(r) {
     <span class="muted small">Play ${r.first === r.last ? "on" : "any time"} ${esc(r.when)}</span></div>`;
 }
 // A holiday's reward on its banner: 🎁, its description, the items with their pictures, and the last day for it.
+// The game's clock: a time of day (0-23999 ticks, 0 = 6 AM) as a clock time, its part of the day, and an emoji.
+function mcClock(t) {
+  const hour = Math.floor((t / 1000 + 6) % 24), min = Math.floor(((t % 1000) / 1000) * 60);
+  return new Date(2000, 0, 1, hour, min).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+const mcPhase = (t) => (t < 6000 ? "Morning" : t < 12000 ? "Afternoon" : t < 13000 ? "Sunset" : t < 23000 ? "Night" : "Sunrise");
+function mcWeather(w) { return w.thunder ? "Thunderstorm" : w.rain ? "Raining" : "Clear skies"; }
+function mcEmoji(t, w) {
+  if (w.thunder) return "⛈️";
+  if (w.rain) return "🌧️";
+  const p = mcPhase(t);
+  return p === "Night" ? "🌙" : p === "Sunset" || p === "Sunrise" ? "🌅" : "☀️";
+}
+// Where the clock is now: counted on from when the server said it, while it's running with people on (20 ticks a second)
+const mcNow = (w) => Math.floor(w.t + (w.ticking ? Math.max(0, Date.now() / 1000 - w.as_of) * 20 : 0)) % 24000;
+// Events that finished in the last few days, and how they went (never who): under the timeline on the Events pages.
+function upPastHtml(past, cls = "panel") {
+  if (!past?.length) return "";
+  const when = (p) => { const d = new Date(p.at * 1000), days = Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(d).setHours(0, 0, 0, 0)) / 864e5);
+    return `${days === 0 ? "Today" : days === 1 ? "Yesterday" : d.toLocaleDateString([], { weekday: "long" })}, ${p.time}`; };
+  return `<section class="up-past"><h2>Lately</h2><ul class="up-past-list ${cls}">${past.map((p) => `<li><span class="up-emoji" aria-hidden="true">${esc(p.emoji)}</span>
+    <div class="up-main"><b>${esc(p.title)}</b><span class="muted small">${esc([p.how, p.server].filter(Boolean).join(" · "))}</span></div>
+    <span class="up-when muted small">${esc(when(p))}</span></li>`).join("")}</ul></section>`;
+}
 function bnRewardHtml(it) {
   return `<small class="bn-reward"><span class="bn-gift" aria-hidden="true">🎁</span>${it.reward_note ? `<span class="bn-rnote">${annFmt(it.reward_note)}</span>` : ""}${rewardItemsHtml(it.items)}${it.reward_until ? `<span class="bn-until">${esc(it.reward_until)}</span>` : ""}</small>`;
 }

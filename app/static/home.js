@@ -81,6 +81,19 @@ function sparkline(values, lo, hi, label) {
   return `<svg class="hp-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}"><path d="${path}"/>${last ? `<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="2.2"/>` : ""}</svg>`;
 }
 
+// In the world right now: the time of day and the weather (the clock ticks on by itself between refreshes).
+function worldStrip(w) {
+  if (!w) return "";
+  const t = mcNow(w), phase = mcPhase(t);
+  return `<div class="hp-world hp-world-${phase.toLowerCase()} ${w.thunder ? "storm" : w.rain ? "rain" : ""}" data-world='${esc(JSON.stringify(w))}'>
+    <span class="hp-world-emoji" aria-hidden="true">${mcEmoji(t, w)}</span>
+    <span class="hp-world-text"><small>In the world right now</small><b class="hp-world-clock">${esc(mcClock(t))}</b><span>${esc(phase)} · ${esc(mcWeather(w))}</span></span></div>`;
+}
+setInterval(() => {                          // a game minute is under a second: keep the clocks moving
+  document.querySelectorAll(".hp-world[data-world]").forEach((el) => {
+    try { const w = JSON.parse(el.dataset.world); if (w.ticking) el.outerHTML = worldStrip(w); } catch { /* next time */ }
+  });
+}, 2500);
 function statusPanel(site) {
   if (!site.servers?.length) return "";
   const tile = (label, value, hint = "", spark = "") => `<div class="hp-stat"><span class="hp-stat-label">${esc(label)}</span><b>${value}</b>${hint ? `<small class="muted">${esc(hint)}</small>` : ""}${spark}</div>`;
@@ -99,7 +112,7 @@ function statusPanel(site) {
       s.cpu != null ? tile("CPU", `${Math.round(Number(s.cpu))}%`, "", sparkline(tr.cpu, 0, 100, `CPU over ${hrs}`)) : "",
     ].join("");
     return `<article class="hp-status-card"><header><span class="hp-dot on"></span><h3>${esc(s.name)}</h3><span class="hp-status-word">Online</span></header>
-      <div class="hp-stats">${tiles}</div>${todayHtml(s.today)}${tr.players ? `<p class="hp-spark-note muted small">Graphs: ${esc(hrs)}</p>` : ""}</article>`;
+      ${worldStrip(s.world)}<div class="hp-stats">${tiles}</div>${todayHtml(s.today)}${tr.players ? `<p class="hp-spark-note muted small">Graphs: ${esc(hrs)}</p>` : ""}</article>`;
   };
   return `<section class="hp-status" id="hp-status" aria-label="Server status"><div class="hp-status-cards ${site.servers.length > 1 ? "many" : ""}">${site.servers.map(card).join("")}</div></section>`;
 }
@@ -298,7 +311,8 @@ async function eventsPage() {
     <span class="up-when">${it.live ? "On now" : it.time ? esc(it.time) : '<span class="muted small">All day</span>'}</span></li>`);
   return `<section><h1>Events</h1><p class="muted">Contests, races, holidays and fireworks shows coming up. <a href="/app#/events">Sign in</a> to say you're coming and see who else is.</p></section>
     ${d.items.length ? `<section>${upTimeline(d.items, row, "glass")}</section>`
-      : '<section class="glass hp-empty"><p class="muted">Nothing planned yet. Check back soon!</p></section>'}`;
+      : '<section class="glass hp-empty"><p class="muted">Nothing planned yet. Check back soon!</p></section>'}
+    ${upPastHtml(d.past, "glass")}`;
 }
 
 async function section(key) {

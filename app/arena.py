@@ -152,9 +152,8 @@ async def start(srv, r: dict) -> None:
     night = r.get("night", True) and r.get("dim", "minecraft:overworld") == "minecraft:overworld"
     await battle.rules_on(srv, r, {"mob_griefing": False, **({"daylight": False} if night else {})})
     if night:                                        # midnight, held there (spiders only fight in the dark); the time
-        m = re.search(r"(\d+)", await battle._rcon(srv, "time query daytime"))       # of day goes back afterwards
-        r["time_before"] = int(m.group(1)) if m else None
-        await battle._rcon(srv, "time set 18000")
+        r["time_before"] = await S.time_of_day_now(srv)                               # of day goes back afterwards
+        await battle._rcon(srv, await S.clock_to(srv, 18000))       # moved on to midnight: the day count is kept
     playing = await battle.ready(srv, r, names, TAG)
     if not playing:
         await battle.finish(srv, r, TAG)
@@ -307,7 +306,7 @@ async def _end(srv, r: dict, wiped: bool = False, called_off: bool = False) -> N
     await _say(srv, [("★ ", "gold"), (result, "yellow")], "Arena over" if not called_off else "", (" & ".join(winners))[:40] if winners else "")
     await battle._rcon(srv, f"scoreboard objectives remove {TAG}_k")
     if r.get("time_before") is not None:             # the time of day it was before
-        await battle._rcon(srv, f"time set {r.pop('time_before')}")
+        await battle._rcon(srv, await S.clock_to(srv, r.pop("time_before")))      # on to that time again, days kept
     await battle.finish(srv, r, TAG)
     _finish(srv, r, result)
     if winners:

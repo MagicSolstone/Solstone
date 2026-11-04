@@ -17,7 +17,7 @@ class FightGame(FakeGame):
     def __init__(self):
         super().__init__()
         self.rules = {"keepInventory": "false", "doImmediateRespawn": "false", "mobGriefing": "true", "doDaylightCycle": "true"}
-        self.daytime = 6000
+        self.daytime = 77 * 24000 + 6000          # the world's clock: day 78, noon
         self.watching: set[str] = set()                 # in creative or spectator
         self.scores: dict[tuple, int] = {}
         self.pos = {"Alex": ("minecraft:overworld", 0.0, 64.0, 0.0), ".LongBedrockNameX": ("minecraft:overworld", 30.0, 64.0, 0.0)}
@@ -36,10 +36,13 @@ class FightGame(FakeGame):
             self.pos[m.group(3)] = ("minecraft:overworld", float(m.group(1)), 64.0, float(m.group(2)))
             return "Spread 1 player"
         if cmd == "time query daytime":
-            return f"The time is {self.daytime}"
+            return f"The time is {self.daytime % 24000}"
         if m := re.fullmatch(r"time set (\d+)", cmd):
-            self.daytime = int(m.group(1))
+            self.daytime = int(m.group(1))                   # (resets the day count, as in the game)
             return f"Set the time to {self.daytime}"
+        if m := re.fullmatch(r"time add (\d+)", cmd):
+            self.daytime += int(m.group(1))
+            return f"Set the time to {self.daytime % 24000}"
         if m := re.fullmatch(r"scoreboard players get (\S+) (\S+)", cmd):
             return f"x has {self.scores.get((m.group(1), m.group(2)), 0)} [{m.group(2)}]"
         return await super().rcon(cmd, wait)
@@ -160,7 +163,7 @@ def test_arena_together_a_wave_then_everything_back(fight):
                             games._num, games._point))
     asyncio.run(arena.start(fight, r))
     assert fight.rules["mobGriefing"] == "false"                                       # no creeper holes while it runs
-    assert fight.daytime == 18000 and fight.rules["doDaylightCycle"] == "false"        # midnight, held there (spiders fight)
+    assert fight.daytime % 24000 == 18000 and fight.rules["doDaylightCycle"] == "false"        # midnight, held there (spiders fight)
     r["next_wave"] = 1                                                                 # (long past)
     asyncio.run(arena.tick(fight, r))                                                  # wave 1: two zombies
     assert mobs["n"] == 2 and r["wave"] == 1
@@ -168,7 +171,8 @@ def test_arena_together_a_wave_then_everything_back(fight):
     asyncio.run(arena.tick(fight, r))
     assert r["state"] == "done" and "survived all 1 waves" in r["result"]
     assert fight.slots == before and fight.rules["mobGriefing"] == "true"
-    assert fight.daytime == 6000 and fight.rules["doDaylightCycle"] == "true"          # the time of day back as it was
+    assert fight.daytime % 24000 == 6000 and fight.rules["doDaylightCycle"] == "true"  # the time of day back as it was
+    assert fight.daytime // 24000 >= 77                                                # and the world's day count kept
 
 
 def test_setting_up_both_games(client, sid):

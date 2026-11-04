@@ -23,6 +23,7 @@ from .rcon import RconError
 
 NAME_RE = mcname.NAME_RE
 ITEM_RE = re.compile(r"^[a-z0-9_.-]+:[a-z0-9_./-]+$")
+TIME_OF = {"day": 1000, "noon": 6000, "night": 13000, "midnight": 18000}     # (what `time set day` etc. mean)
 CHOICES = {
     "time": ("day", "noon", "night", "midnight"),
     "weather": ("clear", "rain", "thunder"),
@@ -167,8 +168,8 @@ async def set_rule(srv: S.Server, key: str, value) -> list[dict]:
 
 # ---------------------------------------------------------------- quick + player actions
 async def quick(srv: S.Server, action: str, value: str, sender: str) -> list[dict]:
-    if action == "time":
-        return await run_all(srv, [f"time set {check_choice('time', value)}"])
+    if action == "time":                                # moved on to it, so the world's day count is kept
+        return await run_all(srv, [await S.clock_to(srv, TIME_OF[check_choice('time', value)])])
     if action == "weather":
         return await run_all(srv, [f"weather {check_choice('weather', value)}"])
     if action == "difficulty":

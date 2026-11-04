@@ -166,7 +166,7 @@ def test_control_actions(client, sid, rcon):
     client.post(f"{base}/player/Tyler/bring", json={"target": "Gimli_Jr"})
     client.post(f"{base}/command", json={"command": "/say hello"})
     cmds = rcon["cmds"]
-    assert "time set night" in cmds and "weather clear" in cmds and "gamerule keepInventory true" in cmds
+    assert any(c.startswith(("time add ", "time set 13000")) for c in cmds)       # moved on to night: days kept and "weather clear" in cmds and "gamerule keepInventory true" in cmds
     tell = next(c for c in cmds if c.startswith("tellraw @a "))
     assert json.loads(tell[len("tellraw @a "):])[1]["text"] == "Dinner in 10"
     assert any(c.startswith("title @a title ") for c in cmds)

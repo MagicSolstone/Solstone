@@ -825,7 +825,8 @@ def main() -> int:
                 up = {"running": True, "online": 3, "on_bedrock": 1, "max": 10, "tps": 19.9, "started": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 3 * 3600 - 600)),
                       "cpu": 23, "trend": {"hours": 6, "players": [None] * 6 + [0, 1, 1, 2, 3, 3, 2, 2, 3, 4, 3, 3] * 2 + [3] * 6,
                                            "tps": [None] * 6 + [20, 19.8, 19.9, 18.2, 20, 20] * 5, "cpu": [None] * 6 + [12, 18, 25, 40, 22, 19] * 5},
-                      "today": {"players": 4, "mobs": 37, "mined": 1240, "logs": 64, "fish": 9, "advancements": 3, "travelled": 5400}}
+                      "today": {"players": 4, "mobs": 37, "mined": 1240, "logs": 64, "fish": 9, "advancements": 3, "travelled": 5400},
+                      "world": {"t": 12400, "rain": False, "thunder": False, "as_of": time.time(), "ticking": True}}
                 for x in d.get("servers", []):
                     x.update(up)
                 for j in d.get("joins", []):
@@ -838,6 +839,10 @@ def main() -> int:
             anon.locator(".hp-mods summary").first.click() if anon.locator(".hp-mods summary").count() else None
             if "Online" not in (anon.locator("#hp-status").text_content() if anon.locator("#hp-status").count() else ""):
                 problems.append("home: the status panel at the top doesn't say the server is online")
+            wtxt = anon.locator("#hp-status .hp-world").text_content() if anon.locator("#hp-status .hp-world").count() else ""
+            if "Sunset" not in wtxt or "Clear skies" not in wtxt or "PM" not in wtxt:
+                problems.append(f"home: no 'in the world right now' strip with the time of day and weather ({wtxt.strip()[:80]!r})")
+            anon.locator("#hp-status").scroll_into_view_if_needed(); check(anon, "site-home-world")
             if anon.locator("#hp-status .hp-spark").count() < 3:
                 problems.append("home: no little graphs for players, TPS and CPU")
             if "37 mobs defeated" not in (anon.locator("#hp-status .hp-today").text_content() if anon.locator("#hp-status .hp-today").count() else ""):

@@ -762,6 +762,26 @@ async def live_world(srv: Server) -> dict:
     return out
 
 
+async def time_of_day_now(srv: Server) -> int | None:
+    """Where in the day it is (0-23999), asked live: `time query daytime`, or on 26.1+ the day timeline's position."""
+    try:
+        t = _reply_int(await srv.rcon("time query daytime"))
+        if t is None:
+            t = _reply_int(await srv.rcon("time query day"))
+    except RconError:
+        return None
+    return None if t is None else t % 24000
+
+
+async def clock_to(srv: Server, target: int) -> str:
+    """The command to bring the world to this time of day without touching its day count. `time set` resets the
+    days (the world showed Day 3 after weeks of play); `time add` moves the clock on to the next `target` instead."""
+    now = await time_of_day_now(srv)
+    if now is None:
+        return f"time set {target}"                     # can't tell where it is: the old way
+    return f"time add {(target - now) % 24000}" if (target - now) % 24000 else "time add 0"
+
+
 def world_debug(srv: Server) -> dict:
     """What Solstone saw while looking for the world time, to paste into a bug report."""
     sources = {"level.dat": srv.level(), **{f"data/{k}.dat": v for k, v in _world_extras(srv).items()}}

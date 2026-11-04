@@ -974,7 +974,7 @@ function mountPlayerGlance(el, daysEl, s, data) {
       api("/api/upcoming").catch(() => ({ items: [] }))]);
     if (!el.isConnected) return;
     const world = sky?.mode === "game" && sky.server === sid
-      ? `<b>Day ${esc(sky.day)}</b><span>${esc(phase(sky.time_of_day))} · ${sky.thundering ? "Thunderstorm" : sky.raining ? "Raining" : "Clear"}</span>` : `<b>—</b><span>The world's time shows while it's running</span>`;
+      ? `<b>${esc(mcClock(sky.time_of_day))}</b><span>${esc(phase(sky.time_of_day))} · ${sky.thundering ? "Thunderstorm" : sky.raining ? "Raining" : "Clear"}</span>` : `<b>—</b><span>The world's time shows while it's running</span>`;
     const next = (up.items || []).filter((x) => !x.server || x.server === s.name).slice(0, 3);
     el.innerHTML = `<div class="glance">
       <div class="glance-card"><small>Server</small><b>${s.running === false ? "Offline" : `${s.online?.length || 0} of ${s.max_players ?? "?"} playing`}</b>
@@ -1387,7 +1387,8 @@ function skyHtml(w) {
   const weather = w.raining == null ? null : w.thundering ? "Thunderstorm" : w.raining ? "Raining" : "Clear skies";
   const bits = [clock, phase, weather].filter(Boolean).map(esc).join(" · ");
   const src = w.time_source === "live" ? "Live from the server" : "From the last world save";
-  return `<div class="sky" style="background:${bg}">${orb}<h2>Day ${fmtNum(w.day)}</h2><div class="sub">${bits}</div><div class="sub" style="font-size:.8rem;opacity:.8">${src}</div></div>`;
+  // (no "Day 57": the game's day count resets whenever the time is set, so it isn't worth much)
+  return `<div class="sky" style="background:${bg}">${orb}<h2>${esc(clock)}</h2><div class="sub">${esc([phase, weather].filter(Boolean).join(" · "))}</div><div class="sub" style="font-size:.8rem;opacity:.8">${src}</div></div>`;
 }
 async function viewWorld(sid) {
   const s = await serverFrame(sid, "world");

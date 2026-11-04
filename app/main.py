@@ -491,9 +491,25 @@ async def _site_status() -> list:
                         "mem": summ.get("mem") if summ["running"] else None,
                         "mem_percent": summ.get("mem_percent") if summ["running"] else None,
                         "loader": summ.get("loader"), "uptime_7d": _uptime(srv.id, 7), "trend": _trend(srv.id),
-                        "today": _today(srv.id)})
+                        "today": _today(srv.id), "world": await _world_now(srv, len(summ["online"])) if summ["running"] else None})
     _site_cache = (time.monotonic(), servers)
     return servers
+
+
+async def _world_now(srv, online: int) -> dict | None:
+    """The time of day and the weather in the game, for the home page (nothing about anyone). The clock counts on in
+    the page while people are on (with nobody on, the server pauses after a minute, and so does its clock)."""
+    if not srv.is_java or not srv.rcon_conf():
+        return None
+    try:
+        w = await asyncio.to_thread(S.world_info, srv, False)
+        w.update(await S.live_world(srv))
+    except Exception:
+        return None
+    if w.get("time_of_day") is None:
+        return None
+    return {"t": int(w["time_of_day"]), "rain": bool(w.get("raining")), "thunder": bool(w.get("thundering")),
+            "as_of": w.get("as_of") or time.time(), "ticking": online > 0}
 
 
 async def _site_servers() -> list:
@@ -1429,7 +1445,7 @@ async def get_upcoming(request: Request):
         i["coming"], i["me"] = len(ids), user.id in ids
         if shown:
             i["who"] = sorted((shown.get(x, "?") for x in ids), key=str.lower)
-    return {"items": items, "days": upcoming.DAYS, "now": time.time()}
+    return {"items": items, "days": upcoming.DAYS, "now": time.time(), "past": upcoming.past(names)}
 
 
 @app.get("/api/public/upcoming")
@@ -1442,7 +1458,8 @@ async def public_upcoming():
     for i in items:
         if i.get("parts"):
             i["parts"] = [{k: v for k, v in p.items() if k != "key"} for p in i["parts"]]
-    return JSONResponse({"items": items, "days": upcoming.DAYS, "now": time.time()}, headers={"Cache-Control": "no-cache"})
+    return JSONResponse({"items": items, "days": upcoming.DAYS, "now": time.time(), "past": upcoming.past(names)},
+                        headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/api/fireworks")

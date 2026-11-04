@@ -193,7 +193,8 @@ async function viewUpcoming() {
       <p class="muted">Everything planned for the next ${d.days} days: contests, races and games, holidays and their fireworks shows, and announcements counting down.${isAdmin() ? ` Add things from a server's <b>Contests</b> page, <a href="#/manage/holidays">Holidays</a> or <a href="#/manage/announcements">Announcements</a>.` : ""}</p></div>
     ${d.items.length ? upTimeline(d.items, row, "panel") : `<div class="panel up-empty"><span class="up-empty-emoji" aria-hidden="true">🗓️</span><h2>No events scheduled</h2>
           <p class="muted">Nothing's planned for the next ${Math.round(d.days / 30)} months yet. Contests, races and holidays show up here when they're added.</p>
-          ${isAdmin() ? `<p class="muted small">Add a contest from a server's <b>Contests</b> page, a holiday on <a href="#/manage/holidays">Holidays</a>, or a countdown in <a href="#/manage/announcements">Announcements</a>.</p>` : ""}</div>`}`);
+          ${isAdmin() ? `<p class="muted small">Add a contest from a server's <b>Contests</b> page, a holiday on <a href="#/manage/holidays">Holidays</a>, or a countdown in <a href="#/manage/announcements">Announcements</a>.</p>` : ""}</div>`}
+    ${upPastHtml(d.past, "panel")}`);
   const every = [...d.items, ...d.items.flatMap((x) => x.parts || [])];
   $$("[data-coming-all]", view()).forEach((b) => b.addEventListener("click", async () => {
     const keys = b.dataset.comingAll.split(","), on = b.getAttribute("aria-pressed") !== "true";

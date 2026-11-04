@@ -3,6 +3,8 @@ scheduled (or on right now), the fireworks calendar's holidays and their shows,
 and announcements counting down to something."""
 from __future__ import annotations
 
+import time
+
 from datetime import datetime, timedelta
 
 from . import community, board, challenges, db, eventgroups, fwshow, games, holidaygifts, races
@@ -146,4 +148,52 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
             last[it["server"] or ""] = it["ends"] or it["at"]
     out.sort(key=lambda x: (not x["live"], x["at"]))
     return out
+
+
+PAST_DAYS = 3
+
+
+def past(server_names: dict[str, str], days: int = PAST_DAYS, now: float | None = None) -> list[dict]:
+    """Contests, races and games that finished in the last few days, newest first, each with how it went, never
+    who: "12 took part · best 42 fish", "Survived all 7 waves", "4 racers · fastest 1:12"."""
+    from . import games, races
+    now = now or time.time()
+    since = now - days * 86400
+    zone = db.tz()
+    out: list[dict] = []
+
+    def add(at, emoji, title, how, server):
+        if at and at >= since and server in server_names:
+            out.append({"at": at, "date": datetime.fromtimestamp(at, zone).date().isoformat(), "time": _clock(at),
+                        "emoji": emoji, "title": title, "how": how, "server": server_names[server]})
+
+    for c in challenges._load()["items"]:
+        if c["state"] != "done":
+            continue
+        label, emoji, _unit, _crit, _div = challenges.KINDS.get(c["kind"], ("Contest", "🏆", ("", ""), [], 1))
+        scores = [v for v in (c.get("scores") or {}).values() if v > 0]
+        how = f"{len(scores)} took part · best {challenges._show(c, max(scores))}" if scores else "Nobody scored"
+        add(c.get("ends_at"), emoji, c.get("name") or label, how, c["server"])
+    for r in races._load()["runs"]:
+        if r["state"] != "done":
+            continue
+        rows = r.get("results") or []
+        done = [x["finished"] for x in rows if x.get("finished") is not None]
+        how = f"{len(rows)} racer{'s' if len(rows) != 1 else ''}" + (f" · {len(done)} finished · fastest {races._fmt(min(done))}" if done else " · nobody finished")
+        add(r.get("ends_at") or r.get("start"), "🏁", r.get("name") or "Race", how, r["server"])
+    for r in games._load()["runs"]:
+        if r["state"] != "done":
+            continue
+        _label, emoji = games.KINDS[r["game"]][0], games.KINDS[r["game"]][1]
+        n = len(r.get("players") or {})
+        if r["game"] == "arena":
+            waves, survived = len(r.get("waves") or []), r.get("survived", 0)
+            how = (f"Survived all {waves} waves" if survived >= waves else f"Survived {survived} of {waves} waves") if r.get("coop") \
+                else f"Most monsters defeated: {max((p.get('kills', 0) for p in (r.get('players') or {}).values()), default=0)}"
+            how += f" · {n} player{'s' if n != 1 else ''}"
+        else:
+            how = f"{n} player{'s' if n != 1 else ''}"
+        add(r.get("ended"), emoji, r.get("name") or games.KINDS[r["game"]][0], how, r["server"])
+    out.sort(key=lambda x: -x["at"])
+    return out[:20]
 
