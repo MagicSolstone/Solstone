@@ -3413,6 +3413,19 @@ async def kit_give_back(sid: str, request: Request):
     return {"ok": True}
 
 
+@app.post("/api/servers/{sid}/kits/discard")
+async def kit_discard(sid: str, request: Request):
+    """An admin, by hand: throw away what's kept for a player (leftover copies of things they already have)."""
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    name = str((await _body(request)).get("player") or "").lower()
+    s = next((x for x in kits.waiting(srv.id) if x["name"].lower() == name), None)
+    if not s or not await kits.discard(srv, s["uuid"]):
+        raise HTTPException(404, "Nothing of theirs is in the vault")
+    auth.audit(user, srv.id, "kit_discard", s["name"])
+    return {"ok": True}
+
+
 @app.post("/api/servers/{sid}/games")
 async def add_game(sid: str, request: Request):
     user = auth.require_admin(request)

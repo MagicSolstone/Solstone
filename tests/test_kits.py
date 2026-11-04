@@ -222,3 +222,50 @@ def test_bigger_mob_arena_waves():
     assert arena.clean_waves([{"zombie": 500}]) == [{"zombie": arena.MAX_PER_KIND}]
     with pytest.raises(ValueError, match="150 is the most"):
         arena.clean_waves([{"zombie": 100, "skeleton": 100}])
+
+
+def test_given_back_twice_never_duplicates(game):
+    """Their things landed the first time but its check didn't pass (the bug in 1.15.15): giving back again must
+    notice they already have them and empty the spare copy, not hand everything over a second time."""
+    before = dict(game.slots[U1])
+    asyncio.run(kits.stash(game, {"Alex": U1}, "g4"))
+    asyncio.run(kits.give_kit(game, U1, kits.clean_kit({"sword": "iron"})))
+    game.slots[U1] = dict(before)                                   # their own things are on them again, kit gone
+    assert asyncio.run(kits.give_back(game, U1)) is True
+    assert game.slots[U1] == before                                 # exactly once: no copies in the free slots
+    assert not kits.waiting("kit-test")                             # nothing left behind to block the next game
+    assert all(not b for b in game.barrels.values())                # and the spare copy's gone from the vault
+
+
+def test_nothing_given_back_on_the_death_screen(game, monkeypatch):
+    asyncio.run(kits.stash(game, {"Alex": U1}, "g5"))
+    real = game.rcon
+
+    async def dead(cmd, wait=None):
+        return f"{U1} has the following entity data: 0.0f" if cmd.endswith(" Health") else await real(cmd, wait)
+    monkeypatch.setattr(game, "rcon", dead)
+    assert asyncio.run(kits.give_back(game, U1)) is False and kits.waiting("kit-test")   # tried again after respawning
+
+
+def test_an_admin_can_throw_away_leftovers(game):
+    asyncio.run(kits.stash(game, {"Alex": U1}, "g6"))
+    assert asyncio.run(kits.discard(game, U1)) is True
+    assert not kits.waiting("kit-test") and all(not b for b in game.barrels.values())
+    assert asyncio.run(kits.discard(game, U1)) is False
+
+
+def test_a_busy_server_never_counts_as_everyone_leaving(monkeypatch):
+    """A failed position lookup (the server busy with a wave) once ended a game for everyone and handed things back
+    in the middle of it: now leaving means not on the server, two looks in a row."""
+    from app import battle
+
+    async def online(srv):
+        return (["Alex"], "rcon")
+    monkeypatch.setattr(battle.S, "online_players", online)
+    r = {"players": {"Alex": {"uuid": U1}, "Sam": {"uuid": U2}}}
+    asyncio.run(battle.left_and_back(None, r, {}))                                       # no answer: nothing changes
+    assert not any(p.get("out") for p in r["players"].values())
+    asyncio.run(battle.left_and_back(None, r, {"bob": ("minecraft:overworld", 0, 0, 0)}))  # Alex not placed, but on
+    assert not r["players"]["Alex"].get("out") and not r["players"]["Sam"].get("out")      # Sam missing once
+    asyncio.run(battle.left_and_back(None, r, {"bob": ("minecraft:overworld", 0, 0, 0)}))
+    assert r["players"]["Sam"].get("out") and not r["players"]["Alex"].get("out")          # Sam really gone

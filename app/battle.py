@@ -50,11 +50,15 @@ async def ready(srv, r: dict, names: list[str], tag: str) -> list[str]:
     """Keep everyone's things safe and hand out the kit. Returns who's playing (anyone whose things couldn't be
     kept safe watches instead, untouched)."""
     ids = uuids_of(srv, names)
+    kept_already = {x["name"].lower() for x in kits.waiting(srv.id)}
     playing = await kits.stash(srv, ids, r["id"])
     for n in names:
         if n not in playing:
             from .games import _say
-            await _say(srv, [("★ ", "gold"), ("Your things couldn't be kept safe just now, so you're watching this one. Nothing of yours was touched.", "yellow")], who=n)
+            why = ("Some of your things are still kept safe from an earlier game, so you're watching this one. "
+                   "An admin can sort it out on the Games page." if n.lower() in kept_already else
+                   "Your things couldn't be kept safe just now, so you're watching this one.")
+            await _say(srv, [("★ ", "gold"), (f"{why} Nothing of yours was touched.", "yellow")], who=n)
     for n in playing:
         r["players"][n] = {"uuid": ids[n], "score": 0, "deaths": 0, "kills": 0}
         await kits.give_kit(srv, ids[n], r["kit"])
@@ -147,11 +151,21 @@ async def ring(srv, r: dict, particle: str = "minecraft:end_rod") -> None:
 
 
 async def left_and_back(srv, r: dict, where: dict) -> None:
-    """Anyone who left mid-game is out of it; back online while it's still on, their things come straight back."""
+    """Anyone who left mid-game is out of it; back online while it's still on, their things come straight back.
+    "Left" means really not on the server, two looks in a row: a position lookup that failed or came back empty (the
+    server busy with a wave of monsters, say), or someone on the death screen, never counts. That once ended a game
+    for everyone and handed things back in the middle of it."""
+    if not where:
+        return                                         # the game didn't answer: nothing to go on this time
+    online = {x.lower() for x in (await S.online_players(srv))[0]}
     for n, p in r["players"].items():
-        here = n.lower() in where
+        here = n.lower() in where or n.lower() in online
+        if here:
+            p.pop("missing", None)
         if not here and not p.get("out"):
-            p["out"] = True                            # their things wait in the vault
+            p["missing"] = p.get("missing", 0) + 1
+            if p["missing"] >= 2:
+                p["out"] = True                        # their things wait in the vault
         elif here and p.get("out") and not p.get("returned"):
             if await kits.give_back(srv, p["uuid"]):
                 p["returned"] = True

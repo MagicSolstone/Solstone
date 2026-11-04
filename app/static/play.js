@@ -960,7 +960,8 @@ async function viewGames(sid) {
       ${live.length ? `<section class="section"><div class="section-head"><h2>Playing now</h2></div><div class="ch-list">${live.map(runCard).join("")}</div></section>` : ""}
       ${(d.in_vault || []).length && !live.some((r) => FIGHTS.has(r.game)) ? `<section class="section"><div class="panel gm-vault"><b>🔒 Things kept safe</b>
         <span class="muted small">These players left during a game. Their own things are safe in the vault and come back automatically the next time they're on.</span>
-        <div class="btn-row">${d.in_vault.map((n) => `<button type="button" class="btn sm" data-giveback="${esc(n)}">Give ${esc(n)}'s things back now</button>`).join("")}</div></div></section>` : ""}
+        <div class="btn-row">${d.in_vault.map((n) => `<button type="button" class="btn sm" data-giveback="${esc(n)}">Give ${esc(n)}'s things back now</button><button type="button" class="btn sm danger" data-discard="${esc(n)}">Throw away ${esc(n)}'s</button>`).join("")}</div>
+        <p class="muted small">Throw away only if they already have all their things (what's kept is then just spare copies, as after the duplicating bug fixed in 1.15.16). While anything's kept for someone, they sit out games that keep things safe.</p></div></section>` : ""}
       <section class="section"><div class="ch-list">${Object.entries(GAME_INFO).map(([k, [e, t, about]]) => `<div class="ch-card panel gm-pick">
         <div class="ch-head"><span class="ch-emoji">${e}</span><div><h3>${esc(t)}</h3></div></div><p class="muted">${esc(about)}</p>
         ${needsPack(k) ? `<p class="notice small">Add the Solstone data pack to the world first (on the <a href="#/s/${encodeURIComponent(sid)}/challenges">Contests</a> page${d.pack ? ": it needs the newer version" : ""}).</p>` : ""}
@@ -969,6 +970,12 @@ async function viewGames(sid) {
       ${past.length ? `<section class="section"><div class="section-head"><h2>Finished</h2></div><div class="ch-list">${past.map(runCard).join("")}</div></section>` : ""}`);
     wireHeader(s);
     $$("[data-setup]").forEach((b) => b.addEventListener("click", () => openSetup(b.dataset.setup)));
+    $$("[data-discard]").forEach((b) => b.addEventListener("click", async () => {
+      const n = b.dataset.discard;
+      if (!(await confirmBox(`Throw away what's kept for ${n}?`, `Only if ${esc(n)} already has all their own things. What's in the vault is emptied for good, and nothing is given to them or taken from them.`, "Throw it away"))) return;
+      try { await post(`/api/servers/${encodeURIComponent(sid)}/kits/discard`, { player: n }); showToast(`Emptied what was kept for ${esc(n)}`, 3000); await reload(); }
+      catch (err) { showError(esc(err.message), 6000); }
+    }));
     $$("[data-giveback]").forEach((b) => b.addEventListener("click", async () => {
       try { await post(`/api/servers/${encodeURIComponent(sid)}/kits/give-back`, { player: b.dataset.giveback }); showToast(`${esc(b.dataset.giveback)} has everything back`, 3000); await reload(); }
       catch (err) { showError(esc(err.message), 6000); }

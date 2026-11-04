@@ -123,6 +123,8 @@ def test_someone_who_leaves_mid_game_gets_their_things_back_when_they_return(fig
     asyncio.run(koth.start(fight, r))
     del fight.online[U2]                                                               # gone
     asyncio.run(koth.tick(fight, r))
+    assert not r["players"][".LongBedrockNameX"].get("out")                           # one missed look isn't leaving
+    asyncio.run(koth.tick(fight, r))
     assert r["players"][".LongBedrockNameX"]["out"] and kits.waiting(fight.id)
     fight.online[U2] = ".LongBedrockNameX"                                             # back while it's still on
     asyncio.run(koth.tick(fight, r))

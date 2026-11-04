@@ -130,6 +130,17 @@ async def _player_items(srv, uuid: str) -> tuple[Counter, Counter] | None:
     return ids, counts
 
 
+async def _alive(srv, uuid: str) -> bool:
+    """Not on the death screen (anything given to someone dead can go astray): their health is above 0."""
+    m = re.search(r"(-?[\d.]+)f?\s*$", (await _rcon(srv, f"data get entity {uuid} Health")).strip())
+    return not m or float(m.group(1)) > 0
+
+
+def _has_all(have: tuple[Counter, Counter], need: tuple[Counter, Counter]) -> bool:
+    """Everything in `need` is in `have` (and maybe more)."""
+    return all(have[0][k] >= v for k, v in need[0].items()) and all(have[1][k] >= v for k, v in need[1].items())
+
+
 async def _barrel_items(srv, spots) -> tuple[Counter, Counter]:
     ids, counts = Counter(), Counter()
     for (x, y, z) in spots:
@@ -222,6 +233,8 @@ async def give_back(srv, uuid: str, move: bool = True) -> bool:
             return True
         if await _player_items(srv, uuid) is None:
             return False                                 # not online
+        if not await _alive(srv, uuid):
+            return False                                 # on the death screen: tried again once they've respawned
         v = await _vault(srv, d)
         try:
             if not s.get("restored"):
@@ -242,6 +255,17 @@ async def _restore(srv, d: dict, s: dict, v: dict, move: bool) -> bool:
     now = await _player_items(srv, uuid)
     if now is None:
         return False
+    # (exactly theirs, or theirs plus a few things picked up: at least 3 kinds of item, so a stray block picked up in
+    # a game is never mistaken for someone's whole inventory)
+    if sum(kept[0].values()) and (now == kept or (len(kept[0]) >= 3 and _has_all(now, kept))):
+        # Their own things are on them already (an earlier give-back landed but its check didn't pass): the copy in
+        # the vault is only a spare now. Emptied, not handed over again: handing it over again duplicated things.
+        log.warning("%s already has their things back; emptying the spare copy in the vault", s["name"])
+        await _empty(srv, (a, b))
+        s["restored"] = True
+        _save(d)
+        await _rcon(srv, f"gamemode {s.get('gm') or 'survival'} {uuid}")
+        return True
     if sum(now[0].values()):                             # carrying something: into their pocket first, checked
         if s.get("pocket") is not None:
             log.error("%s is carrying things and already has a pocket; leaving everything as it is", s["name"])
@@ -312,6 +336,27 @@ async def _pocket_out(srv, d: dict, s: dict, v: dict) -> None:
         await _empty(srv, spots)
     d["stash"].pop(key, None)
     _save(d)
+
+
+async def discard(srv, uuid: str) -> bool:
+    """An admin, by hand: empty what's kept for this player and forget it. For leftovers that are only copies of
+    things they already have (as after the duplication bug fixed in 1.15.16). Nothing is given to or taken from them."""
+    async with _lock:
+        d = _load()
+        key = f"{srv.id}:{uuid}"
+        s = d["stash"].get(key)
+        if not s:
+            return False
+        v = await _vault(srv, d)
+        if not s.get("restored"):
+            await _empty(srv, _barrels(v, s["slot"]))
+        if s.get("pocket") is not None:
+            await _empty(srv, _barrels(v, s["pocket"]))
+        d["stash"].pop(key, None)
+        _save(d)
+        if not any(k.startswith(f"{srv.id}:") for k in d["stash"]):
+            await _rcon(srv, f"execute in {DIM} run forceload remove {v['x']} {v['z']}")
+        return True
 
 
 def _msg(text: str) -> str:
