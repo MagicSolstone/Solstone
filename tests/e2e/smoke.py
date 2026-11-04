@@ -843,6 +843,14 @@ def main() -> int:
                     pg.click("#deny-form button[type=submit]"); pg.wait_for_timeout(1500)
                     if pg.locator('.wl-req [data-deny="Nope_Kid"]').count():
                         problems.append("whitelist page: a denied request is still listed")
+                    if not pg.locator("#wl-answered").count():
+                        problems.append("whitelist page: no 'Answered lately' button")
+                    else:
+                        pg.click("#wl-answered"); pg.wait_for_timeout(300)
+                        if "Nope_Kid" not in (pg.locator("#modal-root .wl-answered-list").text_content() if pg.locator("#modal-root .wl-answered-list").count() else ""):
+                            problems.append("whitelist page: Answered lately doesn't open with the denied request in it")
+                        check(pg, "whitelist-answered")
+                        pg.click("#modal-root [data-close]"); pg.wait_for_timeout(200)
                 anon.reload(); anon.wait_for_timeout(1500)
                 step = anon.locator("#step-ask")
                 if "denied" not in (step.get_attribute("class") or "").split() or "real name in the note" not in (step.text_content() or "") or not step.locator("[data-ask-again]").count():

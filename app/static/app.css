@@ -2487,3 +2487,7 @@ body.ui-hidden .manage-sub { display: none; }
 .st-records { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .st-records li { display: grid; grid-template-columns: 1.6em 1fr auto; gap: 2px 8px; align-items: baseline; }
 .st-records li .small { grid-column: 2 / -1; }
+.wl-answered-btn { margin-left: auto; }
+.wl-answered-btn b { color: #ffcf4f; font-weight: 700; }
+.wl-answered-list { max-height: 55vh; overflow-y: auto; margin: 10px 0; }
+.wl-ans-line { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin-top: 2px; }

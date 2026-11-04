@@ -758,6 +758,7 @@ async function viewWhitelist() {
   const pill = (sid, name, inOk, player) => inOk
     ? `<span class="wl-in">✅ ${esc(name)}</span>`
     : `<button class="btn sm primary" type="button" data-let="${esc(player)}" data-sid="${esc(sid)}">Let in on ${esc(name)}</button>`;
+  const unseen = (d.answered || []).filter((a) => !a.seen).length;
   const reqHtml = d.requests.length ? d.requests.map((r) => {
     const waiting = r.servers.filter((x) => !x.in);
     return `<li class="wl-req"><div class="wl-who"><code class="ta-name">${esc(r.player)}</code>${r.bedrock ? ' <span class="chip">Bedrock</span>' : ""}
@@ -773,12 +774,9 @@ async function viewWhitelist() {
       <div class="wl-servers">${b.servers.map((x) => pill(x.id, x.name, false, b.name)).join("")}</div></li>`).join("") : "";
   setView(`<div class="fwe-head"><h1>Whitelist</h1>
       <p class="muted">Who's asked to join, who the whitelist turned away, and who's on each server's list. A player's account gets every server they're on the whitelist of.</p></div>
-    <section class="section"><div class="section-head"><h2>Asked to join</h2><span class="muted">${d.requests.length || "Nobody"} waiting</span></div>
+    <section class="section"><div class="section-head"><h2>Asked to join</h2><span class="muted">${d.requests.length || "Nobody"} waiting</span>
+      ${(d.answered || []).length ? `<button type="button" class="btn sm wl-answered-btn" id="wl-answered">👀 Answered lately${unseen ? ` · <b>${unseen} not seen yet</b>` : ""}</button>` : ""}</div>
       ${reqHtml ? `<ul class="wl-list">${reqHtml}</ul>` : `<div class="panel"><p class="muted">No requests waiting. With <i>Ask to join</i> on (Website → Site details), they show here, and you get a notification.</p></div>`}</section>
-    ${(d.answered || []).length ? `<section class="section"><div class="section-head"><h2>Answered lately</h2><span class="muted">Whether they've seen the answer on the website</span></div>
-      <ul class="wl-list">${d.answered.map((a) => `<li class="wl-req wl-answered"><div class="wl-who"><code class="ta-name">${esc(a.player)}</code>${a.player.startsWith(".") ? ' <span class="chip">Bedrock</span>' : ""}
-        ${a.name ? `<span>${esc(a.name)}</span>` : ""}<span class="${a.denied ? "wl-no" : "wl-in"}">${a.denied ? "❌ Not accepted" : "✅ Let in"} ${ago(a.ts_in)}</span>
-        ${a.seen ? `<span class="wl-seen">👀 Saw it ${ago(a.seen)}</span>` : '<span class="muted small">Hasn\'t seen it on the website yet</span>'}</div></li>`).join("")}</ul></section>` : ""}
     ${blockedHtml ? `<section class="section"><div class="section-head"><h2>Tried to join</h2><span class="muted">Turned away in the last two weeks</span></div><ul class="wl-list">${blockedHtml}</ul></section>` : ""}
     <section class="section"><div class="section-head"><h2>Each server's list</h2></div>
       <form class="panel btn-row wl-add" id="wl-add"><input class="input sm" name="name" placeholder="Name (.Name for Bedrock)" pattern="\\.?[A-Za-z0-9_]{1,16}" required>
@@ -791,6 +789,14 @@ async function viewWhitelist() {
     try { await post(`/api/servers/${encodeURIComponent(sid)}/control/player/${encodeURIComponent(name)}/whitelist_add`, {}); return true; }
     catch (err) { showError(`${esc(d.servers.find((x) => x.id === sid)?.name || sid)}: ${esc(err.message)}`, 7000); return false; }
   };
+  // answered lately: in a popup, so it doesn't take up the page
+  $("#wl-answered")?.addEventListener("click", () => openModal(`<h2>👀 Answered lately</h2>
+      <p class="muted small">Requests let in or not accepted in the last two weeks, and whether they've seen the answer on the website. You get a notification when they do.</p>
+      <ul class="wl-list wl-answered-list">${d.answered.map((a) => `<li class="wl-req wl-answered"><div class="wl-who"><code class="ta-name">${esc(a.player)}</code>${a.player.startsWith(".") ? ' <span class="chip">Bedrock</span>' : ""}
+        ${a.name ? `<span>${esc(a.name)}</span>` : ""}</div>
+        <div class="wl-ans-line"><span class="${a.denied ? "wl-no" : "wl-in"}">${a.denied ? "❌ Not accepted" : "✅ Let in"} ${ago(a.ts_in)}</span>
+        ${a.seen ? `<span class="wl-seen">👀 Saw it ${ago(a.seen)}</span>` : '<span class="muted small">Hasn\'t seen it on the website yet</span>'}</div></li>`).join("")}</ul>
+      <div class="actions"><button class="btn" type="button" data-close>Close</button></div>`, (m) => $("[data-close]", m).addEventListener("click", closeModal)));
   view().addEventListener("click", async (e) => {
     const copy = e.target.closest("[data-copy-name]"), one = e.target.closest("[data-let]"), all = e.target.closest("[data-let-all]"), un = e.target.closest("[data-unlist]");
     const deny = e.target.closest("[data-deny]");
