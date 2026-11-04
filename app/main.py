@@ -1111,26 +1111,28 @@ async def public_reward_icon(ns: str, name: str):
     """A holiday reward's picture for the Events page and its banner (anyone can see what the reward is). Only items
     set as a reward, drawn from the first public Java server's game."""
     if not _SAFE_ID.match(ns) or not _SAFE_ID.match(name) or f"{ns}:{name}" not in holidaygifts.rewarded_items():
-        raise HTTPException(404)
+        raise HTTPException(404, "Not a holiday reward", headers={"Cache-Control": "no-store"})
     await S.registry.refresh()
     # Drawn from any Java server's game that can: the public ones first, then the rest (only the picture is shared).
     # A server whose game files aren't here yet starts fetching them, so it can next time.
     public = [x for x in _public_servers_list() if x.is_java]
     tried: set[str] = set()
+    states = []
     for srv in [*public, *(x for x in S.registry.servers.values() if x.is_java and x not in public)]:
         a = _assets(srv)
-        if not a or a.vs.version in tried:
+        if not a or a.cache_key in tried:
             continue
-        if not a.ready:
-            if a.vs.state == "missing":        # fetch them once; a failed fetch isn't retried on every request
-                a.vs.ensure()
-            continue
-        tried.add(a.vs.version)
+        tried.add(a.cache_key)
+        if not a.ready and a.vs.state == "missing":    # fetch them once; a failed fetch isn't retried on every request
+            a.vs.ensure()
+        states.append(a.vs.state)
+        # Like the app's own item pictures: one already drawn is used even while the game files aren't ready
         data = await asyncio.to_thread(a.icon, f"{ns}:{name}")
         if data:
             return Response(data, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
-    # Not drawable yet: never let a browser or Cloudflare keep the "not found"
-    raise HTTPException(404, headers={"Cache-Control": "no-store"})
+    # Not drawable yet: never let a browser or Cloudflare keep the "not found"; say why (no names, just states)
+    why = "no Java server" if not states else f"couldn't draw it (game files: {', '.join(sorted(set(states)))})"
+    raise HTTPException(404, f"No picture: {why}", headers={"Cache-Control": "no-store"})
 
 
 

@@ -16,13 +16,21 @@ def test_reward_picture_from_any_server_and_404_not_cached(anon, monkeypatch):
             state["ensured"] += 1
         def icon(item):
             asked.append(item)
-            return b"PNG" if item == "minecraft:redstone" else None
-        return SimpleNamespace(ready=state["ready"], vs=SimpleNamespace(version="1.21.x", ensure=ensure, state="ready" if state["ready"] else "missing"), icon=icon)
+            return b"PNG" if item == "minecraft:redstone" or item == "minecraft:coal" and state.get("drawn") else None
+        def icon_when_ready(item):
+            # a picture already drawn comes back even while the files aren't ready; a new one needs them
+            return icon(item) if state["ready"] or item == "minecraft:coal" and state.get("drawn") else None
+        return SimpleNamespace(ready=state["ready"], cache_key=f"k-{srv.id}", icon=icon_when_ready,
+                               vs=SimpleNamespace(version="1.21.x", ensure=ensure, state="ready" if state["ready"] else "missing"))
 
     monkeypatch.setattr(M, "_assets", fake_assets)
     # Its game files aren't here yet: it starts fetching them, and says not found (not kept anywhere)
     r = anon.get("/api/public/reward-item/minecraft/redstone.png")
     assert r.status_code == 404 and r.headers.get("cache-control") == "no-store" and state["ensured"] == 1
+    assert "missing" in r.json()["detail"]
+    state["drawn"] = True                                                             # drawn before: shown even so
+    assert anon.get("/api/public/reward-item/minecraft/coal.png").status_code == 200
+    state["drawn"] = False
     state["ready"] = True
     # Not one of the public servers (the only one here is Private, say): still drawn from it
     monkeypatch.setattr(M, "_public_servers_list", lambda: [])
