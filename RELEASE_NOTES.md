@@ -1,3 +1,7 @@
+# Solstone 1.15.19
+
+- **"Time's paused" on the home page:** while nobody's playing, the server pauses its clock. The "In the world right now" strip now says **⏸ Time's paused while nobody's playing**, and the clock stays put until someone joins.
+
 # Solstone 1.15.18
 
 - **Your things in games: rebuilt to be simple and solid** (mob arena, King of the Hill, elytra races).
