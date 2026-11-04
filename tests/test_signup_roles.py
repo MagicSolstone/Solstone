@@ -309,21 +309,17 @@ def test_one_login_any_of_its_minecraft_names(client, player, sid, tyler):
         client.patch(f"/api/users/{uid}", json={"remove_player": next(p for p in u["players"] if p["name"] == other_name)["uuid"]})
 
 
-def test_server_stats_hide_hours_played_from_players(player, viewer, client, sid):
-    """On a small server a day's hours played (or when they were played) can say who played how much: admins and
-    trusted accounts only."""
-    from app import db
+
+def test_server_stats_are_the_same_for_players(player, client, sid):
+    """Server-wide only, so players see it all (hours played, when people play); no one player's longest sitting."""
+    from app import db, serverstats
     db.x("INSERT INTO sessions(server_id, player, start_ts, last_seen_ts, end_ts) VALUES (?,?,?,?,?)",
          (sid, "Tyler", 1_000.0, 1_000.0 + 3600, 1_000.0 + 3600))
     try:
-        from app import serverstats
         serverstats._done.pop(sid, None)
         mine = player.get(f"/api/servers/{sid}/stats/history").json()
-        assert mine["hours_hidden"] and mine["heat"] is None and mine["records"] == {}
-        assert all("play_hours" not in d for d in mine["days"]) and mine["days"]
-        for c in (client, viewer):
-            full = c.get(f"/api/servers/{sid}/stats/history").json()
-            assert "hours_hidden" not in full and full["heat"] and any("play_hours" in d for d in full["days"])
+        assert mine["heat"] and any("play_hours" in d for d in mine["days"]) and "records" not in mine
+        assert mine == client.get(f"/api/servers/{sid}/stats/history").json()
     finally:
         db.x("DELETE FROM sessions WHERE server_id=? AND start_ts=1000.0", (sid,))
         db.x("DELETE FROM daily_stats WHERE server_id=?", (sid,))

@@ -2124,17 +2124,10 @@ async def traffic_report(request: Request, days: int = 1):
 
 
 @app.get("/api/servers/{sid}/stats/history")
-async def stats_history(sid: str, request: Request, since: float = 0):
-    """The Stats tab: each day's totals (kept for good), hours played by weekday and hour, and a few records.
-    Hours played are for admins and trusted accounts only: on a small server, a day's hours (or when they were played)
-    can say who played how much. Players still see players in a day, most on at once and the rest."""
+async def stats_history(sid: str, since: float = 0):
+    """The Stats tab: each day's totals (kept for good) and hours played by weekday and hour. Server-wide only."""
     srv = await _server(sid)
-    out = await asyncio.to_thread(serverstats.history, srv.id, max(0.0, since))
-    user = getattr(request.state, "user", None)
-    if not user or user.role not in ("admin", "trusted"):
-        out = {**out, "days": [{k: v for k, v in d.items() if k != "play_hours"} for d in out["days"]], "heat": None,
-               "records": {}, "hours_hidden": True}
-    return out
+    return await asyncio.to_thread(serverstats.history, srv.id, max(0.0, since))
 
 
 @app.get("/api/servers/{sid}/icon.png")

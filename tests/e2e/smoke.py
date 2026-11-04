@@ -316,7 +316,7 @@ def main() -> int:
                                  "travelled": round(4200 * k), "fish": round(5 * k), "deaths": round(2 * k), "advancements": round(k),
                                  "chat": round(25 * k), "new_players": 1 if i % 17 == 0 else 0})
                 heat = [[round(max(0, math.sin((h - 14) / 4) * (2 if d >= 4 else 1)), 2) for h in range(24)] for d in range(7)]
-                route.fulfill(json={"days": days, "heat": heat, "records": {"longest_session_hours": 4.2}, "keys": []})
+                route.fulfill(json={"days": days, "heat": heat, "keys": []})
             pg.route(f"**/api/servers/{sid}/stats/history*", safely(stats_days))
             pg.goto(f"{base}/app#/s/{sid}/stats"); pg.reload(); pg.wait_for_timeout(1500)
             if pg.locator(".st-tile").count() != 8 or pg.locator(".st-chart .st-bar").count() < 60 or pg.locator(".st-cell").count() != 168:

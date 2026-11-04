@@ -129,19 +129,18 @@ function stHeatHtml(heat) {
     <p class="muted small">Brighter: more hours played then.</p>`;
 }
 
-function stRecords(days, rec) {
+function stRecords(days) {
   const best = (key) => days.reduce((b, d) => ((d[key] || 0) > (b?.[key] || 0) ? d : b), null);
   const longDay = (d) => stDate(d.day).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" });
   const rows = [
     ["players", "👥", "Busiest day", (d) => `${stNum(d.players)} players`],
     ["peak", "📈", "Most on at once", (d) => `${stNum(d.peak)} players`],
-    ...(rec?.longest_session_hours != null ? [["play_hours", "⏱️", "Most hours played in a day", (d) => `${stNum(d.play_hours, 1)} h`]] : []),
+    ["play_hours", "⏱️", "Most hours played in a day (everyone together)", (d) => `${stNum(d.play_hours, 1)} h`],
     ["mobs", "⚔️", "Biggest monster-fighting day", (d) => `${stNum(d.mobs)} defeated`],
     ["mined", "⛏️", "Biggest digging day", (d) => `${stNum(d.mined)} blocks`],
     ["travelled", "🧭", "Farthest travelled in a day", (d) => stKey("travelled")[3](d.travelled)],
   ].map(([k, icon, what, say]) => { const d = best(k); return d ? `<li><span aria-hidden="true">${icon}</span><span>${what}</span><b>${esc(say(d))}</b><span class="muted small">${esc(longDay(d))}</span></li>` : ""; }).join("");
-  const longest = rec?.longest_session_hours ? `<li><span aria-hidden="true">🛌</span><span>Longest time on in one go</span><b>${stNum(rec.longest_session_hours, 1)} h</b><span class="muted small">all time</span></li>` : "";
-  return rows || longest ? `<ul class="st-records">${rows}${longest}</ul>` : `<p class="muted">Records show up once people have played.</p>`;
+  return rows ? `<ul class="st-records">${rows}</ul>` : `<p class="muted">Records show up once people have played.</p>`;
 }
 
 async function viewStats(sid) {
@@ -156,10 +155,7 @@ async function viewStats(sid) {
     const all = stv.data.days, days = stInRange(all);
     const seg = (name, opts, cur) => `<div class="seg" role="group" aria-label="${name}">${opts.map(([v, l]) => `<button type="button" data-${name}="${v}" aria-pressed="${v === cur}">${l}</button>`).join("")}</div>`;
     const sum = (key) => days.reduce((t, d) => t + Number(d[key] || 0), 0), allSum = (key) => all.reduce((t, d) => t + Number(d[key] || 0), 0);
-    const hidden = !!stv.data.hours_hidden;                 // hours played: admins and trusted accounts only
-    if (hidden && stv.key === "play_hours") stv.key = "mobs";
-    const tileKeys = hidden ? [...ST_TILES.filter((x) => x !== "play_hours"), "new_players"] : ST_TILES;
-    const tiles = tileKeys.map((key) => {
+    const tiles = ST_TILES.map((key) => {
       const [, label, icon, fmt] = stKey(key), v = sum(key), fun = ST_FUN[key]?.(v) || "";
       return `<button type="button" class="st-tile ${stv.key === key ? "on" : ""}" data-key="${key}" aria-pressed="${stv.key === key}">
         <span class="st-tile-label"><span aria-hidden="true">${icon}</span> ${esc(label)}</span><b>${esc(fmt(v))}</b>
@@ -173,13 +169,13 @@ async function viewStats(sid) {
         <span class="muted small">Since ${esc(stDate(first).toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" }))}. The whole server, no names.</span></div>
       <div class="st-tiles">${tiles}</div>
       <section class="panel st-panel">
-        <div class="st-pick"><label class="small">Chart <select class="input sm" id="st-key">${ST_KEYS.filter(([kk]) => !(hidden && kk === "play_hours")).map(([kk, l, ic]) => `<option value="${kk}" ${kk === stv.key ? "selected" : ""}>${ic} ${esc(l)}</option>`).join("")}</select></label>
+        <div class="st-pick"><label class="small">Chart <select class="input sm" id="st-key">${ST_KEYS.map(([kk, l, ic]) => `<option value="${kk}" ${kk === stv.key ? "selected" : ""}>${ic} ${esc(l)}</option>`).join("")}</select></label>
           ${k[4] === "sum" ? `<label class="check small"><input type="checkbox" id="st-running" ${stv.running ? "checked" : ""}> Running total</label>` : ""}</div>
         ${stChartHtml(stBuckets(days, k[0], stv.group, k[4]), k)}
       </section>
       <div class="st-two">
-        ${stv.data.heat ? `<section class="panel st-panel"><h3>When people play</h3>${stHeatHtml(stv.data.heat)}</section>` : ""}
-        <section class="panel st-panel"><h3>Records</h3>${stRecords(all, stv.data.records)}<p class="muted small">All time, best days.</p></section>
+        <section class="panel st-panel"><h3>When people play</h3>${stHeatHtml(stv.data.heat)}</section>
+        <section class="panel st-panel"><h3>Records</h3>${stRecords(all)}<p class="muted small">All time, best days.</p></section>
       </div>`));
     const v = view();
     v.querySelectorAll("[data-range]").forEach((b) => b.addEventListener("click", async () => { stv.range = b.dataset.range; await load(); draw(); }));

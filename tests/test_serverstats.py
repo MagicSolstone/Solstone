@@ -36,7 +36,7 @@ def test_each_days_totals_and_they_stay():
         assert o["players"] == 2 and o["play_hours"] == 2.5 and o["new_players"] == 2
         assert t["mined"] == 40 and t["players"] == 1 and "new_players" not in t        # Sam's been here before
         assert len(h["days"]) == 6                                                          # every day since the first, even quiet ones
-        assert sum(sum(row) for row in h["heat"]) == 3.5 and h["records"]["longest_session_hours"] == 2.0
+        assert sum(sum(row) for row in h["heat"]) == 3.5 and "records" not in h
         # the detail goes (it's kept 180 days): the stored day stays as it was
         db.x("DELETE FROM events WHERE server_id=? AND ts<?", (SID, today.timestamp() - 86400))
         serverstats.rollup(SID, force=True)

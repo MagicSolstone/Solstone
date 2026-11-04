@@ -132,12 +132,6 @@ def heat(sid: str, since: float = 0) -> list[list[float]]:
     return [[round(h, 2) for h in row] for row in grid]
 
 
-def records(sid: str) -> dict:
-    """A few all-time bests (no names)."""
-    r = db.q("SELECT MAX(COALESCE(end_ts, last_seen_ts) - start_ts) AS longest FROM sessions WHERE server_id=?", (sid,))
-    return {"longest_session_hours": round((r[0]["longest"] or 0) / 3600, 1)}
-
-
 def history(sid: str, since: float = 0) -> dict:
     rollup(sid)
-    return {"days": days(sid), "heat": heat(sid, since), "records": records(sid), "keys": list(KEYS)}
+    return {"days": days(sid), "heat": heat(sid, since), "keys": list(KEYS)}
