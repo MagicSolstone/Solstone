@@ -1,3 +1,8 @@
+# Solstone 1.15.14
+
+- **Fixed: new holiday reward pictures missing on Events (again).** The public Events page skipped any server whose Minecraft game files weren't marked ready. The app's own item pictures still use ones drawn before, so the two disagreed. Now they work the same way.
+  - If a picture really can't be drawn, opening its address says why: not a reward, no Java server, or the state of the game files.
+
 # Solstone 1.15.13
 
 - **Website traffic chart, readable:** in Manage → Solstone, the traffic chart now shows real bars stacked and coloured by who asked: **you**, **other admins**, **signed-in players** and **visitors**. The boxes above double as the legend.
