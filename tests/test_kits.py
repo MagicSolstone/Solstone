@@ -277,3 +277,38 @@ def test_no_kit_left_after_giving_back(game):
     asyncio.run(kits.give_kit(game, U1, kits.clean_kit({"sword": "diamond", "armour": "diamond", "shield": True})))
     assert asyncio.run(kits.give_back(game, U1)) is True
     assert not any("solkit" in v[0] for v in game.slots[U1].values())
+
+
+def test_kit_taken_even_where_clear_doesnt_understand_its_mark(game, monkeypatch):
+    """Some versions don't take `clear <who> *[custom_data=...]`: then the kit came back as "things picked up in the
+    game" (diamond armour and a shield, after a match). It's taken slot by slot now."""
+    real = game.rcon
+
+    async def rcon(cmd, wait=None):
+        if cmd.startswith("clear ") and "solkit" in cmd:
+            return "Unknown item component"                          # this version can't do it
+        if m := re.fullmatch(r"item replace entity (\S+) (\S+) with minecraft:air", cmd):
+            game.slots[m.group(1)].pop(m.group(2), None)
+            return ""
+        return await real(cmd, wait)
+    monkeypatch.setattr(game, "rcon", rcon)
+    before = dict(game.slots[U1])
+    asyncio.run(kits.stash(game, {"Alex": U1}, "g8"))
+    asyncio.run(kits.give_kit(game, U1, kits.clean_kit({"sword": "diamond", "armour": "diamond", "shield": True})))
+    assert any("solkit" in v[0] for v in game.slots[U1].values())
+    assert asyncio.run(kits.give_back(game, U1)) is True
+    assert game.slots[U1] == before                                  # exactly theirs: no kit, nothing twice
+    assert not kits.waiting("kit-test")
+
+
+def test_a_retry_after_a_failed_check_never_duplicates_a_small_inventory(game):
+    """Their things went over but the check didn't pass; on the retry they already have them. With only a couple of
+    kinds of item the "already back" guess didn't apply and everything came twice: now it's written down."""
+    before = dict(game.slots[U2])                                    # a cake and a helmet: two kinds
+    asyncio.run(kits.stash(game, {".LongBedrockNameX": U2}, "g9"))
+    d = settings_store.load()[kits.SECTION]
+    d["stash"][f"kit-test:{U2}"]["landed"] = True                    # the earlier give-back got this far
+    settings_store.save_section(kits.SECTION, d)
+    game.slots[U2] = dict(before)                                    # and their things did arrive
+    assert asyncio.run(kits.give_back(game, U2)) is True
+    assert game.slots[U2] == before and not kits.waiting("kit-test")

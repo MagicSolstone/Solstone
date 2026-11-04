@@ -167,7 +167,11 @@ def test_arena_together_a_wave_then_everything_back(fight):
     r["next_wave"] = 1                                                                 # (long past)
     asyncio.run(arena.tick(fight, r))                                                  # wave 1: two zombies
     assert mobs["n"] == 2 and r["wave"] == 1
+    assert any(c == "team modify solarena_a1 friendlyFire false" for c in fight.said)  # monsters never hurt each other
     mobs["n"] = 0                                                                      # defeated
+    r["last_spawn"] = 0
+    asyncio.run(arena.tick(fight, r))
+    assert r["state"] == "running"                                                     # one look isn't enough
     asyncio.run(arena.tick(fight, r))
     assert r["state"] == "done" and "survived all 1 waves" in r["result"]
     assert fight.slots == before and fight.rules["mobGriefing"] == "true"
@@ -287,3 +291,24 @@ def test_the_markers_show_where_a_checkpoint_counts(fight):
     asyncio.run(races._place_markers(fight, r))
     col = [c for c in fight.said if "block_display 50" in c][0]
     assert " 124 0 " in col and "scale:[1f,40f,1f]" in col                                   # from 60 up to 100 up
+
+
+def test_big_waves_come_out_a_few_at_a_time_and_no_answer_isnt_cleared():
+    import time as _t
+    said = []
+
+    class Srv:
+        async def rcon(self, cmd, wait=None):
+            said.append(cmd)
+            if cmd.startswith("execute if entity"):
+                return ""                                                           # the server didn't answer
+            return ""
+    r = {"id": "b1", "dim": "minecraft:overworld", "zone": {"x": 0, "y": 64, "z": 0, "r": 15}, "mob_spots": [{"x": 5, "y": 64, "z": 5}]}
+    asyncio.run(arena._summon(Srv(), r, {"baby_spear_zombie": 20}))
+    summons = [c for c in said if " run summon " in c]
+    assert len(summons) == arena.SPAWN_EACH_TICK and len(r["queue"]) == 20 - arena.SPAWN_EACH_TICK
+    xs = {c.split(" summon ")[1].split()[1] for c in summons}
+    assert len(xs) > 1                                                                 # spread out, not one heap
+    assert asyncio.run(arena._left(Srv(), r)) is None                                  # no answer: unknown, not 0
+    r["queue"], r["last_spawn"] = [], _t.time() - 10
+

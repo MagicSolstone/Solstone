@@ -118,6 +118,62 @@ def _items(text: str) -> tuple[Counter, Counter]:
     return Counter(_ID.findall(text)), Counter(_COUNT.findall(text))
 
 
+def _top_level(text: str) -> list[str]:
+    """The items of an SNBT list or the entries of a compound, at the top level (nested ones stay inside theirs)."""
+    out, depth, start, quote, esc_ = [], 0, None, "", False
+    for i, ch in enumerate(text):
+        if quote:
+            if esc_:
+                esc_ = False
+            elif ch == "\\":
+                esc_ = True
+            elif ch == quote:
+                quote = ""
+            continue
+        if ch in "\"'":
+            quote = ch
+        elif ch in "[{":
+            depth += 1
+            if depth == 2 and start is None:
+                start = i
+        elif ch in "]}":
+            if depth == 2 and start is not None and ch == "}":
+                out.append(text[start:i + 1])
+                start = None
+            depth -= 1
+    return out
+
+
+_ARMOUR_SLOT = {100: "armor.feet", 101: "armor.legs", 102: "armor.chest", 103: "armor.head", -106: "weapon.offhand"}
+_EQUIP_SLOT = {"head": "armor.head", "chest": "armor.chest", "legs": "armor.legs", "feet": "armor.feet", "offhand": "weapon.offhand"}
+
+
+async def strip_kit(srv, uuid: str) -> int:
+    """Take every kit item off someone, slot by slot (doesn't depend on `clear` understanding the kit's mark, which
+    not every version does: kit armour once came back with someone's own things). Returns how many were taken."""
+    await _rcon(srv, f"clear {uuid} {KIT_MATCH}")       # the quick way, where the version understands it
+    slots = []
+    inv = await _rcon(srv, f"data get entity {uuid} Inventory")
+    if "has the following" in inv:
+        for item in _top_level(inv.split("data:", 1)[-1]):
+            m = _SLOT.search(item)
+            if m and KIT_TAG in item:
+                n = int(m.group(1))
+                slots.append(f"container.{n}" if 0 <= n < 36 else _ARMOUR_SLOT.get(n))
+    eq = await _rcon(srv, f"data get entity {uuid} equipment")
+    if "has the following" in eq:
+        body = eq.split("data:", 1)[-1]
+        for key, slot in _EQUIP_SLOT.items():
+            m = re.search(rf"\b{key}:\s*\{{", body)
+            if m:
+                part = _top_level("{" + body[m.start():])[:1]
+                if part and KIT_TAG in part[0]:
+                    slots.append(slot)
+    for slot in filter(None, slots):
+        await _rcon(srv, f"item replace entity {uuid} {slot} with minecraft:air")
+    return len([s for s in slots if s])
+
+
 async def _player_items(srv, uuid: str) -> tuple[Counter, Counter] | None:
     inv = await _rcon(srv, f"data get entity {uuid} Inventory")
     if "has the following" not in inv:
@@ -241,7 +297,7 @@ async def give_back(srv, uuid: str, move: bool = True) -> bool:
                 if not await _restore(srv, d, s, v, move):
                     return False
             await _pocket_out(srv, d, s, v)
-            await _rcon(srv, f"clear {uuid} {KIT_MATCH}")     # and never a kit item left behind with their things
+            await strip_kit(srv, uuid)                         # and never a kit item left behind with their things
             return True
         finally:
             if not any(k.startswith(f"{srv.id}:") for k in d["stash"]):
@@ -252,13 +308,14 @@ async def _restore(srv, d: dict, s: dict, v: dict, move: bool) -> bool:
     uuid = s["uuid"]
     a, b = _barrels(v, s["slot"])
     kept = await _barrel_items(srv, (a, b))
-    await _rcon(srv, f"clear {uuid} {KIT_MATCH}")       # the game's kit: nothing else
+    await strip_kit(srv, uuid)                           # the game's kit: nothing else
     now = await _player_items(srv, uuid)
     if now is None:
         return False
     # (exactly theirs, or theirs plus a few things picked up: at least 3 kinds of item, so a stray block picked up in
     # a game is never mistaken for someone's whole inventory)
-    if sum(kept[0].values()) and (now == kept or (len(kept[0]) >= 3 and _has_all(now, kept))):
+    if sum(kept[0].values()) and (now == kept or (s.get("landed") and _has_all(now, kept))
+                                  or (len(kept[0]) >= 3 and _has_all(now, kept))):
         # Their own things are on them already (an earlier give-back landed but its check didn't pass): the copy in
         # the vault is only a spare now. Emptied, not handed over again: handing it over again duplicated things.
         log.warning("%s already has their things back; emptying the spare copy in the vault", s["name"])
@@ -284,11 +341,17 @@ async def _restore(srv, d: dict, s: dict, v: dict, move: bool) -> bool:
         s["pocket"] = slot
         _save(d)                                         # written down before anything of theirs is touched
     await _rcon(srv, f"clear {uuid}")                    # (only what's now safe in the pocket, or nothing)
+    s["landed"] = True                                   # written down first: a retry knows their things went over
+    _save(d)
     for src, which, i in SLOTS:
         x, y, z = (a, b)[which]
         await _rcon(srv, f"execute in {DIM} run item replace entity {uuid} {src} from block {x} {y} {z} container.{i}")
-    if await _player_items(srv, uuid) != kept:
-        log.error("giving %s's things back didn't check out; their copy stays in the vault", s["name"])
+    got = await _player_items(srv, uuid)
+    if got != kept:
+        missing = (kept[0] - got[0]) if got else kept[0]
+        extra = (got[0] - kept[0]) if got else Counter()
+        log.error("giving %s's things back didn't check out (missing %s, extra %s); their copy stays in the vault",
+                  s["name"], dict(missing), dict(extra))
         return False
     await _empty(srv, (a, b))
     s["restored"] = True
@@ -316,6 +379,11 @@ async def _pocket_out(srv, d: dict, s: dict, v: dict) -> None:
         left = 0
         for spot in spots:
             x, y, z = spot
+            listing = await _rcon(srv, f"execute in {DIM} run data get block {x} {y} {z} Items")
+            for item in _top_level(listing.split("data:", 1)[-1]):          # kit things never come back from here
+                m = _SLOT.search(item)
+                if m and KIT_TAG in item:
+                    await _rcon(srv, f"execute in {DIM} run item replace block {x} {y} {z} container.{m.group(1)} with minecraft:air")
             for i in sorted({int(n) for n in _SLOT.findall(await _rcon(srv, f"execute in {DIM} run data get block {x} {y} {z} Items"))}):
                 if not free:
                     left += 1

@@ -24,6 +24,8 @@ from . import servers as S
 
 TAG = "solarena"
 BREAK = 10                                   # seconds between waves
+SPAWN_EACH_TICK = 6                          # monsters come out a few a second, spread around their spots, not in a heap
+SPREAD = 3.0                                 # blocks around a monster spot that each one comes out at
 FOLLOW = 128                                 # at most, how far away a monster notices a player (the arena's width, really)
 MOBS = {"zombie": "Zombie", "husk": "Husk", "drowned": "Drowned", "zombie_villager": "Zombie villager", "skeleton": "Skeleton",
         "stray": "Stray", "spider": "Spider", "cave_spider": "Cave spider", "creeper": "Creeper", "slime": "Slime",
@@ -175,13 +177,39 @@ def _mob_tag(r: dict) -> str:
 
 
 async def _summon(srv, r: dict, wave: dict) -> None:
+    """The wave goes in the queue: it comes out a few at a time (_spawn_some), so a big wave isn't one heap of
+    monsters hitting each other."""
+    queue = [m for mob, n in wave.items() for m in [mob] * n]
+    random.shuffle(queue)
+    r["queue"] = queue
+    await _spawn_some(srv, r)
+
+
+async def _team(srv, r: dict) -> None:
+    """The arena's monsters are one team: they can't hurt each other (no friendly fire, arrows and spears included)
+    and don't go after each other, so they all come for the players."""
     tag = _mob_tag(r)
-    for mob, n in wave.items():
+    if not r.get("team_made"):
+        await battle._rcon(srv, f"team add {tag}")
+        await battle._rcon(srv, f"team modify {tag} friendlyFire false")
+        await battle._rcon(srv, f"team modify {tag} seeFriendlyInvisibles true")
+        r["team_made"] = True
+    await battle._rcon(srv, f"team join {tag} @e[tag={tag},team=]")
+
+
+async def _spawn_some(srv, r: dict) -> None:
+    queue = r.get("queue") or []
+    if not queue:
+        return
+    tag = _mob_tag(r)
+    now_batch, r["queue"] = queue[:SPAWN_EACH_TICK], queue[SPAWN_EACH_TICK:]
+    for mob in now_batch:
         what, nbt = summon_nbt(srv, mob, tag)
-        for _ in range(n):
-            s = random.choice(r["mob_spots"])
-            await battle._rcon(srv, f"execute in {r['dim']} run summon {what} {s['x'] + random.uniform(-1, 1):.1f} {s['y']} "
-                               f"{s['z'] + random.uniform(-1, 1):.1f} {nbt}")
+        s = random.choice(r["mob_spots"])
+        await battle._rcon(srv, f"execute in {r['dim']} run summon {what} {s['x'] + random.uniform(-SPREAD, SPREAD):.1f} {s['y']} "
+                           f"{s['z'] + random.uniform(-SPREAD, SPREAD):.1f} {nbt}")
+    r["last_spawn"] = time.time()
+    await _team(srv, r)
     # no burning up in the daylight, and no wandering off
     await battle._rcon(srv, f"effect give @e[tag={tag}] minecraft:fire_resistance infinite 0 true")
     # they come for the players from anywhere in the arena: a monster usually only notices someone within about
@@ -202,9 +230,18 @@ async def _mark_splits(srv, r: dict) -> None:
                            f"tag=!{tag}] run tag @s add {tag}")
 
 
-async def _left(srv, r: dict) -> int:
-    m = re.search(r"count: (\d+)", await battle._rcon(srv, f"execute if entity @e[tag={_mob_tag(r)}]"))
-    return int(m.group(1)) if m else 0
+async def _left(srv, r: dict) -> int | None:
+    """How many of this wave are left: "Test passed, count: 12", "Test failed" (none). Anything else (no answer, the
+    server busy) is None: unknown, never taken as 0 (that once ended waves the moment they came out)."""
+    reply = await battle._rcon(srv, f"execute if entity @e[tag={_mob_tag(r)}]")
+    m = re.search(r"count: (\d+)", reply)
+    if m:
+        return int(m.group(1))
+    if "test failed" in reply.lower():
+        return 0
+    if "test passed" in reply.lower():
+        return 1                                          # some left (the version didn't say how many)
+    return None
 
 
 async def _keep_in(srv, r: dict, where: dict) -> None:
@@ -259,12 +296,17 @@ async def tick(srv, r: dict) -> None:
                 if not p.get("out"):
                     await hud.status(srv, r, p["uuid"], f"⚔️ Wave {r['wave'] + 1} in {left}...", "gold")
     else:
+        await _spawn_some(srv, r)                         # the rest of the wave, a few at a time
         await _mark_splits(srv, r)
         mobs = await _left(srv, r)
+        coming = len(r.get("queue") or [])
         for p in r["players"].values():
-            if not p.get("out") and not p.get("back_at"):
-                await hud.status(srv, r, p["uuid"], f"⚔️ Wave {r['wave']} of {len(r['waves'])} · {mobs} left", "red")
-        if mobs == 0:
+            if not p.get("out") and not p.get("back_at") and mobs is not None:
+                await hud.status(srv, r, p["uuid"], f"⚔️ Wave {r['wave']} of {len(r['waves'])} · {mobs + coming} left", "red")
+        # cleared: everything's out, and nothing's left two looks running (a few seconds after the last came out)
+        r["zero"] = r.get("zero", 0) + 1 if mobs == 0 and not coming and now - r.get("last_spawn", 0) >= 3 else 0
+        if r["zero"] >= 2:
+            r["zero"] = 0
             if r["coop"]:                                   # wave cleared: everyone who fell comes back
                 for n, p in r["players"].items():
                     if p.get("back_at") and not p.get("out"):
@@ -290,7 +332,10 @@ def battle_name(mob: str, n: int) -> str:
 async def _end(srv, r: dict, wiped: bool = False, called_off: bool = False) -> None:
     from .games import _award, _finish, _say
     await hud.clear(srv, r)
+    r["queue"] = []
     await battle._rcon(srv, f"kill @e[tag={_mob_tag(r)}]")
+    if r.get("team_made"):
+        await battle._rcon(srv, f"team remove {_mob_tag(r)}")
     await _kills(srv, r)
     survived = r.get("survived", 0)
     if called_off:
