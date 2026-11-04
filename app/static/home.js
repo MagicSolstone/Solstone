@@ -87,7 +87,8 @@ function worldStrip(w) {
   const t = mcNow(w), phase = mcPhase(t);
   return `<div class="hp-world hp-world-${phase.toLowerCase()} ${w.thunder ? "storm" : w.rain ? "rain" : ""}" data-world='${esc(JSON.stringify(w))}'>
     <span class="hp-world-emoji" aria-hidden="true">${mcEmoji(t, w)}</span>
-    <span class="hp-world-text"><small>In the world right now</small><b class="hp-world-clock">${esc(mcClock(t))}</b><span>${esc(phase)} · ${esc(mcWeather(w))}</span></span></div>`;
+    <span class="hp-world-text"><small>In the world right now</small><b class="hp-world-clock">${esc(mcClock(t))}</b><span>${esc(phase)} · ${esc(mcWeather(w))}</span>
+      ${w.ticking ? "" : `<span class="hp-world-paused">⏸ Time's paused while nobody's playing</span>`}</span></div>`;
 }
 setInterval(() => {                          // a game minute is under a second: keep the clocks moving
   document.querySelectorAll(".hp-world[data-world]").forEach((el) => {

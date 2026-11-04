@@ -842,6 +842,8 @@ def main() -> int:
             wtxt = anon.locator("#hp-status .hp-world").text_content() if anon.locator("#hp-status .hp-world").count() else ""
             if "Sunset" not in wtxt or "Clear skies" not in wtxt or "PM" not in wtxt:
                 problems.append(f"home: no 'in the world right now' strip with the time of day and weather ({wtxt.strip()[:80]!r})")
+            if "paused" in wtxt.lower():
+                problems.append("home: the world's clock says paused while people are playing")
             anon.locator("#hp-status").scroll_into_view_if_needed(); check(anon, "site-home-world")
             if anon.locator("#hp-status .hp-spark").count() < 3:
                 problems.append("home: no little graphs for players, TPS and CPU")
