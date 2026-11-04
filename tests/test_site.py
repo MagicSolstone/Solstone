@@ -133,9 +133,15 @@ def test_asking_shows_only_you_when_youre_in(client, anon, monkeypatch, sid):
         assert w["state"] == "waiting" and w["player"] == "Ticket_Kid" and [s["in"] for s in w["servers"]] == [False]
         assert st("not-their-ticket")["state"] == "unknown" and st("")["state"] == "unknown"    # nobody else can look
         main.site.mark_let_in("Ticket_Kid", sid)                                                # what Let them in does
+        before = [a for a in client.get("/api/whitelist").json()["answered"] if a["player"] == "Ticket_Kid"]
         done = st(r["token"])
         assert done["state"] == "in" and done["servers"][0]["in"] is True
         assert st(r["token"])["state"] == "in"                                                  # and it stays that way
+        seen = [a for a in client.get("/api/whitelist").json()["answered"] if a["player"] == "Ticket_Kid"]
+        assert not before and len(seen) == 1 and seen[0]["seen"] and "token" not in seen[0]   # the admins see they've seen it
+        first = seen[0]["seen"]
+        st(r["token"])
+        assert [a for a in client.get("/api/whitelist").json()["answered"] if a["player"] == "Ticket_Kid"][0]["seen"] == first   # the first time
     finally:
         client.put("/api/settings/site", json={"join_requests": False})
         main.settings_store.save_section("join_requests", [])

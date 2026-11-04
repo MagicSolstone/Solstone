@@ -768,6 +768,10 @@ async function viewWhitelist() {
       <p class="muted">Who's asked to join, who the whitelist turned away, and who's on each server's list. A player's account gets every server they're on the whitelist of.</p></div>
     <section class="section"><div class="section-head"><h2>Asked to join</h2><span class="muted">${d.requests.length || "Nobody"} waiting</span></div>
       ${reqHtml ? `<ul class="wl-list">${reqHtml}</ul>` : `<div class="panel"><p class="muted">No requests waiting. With <i>Ask to join</i> on (Website → Site details), they show here, and you get a notification.</p></div>`}</section>
+    ${(d.answered || []).length ? `<section class="section"><div class="section-head"><h2>Answered lately</h2><span class="muted">Whether they've seen the answer on the website</span></div>
+      <ul class="wl-list">${d.answered.map((a) => `<li class="wl-req wl-answered"><div class="wl-who"><code class="ta-name">${esc(a.player)}</code>${a.player.startsWith(".") ? ' <span class="chip">Bedrock</span>' : ""}
+        ${a.name ? `<span>${esc(a.name)}</span>` : ""}<span class="${a.denied ? "wl-no" : "wl-in"}">${a.denied ? "❌ Not accepted" : "✅ Let in"} ${ago(a.ts_in)}</span>
+        ${a.seen ? `<span class="wl-seen">👀 Saw it ${ago(a.seen)}</span>` : '<span class="muted small">Hasn\'t seen it on the website yet</span>'}</div></li>`).join("")}</ul></section>` : ""}
     ${blockedHtml ? `<section class="section"><div class="section-head"><h2>Tried to join</h2><span class="muted">Turned away in the last two weeks</span></div><ul class="wl-list">${blockedHtml}</ul></section>` : ""}
     <section class="section"><div class="section-head"><h2>Each server's list</h2></div>
       <form class="panel btn-row wl-add" id="wl-add"><input class="input sm" name="name" placeholder="Name (.Name for Bedrock)" pattern="\\.?[A-Za-z0-9_]{1,16}" required>

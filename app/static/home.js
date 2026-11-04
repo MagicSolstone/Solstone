@@ -117,7 +117,7 @@ function joinCard(site) {
     const server = j.bedrock ? `<div class="hp-join-row"><code class="hp-addr">${esc(j.bedrock)}</code><span class="hp-port">Port <b>${esc(String(j.bedrock_port))}</b></span>${copyBtn(j.bedrock, "address")}</div>` : "";
     return `<div class="hp-ed-block bedrock">
       <div class="hp-ed-head">${edIcon("bedrock", 20)}<b>Bedrock Edition</b><span class="muted">phones, tablets, consoles, Windows</span></div>
-      ${j.xbox ? `<div class="hp-friend">${edIcon("friend", 22)}<span class="hp-friend-label">Add as a friend</span><code class="hp-gamertag">${esc(j.xbox)}</code>${copyBtn(j.xbox, "gamertag")}</div>
+      ${j.xbox ? `<div class="hp-friend">${edIcon("friend", 22)}<span class="hp-friend-label">Add as a friend</span><span class="hp-gt-tag">Gamertag:</span><code class="hp-gamertag">${esc(j.xbox)}</code>${copyBtn(j.xbox, "gamertag")}</div>
         <p class="hp-how muted small">Then Play → Friends, and join the server from there. Works on every device, consoles too.</p>
         ${server ? `<details class="hp-alt"><summary>Or add it as a server</summary>${server}<p class="hp-how muted small">Play → Servers → Add Server.</p></details>` : ""}`
       : `${server}<p class="hp-how muted small">Play → Servers → Add Server, with the address and port.</p>`}</div>`;

@@ -248,6 +248,26 @@ def finish_join_request(token_hash: str) -> None:
     settings_store.save_section("join_let_in", let_in + [{**done[0], "ts_in": time.time()}])
 
 
+def mark_seen(token_hash: str) -> dict | None:
+    """Their page has shown them the answer ("you're in", or not this time): noted the first time, for the admins.
+    Returns the request when this is that first time."""
+    answered = settings_store.load().get("join_let_in") or []
+    for r in answered:
+        if r.get("token") == token_hash and not r.get("seen"):
+            r["seen"] = time.time()
+            settings_store.save_section("join_let_in", answered)
+            return r
+    return None
+
+
+def answered_lately(days: int = 14) -> list[dict]:
+    """Requests answered lately (let in, or denied), newest first, and whether they've seen the answer yet.
+    (Never their private token.)"""
+    since = time.time() - days * 86400
+    rows = [r for r in settings_store.load().get("join_let_in") or [] if (r.get("ts_in") or 0) >= since]
+    return [{k: r.get(k) for k in ("player", "name", "ts", "ts_in", "denied", "reason", "seen")} for r in rows[::-1]][:20]
+
+
 def drop_join_request(player: str) -> None:
     """Done with this player's request altogether (every server)."""
     mine = [r for r in join_requests() if r.get("player", "").lower() == player.lower()]

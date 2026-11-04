@@ -2434,3 +2434,6 @@ body.ui-hidden .manage-sub { display: none; }
 .hp-alt .hp-join-row { margin-bottom: 4px; }
 .hp-eds { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 2px; font-size: .78rem; color: var(--muted); }
 .hp-eds span { display: inline-flex; align-items: center; gap: 4px; }
+.hp-gt-tag { color: var(--muted); font-size: .85rem; margin-left: 2px; }
+.wl-seen { color: #8fdc6a; font-weight: 600; font-size: .88rem; }
+.wl-no { color: #ff8a7a; font-size: .9rem; }

@@ -531,6 +531,8 @@ def _trend(sid: str, hours: int = 6, points: int = 36) -> dict:
         for k, v in b.items():
             if v:
                 out[k][i] = round(max(v) if k == "players" else sum(v) / len(v), 1)
+    if sums[-1]["players"]:                       # now: how many are on right now, not the most in the last 10 minutes
+        out["players"][-1] = sums[-1]["players"][-1]
     return {**out, "hours": hours}
 
 
@@ -768,6 +770,7 @@ async def join_request_status(request: Request):
         return {"state": "unknown"}
     r, finished = found
     if r.get("denied"):
+        _saw_answer(th)
         return {"state": "denied", "player": r["player"], "servers": [], "reason": r.get("reason") or ""}
     await S.registry.refresh()
     public = {s.id: s for s in _public_servers_list() if s.is_java}
@@ -778,7 +781,17 @@ async def join_request_status(request: Request):
         site.finish_join_request(th)
         finished = True
     state = "in" if finished else "partly" if any(e["in"] for e in each) else "waiting"
+    if state == "in":
+        _saw_answer(th)
     return {"state": state, "player": r["player"], "servers": each}
+
+
+def _saw_answer(token_hash: str) -> None:
+    """They've seen their answer: noted for Manage → Whitelist, and a notification the first time."""
+    r = site.mark_seen(token_hash)
+    if r:
+        said = "saw that their request wasn't accepted" if r.get("denied") else "saw that they're in"
+        notify.maybe_notify("blocked", site.config().get("name") or "Solstone", f"{r['player']} {said}")
 
 
 # ---- players making their own account (a code sent to them in the game)
@@ -2379,7 +2392,8 @@ async def whitelist_overview(request: Request):
             e = blocked.setdefault(b["name"].lower(), {"name": b["name"], "bedrock": b["bedrock"], "ts": b["ts"], "servers": []})
             e["ts"] = max(e["ts"], b["ts"])
             e["servers"].append({"id": s.id, "name": s.display_name})
-    return {"servers": out_servers, "requests": reqs, "blocked": sorted(blocked.values(), key=lambda b: -b["ts"])}
+    return {"servers": out_servers, "requests": reqs, "blocked": sorted(blocked.values(), key=lambda b: -b["ts"]),
+            "answered": site.answered_lately()}
 
 
 @app.post("/api/whitelist/deny")
