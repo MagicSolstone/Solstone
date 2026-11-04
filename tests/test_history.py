@@ -303,3 +303,17 @@ def test_log_tail_watches_the_xbox_friend(client, sid):
         assert not [e for e in db.events(sid) if "mcxboxbroadcast" in (e["message"] or "").lower()]   # not in the activity list
     finally:
         xboxwatch.forget(sid)
+
+
+def test_timeline_activity_lines_come_with_their_counts(client, sid):
+    import time as _time
+    now = _time.time()
+    db.x("INSERT INTO sessions(server_id, player, start_ts, last_seen_ts, end_ts) VALUES (?,?,?,?,?)", (sid, "Tally_Kid", now - 900, now - 60, now - 60))
+    eid = db.add_event(sid, now - 600, "progress", "Tally_Kid defeated 3 zombies · dug 40 blocks · travelled 1.2 km", "Tally_Kid")
+    try:
+        items = client.get(f"/api/servers/{sid}/timeline?player=Tally_Kid").json()["items"]
+        evs = [e for it in items for e in it.get("events") or [] if e.get("id") == eid]
+        assert evs and evs[0]["tally"] == {"mobs": 3, "mined": 40, "travelled": 1200}
+    finally:
+        db.x("DELETE FROM events WHERE id=?", (eid,))
+        db.x("DELETE FROM sessions WHERE server_id=? AND player='Tally_Kid'", (sid,))

@@ -2495,3 +2495,14 @@ body.ui-hidden .manage-sub { display: none; }
 .tr-chart svg { height: 120px; }
 .tr-speed { margin: 4px 0 0; }
 .wl-ans-x { margin-left: auto; }
+
+/* What each player did in a session: one row of icons, added up (the activity lines folded in) */
+.tl-did { display: grid; gap: 4px; margin: 6px 0 4px; }
+.did-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.did-who { font-size: .85rem; margin-right: 2px; }
+.did-chip { display: inline-flex; align-items: baseline; gap: 3px; padding: 1px 8px; border-radius: 999px; font-size: .8rem;
+  background: rgba(255, 255, 255, .06); border: 1px solid var(--line); cursor: default; }
+.did-chip small { color: var(--muted); }
+.did-more summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
+.did-slots { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
+.did-slots li { display: grid; grid-template-columns: 4.5em 1fr; gap: 6px; align-items: start; }

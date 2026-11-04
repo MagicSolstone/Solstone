@@ -2471,6 +2471,12 @@ async def events(sid: str, types: str = "", player: str = "", limit: int = 100, 
 async def timeline(sid: str, player: str = "", before: float | None = None, sessions: int = 20, chat: bool = True):
     srv = await _server(sid)
     data = db.timeline(srv.id, player or None, before, max(1, min(sessions, 100)), chat)
+    # the activity lines (every few minutes, per player) as counts, so the page can add them up into one row per
+    # player instead of a line each time ("⚔️ 34 monsters · ⛏️ 1,240 dug")
+    for it in data.get("items") or []:
+        for e in it.get("events") or ([it] if it.get("kind") == "event" else []):
+            if e.get("type") == "progress":
+                e["tally"] = adventures.tally(e.get("message") or "")
     return data if _shows_play_time() else _no_durations(data)
 
 

@@ -300,6 +300,50 @@ def main() -> int:
                 problems.append("post editor: choosing a picture just for the card doesn't offer an upload")
             check(pg, "post-editor-pictures")
             pg.click("#ws-edit [data-cancel]"); pg.wait_for_timeout(300)
+            # the overview's activity with three people on: their activity lines add up to one row each (made-up afternoon)
+            def busy_timeline(route):
+                t0 = time.time() - 3600
+                lines = ["defeated 3 zombies, 1 skeleton · dug 120 blocks · travelled 1.4 km", "chopped 12 logs · placed 40 blocks",
+                         "dug 300 blocks · mined 4 iron ore · travelled 600 blocks", "harvested 18 crops · bred 4 animals"]
+                evs, n = [], 0
+                for i in range(18):
+                    for who in ("Tyler", "Gimli_Jr", "MomCrafts"):
+                        line = lines[(i + len(who)) % len(lines)]
+                        tally = {}
+                        for part in line.split(" · "):
+                            w = part.split()
+                            if w[0] == "defeated":
+                                tally["mobs"] = 4
+                            elif w[0] == "dug":
+                                tally["mined"] = int(w[1])
+                            elif w[0] == "travelled":
+                                tally["travelled"] = float(w[1]) * (1000 if w[2] == "km" else 1)
+                            elif w[0] == "chopped":
+                                tally["logs"] = int(w[1])
+                            elif w[0] == "placed":
+                                tally["placed"] = int(w[1])
+                            elif w[0] == "mined":
+                                tally["ores"] = int(w[1])
+                            elif w[0] == "harvested":
+                                tally["crops"] = int(w[1])
+                            elif w[0] == "bred":
+                                tally["bred"] = int(w[1])
+                        n += 1
+                        evs.append({"id": n, "ts": t0 + i * 190, "type": "progress", "player": who, "message": f"{who} {line}", "tally": tally})
+                evs.append({"id": 900, "ts": t0 + 1500, "type": "death", "player": "Gimli_Jr", "message": "Gimli_Jr was slain by Zombie"})
+                evs.append({"id": 901, "ts": t0 + 2400, "type": "advancement", "player": "Tyler", "message": "Tyler has made the advancement [Iron Man]"})
+                evs.sort(key=lambda e: e["ts"])
+                sessions = [{"player": w, "uuid": None, "start": t0, "end": None, "last_seen": time.time(), "seconds": 3600, "open": True} for w in ("Tyler", "Gimli_Jr", "MomCrafts")]
+                route.fulfill(json={"items": [{"kind": "group", "start": t0, "end": None, "open": True, "seconds": 3600, "players": ["Tyler", "Gimli_Jr", "MomCrafts"],
+                                               "sessions": sessions, "counts": {"death": 1, "advancement": 1}, "events": evs}], "next_before": None})
+            pg.route(f"**/api/servers/{sid}/timeline*", safely(busy_timeline))
+            pg.goto(f"{base}/app#/s/{sid}"); pg.reload(); pg.wait_for_timeout(2000)
+            if pg.locator(".tl-did > .did-row").count() != 3 or pg.locator(".timeline .ev-progress").count():
+                problems.append("overview: activity lines aren't added up into one row per player")
+            pg.locator(".tl-did").first.scroll_into_view_if_needed(); check(pg, "overview-activity")
+            pg.click(".did-more summary"); pg.wait_for_timeout(300)
+            check(pg, "overview-activity-10min")
+            pg.unroute(f"**/api/servers/{sid}/timeline*")
             # Server stats: four months of made-up days (there's no game here), then the filters and the chart
             def stats_days(route):
                 import math

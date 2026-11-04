@@ -233,8 +233,33 @@ function bundleOf(e) {
   for (const [k, b] of Object.entries(BUNDLES)) if (b.types.includes(e.type)) return k;
   return null;
 }
+// What each player did in a session, from the activity lines saved every few minutes: one row of icons each, added up,
+// with "Every 10 minutes" to open for the detail. The lines themselves aren't listed one by one (with a few people on
+// they'd bury everything else).
+const DID = [["mobs", "⚔️", "monsters", "Monsters defeated"], ["mined", "⛏️", "dug", "Blocks dug"], ["ores", "💎", "ores", "Ores mined"],
+  ["placed", "🧱", "placed", "Blocks placed"], ["logs", "🪓", "logs", "Logs chopped"], ["crops", "🌾", "crops", "Crops harvested"],
+  ["travelled", "🧭", "", "Distance travelled"], ["chests", "📦", "chests", "Chests opened"], ["trades", "💰", "trades", "Villager trades"],
+  ["bred", "🐄", "bred", "Animals bred"], ["damage", "💔", "damage", "Hearts of damage taken"]];
+function didChips(t) {
+  return DID.filter(([k]) => t[k]).map(([k, icon, word, title]) => `<span class="did-chip" title="${esc(title)}">${icon} <b>${k === "travelled" ? esc(fmtDist(t[k])) : Math.round(t[k]).toLocaleString()}</b>${word ? ` <small>${word}</small>` : ""}</span>`).join("");
+}
+function didHtml(events, multi) {
+  const prog = events.filter((e) => e.type === "progress" && e.tally && Object.keys(e.tally).length);
+  if (!prog.length) return "";
+  const add = (a, t) => { for (const [k, v] of Object.entries(t)) a[k] = (a[k] || 0) + v; return a; };
+  const row = (p, t) => `<div class="did-row">${multi ? `<b class="did-who" style="color:${nameInk(p)}">${esc(p)}</b>` : ""}${didChips(t)}</div>`;
+  const byPlayer = {};
+  prog.forEach((e) => add((byPlayer[e.player] = byPlayer[e.player] || {}), e.tally));
+  const slots = {};
+  prog.forEach((e) => { const k = Math.floor(e.ts / 600) * 600; slots[k] = slots[k] || {}; add((slots[k][e.player] = slots[k][e.player] || {}), e.tally); });
+  const keys = Object.keys(slots).map(Number).sort((a, b) => a - b);
+  const detail = keys.length > 1 ? `<details class="did-more"><summary>Every 10 minutes</summary><ul class="did-slots">${keys.map((k) => `<li><span class="ev-time">${esc(hm(k))}</span><div>${Object.entries(slots[k]).map(([p, t]) => row(p, t)).join("")}</div></li>`).join("")}</ul></details>` : "";
+  return `<div class="tl-did">${Object.entries(byPlayer).map(([p, t]) => row(p, t)).join("")}${detail}</div>`;
+}
+
 // Lines for a block's events, with routine ones bundled where the first of them happened.
 function condensedLines(evs, withName, colorNames) {
+  evs = evs.filter((e) => e.type !== "progress");          // (added up in didHtml instead)
   const groups = {};
   evs.forEach((e) => { const k = bundleOf(e); if (k) (groups[k] = groups[k] || []).push(e); });
   const out = [];
@@ -272,7 +297,7 @@ function groupBlockHtml(b) {
   return `<li class="tl-session tl-group" style="--stripe:linear-gradient(${stripes})">
     <div class="tl-head"><span class="tl-together">Played together</span><span class="tl-range">${range}</span>${hasTime(b.seconds) ? `<span class="tl-dur">${b.seconds >= 60 ? fmtSeconds(b.seconds) : "under a minute"}</span>` : ""}</div>
     <div class="tl-people">${people}</div>
-    ${summary ? `<div class="tl-sum">${summary}</div>` : ""}
+    ${summary ? `<div class="tl-sum">${summary}</div>` : ""}${didHtml(b.events, true)}
     ${evs.length ? `<ul class="nested">${evs.map((line, i) => line.replace('<li class="', `<li ${i >= NEST_SHOWN * 2 ? "hidden " : ""}class="`)).join("")}</ul>
       ${hidden ? `<button class="link-btn show-all" type="button">Show ${hidden} more</button>` : ""}` : ""}
   </li>`;
@@ -296,7 +321,7 @@ function sessionBlockHtml(b, showPlayer) {
     : "";
   return `<li class="tl-session" style="--pc:${color}">
     <div class="tl-head">${head}<span class="tl-range">${range}</span>${hasTime(b.seconds) ? `<span class="tl-dur">${b.seconds >= 60 ? fmtSeconds(b.seconds) : "under a minute"}</span>` : ""}</div>
-    ${summary ? `<div class="tl-sum">${summary}</div>` : ""}${body}</li>`;
+    ${summary ? `<div class="tl-sum">${summary}</div>` : ""}${didHtml(b.events, false)}${body}</li>`;
 }
 
 function timelineItemsHtml(items, state, showPlayer) {
@@ -337,6 +362,7 @@ function mountTimeline(el, sid, player = "") {
     btn.remove();
     st.expanded = true;
   });
+  list.addEventListener("toggle", () => { st.expanded = true; }, true);
   $("input", el).addEventListener("change", (e) => { st.chat = e.target.checked; load(true); });
   more.addEventListener("click", () => load(false));
   load(true);
