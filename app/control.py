@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import time
 from pathlib import Path
@@ -46,6 +47,8 @@ GAME_RULES = [
 _ERROR_HINTS = ("unknown", "incorrect", "expected", "<--[here]", "invalid", "error", "no such", "does not exist", "doesn't exist",
                 "could not find", "couldn't find", "not found", "unable to")
 _rule_names: dict[str, dict[str, str]] = {}  # server id -> rule key -> name the server accepts
+
+log = logging.getLogger("solstone.control")
 
 
 def check_name(name: str, what: str = "player") -> str:
@@ -241,6 +244,9 @@ async def _player_action(srv: S.Server, player: str, action: str, body: dict, se
         verb = "add" if action == "whitelist_add" else "remove"
         cmd = f"fwhitelist {verb} {p[1:]}" if mcname.is_bedrock(p) else f"whitelist {verb} {p}"
         res = await run(srv, cmd, wait=30)
+        if mcname.is_bedrock(p) and _no_command(res["output"]):
+            # Floodgate on Fabric doesn't always have fwhitelist: the server's own whitelist, by their Floodgate id
+            res = await bedrock_whitelist(srv, p, verb)
         if res["ok"] is False and verb == "add":
             reply = res["output"].strip()
             raise HTTPException(400, f"{p} wasn't added. The game said: {reply}" if reply else f"{p} wasn't added")
@@ -251,6 +257,76 @@ async def _player_action(srv: S.Server, player: str, action: str, body: dict, se
     if action in ("op", "deop"):
         return [await run(srv, f"{action} {p}", wait=30)]
     raise HTTPException(400, "Unknown player action")
+
+
+def _no_command(out: str) -> bool:
+    out = (out or "").lower()
+    return "unknown or incomplete command" in out or "unknown command" in out
+
+
+GEYSER_XUID_URL = "https://api.geysermc.org/v2/xbox/xuid/{gamertag}"
+
+
+async def bedrock_xuid_for(gamertag: str) -> int | None:
+    """A Bedrock player's Xbox id from their gamertag (GeyserMC's lookup). Floodgate writes a gamertag's spaces as
+    underscores, so both are tried."""
+    import httpx
+    tries = [gamertag] + ([gamertag.replace("_", " ")] if "_" in gamertag else [])
+    async with httpx.AsyncClient(timeout=10) as c:
+        for tag in tries:
+            try:
+                r = await c.get(GEYSER_XUID_URL.format(gamertag=tag))
+            except httpx.HTTPError as e:
+                log.info("couldn't look up gamertag %s: %s", tag, e)
+                continue
+            if r.status_code == 200:
+                x = (r.json() or {}).get("xuid")
+                if x is not None and str(x).isdigit():
+                    return int(x)
+    return None
+
+
+def floodgate_uuid(xuid: int) -> str:
+    """Floodgate's id for a Bedrock player: zeros, then their Xbox id (the reverse of skins.bedrock_xuid)."""
+    h = f"{xuid:032x}"
+    return f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
+
+
+async def bedrock_whitelist(srv: S.Server, name: str, verb: str) -> dict:
+    """Add or remove a Bedrock player on the server's own whitelist (whitelist.json), by their Floodgate id, then
+    have the game read it again. For servers whose Floodgate has no fwhitelist command."""
+    res = await _bedrock_whitelist(srv, name, verb)
+    return {"command": f"whitelist {verb} {name}", "via": "whitelist.json", **res}
+
+
+async def _bedrock_whitelist(srv: S.Server, name: str, verb: str) -> dict:
+    path = srv.dir / "whitelist.json"
+    try:
+        rows = json.loads(path.read_text()) if path.exists() else []
+    except (OSError, ValueError):
+        return {"ok": False, "output": "The server's whitelist.json couldn't be read"}
+    if verb == "add":
+        if any(str(r.get("name", "")).lower() == name.lower() for r in rows):
+            return {"ok": True, "output": f"{name} is already on the whitelist"}
+        xuid = await bedrock_xuid_for(name[1:])
+        if xuid is None:
+            return {"ok": False, "output": f"No Xbox gamertag \"{name[1:]}\" was found. Check the spelling (spaces are written as _), "
+                                           "or have them try to join once and use Allow in the list of people turned away"}
+        rows.append({"uuid": floodgate_uuid(xuid), "name": name})
+    else:
+        before = len(rows)
+        rows = [r for r in rows if str(r.get("name", "")).lower() != name.lower()]
+        if len(rows) == before:
+            return {"ok": True, "output": f"{name} wasn't on the whitelist"}
+    tmp = path.with_suffix(".json.tmp")
+    try:
+        tmp.write_text(json.dumps(rows, indent=2))
+        tmp.replace(path)
+    except OSError as e:
+        return {"ok": False, "output": f"The server's whitelist.json couldn't be written ({e})"}
+    reload = await run(srv, "whitelist reload", wait=10)
+    return {"ok": True, "output": f"{'Added' if verb == 'add' else 'Removed'} {name} {'to' if verb == 'add' else 'from'} the whitelist"
+            + ("" if reload["ok"] is not False else " (it takes effect when the server restarts)")}
 
 
 async def power(srv: S.Server, action: str) -> dict:

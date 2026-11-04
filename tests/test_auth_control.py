@@ -379,3 +379,38 @@ def test_asks_to_join_count_on_the_admins_name(client, viewer, sid):
         assert viewer.get("/api/community/unread").json()["requests"] == 0
     finally:
         site.settings_store.save_section("join_requests", [])
+
+
+def test_bedrock_whitelist_without_floodgates_command(client, sid, rcon, monkeypatch):
+    """Floodgate on Fabric may have no fwhitelist: the player goes on the server's own whitelist by their Floodgate id."""
+    from app import servers as S
+    from app import skins
+    srv = S.registry.servers[sid]
+    wl = srv.dir / "whitelist.json"
+    keep = wl.read_text() if wl.exists() else None
+    rcon["replies"]["fwhitelist add Lego8595"] = "Unknown or incomplete command. See below for error\nfwhitelist add Lego8595<--[HERE]"
+    rcon["replies"]["fwhitelist remove Lego8595"] = "Unknown or incomplete command. See below for error"
+    rcon["replies"]["fwhitelist add Nobody_Here"] = "Unknown or incomplete command. See below for error"
+    rcon["replies"]["whitelist reload"] = "Reloaded the whitelist"
+
+    async def xuid(tag):
+        return 2535428123456789 if tag == "Lego8595" else None
+    monkeypatch.setattr(control, "bedrock_xuid_for", xuid)
+    try:
+        wl.write_text(json.dumps([{"uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5", "name": "Tyler"}]))
+        r = client.post(f"/api/servers/{sid}/control/player/.Lego8595/whitelist_add", json={})
+        assert r.status_code == 200, r.text
+        rows = json.loads(wl.read_text())
+        added = next(x for x in rows if x["name"] == ".Lego8595")
+        assert skins.bedrock_xuid(added["uuid"]) == 2535428123456789 and any(x["name"] == "Tyler" for x in rows)
+        assert "whitelist reload" in rcon["cmds"]
+        r = client.post(f"/api/servers/{sid}/control/player/.Nobody_Here/whitelist_add", json={})
+        rcon_says = r.json()["detail"]
+        assert r.status_code == 400 and "No Xbox gamertag" in rcon_says                     # a gamertag that doesn't exist
+        client.post(f"/api/servers/{sid}/control/player/.Lego8595/whitelist_remove", json={})
+        assert [x["name"] for x in json.loads(wl.read_text())] == ["Tyler"]
+    finally:
+        if keep is None:
+            wl.unlink(missing_ok=True)
+        else:
+            wl.write_text(keep)
