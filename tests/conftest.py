@@ -94,3 +94,20 @@ def _fresh_online_list():
     for srv in S.registry.servers.values():
         srv._rcon = None
     yield
+
+
+@pytest.fixture()
+def easy_vault(monkeypatch):
+    """For tests of a game's own rules: everyone's things "kept safe" without a pretend vault, and the trip home
+    noted (kits has its own tests of the vault itself)."""
+    from app import kits
+    trips = []
+
+    async def keep_safe(srv, names, game_id):
+        return {n: f"uuid-{n}" for n in names}
+
+    def send_home(srv, kept, game_id, secs=8, after=None):
+        trips.append({"game": game_id, "kept": dict(kept), "after": after})
+    monkeypatch.setattr(kits, "keep_safe", keep_safe)
+    monkeypatch.setattr(kits, "send_home", send_home)
+    return trips

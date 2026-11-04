@@ -418,8 +418,79 @@ async def _welcome_back(srv, s: dict) -> None:
 
 
 def _in_live_game(s: dict) -> bool:
+    """Their game (or race) is still on, or everyone's on the way home from it: leave their things to that."""
     from .games import ACTIVE, _load as games_load
-    return any(r["id"] == s.get("game") and r["state"] in ACTIVE for r in games_load()["runs"])
+    from .races import _load as races_load
+    if s.get("game") in _heading_home:
+        return True
+    return (any(r["id"] == s.get("game") and r["state"] in ACTIVE for r in games_load()["runs"])
+            or any(r["id"] == s.get("game") and r["state"] in ("countdown", "running") for r in races_load()["runs"]))
+
+
+# ------------------------------------------------------------------ every game: in with nothing, home with everything
+_heading_home: dict[str, float] = {}       # game id -> when its trip home started (the tidy-up leaves those alone)
+_tasks: set = set()
+HOME_SECS = 8
+
+
+async def keep_safe(srv, names: list[str], game_id: str) -> dict[str, str]:
+    """The start of any game: everyone's own things, where they are and their game mode, kept safe; they're cleared,
+    ready for the game's kit. Returns {name: uuid} of who's in. Anyone whose things couldn't be kept safe watches,
+    untouched, and is told why."""
+    from . import battle
+    from .games import _say
+    ids = battle.uuids_of(srv, names)
+    before = {x["name"].lower() for x in waiting(srv.id)}
+    try:
+        playing = await stash(srv, ids, game_id)
+    except Exception:                                    # (the vault couldn't be reached: nobody's touched)
+        log.exception("couldn't keep things safe for %s", game_id)
+        playing = []
+    for n in names:
+        if n not in playing:
+            why = ("Some of your things are still kept safe from an earlier game, so you're watching this one."
+                   if n.lower() in before else "Your things couldn't be kept safe just now, so you're watching this one.")
+            await _say(srv, [("★ ", "gold"), (f"{why} Nothing of yours was touched.", "yellow")], who=n)
+    return {n: ids[n] for n in playing}
+
+
+def send_home(srv, kept: dict[str, str], game_id: str, secs: int = HOME_SECS, after=None):
+    """The end of any game: a few seconds' countdown, then everyone's kit and pick-ups cleared, their own things back
+    exactly, and back where they were in the game mode they were in. Prizes wait until then (challenges.award)."""
+    if not kept and not after:
+        return None
+    _heading_home[game_id] = time.time()
+    task = asyncio.get_running_loop().create_task(_home(srv, dict(kept), game_id, secs, after))
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)
+    return task
+
+
+async def _home(srv, kept: dict[str, str], game_id: str, secs: int, after) -> None:
+    from . import challenges
+    from .control import component
+    try:
+        for left in range(secs, 0, -1):
+            for u in kept.values():
+                await _rcon(srv, f"title {u} actionbar {component([(f'Back home with your things in {left}…', 'gold')])}")
+            await asyncio.sleep(1)
+        for n, u in kept.items():
+            try:
+                if await give_back(srv, u, move=True):           # offline: when they're next on (on_join)
+                    await challenges.deliver_now(srv, n)         # a prize won, now there's somewhere safe for it
+            except Exception:
+                log.exception("sending %s home failed (tried again when they're next on)", n)
+        if after:
+            await after()
+    except Exception:
+        log.exception("the trip home from %s failed", game_id)
+    finally:
+        _heading_home.pop(game_id, None)
+
+
+def has_things_kept(sid: str, player: str) -> bool:
+    """In a game right now (their own things in the vault): nothing should be handed to them till they're home."""
+    return any(s["name"].lower() == player.lower() and not s.get("restored") for s in waiting(sid))
 
 
 async def tidy(srv, online: list[str]) -> None:

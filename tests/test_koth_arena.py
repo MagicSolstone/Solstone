@@ -209,7 +209,7 @@ def test_elytra_race_things_kept_safe_wings_then_everything_back(fight):
     assert any(c.startswith(f"item replace entity {U1} armor.chest with minecraft:elytra[minecraft:custom_data={{solkit:1b}}") for c in fight.said)
     assert any(c.startswith(f"give {U2} minecraft:firework_rocket[") and c.endswith(" 16") for c in fight.said)
     assert fight.rules["keepInventory"] == "true"
-    asyncio.run(races._gear_back(fight, r))
+    home(races._gear_back(fight, r, secs=0))
     assert fight.slots == before and fight.rules["keepInventory"] == "false" and not kits.waiting(fight.id)
 
 
@@ -336,5 +336,14 @@ def test_crashing_out_of_an_elytra_race_sends_you_home_with_your_things(fight):
     assert fight.slots[U1] == before and not r["racers"][".LongBedrockNameX"].get("out")
     assert any(c.startswith(f"execute in minecraft:overworld run tp {U1} ") for c in fight.said)     # back where they were
     assert [s["name"] for s in kits.waiting(fight.id)] == [".LongBedrockNameX"]        # still racing: still kept safe
-    asyncio.run(races._gear_back(fight, r))
+    home(races._gear_back(fight, r, secs=0))
     assert not kits.waiting(fight.id)
+
+
+def home(coro):
+    """Run a game's end and wait for its trip home (kits.send_home runs it in the background)."""
+    async def run():
+        await coro
+        await asyncio.gather(*list(kits._tasks))
+    asyncio.run(run())
+

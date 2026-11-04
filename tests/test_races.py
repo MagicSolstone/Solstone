@@ -5,6 +5,10 @@ import time
 
 import pytest
 
+import pytest as _pytest  # noqa: E402
+
+pytestmark = _pytest.mark.usefixtures("easy_vault")      # games keep everyone's things safe: see test_kits
+
 
 class FakeServer:
     def __init__(self, version="1.20.4"):
@@ -74,7 +78,7 @@ def _shift(races, **k):
     races._save(d)
 
 
-def test_full_race(race):
+def test_full_race(race, easy_vault):
     races, srv, challenges = race
     c = _course(races, srv)
     assert races.courses_for(srv.id)[0]["points"][1]["name"] == "Peak"
@@ -111,9 +115,7 @@ def test_full_race(race):
     assert r["state"] == "done" and [x["name"] for x in r["results"]] == ["Gimli_Jr", "Tyler"]
     assert ("Gimli_Jr", "minecraft:diamond", 3) in srv.given and not any(g[0] == "Tyler" for g in srv.given)   # Tyler didn't finish
     assert not srv.entities and not srv.forced                       # markers and force-loading gone
-    from app import gather
-    home = gather._load()["returns"]
-    assert len(home) == 1 and set(home[0]["back"]) == {"Tyler", "Gimli_Jr"}   # everyone heads back after a countdown
+    assert len(easy_vault) == 1 and set(easy_vault[0]["kept"]) == {"Tyler", "Gimli_Jr"}    # everyone home with their things
     assert not races.busy()
 
 

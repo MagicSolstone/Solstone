@@ -442,9 +442,10 @@ async def _full_note(srv, player: str, g: dict) -> None:
 
 async def _give(srv, d: dict, player: str, prize: dict, why: str, online: set[str], note: str = "") -> bool:
     """Give it now if they're on and have room, otherwise keep it for later. True if given now."""
+    from . import kits
     g = {"server": srv.id, "player": player, "item": prize["item"], "count": prize["count"], "why": why, "at": time.time(),
          **({"note": note} if note else {})}
-    if player.lower() in online:
+    if player.lower() in online and not kits.has_things_kept(srv.id, player):   # (in a game: it'd be cleared with the kit)
         got = await _hand_over(srv, player, prize["item"], prize["count"])
         if got == "given":
             return True
@@ -464,8 +465,18 @@ async def award(srv, player: str, prize: dict, why: str, note: str = "") -> bool
     return given
 
 
+async def deliver_now(srv, player: str) -> None:
+    """Hand over anything waiting for this player now (just back from a game, say)."""
+    d = _load()
+    if await _deliver(srv, d, player):
+        _save(d)
+
+
 async def _deliver(srv, d: dict, player: str) -> bool:
     """Hand over what's waiting for this player, as far as there's room. True if anything changed."""
+    from . import kits
+    if kits.has_things_kept(srv.id, player):
+        return False                                  # in a game: when they're home
     changed = False
     for g in [g for g in d["gifts"] if g["server"] == srv.id and g["player"].lower() == player.lower()]:
         got = await _hand_over(srv, player, g["item"], g["count"])

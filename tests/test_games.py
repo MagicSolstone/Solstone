@@ -6,6 +6,10 @@ import time
 
 import pytest
 
+import pytest as _pytest  # noqa: E402
+
+pytestmark = _pytest.mark.usefixtures("easy_vault")      # games keep everyone's things safe: see test_kits
+
 UUID = {"Tyler": "00000001-0000-0002-0000-000300000001", "Gimli_Jr": "00000001-0000-0002-0000-000300000002",
         "MomCrafts": "00000001-0000-0002-0000-000300000003"}
 
@@ -154,7 +158,8 @@ def test_treasure_hunt(game):
     srv.chest_items = None                                                   # someone emptied it
     asyncio.run(games.tick([srv]))
     r = _run(games)
-    assert r["state"] == "done" and r["result"] == "Gimli_Jr found the treasure!" and srv.blocks[(100, 71, -41)] == "air"
+    assert r["state"] == "done" and r["result"].startswith("Gimli_Jr found the treasure!") and srv.blocks[(100, 71, -41)] == "air"
+    assert r["finder"] == "Gimli_Jr"                    # the chest's things are their prize, once they're home
 
 
 def test_archery_points(game):

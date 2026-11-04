@@ -259,13 +259,12 @@ async def _begin_countdown(srv, r: dict) -> None:
         r["state"], r["result"] = "skipped", "Nobody joined"
         await _say(srv, r, [("★ ", "gold"), (f"Nobody joined {r['name']}, so it's off this time.", "yellow")])
         return
-    if r.get("vehicle") == "elytra":
-        names = await _wings(srv, r, names)
-        r["entrants"] = names
-        if not names:
-            await _remove_markers(srv, r)
-            r["state"], r["result"] = "skipped", "Nobody's things could be kept safe, so the race didn't start"
-            return
+    names = await _wings(srv, r, names)                   # every race: in with nothing of theirs, home with everything
+    r["entrants"] = names
+    if not names:
+        await _remove_markers(srv, r)
+        r["state"], r["result"] = "skipped", "Nobody's things could be kept safe, so the race didn't start"
+        return
     if r["teleport"]:
         # side by side on the start line, facing the first checkpoint, held still until GO;
         # everyone goes back where they were once it's over
@@ -277,20 +276,16 @@ async def _begin_countdown(srv, r: dict) -> None:
 
 
 async def _wings(srv, r: dict, names: list[str]) -> list[str]:
-    """Everyone's own things into the vault, then an elytra and rockets each. Returns who's racing."""
+    """Everyone's own things into the vault (any race); for an elytra race, an elytra and rockets each. Returns who's
+    racing (a boat race's boats come at GO)."""
     from . import battle, kits
     await battle.rules_on(srv, r)
-    ids = battle.uuids_of(srv, names)
-    racing = await kits.stash(srv, ids, r["id"])
-    r["uuids"] = {n: ids[n] for n in racing}
-    for n in names:
-        if n not in racing:
-            note = component([("★ ", "gold"), ("Your things couldn't be kept safe just now, so you're watching this one. Nothing of yours was touched.", "yellow")])
-            await _rcon(srv, f"tellraw {n} {note}")
+    r["uuids"] = await kits.keep_safe(srv, names, r["id"])
+    racing, ids = list(r["uuids"]), r["uuids"]
     await _rcon(srv, f"scoreboard objectives add {DEATHS} deathCount")
     for n in racing:
         await _rcon(srv, f"scoreboard players set {ids[n]} {DEATHS} 0")
-    for n in racing:
+    for n in racing if r.get("vehicle") == "elytra" else []:
         u = ids[n]
         elytra, rockets = kits.kit_item("minecraft:elytra"), kits.kit_item("minecraft:firework_rocket")
         await _rcon(srv, f"item replace entity {u} armor.chest with {elytra}")
@@ -322,18 +317,20 @@ async def _crashes(srv, r: dict) -> None:
             st["home"] = True                             # (on the death screen: tried again next time)
 
 
-async def _gear_back(srv, r: dict) -> None:
-    """After the race: boats and elytras taken back, and (elytra) everyone's own things back exactly."""
+async def _gear_back(srv, r: dict, secs: int | None = None) -> None:
+    """After the race: everyone home (where they were before it) with exactly their own things, after a moment; boats,
+    elytras and anything picked up left behind. Prizes wait until they're home (challenges.award)."""
     from . import battle, kits
     if r.get("vehicle") == "boat":
         await _rcon(srv, f"clear @a #minecraft:boats[minecraft:custom_data={{{kits.KIT_TAG}:1b}}]")
-    if r.get("vehicle") == "elytra":
-        online = {n.lower() for n in (await S.online_players(srv))[0]}
-        for n, u in (r.get("uuids") or {}).items():
-            if n.lower() in online:                       # offline: theirs when they're next on (kits.on_join)
-                await _rcon(srv, f"effect clear {u} minecraft:resistance")
-                await kits.give_back(srv, u, move=not r.get("gathered"))      # (lined up: the trip home puts them back)
-        await battle.rules_off(srv, r)
+    if r.get("uuids") and not r.get("sent_home"):
+        r["sent_home"] = True
+        r.pop("gathered", None)                          # (the trip home is where they were before the race)
+        for u in r["uuids"].values():
+            await _rcon(srv, f"effect clear {u} minecraft:resistance")
+        home = {n: u for n, u in r["uuids"].items() if not (r.get("racers") or {}).get(n, {}).get("home")}
+        kits.send_home(srv, home, r["id"], kits.HOME_SECS if secs is None else secs)
+    await battle.rules_off(srv, r)
 
 
 async def _go(srv, r: dict) -> None:
@@ -341,7 +338,7 @@ async def _go(srv, r: dict) -> None:
     if r.get("gathered"):
         await gather.unfreeze(srv, list(r["gathered"]))
     online, _src = await S.online_players(srv)
-    names = [n for n in online if n in r["entrants"]] if r.get("optin") or r.get("vehicle") == "elytra" else online
+    names = [n for n in online if n in r["entrants"]]      # those whose things are kept safe
     if r.get("vehicle") == "boat":
         from . import kits
         boat = kits.kit_item("minecraft:oak_boat")
@@ -393,11 +390,9 @@ def _height_hint(r: dict, tgt: dict, dy: float, dist: float) -> str:
 async def _track(srv, r: dict) -> None:
     pts, last = r["points"], len(r["points"]) - 1
     online, _src = await S.online_players(srv)
-    for n in online if not r.get("optin") and r.get("vehicle") != "elytra" else []:      # joined mid-race: in, from the start
-        r["racers"].setdefault(n, {"next": 1, "splits": [], "finished": None})
+
     now = time.time()
-    if r.get("vehicle") == "elytra":
-        await _crashes(srv, r)
+    await _crashes(srv, r)
     for n, st in r["racers"].items():
         if st["finished"] or st.get("out") or n not in online:
             continue
@@ -499,11 +494,10 @@ async def cancel(srv, rid: str) -> bool:
     if r["state"] in ("countdown", "running"):
         await _remove_markers(srv, r)
         await bossbar.hide(srv, r)
-        await _gear_back(srv, r)
         if r.get("gathered"):
             from . import gather
             await gather.unfreeze(srv, list(r["gathered"]))
-            gather.come_home(srv, r.pop("gathered"), r["name"])
+        await _gear_back(srv, r, secs=3)
         await _say(srv, r, [("★ ", "gold"), (f"{r['name']} was called off.", "yellow")])
     if r["state"] in ("scheduled", "countdown", "running"):
         r["state"] = "cancelled"

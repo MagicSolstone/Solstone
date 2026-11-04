@@ -842,7 +842,8 @@ async function viewRaces(sid) {
           <label class="check"><input type="radio" name="when" value="later"> At <input class="input sm" type="datetime-local" name="at" value="${at}"></label></div>`}
         <label>Time limit ${numIn("minutes", +pre.minutes || 15, 2, 60, "minutes")}</label>
         <label>Racing <select class="input" name="vehicle">${[["none", "🏃 On foot"], ["boat", "🛶 By boat: everyone gets a boat at GO (for water and land)"], ["elytra", "🪽 By elytra: everyone gets an elytra and rockets"]].map(([v, l]) => `<option value="${v}" ${(pre.vehicle || "none") === v ? "selected" : ""}>${l}</option>`).join("")}</select>
-          <small class="muted rs-elytra-note">Elytra: everyone's own things are kept safe in a sealed vault first (the elytra needs the chest slot), and given back exactly afterwards. A checkpoint counts anywhere in its tall glowing column.</small></label>
+          <small class="muted rs-elytra-note">Elytra: a checkpoint counts anywhere in its tall glowing column.</small></label>
+        <p class="muted small gm-safe">🔒 Everyone's own things are kept safe in a sealed vault at the start; they race with just the race's things (a boat, or wings and rockets). Crash out (die) and you're out of the race and home with your things. When it's over: a short countdown, then everyone's back where they were with exactly their own things; prizes arrive once they're home.</p>
         <div class="rs-elytra">
           <label>Rockets each <select class="input sm" name="rockets">${[0, 8, 16, 32, 64].map((v) => `<option value="${v}" ${(pre.rockets ?? 16) === v ? "selected" : ""}>${v || "None"}</option>`).join("")}</select></label>
           <label class="check"><input type="checkbox" name="safe_flying" ${pre.safe_flying === false ? "" : "checked"}> Safer flying: crashes hurt much less</label></div>
@@ -1109,8 +1110,8 @@ async function viewGames(sid) {
         <div class="gm-map" id="gm-map"></div>
         ${where()}
         <div class="gm-opts">${options()}</div>
-        ${game === "archery" || game === "treasure" ? gatherHtml(f.g, online()) : game === "hideseek" ? `<p class="muted small">Everyone is brought to the middle of the area when it starts, and back to where they were when it's over.</p>`
-          : FIGHTS.has(game) ? `<p class="muted small">Everyone is sent to their spawn when it starts, and back to exactly where they were, with exactly what they had, when it's over.</p>` : ""}
+        ${game === "archery" || game === "treasure" ? gatherHtml(f.g, online()) : ""}
+        <p class="muted small gm-safe">🔒 Everyone's own things are kept safe in a sealed vault when it starts, and they play with just ${({ koth: "the kit", arena: "the kit", archery: "the Match Bow", spleef: "a shovel", treasure: "what they find (the treasure's the finder's prize at the end)", hideseek: "nothing: just themselves" })[game] || "the game's things"}. When it's over: a short countdown, then everyone's back where they were, in the game mode they were in, with exactly their own things. Anything picked up in the game stays behind; prizes arrive once they're home.</p>
         ${game !== "treasure" ? `<div class="gm-prize"><span class="lbl">Prize for the winner${game === "hideseek" ? "s" : ""}</span><button type="button" class="btn ch-pick" id="gm-prize">${pickBtn(f.prize, "Optional")}</button></div>` : ""}
         ${adding ? `<p class="muted small">Part of <b>${esc(adding.title)}</b>: it starts when its turn comes.</p>` : `<div class="ch-when"><span class="lbl">When</span>
           <label class="check"><input type="radio" name="when" value="now" ${f.when === "now" ? "checked" : ""}> Right now</label>

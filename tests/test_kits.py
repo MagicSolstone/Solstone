@@ -328,3 +328,21 @@ def test_an_old_pocket_never_hands_out_copies_or_keeps_anyone_out(game):
     asyncio.run(kits.give_kit(game, U1, kits.clean_kit({"sword": "iron"})))
     assert asyncio.run(kits.give_back(game, U1)) is True
     assert game.slots[U1] == before and not kits.waiting("kit-test")     # exactly once
+
+
+def test_a_prize_won_in_a_game_waits_till_theyre_home(game, monkeypatch):
+    """Handed over mid-game it'd be cleared with the kit on the way home: it waits, then arrives."""
+    from app import challenges
+    asyncio.run(kits.stash(game, {"Alex": U1}, "g10"))
+    monkeypatch.setattr(challenges.S, "online_players", lambda srv: _online(["Alex"]))
+    d0 = challenges._load()
+    asyncio.run(challenges.award(game, "Alex", {"item": "minecraft:diamond", "count": 3, "name": "Diamond"}, "won the arena"))
+    assert not any(c.startswith("give ") and "diamond " in c for c in game.said)      # not handed over in the game
+    assert any(g["player"] == "Alex" for g in challenges._load()["gifts"])            # kept for them
+    assert asyncio.run(kits.give_back(game, U1)) is True
+    assert not kits.has_things_kept("kit-test", "Alex")                               # home: it can come now
+    challenges._save(d0)
+
+
+async def _online(names):
+    return (names, "rcon")

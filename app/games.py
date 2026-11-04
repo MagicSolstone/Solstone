@@ -161,6 +161,8 @@ async def entrants(srv, r: dict) -> list[str]:
     """Who's playing, of those online: everyone, or those who joined (when players choose to)."""
     from . import optin
     online = (await S.online_players(srv))[0]
+    if r.get("kept"):                                    # under way: just those whose things are kept safe
+        return [n for n in online if n in r["kept"]]
     if not r.get("optin"):
         return online
     if r["state"] == "scheduled":
@@ -208,6 +210,25 @@ async def _countdown(srv, r: dict) -> None:
     mins = bossbar.due_warning(r, r["phase_ends"], total) if r["state"] == "running" else None
     if mins:
         await _say(srv, [("★ ", "gold"), (f"{mins} minute{'s' if mins > 1 else ''} left in {r['name']}!", "yellow")])
+
+
+KEEPS = ("hideseek", "treasure", "archery", "spleef")    # games that keep everyone's things safe here
+
+
+def _go_home(srv, r: dict, secs: int | None = None) -> None:
+    """Everyone back where they were with exactly their own things (kits.send_home), the game's things and anything
+    picked up left behind. The treasure hunt's treasure is the finder's prize, given once they're home."""
+    from . import kits
+    r["sent_home"] = True
+    r.pop("gathered", None)                              # (the trip home is where they were before the game)
+    after = None
+    if r["game"] == "treasure" and r.get("finder") and r.get("items"):
+        finder, items, name = r["finder"], list(r["items"]), r["name"]
+
+        async def after():
+            for it in items:
+                await challenges.award(srv, finder, it, f"found the treasure in {name}")
+    kits.send_home(srv, r["kept"], r["id"], kits.HOME_SECS if secs is None else secs, after)
 
 
 def _finish(srv, r: dict, result: str) -> None:
@@ -530,7 +551,9 @@ async def _th_tick(srv, r: dict) -> None:
     taken = "[]" in out or "found no elements" in low or "not a block entity" in low
     if taken:
         finder = min(near, key=near.get) if near else None
-        result = f"{finder} found the treasure!" if finder else "Someone found the treasure!"
+        r["finder"] = finder
+        result = (f"{finder} found the treasure! It's theirs once they're home." if finder and r.get("kept")
+                  else f"{finder} found the treasure!" if finder else "Someone found the treasure!")
         await _say(srv, [("★ ", "gold"), (result, "yellow")], "Treasure found!", finder or "")
         await _rcon(srv, f"execute in {r['dim']} run setblock {c['x']} {c['y']} {c['z']} {'minecraft:water' if r.get('underwater_spot') else 'minecraft:air'}")
         await _rcon(srv, f"execute in {r['dim']} run forceload remove {c['x']} {c['z']}")
@@ -942,6 +965,14 @@ async def _tick(servers: list) -> None:
                     await _say(srv, [("★ ", "gold"), (f"Nobody joined {r['name']}, so it's off this time.", "yellow")])
                     changed = True
                     continue
+                if r["game"] in KEEPS:                    # (King of the Hill and the arena do it with their kit)
+                    from . import kits
+                    r["kept"] = await kits.keep_safe(srv, r["entrants"], r["id"])
+                    r["entrants"] = list(r["kept"])
+                    if not r["entrants"]:
+                        r["state"], r["result"] = "skipped", "Nobody's things could be kept safe, so it didn't start"
+                        changed = True
+                        continue
                 if r.get("gather"):
                     r["gathered"] = await gather.send(srv, r["gather"], r["entrants"])
                 await {"hideseek": _hs_start, "treasure": _th_start, "archery": _ar_start, "spleef": spleef.start,
@@ -966,7 +997,10 @@ async def _tick(servers: list) -> None:
             except Exception:
                 log.exception("game %s failed", r["id"])
             changed = True
-        if srv and r["state"] not in ACTIVE and r.get("gathered"):
+        if srv and r["state"] not in ACTIVE and r.get("kept") and not r.get("sent_home"):
+            _go_home(srv, r)                                             # winners announced: everyone home, with their things
+            changed = True
+        elif srv and r["state"] not in ACTIVE and r.get("gathered"):
             gather.come_home(srv, r.pop("gathered"), r["name"])         # winners announced: everyone home after a countdown
             changed = True
     if changed:
@@ -1020,7 +1054,9 @@ async def _cancel(srv, rid: str) -> bool:
         await _say(srv, [("★ ", "gold"), (f"{r['name']} was called off.", "yellow")])
     if was_live:
         r["state"] = "cancelled"
-        if r.get("gathered"):
+        if r.get("kept") and not r.get("sent_home"):
+            _go_home(srv, r, secs=3)
+        elif r.get("gathered"):
             from . import gather
             gather.come_home(srv, r.pop("gathered"), r["name"])
     elif not r.get("owed"):                          # removing a finished one (kept while it still owes someone a trip back)

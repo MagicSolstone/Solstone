@@ -8,6 +8,10 @@ import pytest
 
 from tests.test_challenges import FakeServer
 
+import pytest as _pytest  # noqa: E402
+
+pytestmark = _pytest.mark.usefixtures("easy_vault")      # games keep everyone's things safe: see test_kits
+
 
 class TriggerServer(FakeServer):
     """The challenge fake, plus trigger objectives and score resets."""
