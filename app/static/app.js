@@ -857,7 +857,7 @@ function serverHeader(s, tab) {
   const groups = [
     ["overview", "Overview", [["overview", "Overview", base]]],
     ...(java ? [...(isPlayer() && !s.player_map ? [] : [["world", "World", [["world", "World", `${base}/world`]]]]),
-      ["leaderboards", "Leaderboards", [["leaderboards", "Leaderboards", `${base}/leaderboards`]]],
+      ["leaderboards", "Leaderboards", [["leaderboards", "Leaderboards", `${base}/leaderboards`], ["stats", "Server stats", `${base}/stats`]]],
       ["adventures", "Adventures", [["adventures", "Adventures", `${base}/adventures`]]],
       ...(s.fishing && (isAdmin() || s.fishing_journal) ? [["fishing", "Fishing", [["fishing", "Fishing", `${base}/fishing`]]]] : []),
       ...(isAdmin() ? [["challenges", "Contests", [["challenges", "Contests", `${base}/challenges`]]]] : [])] : []),
@@ -1760,6 +1760,7 @@ async function route() {
       else if (parts[2] === "challenges") await viewChallenges(sid);
       else if (parts[2] === "performance") await viewPerformance(sid);
       else if (parts[2] === "leaderboards") await viewLeaderboards(sid);
+      else if (parts[2] === "stats") await viewStats(sid);
       else if (parts[2] === "mods") await viewMods(sid);
       else await viewOverview(sid);
     } else await viewHome();

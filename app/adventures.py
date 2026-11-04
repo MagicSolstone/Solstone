@@ -312,7 +312,10 @@ NOTABLE = {"join", "leave", "death", "advancement", "challenge", "race", "bigfis
 def tally(line: str) -> dict[str, float]:
     """A statistics line ("defeated 3 zombies · chopped 12 logs") as counts by kind ({"mobs": 3, "logs": 12})."""
     out: dict[str, float] = {}
-    for part in (line or "").split(" · "):
+    parts = (line or "").split(" · ")
+    if parts and " " in parts[0] and not any(rx.search(parts[0]) for rx, _k in _TALLY):
+        parts[0] = parts[0].split(" ", 1)[1]        # the saved line starts with their name ("Sam dug 40 blocks")
+    for part in parts:
         for rx, kind in _TALLY:
             m = rx.search(part)
             if not m:

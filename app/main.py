@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, arena, fishpack, gamemsg, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap, xboxwatch
+from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, arena, fishpack, gamemsg, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap, xboxwatch, serverstats
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -118,6 +118,7 @@ PLAYER_ROUTES: dict[str, set[str]] = {
     "/api/servers/{sid}/players/{uuid}": {"GET"},       # their own page only
     "/api/servers/{sid}/players/{uuid}/history": {"GET"},
     "/api/servers/{sid}/leaderboard": {"GET"},
+    "/api/servers/{sid}/stats/history": {"GET"},        # the whole server's totals over time (no names)
     "/api/servers/{sid}/webmap": {"GET"},               # the web map through Solstone, if players may see the map
     "/api/servers/{sid}/adventures": {"GET"},             # only the sessions they played in (see adventures_list)
     "/api/servers/{sid}/adventures/timeline": {"GET"},    # their own trail; others' only with the map on for players
@@ -2105,6 +2106,13 @@ async def get_leaderboard(sid: str):
     return stacks.leaderboard(await S.leaderboard(await _server(sid)))
 
 
+@app.get("/api/servers/{sid}/stats/history")
+async def stats_history(sid: str, since: float = 0):
+    """The Stats tab: each day's totals (kept for good), hours played by weekday and hour, and a few records."""
+    srv = await _server(sid)
+    return await asyncio.to_thread(serverstats.history, srv.id, max(0.0, since))
+
+
 @app.get("/api/servers/{sid}/icon.png")
 async def server_icon(sid: str):
     data = S.server_icon_bytes(await _server(sid))
@@ -3557,7 +3565,7 @@ async def not_found_page(full_path: str):
     return HTMLResponse(_page("home.html"), status_code=404, headers={"Cache-Control": "no-cache"})
 
 
-ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "home.js", "postfmt.js", "guides.js", "website.js", "adventures.js", "playtime.js", "community.js")
+ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "home.js", "postfmt.js", "guides.js", "website.js", "adventures.js", "playtime.js", "community.js", "stats.js")
 
 
 @functools.cache

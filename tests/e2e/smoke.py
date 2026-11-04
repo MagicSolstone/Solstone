@@ -172,7 +172,7 @@ def main() -> int:
                 "player-stats": f"#/s/{sid}/p/{puuid}/stats", "player-history": f"#/s/{sid}/p/{puuid}/history", "player-fishing": f"#/s/{sid}/p/{puuid}/fishing",
                 "player-advancements": f"#/s/{sid}/p/{puuid}/advancements", "world": f"#/s/{sid}/world",
                 "control": f"#/s/{sid}/control", "check": f"#/s/{sid}/check", "chat": f"#/s/{sid}/chat", "challenges": f"#/s/{sid}/challenges", "races": f"#/s/{sid}/challenges/races", "games": f"#/s/{sid}/challenges/games", "joining": f"#/s/{sid}/challenges/joining", "eventgroups": f"#/s/{sid}/challenges/events", "performance": f"#/s/{sid}/performance",
-                "leaderboards": f"#/s/{sid}/leaderboards", "fishing": f"#/s/{sid}/fishing", "fishing-player": f"#/s/{sid}/fishing/Tyler", "mods": f"#/s/{sid}/mods", "adventures": f"#/s/{sid}/adventures", "events": "#/events",
+                "leaderboards": f"#/s/{sid}/leaderboards", "stats": f"#/s/{sid}/stats", "fishing": f"#/s/{sid}/fishing", "fishing-player": f"#/s/{sid}/fishing/Tyler", "mods": f"#/s/{sid}/mods", "adventures": f"#/s/{sid}/adventures", "events": "#/events",
                 "fireworks-editor": "#/fireworks", "fireworks-settings": "#/fireworks/show",
                 "announcements": "#/manage/announcements", "admin": "#/manage/users", "manage-servers": "#/manage/servers",
                 "manage-activity": "#/manage/activity", "manage-whitelist": "#/manage/whitelist", "website": "#/manage/website",
@@ -300,6 +300,43 @@ def main() -> int:
                 problems.append("post editor: choosing a picture just for the card doesn't offer an upload")
             check(pg, "post-editor-pictures")
             pg.click("#ws-edit [data-cancel]"); pg.wait_for_timeout(300)
+            # Server stats: four months of made-up days (there's no game here), then the filters and the chart
+            def stats_days(route):
+                import math
+                import random as _r
+                _r.seed(7)
+                day0 = time.time() - 120 * 86400
+                days = []
+                for i in range(121):
+                    d = time.strftime("%Y-%m-%d", time.localtime(day0 + i * 86400))
+                    busy = 1.6 if time.localtime(day0 + i * 86400).tm_wday >= 4 else 0.7
+                    k = busy * (1 + 0.5 * math.sin(i / 9)) * _r.uniform(0.4, 1.4)
+                    days.append({"day": d, "play_hours": round(6 * k, 1), "players": max(1, round(3 * k)), "peak": max(1, round(2 * k)),
+                                 "mobs": round(40 * k), "mined": round(600 * k), "placed": round(300 * k), "logs": round(30 * k),
+                                 "travelled": round(4200 * k), "fish": round(5 * k), "deaths": round(2 * k), "advancements": round(k),
+                                 "chat": round(25 * k), "new_players": 1 if i % 17 == 0 else 0})
+                heat = [[round(max(0, math.sin((h - 14) / 4) * (2 if d >= 4 else 1)), 2) for h in range(24)] for d in range(7)]
+                route.fulfill(json={"days": days, "heat": heat, "records": {"longest_session_hours": 4.2}, "keys": []})
+            pg.route(f"**/api/servers/{sid}/stats/history*", safely(stats_days))
+            pg.goto(f"{base}/app#/s/{sid}/stats"); pg.reload(); pg.wait_for_timeout(1500)
+            if pg.locator(".st-tile").count() != 8 or pg.locator(".st-chart .st-bar").count() < 60 or pg.locator(".st-cell").count() != 168:
+                problems.append("stats: no totals, chart or 'when people play' grid")
+            check(pg, "stats")
+            if os.environ.get("SMOKE_SHOTS"):
+                pg.screenshot(path=os.path.join(os.environ["SMOKE_SHOTS"], "stats-full.png"), full_page=True)
+            pg.click('[data-group="week"]'); pg.wait_for_timeout(300)
+            weeks = pg.locator(".st-chart .st-bar").count()
+            pg.click('.st-tile[data-key="travelled"]'); pg.wait_for_timeout(300)
+            pg.check("#st-running"); pg.wait_for_timeout(300)
+            if not 10 <= weeks <= 16 or not pg.locator(".st-chart .st-line").count() or "Distance travelled" not in (pg.locator(".st-chart-head").text_content() or ""):
+                problems.append(f"stats: grouping by week, picking a total or the running total didn't work ({weeks} weeks)")
+            pg.click('[data-range="all"]'); pg.wait_for_timeout(800)
+            box = pg.locator(".st-chart svg").bounding_box()
+            pg.mouse.move(box["x"] + box["width"] * 0.7, box["y"] + box["height"] * 0.5); pg.wait_for_timeout(200)
+            if pg.locator(".st-chart .st-tip").is_hidden():
+                problems.append("stats: hovering the chart shows no number")
+            check(pg, "stats-running")
+            pg.unroute(f"**/api/servers/{sid}/stats/history*")
             pg.goto(f"{base}/app#/s/{sid}/leaderboards"); pg.wait_for_timeout(1500)
             if not pg.locator(".board-group h2").count():
                 problems.append("leaderboards: no headings for the kinds of board")

@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import accounts, adventures, backups, board, challenges, db, eventgroups, fishing, fwshow, gamemsg, games, holidaygifts, kits, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome, xboxwatch
+from . import accounts, adventures, backups, board, challenges, db, eventgroups, fishing, fwshow, gamemsg, games, holidaygifts, kits, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome, xboxwatch, serverstats
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -212,6 +212,11 @@ class Recorder:
                 log.exception("recap failed for %s", srv.id)
 
     async def prune(self) -> None:
+        for sid in list(S.registry.servers):           # each day's totals, kept for good, before the detail goes
+            try:
+                await asyncio.to_thread(serverstats.rollup, sid, True)
+            except Exception:
+                log.exception("server stats for %s failed", sid)
         db.prune(METRICS_DAYS, EVENTS_DAYS)
         await asyncio.to_thread(adventures.prune)
 
