@@ -207,6 +207,8 @@ async def finish(srv, r: dict, tag: str) -> None:
     online = {n.lower() for n in (await S.online_players(srv))[0]}
     for n, p in r["players"].items():
         if n.lower() in online:
+            # The game's kit never outlives the game, whatever happened along the way (even with nothing in the vault)
+            await _rcon(srv, f"clear {p['uuid']} {kits.KIT_MATCH}")
             await kits.give_back(srv, p["uuid"])         # anyone offline gets theirs when they're next on (kits.on_join)
     await rules_off(srv, r)
     await _rcon(srv, f"scoreboard objectives remove {tag}_d")

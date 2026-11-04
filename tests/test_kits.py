@@ -269,3 +269,11 @@ def test_a_busy_server_never_counts_as_everyone_leaving(monkeypatch):
     assert not r["players"]["Alex"].get("out") and not r["players"]["Sam"].get("out")      # Sam missing once
     asyncio.run(battle.left_and_back(None, r, {"bob": ("minecraft:overworld", 0, 0, 0)}))
     assert r["players"]["Sam"].get("out") and not r["players"]["Alex"].get("out")          # Sam really gone
+
+
+def test_no_kit_left_after_giving_back(game):
+    """Whatever happened in the game, nobody walks away with the kit (diamond armour and a shield turned up after one)."""
+    asyncio.run(kits.stash(game, {"Alex": U1}, "g7"))
+    asyncio.run(kits.give_kit(game, U1, kits.clean_kit({"sword": "diamond", "armour": "diamond", "shield": True})))
+    assert asyncio.run(kits.give_back(game, U1)) is True
+    assert not any("solkit" in v[0] for v in game.slots[U1].values())

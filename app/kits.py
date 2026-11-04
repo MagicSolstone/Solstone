@@ -241,6 +241,7 @@ async def give_back(srv, uuid: str, move: bool = True) -> bool:
                 if not await _restore(srv, d, s, v, move):
                     return False
             await _pocket_out(srv, d, s, v)
+            await _rcon(srv, f"clear {uuid} {KIT_MATCH}")     # and never a kit item left behind with their things
             return True
         finally:
             if not any(k.startswith(f"{srv.id}:") for k in d["stash"]):
