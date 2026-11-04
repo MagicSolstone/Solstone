@@ -18,7 +18,7 @@ const FWE_DEFAULT = {
 // The editor goes step by step, in the order a firework happens. Burst is called Spray for a
 // fountain and Spin for a wheel.
 const FWE_STEPS = [["launch", "Launch", "🚀"], ["burst", "Burst", "💥"], ["colours", "Colours", "🎨"], ["sparkle", "Sparkle", "✨"], ["sound", "Sound", "🔊"]];
-const FWE_TWINKLES = [["blink", "Blink", "on and off"], ["strobe", "Strobe", "quick flashes"], ["breathe", "Breathe", "softly brighter and dimmer"]];
+const FWE_TWINKLES = [["blink", "Blink", "dims and brightens, never faster than about twice a second"], ["strobe", "Strobe", "a scatter of white sparkles"], ["breathe", "Breathe", "softly brighter and dimmer"]];
 const FWE_LAUNCHES = [["rocket", "Sky rocket", "🚀"], ["fountain", "Fountain", "⛲"], ["wheel", "Spinning wheel", "🎡"]];
 const FWE_STYLES = [["normal", "Normal"], ["sparkly", "Sparkly"], ["corkscrew", "Corkscrew"], ["colored", "Coloured"], ["invisible", "Invisible"]];
 const FWE_PATTERNS = [
@@ -430,7 +430,8 @@ function renderControls() {
       ${part("Twinkle", `<div class="fwe-sliders"><label class="fwe-slider"><span>How much</span><b data-out="twinkle">${esc(off0(tw.amount))}</b>
           <input type="range" min="0" max="1" step="0.05" value="${tw.amount}" data-twinkle></label></div>
         <div class="seg fwe-twinkles" role="group" aria-label="Twinkle style">${FWE_TWINKLES.map(([k, l, hint]) => `<button type="button" data-twinkle-style="${k}" aria-pressed="${tw.style === k}" title="${esc(hint)}">${l}</button>`).join("")}</div>
-        <p class="muted small">${esc(FWE_TWINKLES.find(([k]) => k === tw.style)[2].replace(/^./, (c) => c.toUpperCase()))}.</p>`)}
+        <p class="muted small">${esc(FWE_TWINKLES.find(([k]) => k === tw.style)[2].replace(/^./, (c) => c.toUpperCase()))}.</p>
+        <p class="muted small">👁️ Kept gentle for people sensitive to flashing lights: nothing flashes more than about twice a second. On devices set to reduce motion, Blink and Strobe are switched off.</p>`)}
       ${part("How it ends", sliders(["life", "grow", "fizzle"]))}
       ${more(sliders(["gravity", "drag", "wind"]), "More: how it moves (gravity, air, wind)")}`,
     sound: `${isRocket(d) ? `<div class="fwe-row"><span>Going up</span><div class="seg" role="group">${[["whoosh", "Whoosh"], ["whistle", "Whistle"], ["custom", "🎛 Make your own"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_launch" data-v="${k}" aria-pressed="${(d.sound_launch || "whoosh") === k}">${l}</button>`).join("")}</div></div>

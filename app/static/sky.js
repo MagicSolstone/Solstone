@@ -312,7 +312,7 @@ function startSkyScene(cv, opts = {}) {
       const x = (Math.abs(hx) * (W + 40) - y * 0.18 + now * 4) % (W + 40);
       ctx.fillRect(Math.round(x), Math.round(y), 1, 3);
     }
-    if (gsky.thundering && Math.random() < 0.0025) { flashA = 0.55; snd("thunder", { x: Math.random() * W }); }
+    if (gsky.thundering && !reduced && Math.random() < 0.0025) { flashA = 0.4; snd("thunder", { x: Math.random() * W }); }
     if (flashA > 0) { ctx.fillStyle = `rgba(230, 236, 255, ${flashA})`; ctx.fillRect(0, 0, W, H); flashA -= 0.04; }
   }
   function refreshLand() {
@@ -753,12 +753,14 @@ function startSkyScene(cv, opts = {}) {
     if (d.fizzle > 0 && t > 0.7 && Math.random() < d.fizzle * (t - 0.7) * 3) return;      // flickering out
     let alpha = Math.min(1, 1.25 * (1 - t * t));
     const pulse = frame - g.born;
-    if (d.blink > 0 && Math.floor(pulse / Math.round(36 - d.blink * 30)) % 2) alpha *= 0.06;
+    // Kept safe for people sensitive to flashing (under 3 flashes a second, never fully dark to bright): blink is at most
+    // 2.5 on-offs a second and only dims; blink and strobe are off for anyone whose device asks for reduced motion.
+    if (d.blink > 0 && !reduced && Math.floor(pulse / Math.round(36 - d.blink * 24)) % 2) alpha *= 0.35;
     if (d.breathe > 0) alpha *= 1 - d.breathe * 0.75 * (0.5 + 0.5 * Math.sin(pulse * (0.06 + d.breathe * 0.1)));
     let fill = color;
-    if (d.strobe > 0) {
+    if (d.strobe > 0 && !reduced) {             // a scattered sparkle of single pieces, never the whole burst at once
       const roll = Math.random();
-      if (roll < d.strobe * 0.3) { fill = "#ffffff"; alpha = 1; } else if (roll < d.strobe * 0.55) return;
+      if (roll < d.strobe * 0.12) { fill = "#ffffff"; alpha = Math.max(alpha, 0.8); } else if (roll < d.strobe * 0.3) return;
     }
     if (d.fizzle > 0 && t > 0.7 && Math.random() < d.fizzle * 0.3) fill = "#ffffff";
     ctx.globalAlpha = alpha; ctx.fillStyle = fill;
