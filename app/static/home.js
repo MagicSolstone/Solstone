@@ -118,8 +118,9 @@ function joinCard(site) {
     return `<div class="hp-ed-block bedrock">
       <div class="hp-ed-head">${edIcon("bedrock", 20)}<b>Bedrock Edition</b><span class="muted">phones, tablets, consoles, Windows</span></div>
       ${j.xbox ? `<div class="hp-friend">${edIcon("friend", 22)}<span class="hp-friend-label">Add as a friend</span><span class="hp-gt-tag">Gamertag:</span><code class="hp-gamertag">${esc(j.xbox)}</code>${copyBtn(j.xbox, "gamertag")}</div>
+        ${xboxStateHtml(j.xbox_status)}
         <p class="hp-how muted small">Then Play → Friends, and join the server from there. Works on every device, consoles too.</p>
-        ${server ? `<details class="hp-alt"><summary>Or add it as a server</summary>${server}<p class="hp-how muted small">Play → Servers → Add Server.</p></details>` : ""}`
+        ${server ? `<details class="hp-alt" ${j.xbox_status?.state === "down" ? "open" : ""}><summary>Or add it as a server</summary>${server}<p class="hp-how muted small">Play → Servers → Add Server.</p></details>` : ""}`
       : `${server}<p class="hp-how muted small">Play → Servers → Add Server, with the address and port.</p>`}</div>`;
   };
   const cards = (site.joins || []).map((j) => {

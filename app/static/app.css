@@ -2437,3 +2437,17 @@ body.ui-hidden .manage-sub { display: none; }
 .hp-gt-tag { color: var(--muted); font-size: .85rem; margin-left: 2px; }
 .wl-seen { color: #8fdc6a; font-weight: 600; font-size: .88rem; }
 .wl-no { color: #ff8a7a; font-size: .9rem; }
+
+/* the Xbox friend (MCXboxBroadcast): working or not */
+.hp-xbox-st, .ctl-xbox-st { display: flex; align-items: center; flex-wrap: wrap; gap: 0 6px; margin: 0; font-size: .88rem; }
+.xb-dot { width: 9px; height: 9px; border-radius: 50%; background: #8e9399; flex: none; }
+.ok .xb-dot { background: #5bd46a; box-shadow: 0 0 0 3px rgba(91, 212, 106, .2); }
+.wait .xb-dot { background: #ffcf4f; animation: xbpulse 1.2s ease-in-out infinite; }
+.down .xb-dot { background: #ff6b5b; box-shadow: 0 0 0 3px rgba(255, 107, 91, .25); }
+.hp-xbox-st.ok b, .ctl-xbox-st.ok b { color: #8fdc6a; }
+.hp-xbox-st.down b, .ctl-xbox-st.down b { color: #ff8a7a; }
+@keyframes xbpulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .wait .xb-dot { animation: none; } }
+.ctl-xbox { display: grid; gap: 6px; align-content: start; }
+.ctl-xbox h3, .ctl-xbox p { margin: 0; }
+.ctl-xbox-err { display: block; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }

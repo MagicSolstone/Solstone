@@ -283,3 +283,23 @@ def test_join_and_leave_alerts_come_from_the_online_check(client, sid, monkeypat
     asyncio.run(recorder.poll_server(srv))
     assert sent == [("join", "Gimli_Jr joined the game"), ("leave", "Gimli_Jr left the game")]
     db.update_sessions(srv.id, {}, time.time())
+
+
+def test_log_tail_watches_the_xbox_friend(client, sid):
+    from app import xboxwatch
+    srv = _server(client, sid)
+    logs = srv.dir / "logs"
+    logs.mkdir(exist_ok=True)
+    t = datetime.now(db.tz()).strftime("%H:%M:%S")
+    (logs / "latest.log").write_text(
+        f"[{t}] [MCXboxBroadcast Thread-1/WARN]: [mcxboxbroadcast] [Primary Session] Connection to websocket lost, re-creating session...\n"
+        f"[{t}] [MCXboxBroadcast Thread-1/INFO]: [mcxboxbroadcast] [Primary Session] WebSocket session reconnected\n"
+        f"[{t}] [Server thread/INFO]: Tyler joined the game\n")
+    xboxwatch.forget(sid)
+    try:
+        recorder.tail_server(srv)
+        x = xboxwatch.status(sid, True, True, admin=True)
+        assert x["state"] == "ok" and x["drops_24h"] == 1
+        assert not [e for e in db.events(sid) if "mcxboxbroadcast" in (e["message"] or "").lower()]   # not in the activity list
+    finally:
+        xboxwatch.forget(sid)

@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import accounts, adventures, backups, board, challenges, db, eventgroups, fishing, fwshow, gamemsg, games, holidaygifts, kits, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome
+from . import accounts, adventures, backups, board, challenges, db, eventgroups, fishing, fwshow, gamemsg, games, holidaygifts, kits, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome, xboxwatch
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -422,6 +422,8 @@ class Recorder:
                 # File reading happens in a thread; notifications need the event loop, so send them here.
                 for etype, message in await asyncio.to_thread(self.tail_server, srv):
                     maybe_notify(etype, srv.display_name, message, sid=srv.id)
+                for message in xboxwatch.check(srv.id, srv.display_name):     # the Xbox friend: down, or back
+                    maybe_notify("server", srv.display_name, message, sid=srv.id)
                 for player, text in self._chat.pop(srv.id, []):
                     await games.on_chat(srv, player, text)
                     await votegame.on_chat(srv, player, text)       # "!vote 2"
@@ -478,6 +480,15 @@ class Recorder:
             offset = state["offset"]
         else:
             offset = 0  # new install or the log rotated: read the new file from the start
+            xboxwatch.forget(srv.id)
+        if offset and srv.id not in xboxwatch._state:  # Solstone just started: what MCXboxBroadcast said before now
+            try:
+                with path.open("rb") as fh:
+                    start = max(0, offset - 400_000)
+                    fh.seek(start)
+                    xboxwatch.prime(srv.id, fh.read(offset - start).decode("utf-8", errors="replace"), st.st_mtime)
+            except OSError:
+                pass
         if offset == st.st_size:
             if not state:
                 db.set_log_state(srv.id, st.st_ino, offset, head)
@@ -500,6 +511,16 @@ class Recorder:
         pending: list[tuple[str, str]] = []
         tide_on = None
         for raw in text.splitlines():
+            if xboxwatch.concerns(raw):                     # MCXboxBroadcast: is the Xbox friend working? (xboxwatch.py)
+                m = _CLOCK.match(raw)
+                ts = time.time()
+                if m:
+                    t = now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=int(m.group(3)), microsecond=0)
+                    if t > now + timedelta(seconds=60):
+                        t -= timedelta(days=1)
+                    ts = t.timestamp() - offset
+                xboxwatch.feed(srv.id, raw, ts)
+                continue
             if "[Tide catch]" in raw:                       # the Tide fishing mod: one line per caught fish
                 if tide_on is None:
                     tide_on = tide.installed(srv)

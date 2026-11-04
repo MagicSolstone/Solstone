@@ -113,6 +113,19 @@ function edIcon(kind, size = 16) {
 }
 // Bedrock players come in through Floodgate: a "." before their name, and an id starting with zeros.
 const isBedrockPlayer = (p) => !!(p?.bedrock || p?.name?.startsWith(".") || /^00000000-0000-0000-000/.test(p?.uuid || ""));
+// Joining through the Xbox friend (MCXboxBroadcast): is it working right now? (xboxwatch.py)
+const XBOX_STATE = {
+  ok: ["ok", "Online", "friends can join right now"],
+  reconnecting: ["wait", "Reconnecting", "usually back in a few seconds"],
+  down: ["down", "Not working right now", "use the server address below for now"],
+  off: ["off", "Offline", "the server is off right now"],
+  unknown: ["off", "Checking", "waiting to hear from the friend account"],
+};
+function xboxStateHtml(x, cls = "hp-xbox-st") {
+  if (!x) return "";
+  const [k, word, more] = XBOX_STATE[x.state] || XBOX_STATE.unknown;
+  return `<p class="${cls} ${k}" role="status"><span class="xb-dot" aria-hidden="true"></span><b>${word}</b><span class="muted"> · ${more}</span></p>`;
+}
 // A player's edition, as a small badge beside their name.
 function edBadge(bedrock) {
   return `<span class="ed-badge ${bedrock ? "bedrock" : "java"}" title="${bedrock ? "Playing on Bedrock" : "Playing on Java"}">${edIcon(bedrock ? "bedrock" : "java", 12)}${bedrock ? "Bedrock" : "Java"}</span>`;

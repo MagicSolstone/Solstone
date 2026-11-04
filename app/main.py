@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, arena, fishpack, gamemsg, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap
+from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, arena, fishpack, gamemsg, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap, xboxwatch
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -560,6 +560,8 @@ async def public_site():
                       "note": st.get("join_note") or "", "mods": _mods_for_players(srv) if st.get("join_mods") or modpack.get(srv.id)["public_download"] else None,
                       "status": status.get(srv.id), "main": srv.id == cfg.get("main_server"),
                       "color": st.get("join_color") or "",
+                      # is the Xbox friend working right now (xboxwatch.py)
+                      "xbox_status": xboxwatch.status(srv.id, bool(recorder._running_state.get(srv.id)), bool(xbox)) if xbox else None,
                       "version": srv.mc_version if srv.is_java else None})   # from the world's save: right even while it's off
     if joins and not (cfg["java_address"] or cfg["bedrock_address"]):     # the join guide's {java_address} and the like:
         cfg = {**cfg, "java_address": joins[0]["java"], "bedrock_address": joins[0]["bedrock"],  # the first server's
@@ -2908,6 +2910,8 @@ async def control_info(sid: str, request: Request):
                   and not S.whitelisted(srv, None, r["player"])] if srv.is_java else [],
         "bedtime": playtime.rules_for(playtime.config(), srv.id),
         "audit": auth.audit_log(srv.id, 40),
+        "xbox": xboxwatch.status(srv.id, bool(recorder._running_state.get(srv.id)), bool(srv.settings.get("join_xbox")), admin=True),
+        "xbox_gamertag": srv.settings.get("join_xbox") or "",
     }
 
 

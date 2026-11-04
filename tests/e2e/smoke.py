@@ -554,7 +554,20 @@ def main() -> int:
             pg.mouse.click(5, 5); pg.wait_for_timeout(200)
             if pg.locator(".fw-pick:not([hidden])").count():
                 problems.append("fireworks: the launch list didn't close")
-            pg.goto(f"{base}/app#/s/{sid}/control"); pg.wait_for_timeout(1000)
+            # the Xbox friend's panel on Control (its state faked: there's no game here)
+            def xbox_on(route):
+                d = json.loads(route.fetch().text())
+                d["xbox"] = {"state": "ok", "since": time.time() - 3600, "drops_24h": 4, "problem": "Signaling Exception: Connection reset",
+                             "problem_at": time.time() - 900, "grace": 120}
+                d["xbox_gamertag"] = "SmokeRealm"
+                route.fulfill(json=d)
+            pg.route(f"**/api/servers/{sid}/control", xbox_on)
+            pg.goto(f"{base}/app#/s/{sid}/control"); pg.reload(); pg.wait_for_timeout(1200)
+            if "Online" not in (pg.locator(".ctl-xbox").text_content() if pg.locator(".ctl-xbox").count() else "") \
+                    or "Reconnected 4 times" not in pg.locator(".ctl-xbox").text_content():
+                problems.append("control: no Xbox friend panel (working or not, and how often it reconnected)")
+            check(pg, "control-xbox")
+            pg.unroute(f"**/api/servers/{sid}/control")
             pg.evaluate(f"openGiveItem({sid!r}, {pname!r})"); pg.wait_for_timeout(500)
             if not pg.locator(".gv-modal").count():
                 problems.append("give items: dialog didn't open")
@@ -661,7 +674,7 @@ def main() -> int:
                 for j in d.get("joins", []):
                     j["status"] = {**(j.get("status") or {}), **up}
                 if d.get("joins"):                   # Bedrock too: through a friend's gamertag, or the address and port
-                    d["joins"][0].update(xbox="SmokeRealm", bedrock="play.example.net", bedrock_port=19132)
+                    d["joins"][0].update(xbox="SmokeRealm", bedrock="play.example.net", bedrock_port=19132, xbox_status={"state": "ok", "since": time.time() - 600})
                 route.fulfill(json=d)
             anon.route("**/api/public/site", running)
             anon.goto(f"{base}/"); anon.reload(); anon.wait_for_timeout(1200)
@@ -681,6 +694,8 @@ def main() -> int:
             if "2 on Java" not in (anon.locator("#hp-status .hp-eds").text_content() if anon.locator("#hp-status .hp-eds").count() else "") \
                     or "1 on Bedrock" not in anon.locator("#hp-status .hp-eds").text_content():
                 problems.append("home: 'Playing now' doesn't say how many are on Java and Bedrock")
+            if "Online" not in (card.locator(".hp-xbox-st.ok").text_content() if card.locator(".hp-xbox-st.ok").count() else ""):
+                problems.append("home: no 'Online' line for the Xbox friend under the gamertag")
             card.scroll_into_view_if_needed(); check(anon, "site-home-join-editions")
             check(anon, "site-home-two-servers")
             anon.unroute("**/api/public/site")

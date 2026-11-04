@@ -158,6 +158,13 @@ async function viewControl(sid) {
         </div>
         ${info.can_crafty ? "" : `<p class="muted small">Start, stop and backups need Crafty connected.</p>`}
       </section>
+      ${info.xbox ? `<section class="panel ctl-xbox"><h3>🎮 Xbox friend joining</h3>
+        ${xboxStateHtml(info.xbox, "ctl-xbox-st")}
+        <p class="muted small">${info.xbox_gamertag ? `Gamertag <b>${esc(info.xbox_gamertag)}</b> · ` : ""}MCXboxBroadcast${info.xbox.since && info.xbox.state !== "off" ? ` · ${info.xbox.state === "ok" ? "working" : "like this"} since ${esc(fmtAgo(info.xbox.since))}` : ""}</p>
+        ${info.xbox.drops_24h != null ? `<p class="muted small">${info.xbox.drops_24h ? `Reconnected ${info.xbox.drops_24h} time${info.xbox.drops_24h === 1 ? "" : "s"} in the last day (Microsoft drops its connection now and then; a second or two each time is normal).` : "No dropped connections in the last day."}</p>` : ""}
+        ${info.xbox.problem ? `<details class="small"><summary>Last problem it logged · ${esc(fmtAgo(info.xbox.problem_at))}</summary><code class="ctl-xbox-err">${esc(info.xbox.problem)}</code></details>` : ""}
+        <p class="muted small">Not reconnected within ${Math.round((info.xbox.grace || 120) / 60)} minutes counts as down: you get a notification, and another when it's back.</p>
+      </section>` : ""}
       <section class="panel"><h3>Message everyone</h3>
         <form id="bc-form" class="bc-form">
           <input class="input" name="message" maxlength="256" placeholder="Dinner in 10 minutes!" autocomplete="off" required>
