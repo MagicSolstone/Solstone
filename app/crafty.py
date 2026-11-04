@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import json
 import logging
 import time
@@ -24,6 +25,7 @@ class CraftyClient:
         self._cache: dict[str, tuple[float, Any]] = {}
         self.last_error: str | None = None
         self._down_until = 0.0          # after Crafty can't be reached, don't ask again (and wait) for a little while
+        self._inflight: dict[str, asyncio.Task] = {}   # one fetch per path at a time, shared by everyone waiting
 
     @property
     def enabled(self) -> bool:
@@ -37,7 +39,9 @@ class CraftyClient:
         r.raise_for_status()
         self._token = r.json()["data"]["token"]
 
-    async def _get(self, path: str, ttl: float = 5.0) -> Any:
+    async def _get(self, path: str, ttl: float = 5.0, stale_ok: bool = False) -> Any:
+        """`stale_ok`: past its few seconds, the last answer is given straight away and a fresh one fetched in the
+        background, so no page waits on a busy Crafty. Either way only one fetch per path runs at a time."""
         now = time.monotonic()
         hit = self._cache.get(path)
         if hit and now - hit[0] < ttl:
@@ -46,8 +50,19 @@ class CraftyClient:
             if hit:
                 return hit[1]                # what it said last, while it's unreachable
             raise ConnectionError(f"Crafty unreachable ({self.last_error or 'recently'})")
+        task = self._inflight.get(path)
+        if task is None or task.done() or task.get_loop() is not asyncio.get_running_loop():
+            task = asyncio.get_running_loop().create_task(self._fetch_once(path))
+            self._inflight[path] = task
+            task.add_done_callback(lambda t, p=path: (self._inflight.pop(p, None) if self._inflight.get(p) is t else None,
+                                                      t.cancelled() or t.exception()))
+        if hit and stale_ok:
+            return hit[1]
+        return await asyncio.shield(task)
+
+    async def _fetch_once(self, path: str) -> Any:
         try:
-            return await self._fetch(path, now)
+            return await self._fetch(path, time.monotonic())
         except httpx.TransportError:
             self._down_until = time.monotonic() + DOWN_PAUSE
             raise
@@ -81,7 +96,7 @@ class CraftyClient:
 
     async def stats(self, server_id: str) -> dict | None:
         try:
-            body = await self._get(f"/api/v2/servers/{server_id}/stats", ttl=5)
+            body = await self._get(f"/api/v2/servers/{server_id}/stats", ttl=5, stale_ok=True)
         except Exception as e:
             self.last_error = f"{type(e).__name__}: {e}"
             return None

@@ -191,3 +191,32 @@ def test_long_bedrock_names_go_by_uuid_in_commands(monkeypatch):
         "effect give 00000000-0000-0000-0009-01f2a3b4c5d6 minecraft:instant_health 1 10 true"
     assert S.long_names_to_uuids(srv, "tp .Short Tyler") == "tp .Short Tyler"                       # short names as they were
     assert S.long_names_to_uuids(srv, "whitelist add .ABCDEFGHIJKLMNOP").endswith(".ABCDEFGHIJKLMNOP")
+
+
+def test_busy_crafty_never_holds_pages_up():
+    """Past its few seconds, the last stats come back straight away while one fresh fetch runs in the background;
+    many pages asking at once share that one fetch (they all waited 2-5 s on a busy Crafty before)."""
+    calls, gate = [], {"n": 0}
+
+    async def handler(request: httpx.Request):
+        calls.append(request.url.path)
+        gate["n"] += 1
+        await asyncio.sleep(0.3)                     # a slow Crafty
+        return httpx.Response(200, json={"status": "ok", "data": {"running": True, "cpu": gate["n"]}})
+
+    async def run():
+        c = CraftyClient()
+        c.base, c._token = "https://crafty.test", "tok"
+        c._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        first = await asyncio.gather(*(c.stats("abc") for _ in range(5)))      # nothing known yet: they wait, once
+        assert len(calls) == 1 and all(s["cpu"] == 1 for s in first)
+        for k in c._cache:                                                     # it goes stale
+            c._cache[k] = (c._cache[k][0] - 10, c._cache[k][1])
+        t0 = asyncio.get_running_loop().time()
+        again = await asyncio.gather(*(c.stats("abc") for _ in range(5)))
+        assert asyncio.get_running_loop().time() - t0 < 0.1                    # straight away, the last answer
+        assert all(s["cpu"] == 1 for s in again)
+        await asyncio.sleep(0.4)                                               # the one background fetch lands
+        assert len(calls) == 2 and (await c.stats("abc"))["cpu"] == 2
+        await c.close()
+    asyncio.run(run())

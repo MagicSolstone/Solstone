@@ -330,9 +330,26 @@ async def online_players(srv: Server) -> tuple[list[str], str]:
     hit = _online_cache.get(srv.id)
     if hit and time.monotonic() - hit[0] < 2.0:
         return list(hit[1][0]), hit[1][1]
-    out = await _online_players(srv)
-    _online_cache[srv.id] = (time.monotonic(), out)
+    # One ask of the game at a time; while it's answering, a page that already has a list (up to a minute old) gets
+    # that straight away, so a slow or lagging game never holds pages up.
+    task = _online_inflight.get(srv.id)
+    if task is None or task.done() or task.get_loop() is not asyncio.get_running_loop():
+        task = asyncio.get_running_loop().create_task(_online_players(srv))
+        _online_inflight[srv.id] = task
+
+        def _done(t, sid=srv.id):
+            if _online_inflight.get(sid) is t:
+                _online_inflight.pop(sid, None)
+            if not t.cancelled() and t.exception() is None:
+                _online_cache[sid] = (time.monotonic(), t.result())
+        task.add_done_callback(_done)
+    if hit and time.monotonic() - hit[0] < 60:
+        return list(hit[1][0]), hit[1][1]
+    out = await asyncio.shield(task)
     return list(out[0]), out[1]
+
+
+_online_inflight: dict[str, asyncio.Task] = {}
 
 
 async def _online_players(srv: Server) -> tuple[list[str], str]:
