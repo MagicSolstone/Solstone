@@ -1,3 +1,15 @@
+# Solstone 1.15.18
+
+- **Your things in games: rebuilt to be simple and solid** (mob arena, King of the Hill, elytra races).
+  - **At the start:** your whole inventory is copied into the vault and checked. Only then is it cleared and the kit handed out.
+  - **At the end:** everything on you is cleared, the kit and anything picked up. Your own things are then copied back to the same slots and checked, and only then is the vault emptied.
+  - **A retry never adds anything on top.** If something goes wrong and it's tried again, it either finds your things already back, or clears you and copies everything over again. Nothing can come back twice.
+  - **No more "pocket" of things handed out later.** It's what caused the duplicates, and while it held anything it kept you out of the next game: you kept your own things and got no kit. Old pockets are emptied automatically, never handed out.
+  - **If Solstone was down during a game,** nothing you're carrying is touched. Your things come back once your inventory is empty (put things in a chest), and you're told so once.
+- **A moment before going home:** when a mob arena or King of the Hill ends, the result shows and everyone is protected. **"Heading back in 8…"** then counts down before anyone is teleported.
+- **Pick-ups are left behind:** mob drops and anything else picked up during a game are cleared at the end. You get back exactly your own things.
+- **Crashing out of an elytra race:** die during the race and you're out of it. Once you respawn, you're back where you were before the race with exactly your own things, and the race carries on for everyone else.
+
 # Solstone 1.15.17
 
 - **No automatic banners for contests, races and games.** They used to appear by themselves ("starting soon", "on now", and the result for half an hour afterwards). Now they only show if you turn them on: **Announcements → Also show banners for contests, races and games**. It's off to start. Your own announcements and holiday banners are unchanged.
