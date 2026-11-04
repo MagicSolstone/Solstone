@@ -106,6 +106,10 @@ def test_koth_a_whole_game_and_everything_back(fight):
     assert any(c == f"gamemode spectator {U1}" for c in fight.said)
     r["phase_ends"] = 0
     asyncio.run(koth.tick(fight, r))
+    assert r["state"] == "running" and r.get("wrap_at")                               # the result first, a pause, then home
+    fight.slots[U2]["container.20"] = ("minecraft:rotten_flesh", 5)                    # picked up in the game: left behind
+    r["wrap_at"] = 0
+    asyncio.run(koth.tick(fight, r))
     assert r["state"] == "done" and "won King of the Hill" in r["result"]
     assert fight.slots == before                                                       # exactly as they were
     assert fight.rules["keepInventory"] == "false" and fight.rules["doImmediateRespawn"] == "false"
@@ -172,6 +176,9 @@ def test_arena_together_a_wave_then_everything_back(fight):
     r["last_spawn"] = 0
     asyncio.run(arena.tick(fight, r))
     assert r["state"] == "running"                                                     # one look isn't enough
+    asyncio.run(arena.tick(fight, r))
+    assert r["state"] == "running" and r.get("wrap_at")                               # the result, then a pause
+    r["wrap_at"] = 0
     asyncio.run(arena.tick(fight, r))
     assert r["state"] == "done" and "survived all 1 waves" in r["result"]
     assert fight.slots == before and fight.rules["mobGriefing"] == "true"

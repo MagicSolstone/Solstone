@@ -27,6 +27,7 @@ def settings(body: dict, num, point) -> dict:
     return {"zone": {**point(body.get("center"), "hill"), "r": round(num(body.get("radius"), 2, 30, 5), 1), "h": 6},
             "spawns": spawns, "team_count": 0 if teams < 2 else teams, "minutes": int(num(body.get("minutes"), 1, 60, 8)),
             "respawn_secs": int(num(body.get("respawn_secs"), 1, 60, 5)), "no_dig": bool(body.get("no_dig", True)),
+            "keep_loot": bool(body.get("keep_loot", False)),   # keep what's picked up: not unless asked
             "kit": kits.clean_kit(body.get("kit") or {})}
 
 
@@ -72,6 +73,10 @@ def _holder(r: dict, on_hill: list[str]) -> str | None:
 async def tick(srv, r: dict) -> None:
     from .adventures import _everyone
     now = time.time()
+    if r.get("wrap_at") is not None:                      # over: the pause before everyone goes home
+        if not await battle.wrap_wait(srv, r):
+            await _wrap_up(srv, r)
+        return
     r["ticks"] = r.get("ticks", 0) + 1
     where = {k.lower(): v for k, v in (await _everyone(srv)).items()}
     await battle.left_and_back(srv, r, where)
@@ -97,7 +102,7 @@ async def tick(srv, r: dict) -> None:
 
 
 async def _end(srv, r: dict, called_off: bool = False) -> None:
-    from .games import _award, _finish, _say
+    from .games import _say
     await hud.clear(srv, r)
     if called_off:
         winners, result = [], "King of the Hill was called off."
@@ -112,10 +117,21 @@ async def _end(srv, r: dict, called_off: bool = False) -> None:
         winners = [n for n, p in r["players"].items() if p["score"] == best] if best else []
         result = f"{' & '.join(winners)} won King of the Hill with {best} points!" if winners else "King of the Hill: nobody held the hill."
     await _say(srv, [("★ ", "gold"), (result, "yellow")], "Game over" if not called_off else "", (" & ".join(winners))[:40] if winners else "")
+    r["wrap"] = {"result": result, "winners": winners, "called_off": called_off}
+    if called_off:
+        await _wrap_up(srv, r)
+    else:
+        await battle.wrap_start(srv, r)                   # a few seconds to take it in, then home
+
+
+async def _wrap_up(srv, r: dict) -> None:
+    from .games import _award, _finish
+    w = r.pop("wrap", None) or {"result": r.get("result") or "King of the Hill is over.", "winners": [], "called_off": False}
+    r.pop("wrap_at", None)
     await battle.finish(srv, r, TAG)
-    _finish(srv, r, result)
-    if not called_off:
-        await _award(srv, r, winners)
+    _finish(srv, r, w["result"])
+    if not w["called_off"]:
+        await _award(srv, r, w["winners"])
 
 
 async def cancel(srv, r: dict) -> None:

@@ -142,6 +142,7 @@ def settings(body: dict, num, point) -> dict:
             "spawns": [c], "level": level, "waves": waves, "coop": bool(body.get("coop", True)),
             "respawn_secs": int(num(body.get("respawn_secs"), 1, 60, 5)), "no_dig": bool(body.get("no_dig", True)),
             "night": bool(body.get("night", True)),          # midnight while it runs: spiders fight, nothing burns
+            "keep_loot": bool(body.get("keep_loot", False)),   # keep what's picked up (mob drops): not unless asked
             "kit": kits.clean_kit(body.get("kit") or {})}
 
 
@@ -266,6 +267,10 @@ async def tick(srv, r: dict) -> None:
     from .adventures import _everyone
     from .games import _say
     now = time.time()
+    if r.get("wrap_at") is not None:                      # over: the pause before everyone goes home
+        if not await battle.wrap_wait(srv, r):
+            await _wrap_up(srv, r)
+        return
     r["ticks"] = r.get("ticks", 0) + 1
     where = {k.lower(): v for k, v in (await _everyone(srv)).items()}
     await battle.left_and_back(srv, r, where)
@@ -330,7 +335,7 @@ def battle_name(mob: str, n: int) -> str:
 
 
 async def _end(srv, r: dict, wiped: bool = False, called_off: bool = False) -> None:
-    from .games import _award, _finish, _say
+    from .games import _say
     await hud.clear(srv, r)
     r["queue"] = []
     await battle._rcon(srv, f"kill @e[tag={_mob_tag(r)}]")
@@ -349,6 +354,18 @@ async def _end(srv, r: dict, wiped: bool = False, called_off: bool = False) -> N
         winners = [n for n, p in r["players"].items() if p.get("kills", 0) == best] if best else []
         result = f"{' & '.join(winners)} won the mob arena with {best} monsters defeated!" if winners else "The mob arena: nobody defeated a monster."
     await _say(srv, [("★ ", "gold"), (result, "yellow")], "Arena over" if not called_off else "", (" & ".join(winners))[:40] if winners else "")
+    r["wrap"] = {"result": result, "winners": winners}
+    if called_off:
+        await _wrap_up(srv, r)
+    else:
+        await battle.wrap_start(srv, r)                   # a few seconds to take it in, then home
+
+
+async def _wrap_up(srv, r: dict) -> None:
+    from .games import _award, _finish
+    w = r.pop("wrap", None) or {"result": r.get("result") or "The mob arena is over.", "winners": []}
+    r.pop("wrap_at", None)
+    result, winners = w["result"], w["winners"]
     await battle._rcon(srv, f"scoreboard objectives remove {TAG}_k")
     if r.get("time_before") is not None:             # the time of day it was before
         await battle._rcon(srv, await S.clock_to(srv, r.pop("time_before")))      # on to that time again, days kept
