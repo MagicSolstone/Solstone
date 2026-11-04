@@ -1,3 +1,8 @@
+# Solstone 1.15.9
+
+- **Answered lately, tidier:** a button beside **Asked to join** on the whitelist page ("👀 Answered lately · 2 not seen yet") opens the list in a popup, instead of a section taking up the page.
+- **Everyone you let in is on it straight away:** before, someone let in only showed up once their own page had checked back, so anyone who hadn't looked since was in neither list. Now they show as "Hasn't seen it on the website yet", then "Saw it" once they look.
+
 # Solstone 1.15.8
 
 - **Server stats** (Leaderboards → Server stats): what everyone did on a server, day by day, kept for good. For everyone signed in, server-wide with no names.
