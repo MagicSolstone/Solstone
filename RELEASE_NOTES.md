@@ -1,3 +1,12 @@
+# Solstone 1.15.15
+
+- **Fireworks are gentler on the eyes:** made safer for people sensitive to flashing lights. This applies to every firework, including ones already saved.
+  - **Blink** used to switch a whole burst fully on and off up to 5 times a second. Now it's at most about twice a second, and it dims rather than going dark.
+  - **Strobe** is a lighter scatter of white sparkles.
+  - On devices set to **reduce motion**, Blink, Strobe and the thunderstorm flash are switched off.
+  - The editor's Twinkle step says so.
+- **Faster, steadier pages:** the server list (status, who's online) no longer waits on Crafty or the game. It used to wait 2–5 seconds when Crafty was busy, and pages arriving together each asked separately. Now pages get the last answer straight away while one shared fetch updates it in the background, every few seconds as before.
+
 # Solstone 1.15.14
 
 - **Fixed: new holiday reward pictures missing on Events (again).** The public Events page skipped any server whose Minecraft game files weren't marked ready. The app's own item pictures still use ones drawn before, so the two disagreed. Now they work the same way.
