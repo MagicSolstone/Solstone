@@ -1,3 +1,9 @@
+# Solstone 1.15.11
+
+- **Overview activity, readable with lots of people on:** the activity lines saved every few minutes per player ("defeated 3 zombies · dug 40 blocks") are added up into **one row of icons per player** in each play session, like "⚔️ 16 monsters · ⛏️ 1,980 dug · 🧭 8.6 km". The full name of each shows on hover.
+  - **Every 10 minutes** opens the same rows for each 10-minute slice.
+  - **The moments stay as their own lines:** joins, deaths, advancements, chat, big catches and results.
+
 # Solstone 1.15.10
 
 - **Website traffic** (Manage → Solstone): what Solstone answered over the last 24 hours, 7 or 30 days.
