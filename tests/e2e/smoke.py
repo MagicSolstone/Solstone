@@ -1315,6 +1315,18 @@ def main() -> int:
             else:
                 print("TRAFFIC", " ".join(tr.split())[:400])
             pg.locator("#traffic").scroll_into_view_if_needed(); check(pg, "manage-traffic")
+            # the bars are their real height (a shared class once squashed every one to an 8 px dash), with a breakdown
+            hs = pg.eval_on_selector_all("#traffic .tr-plot rect[fill]", "els => els.map(e => e.getBoundingClientRect().height)")
+            if not hs or max(hs) < 40:
+                problems.append(f"traffic: the bars aren't drawn to scale (tallest {max(hs) if hs else 0:.0f} px)")
+            else:
+                pg.locator("#traffic .tr-plot g:has(rect[fill])").last.hover(); pg.wait_for_timeout(150)
+                if "Visitors" not in (pg.locator("#traffic .tr-tip").text_content() or ""):
+                    problems.append("traffic: pointing at a bar doesn't show who asked")
+                check(pg, "manage-traffic-tip")
+            pg.click('#traffic [data-trdays="7"]'); pg.wait_for_timeout(600)
+            if pg.locator("#traffic .tr-plot g[data-i]").count() != 28:
+                problems.append("traffic: 7 days isn't shown as 6-hour bars")
             browser.close()
     except Exception:
         print("\napp log (the test stopped early):\n" + (root / "app.log").read_text()[-4000:])

@@ -515,36 +515,72 @@ async function viewAdmin(section = "users") {
     if (!d) { box.innerHTML = `<p class="muted">Couldn't load it.</p>`; return; }
     const sz = (n) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(2)} GB` : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`);
     const WHO = [["you", "You"], ["admins", "Other admins"], ["players", "Signed-in players"], ["visitors", "Visitors (not signed in)"]];
-    const tiles = WHO.map(([k, l]) => { const g = d.groups[k] || { requests: 0, bytes: 0 }; return `<button type="button" class="st-tile ${trWho === k ? "on" : ""}" data-trwho="${k}" aria-pressed="${trWho === k}">
-        <span class="st-tile-label">${l}</span><b>${g.requests.toLocaleString()}</b><small class="muted">requests · ${sz(g.bytes)} sent${k === "visitors" && d.visitors ? ` · about ${d.visitors} ${d.visitors === 1 ? "visitor" : "different visitors"}` : ""}</small></button>`; }).join("");
-    const vals = d.hours.map((h) => (trWho === "all" ? h.you + h.admins + h.players + h.visitors : h[trWho]));
-    const max = Math.max(1, ...vals), W = 760, H = 120, step = W / vals.length, bw = Math.max(1.5, step - 2);
-    const hr = (t) => new Date(t * 1000).toLocaleString([], d.days > 1 ? { weekday: "short", hour: "numeric" } : { hour: "numeric" });
-    const bars = vals.map((v, i) => { const h = (v / max) * (H - 18); return `<rect class="st-hit" x="${i * step}" y="0" width="${step}" height="${H - 16}" data-tip="${esc(`${hr(d.hours[i].hour)}: ${v.toLocaleString()} requests`)}"/>${v ? `<rect class="st-bar" x="${i * step + (step - bw) / 2}" y="${H - 16 - h}" width="${bw}" height="${h}" rx="${Math.min(3, bw / 2)}"/>` : ""}`; }).join("");
-    const every = Math.ceil(vals.length / 6);
-    const xl = d.hours.map((h, i) => (i % every === 0 ? `<text x="${i * step + step / 2}" y="${H - 2}" class="st-axis" text-anchor="middle">${esc(hr(h.hour))}</text>` : "")).join("");
+    const COL = { you: "#f2c14e", admins: "#b18cff", players: "#5fd08a", visitors: "#6aa9ff" };
+    const tiles = WHO.map(([k, l]) => { const g = d.groups[k] || { requests: 0, bytes: 0 }; return `<button type="button" class="st-tile tr-tile ${trWho === k ? "on" : ""}" data-trwho="${k}" aria-pressed="${trWho === k}" style="--c:${COL[k]}">
+        <span class="st-tile-label"><i class="tr-key" aria-hidden="true"></i>${l}</span><b>${g.requests.toLocaleString()}</b><small class="muted">requests · ${sz(g.bytes)} sent${k === "visitors" && d.visitors ? ` · about ${d.visitors} ${d.visitors === 1 ? "visitor" : "different visitors"}` : ""}</small></button>`; }).join("");
+    // Hours grouped so the bars stay readable: each hour for a day, 6 hours for a week, each day for a month.
+    const per = trDays === 1 ? 1 : trDays === 7 ? 6 : 24;
+    const buckets = [];
+    for (let i = 0; i < d.hours.length; i += per) {
+      const part = d.hours.slice(i, i + per), b = { hour: part[0].hour, end: part[part.length - 1].hour + 3600 };
+      for (const [k] of WHO) b[k] = part.reduce((n, h) => n + (h[k] || 0), 0);
+      buckets.push(b);
+    }
+    const shown = WHO.map(([k]) => k).filter((k) => trWho === "all" || trWho === k);
+    const tot = (b) => shown.reduce((n, k) => n + b[k], 0);
+    const when = (b) => {
+      const a = new Date(b.hour * 1000), z = new Date(b.end * 1000);
+      if (per === 24) return a.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+      const t = (x) => x.toLocaleTimeString([], { hour: "numeric" });
+      return `${per > 1 ? `${a.toLocaleDateString([], { weekday: "short" })} ` : ""}${t(a)}–${t(z)}`;
+    };
+    const tick = (b) => (per === 24 ? new Date(b.hour * 1000).toLocaleDateString([], { month: "short", day: "numeric" })
+      : per === 6 ? new Date(b.hour * 1000).toLocaleDateString([], { weekday: "short" }) : new Date(b.hour * 1000).toLocaleTimeString([], { hour: "numeric" }));
     const sp = d.speed, quick = sp.requests ? Math.round((sp.buckets[0] / sp.requests) * 100) : null;
     const slow = sp.buckets[3];
     const kinds = Object.entries(d.kinds).sort((a, b2) => b2[1] - a[1]).map(([k, n]) => `${({ pages: "pages", api: "data", map: "the map", files: "pictures and files" })[k] || k} ${n.toLocaleString()}`).join(" · ");
+    const unit = per === 24 ? "day" : per === 6 ? "6 hours" : "hour";
     box.innerHTML = `<div class="st-filters"><div class="seg" role="group" aria-label="How long">${[[1, "Last 24 hours"], [7, "7 days"], [30, "30 days"]].map(([n, l]) => `<button type="button" data-trdays="${n}" aria-pressed="${trDays === n}">${l}</button>`).join("")}</div>
         ${trWho !== "all" ? `<button type="button" class="btn sm" data-trwho="all">Show everyone</button>` : ""}</div>
       <div class="st-tiles tr-tiles">${tiles}</div>
-      <div class="st-chart tr-chart" role="img" aria-label="Requests by hour"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${bars}${xl}</svg><div class="st-tip" hidden></div></div>
+      <p class="muted small tr-explain">Each bar is one ${unit}: how many things the website answered then, coloured by who asked. Point at (or tap) a bar for the details; tap a box above to see just them.</p>
+      <div class="tr-chart" role="img" aria-label="Requests each ${unit}, by who asked"><div class="tr-plot"></div><div class="tr-tip" hidden></div></div>
       <p class="tr-speed">${sp.requests ? `<b>${quick}%</b> answered in under 0.1 s · on average <b>${sp.avg_ms} ms</b> · ${slow ? `<b class="wl-no">${slow} took over a second</b>` : "none took over a second"}` : "Nothing answered yet in this time."}</p>
       ${kinds ? `<p class="muted small">What was asked for: ${esc(kinds)}</p>` : ""}
       ${d.net.available ? `<p class="muted small">This container's whole network (the website, plus talking to the game, Crafty, Modrinth): <b>${sz(d.net.tx)}</b> sent, <b>${sz(d.net.rx)}</b> received.</p>` : ""}
       <p class="muted small">No addresses are kept: visitors are counted with a scramble that changes every day. Cloudflare's dashboard shows what never reaches here (bots it blocks, countries, attacks).</p>`;
     box.querySelectorAll("[data-trdays]").forEach((b) => b.addEventListener("click", () => { trDays = +b.dataset.trdays; traffic(); }));
     box.querySelectorAll("[data-trwho]").forEach((b) => b.addEventListener("click", () => { trWho = trWho === b.dataset.trwho ? "all" : b.dataset.trwho; traffic(); }));
-    const chart = box.querySelector(".tr-chart"), tip = chart.querySelector(".st-tip");
-    chart.addEventListener("pointermove", (e) => {
-      const t = e.target.closest("[data-tip]");
-      if (!t) { tip.hidden = true; return; }
-      tip.textContent = t.dataset.tip; tip.hidden = false;
+    // Drawn at the chart's real size (nothing stretched), with a scale on the left.
+    const chart = box.querySelector(".tr-chart"), plot = chart.querySelector(".tr-plot"), tip = chart.querySelector(".tr-tip");
+    const W = Math.max(280, plot.clientWidth), H = 170, L = 40, B = 20, T = 8, pw = W - L, ph = H - B - T;
+    const top = Math.max(...buckets.map(tot), 1);
+    const nice = (() => { const st = Math.max(1, 10 ** Math.floor(Math.log10(top)) / 2); return Math.ceil(top / st) * st; })();   // 2,360 → 2,500
+    const y = (v) => T + ph - (v / nice) * ph, step = pw / buckets.length, bw = Math.max(2, Math.min(28, step * 0.72));
+    const grid = [0, 0.5, 1].map((f) => `<line x1="${L}" x2="${W}" y1="${y(nice * f)}" y2="${y(nice * f)}" class="tr-grid"/><text x="${L - 6}" y="${y(nice * f) + 4}" text-anchor="end" class="tr-axis">${(nice * f).toLocaleString([], { maximumFractionDigits: 1 })}</text>`).join("");
+    const labelEvery = Math.ceil(buckets.length / Math.max(3, Math.floor(pw / 70)));
+    const bars = buckets.map((b, i) => {
+      const x = L + i * step + (step - bw) / 2;
+      let acc = 0;
+      const segs = shown.map((k) => { if (!b[k]) return ""; const y0 = y(acc), y1 = y(acc + b[k]); acc += b[k]; return `<rect x="${x}" y="${y1}" width="${bw}" height="${Math.max(1, y0 - y1)}" fill="${COL[k]}"/>`; }).join("");
+      const lab = i % labelEvery === 0 ? `<text x="${L + i * step + step / 2}" y="${H - 4}" text-anchor="middle" class="tr-axis">${esc(tick(b))}</text>` : "";
+      return `<g data-i="${i}"><rect class="tr-hit" x="${L + i * step}" y="${T}" width="${step}" height="${ph}"/>${segs}</g>${lab}`;
+    }).join("");
+    plot.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${grid}${bars}</svg>`;
+    const show = (e) => {
+      const g = e.target.closest("[data-i]");
+      plot.querySelectorAll("g.on").forEach((x) => x.classList.remove("on"));
+      if (!g) { tip.hidden = true; return; }
+      g.classList.add("on");
+      const b = buckets[+g.dataset.i];
+      tip.innerHTML = `<b>${esc(when(b))}</b>${shown.map((k) => `<span><i class="tr-key" style="--c:${COL[k]}"></i>${WHO.find(([w]) => w === k)[1]}: <b>${b[k].toLocaleString()}</b></span>`).join("")}${shown.length > 1 ? `<span class="muted">Together: ${tot(b).toLocaleString()}</span>` : ""}`;
+      tip.hidden = false;
       const r = chart.getBoundingClientRect();
-      tip.style.left = `${Math.min(Math.max(8, e.clientX - r.left - tip.offsetWidth / 2), r.width - tip.offsetWidth - 8)}px`;
-    });
-    chart.addEventListener("pointerleave", () => { tip.hidden = true; });
+      tip.style.left = `${Math.min(Math.max(4, e.clientX - r.left - tip.offsetWidth / 2), r.width - tip.offsetWidth - 4)}px`;
+    };
+    plot.addEventListener("pointermove", show);
+    plot.addEventListener("pointerdown", show);
+    chart.addEventListener("pointerleave", () => { tip.hidden = true; plot.querySelectorAll("g.on").forEach((x) => x.classList.remove("on")); });
   };
   traffic();
   (async () => {
