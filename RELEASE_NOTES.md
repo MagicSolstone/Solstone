@@ -1,3 +1,19 @@
+# Solstone 1.15.10
+
+- **Website traffic** (Manage → Solstone): what Solstone answered over the last 24 hours, 7 or 30 days.
+  - **Who asked:** you, other admins, signed-in players, and visitors who aren't signed in, with about how many different visitors.
+  - **By hour,** and what was asked for: pages, data, the map, pictures and files.
+  - **How quickly:** how much was answered in under 0.1 s, the average, and anything over a second.
+  - **The container's whole network,** including talking to the game, Crafty and Modrinth.
+  - **No addresses are kept:** visitors are counted with a scramble that changes every day. Cloudflare's dashboard still shows what never reaches here.
+- **Kilometres or miles** (Website → Site details → Distances in): applies everywhere distance shows, including player stats, leaderboards, the home page's Today line, Server stats, Adventures and activity lines.
+- **The Leaderboards tab is now Stats,** with Leaderboards and Server stats under it.
+- **Server stats:**
+  - **Most hours played in a day** is everyone's hours that day together.
+  - **"Longest time on in one go" is gone:** it was one player's own, not the server's.
+- **Answered lately:** a ✕ on each, and **Clear all**. This only clears your list: their own page still shows their answer.
+- **Development builds on the Mods page** show their build number: "2.12.1 build 1288", not "2.12.1-SNAPSHOT".
+
 # Solstone 1.15.9
 
 - **Answered lately, tidier:** a button beside **Asked to join** on the whitelist page ("👀 Answered lately · 2 not seen yet") opens the list in a popup, instead of a section taking up the page.
