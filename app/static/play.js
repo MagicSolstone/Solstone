@@ -1033,12 +1033,13 @@ async function viewGames(sid) {
     const kitHtml = () => `<fieldset class="gm-kit gm-wide"><legend>The kit <small class="muted">Everyone's own things are kept safe in a sealed vault first, and given back exactly afterwards (even if they leave mid-game)</small></legend>
         <label>Sword <select class="input sm" name="kit_sword">${(d.kit_tiers?.sword || ["wooden", "stone", "iron", "diamond", "netherite"]).map((t) => `<option value="${t}" ${f.kit.sword === t ? "selected" : ""}>${humanize(t)}</option>`).join("")}</select></label>
         <label>Armour <select class="input sm" name="kit_armour">${(d.kit_tiers?.armour || ["leather", "chainmail", "iron", "diamond", "netherite", "none"]).map((t) => `<option value="${t}" ${f.kit.armour === t ? "selected" : ""}>${t === "none" ? "None" : humanize(t)}</option>`).join("")}</select></label>
-        <label class="check"><input type="checkbox" name="kit_bow" ${f.kit.bow ? "checked" : ""}> Bow and ${numIn("kit_arrows", f.kit.arrows, 1, 64, "arrows", { label: "Arrows" })}</label>
+        <label class="check"><input type="checkbox" name="kit_bow" ${f.kit.bow ? "checked" : ""}> Bow${f.kit.infinite ? "" : ` and ${numIn("kit_arrows", f.kit.arrows, 1, 256, "arrows", { label: "Arrows" })}`}</label>
+        <label class="check"><input type="checkbox" name="kit_infinite" ${f.kit.infinite ? "checked" : ""}> ♾️ Arrows never run out <span class="muted small">(an Infinity bow and one arrow, like the archery games)</span></label>
         <label class="check"><input type="checkbox" name="kit_shield" ${f.kit.shield ? "checked" : ""}> Shield</label>
         <label class="check"><input type="checkbox" name="kit_food" ${f.kit.food ? "checked" : ""}> Food</label></fieldset>`;
     const mobName = (m) => (d.mobs || {})[m] || (d.specials || {})[m] || humanize(m);
     const wavesHtml = () => `<div class="gm-waves gm-wide">${f.waves.map((w, i) => `<div class="gm-wave"><b>Wave ${i + 1}</b>
-        ${Object.entries(w).map(([m, n]) => `<span class="chip">${esc(mobName(m))} × <input class="input sm num-in" type="number" min="1" max="20" value="${n}" data-wave="${i}" data-mob="${esc(m)}" aria-label="How many"><button type="button" class="chip-x" data-rmmob="${i}:${esc(m)}" aria-label="Remove">×</button></span>`).join("")}
+        ${Object.entries(w).map(([m, n]) => `<span class="chip">${esc(mobName(m))} × <input class="input sm num-in" type="number" min="1" max="100" value="${n}" data-wave="${i}" data-mob="${esc(m)}" aria-label="How many"><button type="button" class="chip-x" data-rmmob="${i}:${esc(m)}" aria-label="Remove">×</button></span>`).join("")}
         <select class="input sm" data-addmob="${i}"><option value="">＋ Add a monster…</option><optgroup label="Monsters">${Object.entries(d.mobs || {}).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</optgroup>
           ${Object.keys(d.specials || {}).length ? `<optgroup label="Specials: dressed up, babies, riders">${Object.entries(d.specials).map(([k, l]) => `<option value="${k}">✨ ${esc(l)}</option>`).join("")}</optgroup>` : ""}</select>
         <button type="button" class="icon-btn" data-rmwave="${i}" aria-label="Remove wave ${i + 1}">✕</button></div>`).join("")}
@@ -1119,8 +1120,8 @@ async function viewGames(sid) {
       for (const k of ["team_count", "respawn_secs"]) if (fm[k]) f[k] = +fm[k].value;
       if (fm.coop) f.coop = fm.coop.value === "1";
       if (fm.level) f.level = fm.level.value;
-      if (fm.kit_sword) f.kit = { sword: fm.kit_sword.value, armour: fm.kit_armour.value, bow: fm.kit_bow.checked, arrows: +fm.kit_arrows.value, shield: fm.kit_shield.checked, food: fm.kit_food.checked };
-      fm.querySelectorAll("[data-wave]").forEach((i) => { f.waves[+i.dataset.wave][i.dataset.mob] = Math.max(1, Math.min(20, +i.value || 1)); });
+      if (fm.kit_sword) f.kit = { sword: fm.kit_sword.value, armour: fm.kit_armour.value, bow: fm.kit_bow.checked, arrows: fm.kit_arrows ? +fm.kit_arrows.value : f.kit.arrows, infinite: !!fm.kit_infinite?.checked, shield: fm.kit_shield.checked, food: fm.kit_food.checked };
+      fm.querySelectorAll("[data-wave]").forEach((i) => { f.waves[+i.dataset.wave][i.dataset.mob] = Math.max(1, Math.min(100, +i.value || 1)); });
       if (!adding && fm.when && fm.at) { f.when = fm.when.value; f.at = fm.at.value; }   // an event's game has no When (it starts in turn)
     };
     const show = () => openModal(body(), (m) => {
@@ -1164,7 +1165,7 @@ async function viewGames(sid) {
       $("#gm-map", m).addEventListener("pointerdown", (e) => { clickShift = e.shiftKey; }, true);
       const fm = $("#gm-form", m);
       fm.radius?.addEventListener("input", () => { f.radius = +fm.radius.value; $("#gm-r", m).textContent = game === "spleef" ? `${f.radius} (${f.radius * 2 + 1} × ${f.radius * 2 + 1})` : f.radius; map.draw(); });
-      for (const k of ["hot", "hot_bonus", "hot_far", "hot_on", "hot_off"]) fm[k]?.addEventListener("change", () => { sync(m); show(); });
+      for (const k of ["hot", "hot_bonus", "hot_far", "hot_on", "hot_off", "kit_infinite"]) fm[k]?.addEventListener("change", () => { sync(m); show(); });
       fm.mode?.addEventListener("change", () => { sync(m); if (f.mode === "horse" && f.minutes < 30) f.minutes = 30; show(); });
       $("#gm-here", m)?.addEventListener("click", async () => {
         sync(m);

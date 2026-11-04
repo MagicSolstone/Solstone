@@ -143,7 +143,7 @@ def test_the_kit_is_marked_as_the_games():
     item = kits.kit_item("minecraft:iron_sword")
     assert "custom_data={solkit:1b}" in item and "unbreakable" in item
     k = kits.clean_kit({"sword": "laser", "armour": "gold", "arrows": 999})
-    assert k["sword"] == "iron" and k["armour"] == "iron" and k["arrows"] == 64
+    assert k["sword"] == "iron" and k["armour"] == "iron" and k["arrows"] == kits.MAX_ARROWS
 
 
 def own(slots: dict) -> dict:
@@ -182,3 +182,43 @@ def test_the_kit_alone_is_taken_back(game):
     asyncio.run(kits.give_back(game, U2))
     assert game.slots[U2] == {"container.3": ("minecraft:cake", 1), "armor.head": ("minecraft:turtle_helmet", 1)}
     assert not kits.waiting("kit-test") and not any(game.barrels.values())
+
+
+def test_more_arrows_or_never_running_out():
+    from app import kits
+    assert kits.clean_kit({"arrows": 200})["arrows"] == 200 and kits.clean_kit({"arrows": 9999})["arrows"] == kits.MAX_ARROWS
+    sent = []
+
+    class Game:
+        id, mc_version, settings = "kit-test", "1.21.10", {}
+
+        async def rcon(self, cmd):
+            sent.append(cmd)
+            return ""
+
+    async def fake_rcon(srv, cmd):
+        sent.append(cmd)
+        return ""
+    import pytest
+    mp = pytest.MonkeyPatch()
+    mp.setattr(kits, "_rcon", fake_rcon)
+    try:
+        asyncio.run(kits.give_kit(Game(), "u-1", kits.clean_kit({"bow": True, "infinite": True, "arrows": 200})))
+        bow = next(c for c in sent if "minecraft:bow[" in c)
+        assert "minecraft:infinity" in bow and "solkit:1b" in bow and bow.endswith("] 1")
+        assert any("minecraft:arrow[" in c and c.endswith(" 1") for c in sent)               # just the one arrow
+        sent.clear()
+        asyncio.run(kits.give_kit(Game(), "u-1", kits.clean_kit({"bow": True, "arrows": 200})))
+        assert any("minecraft:arrow[" in c and c.endswith(" 200") for c in sent) and not any("infinity" in c for c in sent)
+    finally:
+        mp.undo()
+
+
+def test_bigger_mob_arena_waves():
+    import pytest
+
+    from app import arena
+    assert arena.clean_waves([{"baby_spear_zombie": 70}]) == [{"baby_spear_zombie": 70}]
+    assert arena.clean_waves([{"zombie": 500}]) == [{"zombie": arena.MAX_PER_KIND}]
+    with pytest.raises(ValueError, match="150 is the most"):
+        arena.clean_waves([{"zombie": 100, "skeleton": 100}])

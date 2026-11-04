@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import threading
+import time
 from pathlib import Path
 
 from . import adventures, db, selfbackup
@@ -72,3 +74,28 @@ def report() -> dict:
     return {"folder": str(base), "total": sum(parts.values()),
             "parts": sorted(({"name": k, "bytes": v} for k, v in parts.items()), key=lambda x: -x["bytes"]),
             "tables": tables[:12], "disk": {"free": disk.free, "total": disk.total}}
+
+
+# Measuring counts every row and page of the database (seconds once it's big), and it hardly changes minute to minute:
+# the last measurement is kept and shown straight away; past KEEP_SECS it's measured again in the background.
+KEEP_SECS = 600
+_kept: dict = {"at": 0.0, "report": None}
+_measuring = threading.Lock()
+
+
+def _measure() -> dict:
+    with _measuring:
+        r = {**report(), "measured": time.time()}
+        _kept.update(at=time.monotonic(), report=r)
+        return r
+
+
+def cached_report() -> dict:
+    """The storage report, measured at most every 10 minutes; only the first ever look waits for it."""
+    r = _kept["report"]
+    if r is None:
+        return _measure()
+    if time.monotonic() - _kept["at"] > KEEP_SECS and not _measuring.locked():
+        threading.Thread(target=_measure, daemon=True).start()
+    return r
+

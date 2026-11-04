@@ -370,15 +370,19 @@ TIERS = ("wooden", "stone", "iron", "diamond", "netherite")
 ARMOUR = {"leather": "leather", "chainmail": "chainmail", "iron": "iron", "diamond": "diamond", "netherite": "netherite"}
 
 
+MAX_ARROWS = 256                     # four stacks
+
+
 def clean_kit(body: dict) -> dict:
     k = body if isinstance(body, dict) else {}
     sword = k.get("sword") if k.get("sword") in TIERS else "iron"
     armour = k.get("armour") if k.get("armour") in (*ARMOUR, "none") else "iron"
     try:
-        arrows = max(0, min(64, int(k.get("arrows", 16))))
+        arrows = max(0, min(MAX_ARROWS, int(k.get("arrows", 16))))
     except (TypeError, ValueError):
         arrows = 16
-    return {"sword": sword, "armour": armour, "bow": bool(k.get("bow", True)), "arrows": arrows,
+    # infinite: an Infinity bow and one arrow, like the archery games' Match Bow (it never runs out)
+    return {"sword": sword, "armour": armour, "bow": bool(k.get("bow", True)), "arrows": arrows, "infinite": bool(k.get("infinite")),
             "shield": bool(k.get("shield", False)), "food": bool(k.get("food", True))}
 
 
@@ -386,7 +390,12 @@ async def give_kit(srv, uuid: str, kit: dict) -> None:
     """Hand out a kit to someone whose things are safe in the vault (their hands are empty)."""
     sword = kit_item(f"minecraft:{kit['sword']}_sword")
     await _rcon(srv, f"give {uuid} {sword} 1")
-    if kit.get("bow"):
+    if kit.get("bow") and kit.get("infinite"):           # never runs out: Infinity, and the one arrow it needs
+        from .races import _new_text
+        ench = '{"minecraft:infinity":1}' if _new_text(srv) else '{levels:{"minecraft:infinity":1}}'
+        await _rcon(srv, f"give {uuid} {kit_item('minecraft:bow')[:-1]},minecraft:enchantments={ench}] 1")
+        await _rcon(srv, f"give {uuid} {kit_item('minecraft:arrow')} 1")
+    elif kit.get("bow"):
         await _rcon(srv, f"give {uuid} {kit_item('minecraft:bow')} 1")
         if kit.get("arrows"):
             await _rcon(srv, f"give {uuid} {kit_item('minecraft:arrow')} {kit['arrows']}")

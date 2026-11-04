@@ -53,7 +53,8 @@ PLURALS = {"baby_zombie": "baby zombies", "armoured_zombie": "zombies in iron ar
            "charged_creeper": "charged creepers", "big_slime": "big slimes", "baby_husk": "baby husks", "trident_drowned": "drowned with tridents"}
 FALLBACK = {"iron_spear": "iron_sword"}          # an older server without spears: a sword instead
 SPLITS = ("slime", "magma_cube")                  # their smaller selves come without the arena's mark
-MAX_PER_WAVE = 40
+MAX_PER_KIND = 100                                 # of one kind in a wave (70 baby zombies with spears, say)
+MAX_PER_WAVE = 150                                 # in a whole wave: more starts to slow the server down
 
 
 def _version(srv) -> tuple:
@@ -114,12 +115,14 @@ def clean_waves(raw) -> list[dict]:
         wave = {}
         for m, n in w.items():
             try:
-                n = max(0, min(20, int(n)))
+                n = max(0, min(MAX_PER_KIND, int(n)))
             except (TypeError, ValueError):
                 continue
             if (m in MOBS or m in SPECIALS) and n:
                 wave[m] = n
-        if wave and sum(wave.values()) <= MAX_PER_WAVE:
+        if sum(wave.values()) > MAX_PER_WAVE:
+            raise ValueError(f"Wave {len(waves) + 1} has {sum(wave.values())} monsters: {MAX_PER_WAVE} is the most in one wave")
+        if wave:
             waves.append(wave)
     return waves
 

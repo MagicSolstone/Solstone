@@ -2246,7 +2246,7 @@ async def put_settings(sid: str, request: Request):
 async def solstone_storage(request: Request):
     """How much room Solstone takes, and what in it grows (storage.py)."""
     auth.require_admin(request)
-    return await asyncio.to_thread(storage.report)
+    return await asyncio.to_thread(storage.cached_report)
 
 
 @app.get("/api/solstone-backups")
