@@ -113,6 +113,8 @@ function joinCard(site) {
       <div class="hp-ed-head">${edIcon("java", 20)}<b>Java Edition</b><span class="muted">PC or Mac</span>${j.version ? `<span class="chip hp-ver" title="Launch this version">${esc(j.version)}</span>` : ""}</div>
       <div class="hp-join-row"><code class="hp-addr">${esc(j.java)}</code>${copyBtn(j.java, "address")}</div>
       <p class="hp-how muted small">Multiplayer → Add Server → paste the address.</p></div>`;
+  const consoleSlug = site.guide_posts?.consoles;
+  const consoleHelp = (down) => (consoleSlug ? `<p class="hp-how small ${down ? "hp-console-down" : "muted"}">🎮 On a console${down ? " while the friend is down" : ""}? <a href="/post/${encodeURIComponent(consoleSlug)}">Here's another way in</a></p>` : "");
   const bedrockBlock = (j) => {
     const server = j.bedrock ? `<div class="hp-join-row"><code class="hp-addr">${esc(j.bedrock)}</code><span class="hp-port">Port <b>${esc(String(j.bedrock_port))}</b></span>${copyBtn(j.bedrock, "address")}</div>` : "";
     return `<div class="hp-ed-block bedrock">
@@ -120,8 +122,9 @@ function joinCard(site) {
       ${j.xbox ? `<div class="hp-friend">${edIcon("friend", 22)}<span class="hp-friend-label">Add as a friend</span><span class="hp-gt-tag">Gamertag:</span><code class="hp-gamertag">${esc(j.xbox)}</code>${copyBtn(j.xbox, "gamertag")}</div>
         ${xboxStateHtml(j.xbox_status)}
         <p class="hp-how muted small">Then Play → Friends, and join the server from there. Works on every device, consoles too.</p>
-        ${server ? `<details class="hp-alt" ${j.xbox_status?.state === "down" ? "open" : ""}><summary>Or add it as a server</summary>${server}<p class="hp-how muted small">Play → Servers → Add Server.</p></details>` : ""}`
-      : `${server}<p class="hp-how muted small">Play → Servers → Add Server, with the address and port.</p>`}</div>`;
+        ${server ? `<details class="hp-alt" ${j.xbox_status?.state === "down" ? "open" : ""}><summary>Or add it as a server <span class="hp-devices">phones, tablets and Windows</span></summary>${server}<p class="hp-how muted small">Play → Servers → Add Server. Consoles can't add servers: on Xbox, PlayStation or Switch, join through the friend above.</p></details>` : ""}
+        ${consoleHelp(j.xbox_status?.state === "down")}`
+      : `${server}<p class="hp-how muted small">Phones, tablets and Windows: Play → Servers → Add Server, with the address and port. Consoles can't add servers.</p>${consoleHelp(false)}`}</div>`;
   };
   const cards = (site.joins || []).map((j) => {
     const icon = j.status?.has_icon ? `<img class="px" src="/api/public/icon/${encodeURIComponent(j.id)}.png" alt="" width="40" height="40">` : "";

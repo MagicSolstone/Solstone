@@ -2451,3 +2451,6 @@ body.ui-hidden .manage-sub { display: none; }
 .ctl-xbox { display: grid; gap: 6px; align-content: start; }
 .ctl-xbox h3, .ctl-xbox p { margin: 0; }
 .ctl-xbox-err { display: block; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+.hp-devices { color: var(--muted); font-size: .8rem; margin-left: 4px; }
+.hp-console-down { color: #ffb4a8; }
+.hp-console-down a { color: #ffd0c8; font-weight: 700; }

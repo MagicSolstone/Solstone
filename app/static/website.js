@@ -39,7 +39,8 @@ function renderWebsite() {
 const wsDate = (ts) => new Date(ts * 1000).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
 
 // What a post can stand in for: the built-in pages the site links to (site.ROLES).
-const WS_ROLES = { join: "The join guide (Ask to join goes under it)", account: "The guide to making an account", rules: "The server rules" };
+const WS_ROLES = { join: "The join guide (Ask to join goes under it)", account: "The guide to making an account", rules: "The server rules",
+  consoles: "Console help (another way in when the Xbox friend is down)" };
 
 const wsDay = (ts) => { const d = ts ? new Date(ts * 1000) : new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const wsSaveLabel = (saved, published) => (published ? (saved ? "Save" : "Publish") : "Save draft");

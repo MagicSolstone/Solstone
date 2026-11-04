@@ -694,6 +694,9 @@ def main() -> int:
             if "2 on Java" not in (anon.locator("#hp-status .hp-eds").text_content() if anon.locator("#hp-status .hp-eds").count() else "") \
                     or "1 on Bedrock" not in anon.locator("#hp-status .hp-eds").text_content():
                 problems.append("home: 'Playing now' doesn't say how many are on Java and Bedrock")
+            if "phones, tablets and Windows" not in (card.locator(".hp-alt summary").text_content() if card.locator(".hp-alt summary").count() else "") \
+                    or card.locator('a[href^="/post/"]').count():
+                problems.append("home: Bedrock's 'add it as a server' doesn't say it's for phones, tablets and Windows (or a console link shows with no guide for it)")
             if "Online" not in (card.locator(".hp-xbox-st.ok").text_content() if card.locator(".hp-xbox-st.ok").count() else ""):
                 problems.append("home: no 'Online' line for the Xbox friend under the gamertag")
             card.scroll_into_view_if_needed(); check(anon, "site-home-join-editions")

@@ -17,7 +17,9 @@ from .config import config as app_config
 CATEGORIES = ("news", "guide", "faq")
 # A post can stand in for one of the built-in pages: /guides/join, /guides/account and /guides/rules show it (the
 # home page, the Ask to join form and the in-game welcome message link there). Without one, Solstone's own wording.
-ROLES = {"join": "How to join the server", "account": "Making an account on this website", "rules": "Server rules"}
+ROLES = {"join": "How to join the server", "account": "Making an account on this website", "rules": "Server rules",
+         # no built-in page: linked from the home page's Bedrock part only once a post is used for it
+         "consoles": "Joining from a console without the Xbox friend"}
 DEFAULTS = {"name": "Solstone", "tagline": "", "java_address": "", "bedrock_address": "", "bedrock_port": 19132,
             "discord": "", "contact": "", "about": "", "home_live": True, "signup": False,
             "home_title": False,          # the name and tagline big at the top of the home page (the bar already has them)
