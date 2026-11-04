@@ -15,7 +15,10 @@ const FWE_DEFAULT = {
   second: 0, second_delay: 0.5, second_size: 0.6, in_show: true,
   sound_launch: "whoosh", sound_burst: "boom", sound_ground: "hiss", sound_crackle: true, sound_fizzle: false,
 };
-const FWE_TABS = [["launch", "Launch"], ["shape", "Shape"], ["colours", "Colours"], ["then", "Then…"], ["motion", "Motion"], ["effects", "Effects"], ["sound", "Sound"]];
+// The editor goes step by step, in the order a firework happens. Burst is called Spray for a
+// fountain and Spin for a wheel.
+const FWE_STEPS = [["launch", "Launch", "🚀"], ["burst", "Burst", "💥"], ["colours", "Colours", "🎨"], ["sparkle", "Sparkle", "✨"], ["sound", "Sound", "🔊"]];
+const FWE_TWINKLES = [["blink", "Blink", "on and off"], ["strobe", "Strobe", "quick flashes"], ["breathe", "Breathe", "softly brighter and dimmer"]];
 const FWE_LAUNCHES = [["rocket", "Sky rocket", "🚀"], ["fountain", "Fountain", "⛲"], ["wheel", "Spinning wheel", "🎡"]];
 const FWE_STYLES = [["normal", "Normal"], ["sparkly", "Sparkly"], ["corkscrew", "Corkscrew"], ["colored", "Coloured"], ["invisible", "Invisible"]];
 const FWE_PATTERNS = [
@@ -112,7 +115,7 @@ const FWE_STAMPS = {
   Pickaxe: tpl("pickaxe"),
 };
 
-const ed = { d: null, id: null, list: [], scene: null, loop: true, debounce: 0, brush: "0", mirror: true, painting: false, frame: 1, grids: {}, tab: "launch", show: "mine", q: "", open: {}, limit: null };
+const ed = { d: null, id: null, list: [], scene: null, loop: true, debounce: 0, brush: "0", mirror: true, painting: false, frame: 1, grids: {}, tab: "launch", show: "mine", q: "", open: {}, limit: null, seen: null, more: false, twinkle: "", review: [] };
 
 function fweCopy(d) { return JSON.parse(JSON.stringify(d)); }
 // The painter works on a full 25×25 grid per frame; the saved picture is trimmed to what's painted.
@@ -147,8 +150,9 @@ async function fweJoinPanel() {
   const j = el && await api("/api/fireworks/my-join").catch(() => null);
   if (!j || !j.players.length || !el.isConnected) return;
   const opt = (d) => `<option value="${esc(d.id)}" ${d.id === j.firework ? "selected" : ""}>${esc(d.name || "Firework")}</option>`;
-  const mine = ed.list.filter((d) => d.mine), groups = {};
-  for (const d of ed.list.filter((x) => !x.mine)) (groups[d.maker || "Someone"] ||= []).push(d);
+  const live = ed.list.filter((d) => !d.review);             // a picture waiting for an admin can't go off yet
+  const mine = live.filter((d) => d.mine), groups = {};
+  for (const d of live.filter((x) => !x.mine)) (groups[d.maker || "Someone"] ||= []).push(d);
   el.innerHTML = `<b>🎆 When you join the server</b>
     <select class="input sm" id="fwe-join-pick" aria-label="Your join firework"><option value="">A random firework</option>
       ${mine.length ? `<optgroup label="My fireworks">${mine.map(opt).join("")}</optgroup>` : ""}
@@ -183,10 +187,12 @@ async function viewFireworkEditor(editId) {
     ed.id = found ? found.id : editId ? null : ed.id;
   }
   ed.grids = {}; ed.frame = 1;
+  if (found || resume?.id) ed.seen = new Set(FWE_STEPS.map(([k]) => k));      // a saved one: every step's been set
   if (!resume && (found || ed.base == null)) fweMarkSaved();
   setView(`<div class="fwe-head"><h1>Fireworks</h1>
       ${fireworksTabs("editor")}
       <p class="muted">Design a firework, watch it go off, and save it. Fireworks marked <b>In the show</b> join the sky on every page of the site, including the home and sign-in pages.</p></div>
+    <section class="panel fwe-review" id="fwe-review" hidden aria-labelledby="fwe-review-h"></section>
     <div class="panel fwe-join" id="fwe-join" hidden></div>
     <div class="fwe-mode" id="fwe-mode" aria-live="polite"></div>
     <div class="fwe">
@@ -215,6 +221,7 @@ async function viewFireworkEditor(editId) {
   renderControls();
   renderGallery();
   fweJoinPanel();
+  fweReviewPanel();
   $("#fwe-launch")?.addEventListener("click", () => fweLaunch());
   $("#fwe-loop")?.addEventListener("change", (e) => { ed.loop = e.target.checked; });
   $("#fwe-sound")?.addEventListener("click", (e) => {
@@ -254,6 +261,43 @@ async function viewFireworkEditor(editId) {
   setTimeout(() => fweLaunch(), 400);
 }
 
+// A picture firework drawn by a player waits for an admin before anyone else sees it.
+function fweReviewChip(f) {
+  if (f?.review === "pending") return `<span class="fwe-chip wait" title="Only you and the admins can see it until then">⏳ Waiting for an admin</span>`;
+  if (f?.review === "declined") return `<span class="fwe-chip no" title="Change the picture and save it to ask again">✋ Not approved${f.review_reason ? `: ${esc(f.review_reason)}` : ""}</span>`;
+  return "";
+}
+async function fweReviewPanel() {
+  const el = $("#fwe-review");
+  if (!el || !isAdmin()) return;
+  ed.review = await api("/api/fireworks/review").catch(() => []);
+  if (!el.isConnected) return;
+  el.hidden = !ed.review.length;
+  if (!ed.review.length) { el.innerHTML = ""; return; }
+  el.innerHTML = `<h2 id="fwe-review-h">⏳ Waiting for approval <span class="muted small">${ed.review.length}</span></h2>
+    <p class="muted small">Pictures drawn by players stay hidden (out of the show, the Launch list and join fireworks) until you approve them.</p>
+    <div class="fwe-group-list">${ed.review.map((f) => `<div class="fwe-card" data-rid="${esc(f.id)}">
+      <div class="fwe-card-main"><b>${esc(f.name)}</b><span class="muted small">🎨 Picture · by ${esc(f.maker || f.author)}</span>
+        <span class="fwe-dots">${(f.colors || []).map((c) => `<i style="background:${esc(c)}"></i>`).join("")}</span></div>
+      <div class="fwe-card-acts"><button type="button" class="btn sm" data-r="play" aria-label="Watch ${esc(f.name)} in the preview">▶ Watch</button>
+        <button type="button" class="btn sm primary" data-r="ok">✓ Approve</button>
+        <button type="button" class="btn sm danger" data-r="no">Not approved</button></div></div>`).join("")}</div>`;
+  el.querySelectorAll("[data-rid]").forEach((card) => {
+    const f = ed.review.find((x) => x.id === card.dataset.rid);
+    card.querySelector('[data-r="play"]').addEventListener("click", () => { fweLaunch({ ...FWE_DEFAULT, ...f }); $("#fwe-sky")?.scrollIntoView({ block: "nearest", behavior: "smooth" }); });
+    card.querySelectorAll('[data-r="ok"], [data-r="no"]').forEach((b) => b.addEventListener("click", async () => {
+      const ok = b.dataset.r === "ok";
+      const reason = ok ? "" : await promptBox(`Not approve “${f.name}”?`, "It stays hidden. You can say why (optional): its maker sees this.", "", 200);
+      if (reason === null) return;
+      try {
+        await post(`/api/fireworks/${f.id}/review`, { approve: ok, reason });
+        showToast(ok ? `Approved “${esc(f.name)}”` : `“${esc(f.name)}” wasn't approved`, 2500);
+        await fweRefresh(); fweReviewPanel();
+      } catch (err) { showError(esc(err.message), 4000); }
+    }));
+  });
+}
+
 // What's being edited: a new firework, or a saved one (with or without unsaved changes).
 const fweSnap = (d) => JSON.stringify(d);
 // Unsaved work is kept in this browser as it changes, so a reload or a closed tab doesn't lose it.
@@ -272,7 +316,7 @@ function fweMarkSaved() { ed.base = fweSnap(ed.d); }
 function fweDirty() { return ed.base != null && fweSnap(ed.d) !== ed.base; }
 function fweNew() {
   fweClearDraft();
-  ed.d = fweCopy(FWE_DEFAULT); ed.id = null; ed.grids = {}; ed.frame = 1; ed.base = null;
+  ed.d = fweCopy(FWE_DEFAULT); ed.id = null; ed.grids = {}; ed.frame = 1; ed.base = null; ed.seen = null; ed.tab = "launch";
   if (location.hash !== "#/fireworks") location.hash = "#/fireworks"; else viewFireworkEditor();
 }
 function renderMode() {
@@ -282,7 +326,7 @@ function renderMode() {
   const dirty = fweDirty(), name = (ed.d.name || "").trim() || "My firework";
   document.querySelector(".fwe")?.classList.toggle("editing", !!ed.id);
   const html = ed.id
-    ? `<div class="fwe-mode-bar editing"><span class="fwe-mode-what">✏️ Editing <b>“${esc(name)}”</b>${dirty ? ' <span class="fwe-dirty">● unsaved changes</span> <span class="muted small" title="Kept in this browser until you save or leave without saving">· kept if you reload</span>' : ' <span class="muted">· no changes yet</span>'}</span>
+    ? `<div class="fwe-mode-bar editing"><span class="fwe-mode-what">✏️ Editing <b>“${esc(name)}”</b> ${fweReviewChip(ed.list.find((x) => x.id === ed.id))}${dirty ? ' <span class="fwe-dirty">● unsaved changes</span> <span class="muted small" title="Kept in this browser until you save or leave without saving">· kept if you reload</span>' : ' <span class="muted">· no changes yet</span>'}</span>
         <span class="fwe-mode-btns"><button class="btn primary" type="button" data-m="save" ${dirty ? "" : "disabled"}>Save changes</button>
         <button class="btn" type="button" data-m="saveas">Save as new</button><button class="btn" type="button" data-m="exit">${dirty ? "Exit without saving" : "Done, make a new one"}</button></span></div>`
     : `<div class="fwe-mode-bar"><span class="fwe-mode-what">✨ <b>New firework</b>${dirty ? ' <span class="fwe-dirty">● not saved yet</span> <span class="muted small" title="Kept in this browser until you save it or start a new one">· kept if you reload</span>' : ""}</span>
@@ -328,27 +372,68 @@ function stagesHtml(d) {
     ${(d.stages || []).length < 3 ? `<button type="button" class="btn" id="fwe-addstage">+ Add a “then…” step</button>` : ""}
     <p class="muted small">Steps happen one after another, each after its own delay. They work on everything the firework has made so far.</p>`;
 }
+const FWE_SLIDER = Object.fromEntries(Object.values(FWE_SLIDERS).flat().map((sl) => [sl[0], sl]));
+const fweStepName = (d, k) => (k === "burst" ? (d.launch === "fountain" ? ["Spray", "⛲"] : d.launch === "wheel" ? ["Spin", "🎡"] : ["Burst", "💥"])
+  : FWE_STEPS.find(([x]) => x === k).slice(1));
+// How much it twinkles and which way: the strongest of blink, strobe and breathe.
+function fweTwinkle(d) {
+  const [k] = FWE_TWINKLES.map(([x]) => x).sort((a, b) => (+d[b] || 0) - (+d[a] || 0));
+  return { style: (+d[k] || 0) > 0 ? k : ed.twinkle || "blink", amount: +d[k] || 0 };
+}
+// What each step is set to, shown on the step bar.
+function fweStepValue(d, k) {
+  const label = Object.fromEntries(FWE_PATTERNS.map(([x, l]) => [x, l]));
+  if (k === "launch") return `${(FWE_LAUNCHES.find(([x]) => x === (d.launch || "rocket")) || FWE_LAUNCHES[0])[1]}${isRocket(d) && d.rockets > 1 ? ` ×${d.rockets}` : ""}`;
+  if (k === "burst") return isRocket(d) ? `${label[d.pattern] || "Ball"}${d.stages?.length ? ` + ${d.stages.length} more` : ""}` : secs(+d.duration);
+  if (k === "colours") return `<span class="fwe-dots">${(d.colors || []).map((c) => `<i style="background:${esc(c)}"></i>`).join("")}</span>`;
+  if (k === "sparkle") {
+    const tw = fweTwinkle(d);
+    const on = [["sparkle", "Crackle"], ["trail", "Trails"], ["glitter", "Glitter"]].filter(([x]) => +d[x] > 0).map(([, l]) => l);
+    if (tw.amount > 0) on.push(FWE_TWINKLES.find(([x]) => x === tw.style)[1]);
+    if (+d.fizzle > 0) on.push("Fizzle");
+    return on.length ? on.slice(0, 2).join(", ") + (on.length > 2 ? "…" : "") : "Plain";
+  }
+  const names = { whoosh: "Whoosh", whistle: "Whistle", boom: "Boom", pop: "Pop", thud: "Thud", crack: "Crack", hiss: "Hiss", crackle: "Crackle", custom: "Your own", none: "Silent" };
+  return names[isRocket(d) ? d.sound_burst || "boom" : d.sound_ground || "hiss"] || "";
+}
 function renderControls() {
   const d = ed.d, el = $("#fwe-controls");
-  const sec = (title, inner, cls = "") => inner.trim() ? `<section class="panel fwe-sec ${cls}"><h3>${title}</h3>${inner}</section>` : "";
-  const sliders = (name) => { const html = FWE_SLIDERS[name].map((sl) => sliderHtml(sl, d)).join(""); return html ? `<div class="fwe-sliders">${html}</div>` : ""; };
-  if (!isRocket(d) && (ed.tab === "shape" || ed.tab === "then")) ed.tab = "launch";
+  const part = (title, inner, cls = "") => inner.trim() ? `<div class="fwe-part ${cls}">${title ? `<h4>${title}</h4>` : ""}${inner}</div>` : "";
+  const sliders = (keys) => { const html = keys.map((k) => sliderHtml(FWE_SLIDER[k], d)).join(""); return html ? `<div class="fwe-sliders">${html}</div>` : ""; };
+  const more = (inner, what = "More") => inner.trim() ? `<details class="fwe-more" ${ed.more ? "open" : ""}><summary>${what}</summary>${inner}</details>` : "";
+  if (!FWE_STEPS.some(([k]) => k === ed.tab)) ed.tab = "launch";
+  ed.seen ||= new Set();
+  ed.seen.add(ed.tab);
+  const tw = fweTwinkle(d);
+  const pictureNote = d.pattern === "picture" && !isAdmin()
+    ? `<p class="fwe-note">🛡️ An admin looks at every picture before it goes in the show or anyone else can see it. You can still watch it here as much as you like.</p>` : "";
+  const second = sliders(["second", "second_delay", "second_size"]) + (d.second > 0 ? `<label class="fwe-select">…shape <select class="input sm" id="fwe-second-pattern">${FWE_PATTERNS.filter(([k]) => k !== "picture").map(([k, l, ic]) => `<option value="${k}" ${(d.second_pattern || "ball") === k ? "selected" : ""}>${ic} ${l}</option>`).join("")}</select></label>` : "");
   const panels = {
-    launch: sec("Launch", `<div class="fwe-patterns fwe-launches">${FWE_LAUNCHES.map(([k, l, ic]) => `<button type="button" data-launch="${k}" aria-pressed="${(d.launch || "rocket") === k}"><span>${ic}</span>${l}</button>`).join("")}</div>
-      ${isRocket(d) ? `<div class="seg fwe-styles" role="group" aria-label="Rocket style">${FWE_STYLES.map(([k, l]) => `<button type="button" data-style="${k}" aria-pressed="${(d.rocket_style || "normal") === k}">${l}</button>`).join("")}</div>` : ""}
-      <label class="check"><input type="checkbox" id="fwe-mirror-pair" ${d.mirror ? "checked" : ""}> Mirror pair: a matching one from the other side</label>
-      ${sliders("Launch")}`),
-    shape: isRocket(d) ? sec("Pattern", `<div class="fwe-patterns">${FWE_PATTERNS.map(([k, l, ic]) => `<button type="button" data-pattern="${k}" aria-pressed="${d.pattern === k}"><span>${ic}</span>${l}</button>`).join("")}</div>
-      ${d.pattern === "picture" ? painterHtml() : ""}${sliders("Shape")}${d.pattern === "picture" ? sliders("Picture") : ""}`) : "",
-    colours: sec("Colours", `${colorsHtml(d.colors, "ci")}
+    launch: `<p class="fwe-ask">How does it go off?</p>
+      <div class="fwe-patterns fwe-launches">${FWE_LAUNCHES.map(([k, l, ic]) => `<button type="button" data-launch="${k}" aria-pressed="${(d.launch || "rocket") === k}"><span>${ic}</span>${l}</button>`).join("")}</div>
+      ${sliders(["height", "rockets"])}
+      ${more(`${isRocket(d) ? `<div class="fwe-row"><span>Rocket</span><div class="seg fwe-styles" role="group" aria-label="Rocket style">${FWE_STYLES.map(([k, l]) => `<button type="button" data-style="${k}" aria-pressed="${(d.rocket_style || "normal") === k}">${l}</button>`).join("")}</div></div>` : ""}
+        <label class="check"><input type="checkbox" id="fwe-mirror-pair" ${d.mirror ? "checked" : ""}> Mirror pair: a matching one from the other side</label>
+        ${sliders(["interval", "spot", "fan", "lean", "hang"])}`)}`,
+    burst: isRocket(d)
+      ? `<p class="fwe-ask">What shape does it make?</p>
+        <div class="fwe-patterns">${FWE_PATTERNS.map(([k, l, ic]) => `<button type="button" data-pattern="${k}" aria-pressed="${d.pattern === k}"><span>${ic}</span>${l}</button>`).join("")}</div>
+        ${d.pattern === "picture" ? pictureNote + painterHtml() : ""}${sliders(["sparks", "size", "spread", "squash", "tilt", "points", "arms", "spin"])}
+        ${d.pattern === "picture" ? sliders(["hold", "move_x", "move_y", "turn", "swap"]) : ""}
+        ${part("What happens next", `${part("", second, "fwe-second")}${stagesHtml(d)}`, "fwe-stages")}`
+      : `<p class="fwe-ask">${d.launch === "wheel" ? "How does the wheel spin?" : "How does the fountain spray?"}</p>${sliders(["duration", "rate", "power", "angle", "wheel_spin"])}`,
+    colours: `<p class="fwe-ask">Pick up to four colours.</p>${colorsHtml(d.colors, "ci")}
       <div class="fwe-dyes">${FW_COLORS.map((c) => `<button type="button" class="fw-swatch sm" data-dye="${c}" style="--c:${c}" aria-pressed="true" aria-label="Use ${c}"></button>`).join("")}</div>
       <div class="seg fwe-modes" role="group" aria-label="Colour style">${FWE_MODES.map(([k, l]) => `<button type="button" data-mode="${k}" aria-pressed="${d.color_mode === k}">${l}</button>`).join("")}</div>
-      <p class="muted small">${{ mix: "Each piece picks one of your colours.", alternate: "Pieces go through your colours in order.", change: "Every piece changes from the first colour to the last as it fades.", rainbow: "Every colour of the rainbow, cycling as it falls." }[d.color_mode]}</p>`),
-    then: isRocket(d) ? sec("Then…", stagesHtml(d), "fwe-stages") : "",
-    motion: sec("Motion", sliders("Motion")),
-    effects: sec("Effects", `${sliders("Effects")}
-      ${isRocket(d) && d.second > 0 ? `<label class="fwe-select">…shape <select class="input sm" id="fwe-second-pattern">${FWE_PATTERNS.filter(([k]) => k !== "picture").map(([k, l, ic]) => `<option value="${k}" ${(d.second_pattern || "ball") === k ? "selected" : ""}>${ic} ${l}</option>`).join("")}</select></label>` : ""}`),
-    sound: sec("Sound", `${isRocket(d) ? `<div class="fwe-row"><span>Going up</span><div class="seg" role="group">${[["whoosh", "Whoosh"], ["whistle", "Whistle"], ["custom", "🎛 Make your own"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_launch" data-v="${k}" aria-pressed="${(d.sound_launch || "whoosh") === k}">${l}</button>`).join("")}</div></div>
+      <p class="muted small">${{ mix: "Each piece picks one of your colours.", alternate: "Pieces go through your colours in order.", change: "Every piece changes from the first colour to the last as it fades.", rainbow: "Every colour of the rainbow, cycling as it falls." }[d.color_mode]}</p>`,
+    sparkle: `${part("Sparkle", sliders(["sparkle", "trail", "glitter", "flash", "piece", "wobble"]))}
+      ${part("Twinkle", `<div class="fwe-sliders"><label class="fwe-slider"><span>How much</span><b data-out="twinkle">${esc(off0(tw.amount))}</b>
+          <input type="range" min="0" max="1" step="0.05" value="${tw.amount}" data-twinkle></label></div>
+        <div class="seg fwe-twinkles" role="group" aria-label="Twinkle style">${FWE_TWINKLES.map(([k, l, hint]) => `<button type="button" data-twinkle-style="${k}" aria-pressed="${tw.style === k}" title="${esc(hint)}">${l}</button>`).join("")}</div>
+        <p class="muted small">${esc(FWE_TWINKLES.find(([k]) => k === tw.style)[2].replace(/^./, (c) => c.toUpperCase()))}.</p>`)}
+      ${part("How it ends", sliders(["life", "grow", "fizzle"]))}
+      ${more(sliders(["gravity", "drag", "wind"]), "More: how it moves (gravity, air, wind)")}`,
+    sound: `${isRocket(d) ? `<div class="fwe-row"><span>Going up</span><div class="seg" role="group">${[["whoosh", "Whoosh"], ["whistle", "Whistle"], ["custom", "🎛 Make your own"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_launch" data-v="${k}" aria-pressed="${(d.sound_launch || "whoosh") === k}">${l}</button>`).join("")}</div></div>
       ${d.sound_launch === "custom" ? sfxPanelHtml("launch") : ""}
       <div class="fwe-row"><span>The burst</span><div class="seg" role="group">${[["boom", "Boom"], ["pop", "Pop"], ["thud", "Thud"], ["crack", "Crack"], ["custom", "🎛 Make your own"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_burst" data-v="${k}" aria-pressed="${(d.sound_burst || "boom") === k}">${l}</button>`).join("")}</div></div>
       ${d.sound_burst === "custom" ? sfxPanelHtml("burst") : ""}
@@ -356,13 +441,43 @@ function renderControls() {
       <label class="check"><input type="checkbox" data-sndck="sound_fizzle" ${d.sound_fizzle ? "checked" : ""}> Fizzle as it fades</label>`
       : `<div class="fwe-row"><span>On the ground</span><div class="seg" role="group">${[["hiss", "Hiss"], ["crackle", "Crackle"], ["custom", "🎛 Make your own"], ["none", "Silent"]].map(([k, l]) => `<button type="button" data-snd="sound_ground" data-v="${k}" aria-pressed="${(d.sound_ground || "hiss") === k}">${l}</button>`).join("")}</div></div>
       ${d.sound_ground === "custom" ? `<p class="muted small">Your sound repeats for as long as the ${d.launch === "wheel" ? "wheel spins" : "fountain runs"}.</p>${sfxPanelHtml("ground")}` : ""}`}
-      <p class="muted small">Sounds play for people who turn them on with 🔊 (here, or in the corner of any page). While you're in the editor only this preview makes sound.</p>`),
+      <p class="muted small">Sounds play for people who turn them on with 🔊 (here, or in the corner of any page). While you're in the editor only this preview makes sound.</p>`,
   };
-  const tabs = FWE_TABS.filter(([k]) => panels[k]);
-  if (!panels[ed.tab]) ed.tab = tabs[0][0];
-  el.innerHTML = `<nav class="fwe-tabs" role="tablist" aria-label="Firework settings">${tabs.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${ed.tab === k}">${l}</button>`).join("")}</nav>
-    <div class="fwe-panel" role="tabpanel">${panels[ed.tab]}</div>`;
-  el.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => { ed.tab = b.dataset.tab; renderControls(); }));
+  const at = FWE_STEPS.findIndex(([k]) => k === ed.tab);
+  const [title, icon] = fweStepName(d, ed.tab);
+  const next = FWE_STEPS[at + 1], prev = FWE_STEPS[at - 1];
+  el.innerHTML = `<ol class="fwe-steps" aria-label="Make your firework, step by step">${FWE_STEPS.map(([k], i) => {
+      const [l, ic] = fweStepName(d, k), cur = k === ed.tab, done = ed.seen.has(k) && !cur;
+      return `<li><button type="button" data-step="${k}" ${cur ? 'aria-current="step"' : ""} class="${done ? "done" : ""}">
+        <span class="fwe-step-n" aria-hidden="true">${done ? "✓" : i + 1}</span><span class="fwe-step-t">${ic} ${l}</span>
+        <span class="fwe-step-v">${fweStepValue(d, k)}</span><span class="sr-only">${done ? ", done" : cur ? ", this step" : ""}</span></button></li>`;
+    }).join("")}</ol>
+    <section class="panel fwe-sec fwe-step" aria-labelledby="fwe-step-h">
+      <h3 id="fwe-step-h"><span class="fwe-step-n" aria-hidden="true">${at + 1}</span> ${icon} ${title}</h3>
+      ${panels[ed.tab]}
+      <div class="fwe-nextbar">${prev ? `<button type="button" class="btn" data-go="${prev[0]}">← ${fweStepName(d, prev[0])[0]}</button>` : "<span></span>"}
+        ${next ? `<button type="button" class="btn primary fwe-next" data-go="${next[0]}">Next: ${fweStepName(d, next[0]).reverse().join(" ")} →</button>`
+          : `<button type="button" class="btn primary fwe-next" data-done>✓ All done: name it and save</button>`}</div>
+    </section>`;
+  const go = (k) => { ed.tab = k; renderControls(); const top = el.getBoundingClientRect().top; if (top < 0) el.scrollIntoView({ block: "start", behavior: "smooth" }); $(`[data-step="${k}"]`, el)?.focus({ preventScroll: true }); };
+  el.querySelectorAll("[data-step]").forEach((b) => b.addEventListener("click", () => go(b.dataset.step)));
+  el.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
+  $("[data-done]", el)?.addEventListener("click", () => { const n = $('#fwe-save [name="name"]'); n?.scrollIntoView({ block: "center", behavior: "smooth" }); n?.focus({ preventScroll: true }); });
+  el.querySelectorAll(".fwe-more").forEach((x) => x.addEventListener("toggle", () => { ed.more = x.open; }));
+  const twIn = $("[data-twinkle]", el);
+  twIn?.addEventListener("input", () => {
+    const st = fweTwinkle(d).style;
+    for (const [k] of FWE_TWINKLES) d[k] = k === st ? +twIn.value : 0;      // one kind of twinkle at a time
+    el.querySelector('[data-out="twinkle"]').textContent = off0(+twIn.value);
+    fweChanged();
+  });
+  twIn?.addEventListener("change", () => { renderControls(); });
+  el.querySelectorAll("[data-twinkle-style]").forEach((b) => b.addEventListener("click", () => {
+    const amount = fweTwinkle(d).amount || 0.5;
+    ed.twinkle = b.dataset.twinkleStyle;
+    for (const [k] of FWE_TWINKLES) d[k] = k === ed.twinkle ? amount : 0;
+    renderControls(); fweLaunch();
+  }));
   el.querySelectorAll("[data-snd]").forEach((b) => b.addEventListener("click", () => {
     d[b.dataset.snd] = b.dataset.v;
     if (b.dataset.v === "custom") {                 // start from something that sounds right for the slot
@@ -586,7 +701,8 @@ async function fweSave(asNew) {
   try {
     const saved = ed.id && !asNew ? await post(`/api/fireworks/${ed.id}`, body, "PUT") : await post("/api/fireworks", body);
     ed.id = saved.id; ed.d = { ...fweCopy(FWE_DEFAULT), ...saved }; fweMarkSaved(); fweClearDraft();
-    showToast(saved.show_full ? `Saved “${esc(saved.name)}”. It's not in the show: you already have ${ed.limit?.show_per_person} there. Take one out to put this one in.`
+    if (saved.review === "pending") showToast(`Saved “${esc(saved.name)}”. An admin will look at your picture, then it can go in the show.`, 6000);
+    else showToast(saved.show_full ? `Saved “${esc(saved.name)}”. It's not in the show: you already have ${ed.limit?.show_per_person} there. Take one out to put this one in.`
       : `Saved “${esc(saved.name)}”${saved.in_show ? " · it's in the show" : ""}`, saved.show_full ? 6000 : 2500);
     await fweRefresh();
     location.hash = `#/fireworks/${saved.id}`;
@@ -638,7 +754,7 @@ function renderGallery() {
   const titleOf = (k) => (k === me.user?.username ? `${k} (you)` : k);
   const card = (f) => `<div class="fwe-card ${f.id === ed.id ? "current" : ""}" data-id="${f.id}">
       <div class="fwe-card-main"><b>${esc(f.name)}</b><span class="muted small">${esc(f.launch && f.launch !== "rocket" ? (FWE_LAUNCHES.find(([k]) => k === f.launch) || [])[1] || "" : label[f.pattern] || f.pattern)} · by ${esc(f.author)}</span>
-        <span class="fwe-dots">${f.colors.map((c) => `<i style="background:${c}"></i>`).join("")}</span></div>
+        <span class="fwe-dots">${f.colors.map((c) => `<i style="background:${c}"></i>`).join("")}</span>${fweReviewChip(f)}</div>
       <div class="fwe-card-acts">
         <button type="button" class="icon-btn" data-act="play" title="Launch it" aria-label="Launch ${esc(f.name)}">▶</button>
         ${f.can_edit ? `<label class="check small" title="Include in the fireworks show"><input type="checkbox" data-act="show" ${f.in_show ? "checked" : ""}> Show</label>

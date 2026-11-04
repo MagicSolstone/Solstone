@@ -82,12 +82,12 @@ def _resolve(event: str, player: str | None) -> dict | None:
     fw = cfg["firework"]
     if fw == "signature":
         sig = signatures().get((player or "").lower())
-        d = fireworks.get(sig) if sig else None
+        d = fireworks.get_live(sig) if sig else None
         if d:
             return {"design": {**d, **fireworks.sanitize(d)}, "count": 1}
         fw = "random"
     if fw.startswith("custom:"):
-        d = fireworks.get(fw.split(":", 1)[1])
+        d = fireworks.get_live(fw.split(":", 1)[1])
         return {"design": {**d, **fireworks.sanitize(d)}, "count": 1} if d else {"kind": "random", "count": 1}
     if fw == "none":
         return None
@@ -493,7 +493,7 @@ def resolved(sh: dict | None) -> dict | None:
     for st in sh["steps"]:
         st = dict(st)
         if st["what"].startswith("custom:"):
-            d = fireworks.get(st["what"].split(":", 1)[1])
+            d = fireworks.get_live(st["what"].split(":", 1)[1])
             if d:
                 st["design"] = {**d, **fireworks.sanitize(d)}
             else:

@@ -413,6 +413,44 @@ def main() -> int:
             pic = pg.request.post(f"{base}/api/fireworks", data={"name": "Smoke picture", "pattern": "picture", "colors": ["#ff0000", "#00ff00"],
                                                                  "picture": ["..00..", ".0110.", "..00.."]}, headers=H).json()
             pg.goto(f"{base}/app#/fireworks"); pg.wait_for_timeout(1000)
+            # the editor goes step by step: Next through every step, each one ticked off with what it's set to
+            names = [x.strip() for x in pg.locator(".fwe-steps .fwe-step-t").all_text_contents()]
+            if len(names) != 5 or "Launch" not in names[0] or "Sound" not in names[4]:
+                problems.append(f"firework editor: the steps aren't Launch … Sound ({names})")
+            for i in range(4):
+                pg.click(".fwe-nextbar .fwe-next"); pg.wait_for_timeout(250)
+                check(pg, f"fwe-step-{i + 2}")
+            if pg.locator(".fwe-steps button.done").count() != 4 or not pg.locator("[data-done]").count():
+                problems.append("firework editor: the steps done aren't ticked, or the last step has no All done")
+            pg.click('.fwe-steps [data-step="sparkle"]'); pg.wait_for_timeout(200)
+            pg.evaluate("ed.d.blink = 0.6; ed.d.strobe = 0.3; renderControls()")
+            pg.click('[data-twinkle-style="breathe"]'); pg.wait_for_timeout(200)
+            tw = pg.evaluate("[ed.d.blink, ed.d.strobe, ed.d.breathe]")
+            if tw != [0, 0, 0.6]:
+                problems.append(f"firework editor: picking a twinkle style didn't switch the others off ({tw})")
+            if pg.locator(".fwe-more").count() != 1:
+                problems.append("firework editor: Sparkle has no More for how it moves")
+            pg.evaluate("ed.d.blink = 0; ed.d.breathe = 0; ed.tab = 'launch'")
+            # a picture drawn by a player waits for an admin: hidden from everyone else until it's approved
+            pp = pg.request.post(f"{base}/api/users", data={"username": "smoke_artist", "password": "artist-pass-1", "role": "player"}, headers=H).json()
+            art = browser.new_page(viewport={"width": 1280, "height": 860})
+            art.request.post(f"{base}/api/auth/login", data={"username": "smoke_artist", "password": "artist-pass-1"}, headers=H)
+            drawn = art.request.post(f"{base}/api/fireworks", data={"name": "Smoke drawing", "pattern": "picture", "picture": [".11.", "1..1", ".11."]}, headers=H).json()
+            if drawn.get("review") != "pending":
+                problems.append(f"fireworks: a player's picture didn't wait for an admin ({drawn.get('review')})")
+            if any(x.get("id") == drawn.get("id") for x in pg.request.get(f"{base}/api/public/fireworks").json().get("custom", [])):
+                problems.append("fireworks: a picture waiting for an admin is in the show")
+            pg.goto(f"{base}/app#/fireworks"); pg.reload(); pg.wait_for_timeout(1200)
+            if not appear(pg, f'#fwe-review [data-rid="{drawn.get("id")}"]'):
+                problems.append("fireworks: admins don't see a picture waiting for approval")
+            else:
+                check(pg, "fireworks-waiting-for-approval")
+                pg.click(f'#fwe-review [data-rid="{drawn.get("id")}"] [data-r="ok"]'); pg.wait_for_timeout(900)
+                if not any(x.get("id") == drawn.get("id") for x in pg.request.get(f"{base}/api/public/fireworks").json().get("custom", [])):
+                    problems.append("fireworks: an approved picture didn't join the show")
+            art.close()
+            pg.request.delete(f"{base}/api/fireworks/{drawn.get('id')}", headers=H)
+            pg.request.delete(f"{base}/api/users/{pp.get('id')}", headers=H)
             for tab in ("colours", "sound", "look"):
                 pg.evaluate(f"ed.tab = '{tab}'")
                 pg.goto(f"{base}/app#/fireworks/{pic['id']}"); pg.wait_for_timeout(900)

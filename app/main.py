@@ -1242,6 +1242,8 @@ async def set_my_join_firework(request: Request):
     fid = str((await _body(request)).get("firework") or "")
     if fid and not fireworks.get(fid):
         raise HTTPException(404, "That firework doesn't exist any more")
+    if fid and not fireworks.approved(fireworks.get(fid)):
+        raise HTTPException(400, "That picture firework is still waiting for an admin to look at it")
     sigs = fwshow.signatures()
     for p in user.players:
         if fid:
@@ -1430,8 +1432,43 @@ async def public_upcoming():
 async def list_fireworks(request: Request):
     user = request.state.user
     names = await asyncio.to_thread(auth.shown_names)
+    # A picture waiting for an admin (or turned down) is only seen by its maker and the admins.
     return [{**d, "mine": d.get("author") == user.username, "can_edit": _can_edit(user, d),
-             "maker": names.get(str(d.get("author", "")).lower(), d.get("author", ""))} for d in fireworks.all_designs()]
+             "maker": names.get(str(d.get("author", "")).lower(), d.get("author", ""))} for d in fireworks.all_designs()
+            if fireworks.approved(d) or _can_edit(user, d)]
+
+
+@app.get("/api/fireworks/review")
+async def fireworks_to_review(request: Request):
+    """Picture fireworks waiting for an admin to look at them."""
+    user = request.state.user
+    if user.role != "admin":
+        raise HTTPException(403, "Only admins can approve fireworks")
+    names = await asyncio.to_thread(auth.shown_names)
+    return [{**d, "maker": names.get(str(d.get("author", "")).lower(), d.get("author", ""))} for d in fireworks.waiting()]
+
+
+@app.post("/api/fireworks/{fid}/review")
+async def review_firework(fid: str, request: Request):
+    """Approve a picture firework (it goes live), or not, with an optional reason its maker sees."""
+    user = request.state.user
+    if user.role != "admin":
+        raise HTTPException(403, "Only admins can approve fireworks")
+    body = await _body(request)
+    d = fireworks.review(fid, bool(body.get("approve")), str(body.get("reason") or ""), user.username)
+    if not d:
+        raise HTTPException(404, "Firework not found")
+    auth.audit(user, None, "firework_review", f"{d.get('name', '')}: {'approved' if body.get('approve') else 'not approved'}")
+    return d
+
+
+async def _tell_admins_picture(request: Request, d: dict, user) -> None:
+    if d.get("review") != "pending":
+        return
+    who = auth.shown_names().get(user.username.lower(), user.username)
+    await notify.send("Firework to look at", f"{who} drew a picture firework, \"{d.get('name') or 'Firework'}\". "
+                      "It's hidden until an admin approves it (Fireworks → Waiting for approval).", "art",
+                      click=f"{_public_base(request)}/app#/fireworks")
 
 
 @app.get("/api/sounds")
@@ -1502,10 +1539,11 @@ async def create_firework(request: Request):
     try:
         admin = user.role == "admin"
         d = fireworks.create(await _body(request), user.username, None if admin else fireworks.per_person(),
-                             None if admin else fireworks.show_per_person())
+                             None if admin else fireworks.show_per_person(), trusted=admin)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     auth.audit(user, None, "firework_create", d["name"])
+    await _tell_admins_picture(request, d, user)
     return d
 
 
@@ -1529,7 +1567,9 @@ async def update_firework(fid: str, request: Request):
         body.pop("weight", None)                  # how often it shows is the admins' call
     elif "weight" in body:
         body["weight"] = _weight(body["weight"])
-    saved = fireworks.update(fid, body)
+    saved = fireworks.update(fid, body, trusted=user.role == "admin")
+    if saved and d.get("review") != "pending":
+        await _tell_admins_picture(request, saved, user)
     return {**saved, "show_full": True} if full and saved else saved
 
 

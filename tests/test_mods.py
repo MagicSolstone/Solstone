@@ -160,6 +160,13 @@ def test_custom_firework_editor(client, viewer, anon):
     assert r.status_code == 200, r.text
     fid = r.json()["id"]
     assert r.json()["author"] == "kiddo" and r.json()["in_show"] is True
+    # ...a picture waits for an admin first: hidden from the show, from other people and from the review for non-admins
+    assert r.json()["review"] == "pending"
+    assert all(x["id"] != fid for x in anon.get("/api/public/fireworks").json()["custom"])
+    assert viewer.get("/api/fireworks/review").status_code == 403
+    assert viewer.post(f"/api/fireworks/{fid}/review", json={"approve": True}).status_code == 403
+    assert [x["id"] for x in client.get("/api/fireworks/review").json()] == [fid]
+    assert client.post(f"/api/fireworks/{fid}/review", json={"approve": True}).status_code == 200
     pub = anon.get("/api/public/fireworks").json()["custom"]
     assert any(x["id"] == fid and x["picture"] == [".0.", "000"] for x in pub)
     assert anon.post("/api/fireworks", json={}).status_code == 401

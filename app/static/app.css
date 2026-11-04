@@ -2506,3 +2506,46 @@ body.ui-hidden .manage-sub { display: none; }
 .did-more summary { cursor: pointer; color: var(--muted); font-size: .8rem; }
 .did-slots { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
 .did-slots li { display: grid; grid-template-columns: 4.5em 1fr; gap: 6px; align-items: start; }
+
+/* ------------------------------------------------------------ firework editor: step by step */
+.fwe-steps { list-style: none; margin: 0; padding: 6px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; position: sticky; top: 0; z-index: 4;
+  border-radius: 12px; background: rgba(16, 20, 32, .8); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--glass-edge); }
+.fwe-steps button { width: 100%; min-height: 64px; display: grid; justify-items: center; align-content: center; gap: 2px; padding: 6px 4px; border: 1px solid transparent; border-radius: 10px;
+  background: none; color: var(--muted); font-weight: 700; font-size: .9rem; cursor: pointer; text-align: center; }
+.fwe-steps button:hover { background: rgba(255,255,255,.05); }
+.fwe-steps button[aria-current="step"] { background: rgba(242,193,78,.16); color: var(--bone); border-color: var(--gold); }
+.fwe-step-n { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--well); border: 1px solid var(--line); font-size: .8rem; color: var(--bone); }
+.fwe-steps button[aria-current="step"] .fwe-step-n { background: var(--gold); color: #1a1406; border-color: var(--gold); }
+.fwe-steps button.done .fwe-step-n { background: rgba(98, 200, 120, .2); border-color: rgba(98, 200, 120, .7); color: #9be3ad; }
+.fwe-step-t { white-space: nowrap; }
+.fwe-step-v { font-weight: 600; font-size: .75rem; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fwe-step-v .fwe-dots { margin: 0; justify-content: center; }
+.fwe-step h3 { display: flex; align-items: center; gap: 8px; font-size: 1.25rem; }
+.fwe-step h3 .fwe-step-n { width: 30px; height: 30px; font-size: .95rem; background: var(--gold); color: #1a1406; border-color: var(--gold); }
+.fwe-ask { font-weight: 700; font-size: 1.02rem; margin: 0 0 10px; }
+.fwe-launches button { min-height: 92px; font-size: .95rem; }
+.fwe-launches button span { font-size: 2rem; }
+.fwe-part { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.fwe-part:first-of-type { margin-top: 4px; padding-top: 0; border-top: 0; }
+.fwe-part h4 { margin: 0 0 10px; font-size: 1rem; }
+.fwe-part .fwe-part { border-top: 0; padding-top: 0; margin-top: 0; margin-bottom: 12px; }
+.fwe-twinkles { margin-top: 10px; }
+.fwe-more { margin-top: 14px; border: 1px solid var(--line); border-radius: var(--radius-m); padding: 8px 12px; background: var(--well); }
+.fwe-more > summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
+.fwe-more[open] > summary { margin-bottom: 10px; }
+.fwe-nextbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.fwe-next { font-size: 1rem; padding: 10px 18px; }
+.fwe-note { border: 1px solid rgba(242,193,78,.4); background: rgba(242,193,78,.08); border-radius: var(--radius-m); padding: 8px 12px; margin: 12px 0 0; font-size: .9rem; }
+.fwe-chip { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: .78rem; font-weight: 700; width: fit-content; }
+.fwe-chip.wait { background: rgba(242,193,78,.15); color: var(--gold); }
+.fwe-chip.no { background: rgba(255, 110, 90, .15); color: #ff9c8c; }
+.fwe-review { border-color: rgba(242,193,78,.5); margin-bottom: 14px; }
+.fwe-review h2 { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.fwe-review > p { margin-bottom: 10px; }
+@media (max-width: 1100px) { .fwe-steps { position: static; } }
+@media (max-width: 560px) {
+  .fwe-steps { gap: 2px; padding: 4px; }
+  .fwe-steps button { min-height: 58px; font-size: .78rem; padding: 4px 2px; }
+  .fwe-step-v { display: none; }
+  .fwe-step-t { white-space: normal; line-height: 1.15; }
+}

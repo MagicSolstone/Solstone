@@ -233,8 +233,49 @@ def all_designs() -> list[dict]:
     return [{**d, **sanitize(d), "weight": d.get("weight", 1)} for d in _load()]
 
 
+def approved(d: dict | None) -> bool:
+    """Picture fireworks drawn by players wait for an admin before anyone else sees them (or the sky shows them).
+    `review` is "pending" or "declined" until then; everything else (and every older firework) is fine."""
+    return bool(d) and d.get("review") not in ("pending", "declined")
+
+
 def in_show() -> list[dict]:
-    return [{"id": d["id"], "author": d.get("author", ""), "weight": d.get("weight", 1), **sanitize(d)} for d in _load() if d.get("in_show")]
+    return [{"id": d["id"], "author": d.get("author", ""), "weight": d.get("weight", 1), **sanitize(d)}
+            for d in _load() if d.get("in_show") and approved(d)]
+
+
+def get_live(fid: str) -> dict | None:
+    """A firework that can go off for everyone: one that exists and isn't waiting for (or turned down by) an admin."""
+    d = get(fid)
+    return d if approved(d) else None
+
+
+def waiting() -> list[dict]:
+    """Picture fireworks waiting for an admin, oldest first."""
+    return sorted((d for d in all_designs() if d.get("review") == "pending"), key=lambda d: d.get("updated", 0))
+
+
+def review(fid: str, ok: bool, reason: str = "", by: str = "") -> dict | None:
+    """An admin's answer: approved (it goes live) or not, with an optional reason the maker sees."""
+    with _lock:
+        items = _load()
+        for i, d in enumerate(items):
+            if d.get("id") == fid:
+                d = {k: v for k, v in d.items() if k not in ("review", "review_reason", "review_by")}
+                if not ok:
+                    d.update(review="declined", review_reason=str(reason or "").strip()[:200], review_by=by)
+                items[i] = d
+                _save(items)
+                return d
+        return None
+
+
+def _needs_look(old: dict | None, new: dict) -> bool:
+    """Is there a (new or changed) picture an admin hasn't seen?"""
+    if new.get("pattern") != "picture":
+        return False
+    return old is None or old.get("pattern") != "picture" or old.get("picture") != new.get("picture") \
+        or old.get("review") in ("pending", "declined")
 
 
 def per_person() -> int:
@@ -269,9 +310,10 @@ def count_by(author: str) -> int:
     return sum(1 for d in _load() if d.get("author") == author)
 
 
-def create(design: dict, author: str, limit: int | None = None, show_limit: int | None = None) -> dict:
+def create(design: dict, author: str, limit: int | None = None, show_limit: int | None = None, trusted: bool = False) -> dict:
     """`limit`: how many this person may keep; `show_limit`: how many of theirs can be in the show (None: no
-    limit, for admins). Over the show limit, it's saved but kept out of the show (show_full says so)."""
+    limit, for admins). Over the show limit, it's saved but kept out of the show (show_full says so).
+    `trusted`: an admin's, so a picture doesn't wait for anyone."""
     with _lock:
         items = _load()
         if len(items) >= MAX_DESIGNS:
@@ -282,6 +324,8 @@ def create(design: dict, author: str, limit: int | None = None, show_limit: int 
         full = bool(want and show_limit and sum(1 for d in items if d.get("author") == author and d.get("in_show")) >= show_limit)
         d = {"id": secrets.token_hex(6), **sanitize(design), "author": author,
              "in_show": want and not full, "created": time.time(), "updated": time.time()}
+        if not trusted and _needs_look(None, d):
+            d["review"] = "pending"
         items.append(d)
         _save(items)
         return {**d, "show_full": True} if full else d
@@ -291,12 +335,21 @@ def get(fid: str) -> dict | None:
     return next((d for d in _load() if d.get("id") == fid), None)
 
 
-def update(fid: str, design: dict) -> dict | None:
+def update(fid: str, design: dict, trusted: bool = False) -> dict | None:
+    """`trusted`: an admin saving it, so a picture they've looked at is fine (it doesn't wait)."""
     with _lock:
         items = _load()
         for i, d in enumerate(items):
             if d.get("id") == fid:
+                design = {k: v for k, v in design.items() if k not in ("review", "review_reason", "review_by")}
                 merged = {**d, **sanitize({**d, **design}), "updated": time.time()}
+                full_save = bool(set(design) - {"in_show", "weight"})
+                if merged.get("pattern") != "picture" or (trusted and full_save):
+                    for k in ("review", "review_reason", "review_by"):
+                        merged.pop(k, None)
+                elif full_save and _needs_look(d, merged):
+                    merged["review"] = "pending"
+                    merged.pop("review_reason", None)
                 if "in_show" in design:
                     merged["in_show"] = bool(design["in_show"])
                 if "weight" in design:
