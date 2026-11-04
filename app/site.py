@@ -236,6 +236,7 @@ def mark_let_in(player: str, sid: str) -> None:
     for r in reqs:
         if r.get("player", "").lower() == player.lower() and sid not in r.setdefault("done", []):
             r["done"].append(sid)
+            r["let_in_at"] = time.time()
     settings_store.save_section("join_requests", reqs)
 
 

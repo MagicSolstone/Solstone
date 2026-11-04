@@ -2402,8 +2402,18 @@ async def whitelist_overview(request: Request):
             e = blocked.setdefault(b["name"].lower(), {"name": b["name"], "bedrock": b["bedrock"], "ts": b["ts"], "servers": []})
             e["ts"] = max(e["ts"], b["ts"])
             e["servers"].append({"id": s.id, "name": s.display_name})
+    # answered lately: let in or denied, and whether they've seen it. Someone let in whose page hasn't checked back
+    # yet is still in the requests (it moves over when they look): shown here too, as not seen yet.
+    by_id = {s.id: s for s in servers}
+    let_in = []
+    for r in site.join_requests():
+        want = [x for x in (r.get("servers") or list(by_id)) if x in by_id]
+        if want and all(x in (r.get("done") or []) or S.whitelisted(by_id[x], None, r["player"]) for x in want):
+            let_in.append({"player": r["player"], "name": r.get("name"), "ts": r.get("ts"), "ts_in": r.get("let_in_at") or r.get("ts"),
+                           "denied": False, "reason": "", "seen": None})
+    answered = sorted(let_in + site.answered_lately(), key=lambda a: -(a.get("ts_in") or 0))[:20]
     return {"servers": out_servers, "requests": reqs, "blocked": sorted(blocked.values(), key=lambda b: -b["ts"]),
-            "answered": site.answered_lately()}
+            "answered": answered}
 
 
 @app.post("/api/whitelist/deny")
