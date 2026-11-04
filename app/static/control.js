@@ -477,6 +477,8 @@ async function viewAdmin(section = "users") {
         <button class="btn" id="ann-backfill" type="button" style="margin-top:8px">Read old logs again</button></div></section>
     <section class="section"><div class="section-head"><h2>Each server</h2></div>
       <div class="panel"><p>A server's own settings (its name, Private, the web map, bedtime) are on its page: open it from <b>Servers</b> and press ⚙.</p></div></section>
+    <section class="section"><div class="section-head"><h2>🌐 Website traffic</h2><span class="muted">What Solstone answered, who asked, and how quickly</span></div>
+      <div class="panel" id="traffic" style="max-width:860px"><p class="muted">Loading…</p></div></section>
     <section class="section"><div class="section-head"><h2>💾 Storage</h2><span class="muted">How much room Solstone takes, and what grows</span></div>
       <div class="panel" id="storage" style="max-width:720px"><p class="muted">Loading…</p></div></section>
     <section class="section"><div class="section-head"><h2>Solstone's own backups</h2><span class="muted">Accounts, settings, posts and history</span></div>
@@ -504,6 +506,47 @@ async function viewAdmin(section = "users") {
       <button class="btn sm" type="button" data-backup-now>Back up now</button>`;
   };
   selfBackups();
+  // website traffic: who asked (you, other admins, players, visitors), by hour, how quick, and the container's network
+  let trDays = 1, trWho = "all";
+  const traffic = async () => {
+    const box = $("#traffic");
+    if (!box) return;
+    const d = await api(`/api/traffic?days=${trDays}`).catch(() => null);
+    if (!d) { box.innerHTML = `<p class="muted">Couldn't load it.</p>`; return; }
+    const sz = (n) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(2)} GB` : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`);
+    const WHO = [["you", "You"], ["admins", "Other admins"], ["players", "Signed-in players"], ["visitors", "Visitors (not signed in)"]];
+    const tiles = WHO.map(([k, l]) => { const g = d.groups[k] || { requests: 0, bytes: 0 }; return `<button type="button" class="st-tile ${trWho === k ? "on" : ""}" data-trwho="${k}" aria-pressed="${trWho === k}">
+        <span class="st-tile-label">${l}</span><b>${g.requests.toLocaleString()}</b><small class="muted">requests · ${sz(g.bytes)} sent${k === "visitors" && d.visitors ? ` · about ${d.visitors} ${d.visitors === 1 ? "visitor" : "different visitors"}` : ""}</small></button>`; }).join("");
+    const vals = d.hours.map((h) => (trWho === "all" ? h.you + h.admins + h.players + h.visitors : h[trWho]));
+    const max = Math.max(1, ...vals), W = 760, H = 120, step = W / vals.length, bw = Math.max(1.5, step - 2);
+    const hr = (t) => new Date(t * 1000).toLocaleString([], d.days > 1 ? { weekday: "short", hour: "numeric" } : { hour: "numeric" });
+    const bars = vals.map((v, i) => { const h = (v / max) * (H - 18); return `<rect class="st-hit" x="${i * step}" y="0" width="${step}" height="${H - 16}" data-tip="${esc(`${hr(d.hours[i].hour)}: ${v.toLocaleString()} requests`)}"/>${v ? `<rect class="st-bar" x="${i * step + (step - bw) / 2}" y="${H - 16 - h}" width="${bw}" height="${h}" rx="${Math.min(3, bw / 2)}"/>` : ""}`; }).join("");
+    const every = Math.ceil(vals.length / 6);
+    const xl = d.hours.map((h, i) => (i % every === 0 ? `<text x="${i * step + step / 2}" y="${H - 2}" class="st-axis" text-anchor="middle">${esc(hr(h.hour))}</text>` : "")).join("");
+    const sp = d.speed, quick = sp.requests ? Math.round((sp.buckets[0] / sp.requests) * 100) : null;
+    const slow = sp.buckets[3];
+    const kinds = Object.entries(d.kinds).sort((a, b2) => b2[1] - a[1]).map(([k, n]) => `${({ pages: "pages", api: "data", map: "the map", files: "pictures and files" })[k] || k} ${n.toLocaleString()}`).join(" · ");
+    box.innerHTML = `<div class="st-filters"><div class="seg" role="group" aria-label="How long">${[[1, "Last 24 hours"], [7, "7 days"], [30, "30 days"]].map(([n, l]) => `<button type="button" data-trdays="${n}" aria-pressed="${trDays === n}">${l}</button>`).join("")}</div>
+        ${trWho !== "all" ? `<button type="button" class="btn sm" data-trwho="all">Show everyone</button>` : ""}</div>
+      <div class="st-tiles tr-tiles">${tiles}</div>
+      <div class="st-chart tr-chart" role="img" aria-label="Requests by hour"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${bars}${xl}</svg><div class="st-tip" hidden></div></div>
+      <p class="tr-speed">${sp.requests ? `<b>${quick}%</b> answered in under 0.1 s · on average <b>${sp.avg_ms} ms</b> · ${slow ? `<b class="wl-no">${slow} took over a second</b>` : "none took over a second"}` : "Nothing answered yet in this time."}</p>
+      ${kinds ? `<p class="muted small">What was asked for: ${esc(kinds)}</p>` : ""}
+      ${d.net.available ? `<p class="muted small">This container's whole network (the website, plus talking to the game, Crafty, Modrinth): <b>${sz(d.net.tx)}</b> sent, <b>${sz(d.net.rx)}</b> received.</p>` : ""}
+      <p class="muted small">No addresses are kept: visitors are counted with a scramble that changes every day. Cloudflare's dashboard shows what never reaches here (bots it blocks, countries, attacks).</p>`;
+    box.querySelectorAll("[data-trdays]").forEach((b) => b.addEventListener("click", () => { trDays = +b.dataset.trdays; traffic(); }));
+    box.querySelectorAll("[data-trwho]").forEach((b) => b.addEventListener("click", () => { trWho = trWho === b.dataset.trwho ? "all" : b.dataset.trwho; traffic(); }));
+    const chart = box.querySelector(".tr-chart"), tip = chart.querySelector(".st-tip");
+    chart.addEventListener("pointermove", (e) => {
+      const t = e.target.closest("[data-tip]");
+      if (!t) { tip.hidden = true; return; }
+      tip.textContent = t.dataset.tip; tip.hidden = false;
+      const r = chart.getBoundingClientRect();
+      tip.style.left = `${Math.min(Math.max(8, e.clientX - r.left - tip.offsetWidth / 2), r.width - tip.offsetWidth - 8)}px`;
+    });
+    chart.addEventListener("pointerleave", () => { tip.hidden = true; });
+  };
+  traffic();
   (async () => {
     const box = $("#storage");
     if (!box) return;

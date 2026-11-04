@@ -798,6 +798,11 @@ def _read_mod(jar: Path) -> dict:
     except Exception as e:
         info["error"] = str(e)
     info.setdefault("name", jar.stem)
+    # a development build says "2.12.1-SNAPSHOT" inside; its file name says which build ("Geyser-Fabric-2.12.1-b1288")
+    v = str(info.get("version") or "")
+    build = re.search(r"[-_.]b(\d+)(?=\D*$)", jar.stem)
+    if v.upper().endswith("-SNAPSHOT") and build:
+        info["version_shown"] = f"{v[:-9]} build {build.group(1)}"
     if not info.get("description"):
         key = str(info.get("id") or "").lower()
         info["description"] = KNOWN_MODS.get(key) or next((d for k, d in KNOWN_MODS.items() if jar.stem.lower().startswith(k + "-")), None)

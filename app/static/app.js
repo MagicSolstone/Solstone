@@ -1540,7 +1540,7 @@ async function viewMods(sid) {
   const s = await serverFrame(sid, "mods");
   const data = await api(`/api/servers/${sid}/mods`);
   const listHtml = `<div class="section-head"><h2>${data.mods.length} ${data.mods.length === 1 ? "mod" : "mods"}</h2><span class="muted">${esc(data.loader)}</span></div>` +
-    (data.mods.length ? `${isAdmin() ? `<div class="mod-updates" id="mod-updates"><span class="muted small">Checking Modrinth for updates…</span></div>` : ""}<div class="mods">${data.mods.map((m) => `<div class="mod" data-file="${esc(m.file)}"><div class="mn"><span>${esc(m.name)}</span><span class="mv">${esc(m.version || "")}</span></div>${m.description ? `<p>${esc(m.description)}</p>` : ""}</div>`).join("")}</div>`
+    (data.mods.length ? `${isAdmin() ? `<div class="mod-updates" id="mod-updates"><span class="muted small">Checking Modrinth for updates…</span></div>` : ""}<div class="mods">${data.mods.map((m) => `<div class="mod" data-file="${esc(m.file)}"><div class="mn"><span>${esc(m.name)}</span><span class="mv">${esc(m.version_shown || m.version || "")}</span></div>${m.description ? `<p>${esc(m.description)}</p>` : ""}</div>`).join("")}</div>`
       : `<div class="empty"><h3>No mods installed</h3><p>This server runs ${esc(data.loader)} without a mods folder.</p></div>`);
   if (!isAdmin() || !data.mods.length) { setView(serverHeader(s, "mods") + listHtml); wireHeader(s); return; }
   let pack = await api(`/api/servers/${encodeURIComponent(sid)}/modpack`).catch(() => null);

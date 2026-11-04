@@ -2491,3 +2491,6 @@ body.ui-hidden .manage-sub { display: none; }
 .wl-answered-btn b { color: #ffcf4f; font-weight: 700; }
 .wl-answered-list { max-height: 55vh; overflow-y: auto; margin: 10px 0; }
 .wl-ans-line { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin-top: 2px; }
+.tr-tiles { grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr)); }
+.tr-chart svg { height: 120px; }
+.tr-speed { margin: 4px 0 0; }

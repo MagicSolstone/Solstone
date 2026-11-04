@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, arena, fishpack, gamemsg, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap, xboxwatch, serverstats
+from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, arena, fishpack, gamemsg, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap, xboxwatch, serverstats, traffic
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -302,6 +302,16 @@ async def require_login(request: Request, call_next):
             response.headers["Cache-Control"] = "public, max-age=2592000"
         else:
             response.headers.setdefault("Cache-Control", "no-cache")
+    # counted for Manage → Solstone → Website traffic (who, what, how much, how quick): traffic.py
+    if not path.endswith(("/stream", "/sse")) and path != "/api/health":
+        try:
+            user = getattr(request.state, "user", None)
+            if user is None and not path.startswith("/api/") and request.cookies.get(auth.COOKIE):
+                user = await asyncio.to_thread(auth.user_from_request, request)
+            traffic.record(path, user, auth.client_ip(request), int(response.headers.get("content-length") or 0),
+                           int(request.headers.get("content-length") or 0), took)
+        except Exception:
+            log.debug("traffic count failed", exc_info=True)
     return response
 
 
@@ -2104,6 +2114,13 @@ async def get_player(sid: str, uuid: str):
 @app.get("/api/servers/{sid}/leaderboard")
 async def get_leaderboard(sid: str):
     return stacks.leaderboard(await S.leaderboard(await _server(sid)))
+
+
+@app.get("/api/traffic")
+async def traffic_report(request: Request, days: int = 1):
+    """Manage → Solstone: what the website answered, by who, by hour, how quick; and the container's own network."""
+    user = auth.require_admin(request)
+    return await asyncio.to_thread(traffic.report, user.username, max(1, min(30, days)))
 
 
 @app.get("/api/servers/{sid}/stats/history")

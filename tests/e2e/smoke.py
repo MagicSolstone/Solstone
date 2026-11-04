@@ -1201,6 +1201,14 @@ def main() -> int:
             if m.locator("#login-root:not([hidden])").count() or len(tries) < 2:
                 problems.append("app: after Solstone answered again it didn't sign back in")
             m.unroute("**/api/auth/me")
+            # Manage → Solstone: the website's own traffic, with everything this test asked for counted
+            pg.goto(f"{base}/app#/manage/servers"); pg.reload(); pg.wait_for_timeout(1500)
+            tr = pg.locator("#traffic").text_content() if pg.locator("#traffic").count() else ""
+            if pg.locator("#traffic .st-tile").count() != 4 or "answered in under 0.1 s" not in tr:
+                problems.append(f"manage: no website traffic panel (who asked, how quick): {tr[:120]!r}")
+            else:
+                print("TRAFFIC", " ".join(tr.split())[:400])
+            pg.locator("#traffic").scroll_into_view_if_needed(); check(pg, "manage-traffic")
             browser.close()
     except Exception:
         print("\napp log (the test stopped early):\n" + (root / "app.log").read_text()[-4000:])

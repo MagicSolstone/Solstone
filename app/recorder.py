@@ -16,7 +16,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import accounts, adventures, backups, board, challenges, db, eventgroups, fishing, fwshow, gamemsg, games, holidaygifts, kits, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome, xboxwatch, serverstats
+from . import accounts, adventures, backups, board, challenges, db, eventgroups, fishing, fwshow, gamemsg, games, holidaygifts, kits, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome, xboxwatch, serverstats, traffic
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -98,6 +98,7 @@ class Recorder:
                        asyncio.create_task(self._loop(self.tail_all, LOG_INTERVAL)),
                        asyncio.create_task(self._loop(self.prune, 6 * 3600)),
                        asyncio.create_task(self._loop(self.guard, GUARD_INTERVAL)),
+                       asyncio.create_task(self._loop(self.traffic_flush, 60)),
                        asyncio.create_task(self._loop(self.recaps, 3600)),
                        asyncio.create_task(self._loop(self.race_tick, 1)),
                        asyncio.create_task(self._loop(self.fish_poll, 3)),
@@ -210,6 +211,9 @@ class Recorder:
                         log.info("Filled in %d days of history for %s from old logs", n, srv.id)
             except Exception:
                 log.exception("recap failed for %s", srv.id)
+
+    async def traffic_flush(self) -> None:
+        await asyncio.to_thread(traffic.flush)        # the website's counts into the database (traffic.py)
 
     async def prune(self) -> None:
         for sid in list(S.registry.servers):           # each day's totals, kept for good, before the detail goes
