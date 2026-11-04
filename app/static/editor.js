@@ -409,7 +409,7 @@ function renderControls() {
     ? `<p class="fwe-note">🛡️ An admin looks at every picture before it goes in the show or anyone else can see it. You can still watch it here as much as you like.</p>` : "";
   const second = sliders(["second", "second_delay", "second_size"]) + (d.second > 0 ? `<label class="fwe-select">…shape <select class="input sm" id="fwe-second-pattern">${FWE_PATTERNS.filter(([k]) => k !== "picture").map(([k, l, ic]) => `<option value="${k}" ${(d.second_pattern || "ball") === k ? "selected" : ""}>${ic} ${l}</option>`).join("")}</select></label>` : "");
   const panels = {
-    launch: `<p class="fwe-ask">How does it go off?</p>
+    launch: `<p class="fwe-ask">How does it start?</p>
       <div class="fwe-patterns fwe-launches">${FWE_LAUNCHES.map(([k, l, ic]) => `<button type="button" data-launch="${k}" aria-pressed="${(d.launch || "rocket") === k}"><span>${ic}</span>${l}</button>`).join("")}</div>
       ${sliders(["height", "rockets"])}
       ${more(`${isRocket(d) ? `<div class="fwe-row"><span>Rocket</span><div class="seg fwe-styles" role="group" aria-label="Rocket style">${FWE_STYLES.map(([k, l]) => `<button type="button" data-style="${k}" aria-pressed="${(d.rocket_style || "normal") === k}">${l}</button>`).join("")}</div></div>` : ""}

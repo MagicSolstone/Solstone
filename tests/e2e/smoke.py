@@ -777,6 +777,18 @@ def main() -> int:
             if not anon.locator(".hp-body img.post-img").count():
                 problems.append("post: its picture isn't shown")
             check(anon, "site-post-picture")
+            # tap a post's picture: it opens big, zooms, and closes
+            anon.locator(".hp-body img.post-img").first.click(); anon.wait_for_timeout(300)
+            if not anon.locator(".picv img").count():
+                problems.append("post: tapping a picture doesn't open it big")
+            else:
+                anon.click('.picv [data-z="1"]'); anon.wait_for_timeout(150)
+                if not anon.locator(".picv.zoomed").count():
+                    problems.append("post: the big picture doesn't zoom in")
+                check(anon, "site-post-picture-big")
+                anon.keyboard.press("Escape"); anon.wait_for_timeout(150)
+                if anon.locator(".picv").count():
+                    problems.append("post: Esc doesn't close the big picture")
             anon.goto(f"{base}/"); anon.wait_for_timeout(1000)
             if not anon.locator(".hp-post .hp-post-pic").count():
                 problems.append("home: a post's picture isn't on its card")

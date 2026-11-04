@@ -17,7 +17,7 @@ function inline(s) {
     // pictures uploaded in Website (only those: nothing loaded from elsewhere)
     // ![words|small](…): a size after the words (small, medium, large); none is full width
     .replace(/!\[([^\]|]*)(?:\|(small|medium|large))?\]\((\/api\/public\/images\/[0-9a-f]{16}\.(?:png|jpg|gif|webp))\)/g,
-      (_, alt, size, src) => `<img class="post-img${size ? ` post-img-${size}` : ""}" src="${src}" alt="${alt}" loading="lazy">`)
+      (_, alt, size, src) => `<img class="post-img${size ? ` post-img-${size}` : ""}" src="${src}" alt="${alt}" loading="lazy" tabindex="0" title="Tap to see it big">`)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
     .replace(/(^|[\s(>])[*_]([^*_]+)[*_](?=[\s).,!?:;<]|$)/g, "$1<i>$2</i>")
@@ -84,3 +84,58 @@ function upEventHtml(it, signedIn = false) {
     ${who.length ? `<p class="small up-who">🙋 ${esc(who.join(", "))}</p>` : ""}
   </li>`;
 }
+
+// Tap a picture in a post to see it big: it fills the screen, and can be zoomed (pinch, the mouse wheel,
+// double-click / double-tap, or the + and − buttons) and dragged around, for pictures with small writing.
+function openPicture(img) {
+  const box = document.createElement("div");
+  box.className = "picv";
+  box.setAttribute("role", "dialog");
+  box.setAttribute("aria-modal", "true");
+  box.setAttribute("aria-label", img.alt || "Picture");
+  box.innerHTML = `<div class="picv-scroll"><img alt=""></div>
+    <div class="picv-bar"><button type="button" data-z="-1" aria-label="Zoom out">−</button><button type="button" data-z="1" aria-label="Zoom in">+</button>
+    <button type="button" data-close aria-label="Close">✕</button></div>`;
+  const pic = box.querySelector("img"), scroll = box.querySelector(".picv-scroll");
+  pic.src = img.currentSrc || img.src;
+  pic.alt = img.alt || "";
+  let z = 1;
+  const zoom = (to, cx, cy) => {
+    const old = z;
+    z = Math.max(1, Math.min(6, to));
+    box.classList.toggle("zoomed", z > 1);
+    const r = scroll.getBoundingClientRect(), fx = cx ?? r.width / 2, fy = cy ?? r.height / 2;
+    const px = (scroll.scrollLeft + fx) / old, py = (scroll.scrollTop + fy) / old;   // keep the spot under the pointer still
+    const fit = Math.min(r.width / pic.naturalWidth, r.height / pic.naturalHeight, 1);
+    pic.style.width = z > 1 ? `${pic.naturalWidth * fit * z}px` : "";
+    scroll.scrollLeft = px * z - fx; scroll.scrollTop = py * z - fy;
+  };
+  const close = () => { box.remove(); document.removeEventListener("keydown", key); img.focus?.(); };
+  const key = (e) => { if (e.key === "Escape") close(); else if (e.key === "+" || e.key === "=") zoom(z * 1.5); else if (e.key === "-") zoom(z / 1.5); };
+  box.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (b?.dataset.z) zoom(z * (b.dataset.z > 0 ? 1.5 : 1 / 1.5));
+    else if (b?.hasAttribute("data-close") || (e.target === scroll && z === 1)) close();
+  });
+  pic.addEventListener("dblclick", (e) => { const r = scroll.getBoundingClientRect(); zoom(z > 1 ? 1 : 2.5, e.clientX - r.left, e.clientY - r.top); });
+  scroll.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const r = scroll.getBoundingClientRect();
+    zoom(z * (e.deltaY < 0 ? 1.2 : 1 / 1.2), e.clientX - r.left, e.clientY - r.top);
+  }, { passive: false });
+  // drag to look around when zoomed in with a mouse (fingers scroll on their own)
+  let drag = null;
+  scroll.addEventListener("pointerdown", (e) => { if (z > 1 && e.pointerType === "mouse") { drag = [e.clientX, e.clientY, scroll.scrollLeft, scroll.scrollTop]; e.preventDefault(); } });
+  addEventListener("pointermove", (e) => { if (drag && box.isConnected) { scroll.scrollLeft = drag[2] - (e.clientX - drag[0]); scroll.scrollTop = drag[3] - (e.clientY - drag[1]); } });
+  addEventListener("pointerup", () => { drag = null; });
+  document.addEventListener("keydown", key);
+  document.body.appendChild(box);
+  box.querySelector("[data-close]").focus();
+}
+document.addEventListener("click", (e) => {
+  const img = e.target.closest?.(".post-img");
+  if (img && !img.closest(".picv, a")) openPicture(img);
+});
+document.addEventListener("keydown", (e) => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.classList?.contains("post-img")) { e.preventDefault(); openPicture(e.target); }
+});
