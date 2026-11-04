@@ -323,6 +323,11 @@ async def _bedrock_whitelist(srv: S.Server, name: str, verb: str) -> dict:
         tmp.write_text(json.dumps(rows, indent=2))
         tmp.replace(path)
     except OSError as e:
+        tmp.unlink(missing_ok=True)
+        if e.errno in (13, 30):                   # read-only (the container's folder mapping), or no permission
+            return {"ok": False, "output": "Solstone can only read this server's folder, so it can't add a Bedrock player there. In the "
+                                           f"Solstone container's settings, set the folder mapped to {srv.dir.parent} to Read/Write (or allow "
+                                           "Solstone's user to write to it), then try again"}
         return {"ok": False, "output": f"The server's whitelist.json couldn't be written ({e})"}
     reload = await run(srv, "whitelist reload", wait=10)
     return {"ok": True, "output": f"{'Added' if verb == 'add' else 'Removed'} {name} {'to' if verb == 'add' else 'from'} the whitelist"

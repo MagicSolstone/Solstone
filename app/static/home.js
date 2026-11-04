@@ -365,9 +365,12 @@ async function showAskStatus() {
   let d = null;
   try {
     const r = await fetch("/api/public/join-request/status", { method: "POST", headers: { "Content-Type": "application/json", "X-Solstone": "1" }, body: JSON.stringify({ token: t.token }) });
-    d = r.ok ? await r.json() : null;
-  } catch { askTimer = setTimeout(showAskStatus, 30000); return; }
-  if (!d || d.state === "unknown") { forgetAsk(); return; }
+    // Solstone restarting (an error page from the proxy, or no answer at all): try again shortly; the request is safe
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    d = await r.json();
+  } catch { askTimer = setTimeout(showAskStatus, 20000); return; }
+  if (!d) { askTimer = setTimeout(showAskStatus, 20000); return; }
+  if (d.state === "unknown") { forgetAsk(); return; }              // only when Solstone itself says it doesn't know it
   stepState(d);
   const box = $("#step-ask") ? null : $("#ask-status");
   if (box) {

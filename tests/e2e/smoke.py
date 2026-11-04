@@ -758,6 +758,12 @@ def main() -> int:
                 # asked again, and an admin says no: off the list, and their page says so
                 t = anon.request.post(f"{base}/api/public/join-request", data={"rules": True, "player": "Nope_Kid"}, headers={"X-Solstone": "1"}).json()["token"]
                 anon.evaluate("t => localStorage.setItem('solstone-ask', JSON.stringify({token: t, player: 'Nope_Kid', at: Date.now()}))", t)
+                # Solstone restarting while they wait: the proxy's error page mustn't make the page forget the request
+                anon.route("**/api/public/join-request/status", lambda route: route.fulfill(status=502, body="Bad gateway"))
+                anon.reload(); anon.wait_for_timeout(1200)
+                anon.unroute("**/api/public/join-request/status")
+                if not anon.evaluate("() => localStorage.getItem('solstone-ask')"):
+                    problems.append("home: Solstone restarting (an error page) made a waiting request forget itself")
                 pg.goto(f"{base}/app#/manage/whitelist"); pg.wait_for_timeout(1500)
                 if not pg.locator('.wl-req [data-deny="Nope_Kid"]').count():
                     problems.append("whitelist page: no Deny button on a request")
