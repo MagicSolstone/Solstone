@@ -1,3 +1,20 @@
+# Solstone 1.15.16
+
+- **Fishing is only for servers with the Tide mod.** On a vanilla server fishing stays plain vanilla, and Solstone leaves it alone:
+  - **No Fishing tab**, and no fishing on players' pages.
+  - **No fishing leaderboards:** Fish caught, Fishing level and Heaviest fish are gone, along with the Fishing group.
+  - **No fishing contests** (Fishing contest, Fishing tournament, Biggest catch). Any already scheduled, or in an event night, are skipped when their time comes, and nobody is teleported.
+  - **The Solstone data pack (version 14) is just for archery and spleef.** It no longer weighs or tracks fish. Press **Install / Update** on the Contests page (or download it again) to swap in the new version.
+  - With Tide installed, everything fishing works as before.
+- **Bigger mob arena waves:** up to **100 of one kind** (70 baby zombies with spears, say) and **150 monsters in a wave**. A wave over the limit now says so, instead of quietly being left out.
+- **More arrows in the fighting kit** (mob arena, King of the Hill): up to **256**, or tick **♾️ Arrows never run out** for an Infinity bow and one arrow, like the archery games. Both are taken back afterwards as usual.
+- **Storage page loads straight away:** Manage → Solstone → Storage keeps its last measurement for 10 minutes and re-measures in the background. Measuring every row of a big database took about 4 seconds. It shows when it was measured.
+- **Fixed: games that keep your things safe could duplicate them, and end early** (mob arena, King of the Hill, elytra races).
+  - **What went wrong:** the server got busy (a wave of monsters spawning), so one "where is everyone" check came back empty. That counted as everyone leaving, so a "together" game ended on the spot and started handing things back mid-game. Handing back a second time then gave the hotbar's items again, into free slots, and the leftover copy blocked the next game.
+  - **Now:** leaving means really not on the server, two checks in a row. Nothing is handed back while someone's on the death screen. A second hand-back notices they already have their things and just clears the spare copy.
+  - **Leftovers from before:** on the Games page, **🔒 Things kept safe** now has **Throw away X's** for leftover spare copies of things the player already has.
+  - **The kit never outlives the game.** When a game ends, its gear (armour, shield, sword, arrows) is taken from everyone, then once more after their own things are back.
+
 # Solstone 1.15.15
 
 - **Fireworks are gentler on the eyes:** made safer for people sensitive to flashing lights. This applies to every firework, including ones already saved.
