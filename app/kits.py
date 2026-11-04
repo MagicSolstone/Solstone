@@ -5,12 +5,11 @@ enchantments, names and all, into two barrels of their own in a vault sealed in 
 under spawn. The copy is checked against what they had, item for item; only then is the player cleared and given the
 kit. A player whose things couldn't be copied safely isn't cleared: they watch that game instead.
 
-Afterwards only the kit is taken away (every kit item is marked as the game's). Nothing else of theirs is ever
-cleared: anything else they're carrying by then (picked up in the game, or gathered while Solstone was down and
-couldn't give their things back) is first copied, and checked, into a second pair of barrels, their "pocket". Then
-their own things are copied back to the same slots, checked again, and only then is that barrel emptied. Last, the
-pocket's things go into their empty slots; whatever doesn't fit waits in the pocket, they're told to make room, and
-it arrives by itself when they do. Nothing is ever dropped on the ground.
+Afterwards everything they're carrying is cleared (the kit, and anything picked up in the game: none of it is theirs),
+and their own things are copied back to the same slots from the vault, checked, and only then is the vault emptied.
+The vault's copy is the one source of truth until then: a give-back that's tried again either finds their things
+already on them (and just empties the vault) or clears them and copies everything over again. Nothing is ever handed
+out on top of what they have, so nothing can come back twice.
 
 They're put back where they were, in the game mode they were in, unless the vault was kept from before Solstone last
 started (Solstone was down: they may have gone somewhere since, so they stay put).
@@ -227,6 +226,11 @@ async def stash(srv, players: dict[str, str], game: str) -> list[str]:
         _save(d)
         for name, uuid in players.items():
             key = f"{srv.id}:{uuid}"
+            old = d["stash"].get(key)
+            if old and old.get("restored"):             # their things are back: only an old pocket was left (emptied)
+                await _drop_old_pocket(srv, d, old, v)
+                d["stash"].pop(key, None)
+                _save(d)
             if key in d["stash"]:                       # already has things in the vault (an earlier game): leave them be
                 log.warning("%s already has things kept safe; not stashing again", name)
                 continue
@@ -267,20 +271,10 @@ async def _empty(srv, spots) -> None:
         await _rcon(srv, f"execute in {DIM} run data merge block {x} {y} {z} {{Items:[]}}")
 
 
-async def _copy_out(srv, uuid: str, spots) -> None:
-    """Every slot of theirs into this pair of barrels (empty ones too, so the barrels match them exactly)."""
-    for (x, y, z) in spots:
-        await _rcon(srv, f"execute in {DIM} run setblock {x} {y} {z} minecraft:barrel")
-    await _empty(srv, spots)
-    for src, which, i in SLOTS:
-        x, y, z = spots[which]
-        await _rcon(srv, f"execute in {DIM} run item replace block {x} {y} {z} container.{i} from entity {uuid} {src}")
-
-
 async def give_back(srv, uuid: str, move: bool = True) -> bool:
-    """Give one player their things back, exactly, and put them back where they were. Only the kit is taken away:
-    anything else they're carrying is kept (see the top). False if they're not online (it's tried again when they
-    are) or it didn't check out (everything stays where it is, safe)."""
+    """Give one player their things back, exactly, and put them back where they were: everything else they're
+    carrying (the kit, what they picked up) is cleared first (see the top). False if they're not online or are on
+    the death screen (it's tried again when they're back) or it didn't check out (the vault's copy stays, safe)."""
     async with _lock:
         d = _load()
         key = f"{srv.id}:{uuid}"
@@ -293,11 +287,11 @@ async def give_back(srv, uuid: str, move: bool = True) -> bool:
             return False                                 # on the death screen: tried again once they've respawned
         v = await _vault(srv, d)
         try:
-            if not s.get("restored"):
-                if not await _restore(srv, d, s, v, move):
-                    return False
-            await _pocket_out(srv, d, s, v)
-            await strip_kit(srv, uuid)                         # and never a kit item left behind with their things
+            if not s.get("restored") and not await _restore(srv, d, s, v, move):
+                return False
+            await _drop_old_pocket(srv, d, s, v)
+            d["stash"].pop(key, None)
+            _save(d)
             return True
         finally:
             if not any(k.startswith(f"{srv.id}:") for k in d["stash"]):
@@ -308,39 +302,33 @@ async def _restore(srv, d: dict, s: dict, v: dict, move: bool) -> bool:
     uuid = s["uuid"]
     a, b = _barrels(v, s["slot"])
     kept = await _barrel_items(srv, (a, b))
-    await strip_kit(srv, uuid)                           # the game's kit: nothing else
     now = await _player_items(srv, uuid)
     if now is None:
         return False
-    # (exactly theirs, or theirs plus a few things picked up: at least 3 kinds of item, so a stray block picked up in
-    # a game is never mistaken for someone's whole inventory)
-    if sum(kept[0].values()) and (now == kept or (s.get("landed") and _has_all(now, kept))
-                                  or (len(kept[0]) >= 3 and _has_all(now, kept))):
-        # Their own things are on them already (an earlier give-back landed but its check didn't pass): the copy in
-        # the vault is only a spare now. Emptied, not handed over again: handing it over again duplicated things.
+    if s.get("landed") and sum(kept[0].values()) and _has_all(now, kept):
+        # An earlier try copied their things over (its check didn't pass): they have them. The vault's copy is only a
+        # spare now: emptied, never handed over again. (Anything else on them now is theirs since: left alone.)
         log.warning("%s already has their things back; emptying the spare copy in the vault", s["name"])
+        await strip_kit(srv, uuid)
         await _empty(srv, (a, b))
         s["restored"] = True
         _save(d)
         await _rcon(srv, f"gamemode {s.get('gm') or 'survival'} {uuid}")
         return True
-    if sum(now[0].values()):                             # carrying something: into their pocket first, checked
-        if s.get("pocket") is not None:
-            log.error("%s is carrying things and already has a pocket; leaving everything as it is", s["name"])
+    if s.get("at", 0) < _STARTED:
+        # Solstone was down since the game: they may have played on and gathered real things. Nothing on them is
+        # touched: their things come back once their inventory is empty (asked once; tried again every so often).
+        await strip_kit(srv, uuid)
+        now = await _player_items(srv, uuid)
+        if now is None or sum(now[0].values()):
+            if not s.get("told"):
+                s["told"] = True
+                _save(d)
+                await _rcon(srv, f"tellraw {uuid} " + _msg("Your things from the last game are kept safe. Empty your inventory "
+                                                           "(put everything in a chest) and they'll come straight back."))
             return False
-        slot = _free_slot(d, srv.id)
-        if slot is None:
-            log.error("no room in the vault for %s's pocket; leaving everything as it is", s["name"])
-            return False
-        pocket = _barrels(v, slot)
-        await _copy_out(srv, uuid, pocket)
-        if await _barrel_items(srv, pocket) != now or await _player_items(srv, uuid) != now:
-            log.error("couldn't keep what %s is carrying safely; leaving everything as it is", s["name"])
-            await _empty(srv, pocket)
-            return False
-        s["pocket"] = slot
-        _save(d)                                         # written down before anything of theirs is touched
-    await _rcon(srv, f"clear {uuid}")                    # (only what's now safe in the pocket, or nothing)
+    # Everything on them goes: the kit, and anything picked up in the game. Their own things are all in the vault.
+    await _rcon(srv, f"clear {uuid}")
     s["landed"] = True                                   # written down first: a retry knows their things went over
     _save(d)
     for src, which, i in SLOTS:
@@ -366,45 +354,13 @@ async def _restore(srv, d: dict, s: dict, v: dict, move: bool) -> bool:
     return True
 
 
-async def _pocket_out(srv, d: dict, s: dict, v: dict) -> None:
-    """What they were carrying, into their empty slots. What doesn't fit waits; they're told once."""
-    key, uuid = f"{srv.id}:{s['uuid']}", s["uuid"]
+async def _drop_old_pocket(srv, d: dict, s: dict, v: dict) -> None:
+    """Before 1.15.18, things someone was carrying at the end went into a "pocket" handed out later; earlier bugs
+    put their own things in it, so it handed out copies. Any old pocket is emptied, not handed out."""
     if s.get("pocket") is not None:
-        spots = _barrels(v, s["pocket"])
-        inv = await _rcon(srv, f"data get entity {uuid} Inventory")
-        if "has the following" not in inv:
-            return
-        used = {n for n in (int(x) for x in _SLOT.findall(inv.split("data:", 1)[-1])) if 0 <= n < 36}
-        free = [n for n in range(36) if n not in used]
-        left = 0
-        for spot in spots:
-            x, y, z = spot
-            listing = await _rcon(srv, f"execute in {DIM} run data get block {x} {y} {z} Items")
-            for item in _top_level(listing.split("data:", 1)[-1]):          # kit things never come back from here
-                m = _SLOT.search(item)
-                if m and KIT_TAG in item:
-                    await _rcon(srv, f"execute in {DIM} run item replace block {x} {y} {z} container.{m.group(1)} with minecraft:air")
-            for i in sorted({int(n) for n in _SLOT.findall(await _rcon(srv, f"execute in {DIM} run data get block {x} {y} {z} Items"))}):
-                if not free:
-                    left += 1
-                    continue
-                to = free.pop(0)
-                await _rcon(srv, f"execute in {DIM} run item replace entity {uuid} container.{to} from block {x} {y} {z} container.{i}")
-                got = await _rcon(srv, f"data get entity {uuid} Inventory")
-                if to in {int(n) for n in _SLOT.findall(got.split("data:", 1)[-1])}:
-                    await _rcon(srv, f"execute in {DIM} run item replace block {x} {y} {z} container.{i} with minecraft:air")
-                else:
-                    left += 1                            # (didn't arrive: it stays in the pocket)
-        if left:
-            if not s.get("told"):
-                s["told"] = True
-                await _rcon(srv, f"tellraw {uuid} " + _msg(f"{left} more of your things are kept safe until you have room. "
-                                                           "Make some space and they'll arrive by themselves."))
-            _save(d)
-            return
-        await _empty(srv, spots)
-    d["stash"].pop(key, None)
-    _save(d)
+        log.warning("emptying %s's old pocket (copies from before 1.15.18), not handing it out", s["name"])
+        await _empty(srv, _barrels(v, s["pocket"]))
+        s.pop("pocket", None)
 
 
 async def discard(srv, uuid: str) -> bool:

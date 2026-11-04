@@ -142,7 +142,6 @@ def settings(body: dict, num, point) -> dict:
             "spawns": [c], "level": level, "waves": waves, "coop": bool(body.get("coop", True)),
             "respawn_secs": int(num(body.get("respawn_secs"), 1, 60, 5)), "no_dig": bool(body.get("no_dig", True)),
             "night": bool(body.get("night", True)),          # midnight while it runs: spiders fight, nothing burns
-            "keep_loot": bool(body.get("keep_loot", False)),   # keep what's picked up (mob drops): not unless asked
             "kit": kits.clean_kit(body.get("kit") or {})}
 
 

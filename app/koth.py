@@ -27,7 +27,6 @@ def settings(body: dict, num, point) -> dict:
     return {"zone": {**point(body.get("center"), "hill"), "r": round(num(body.get("radius"), 2, 30, 5), 1), "h": 6},
             "spawns": spawns, "team_count": 0 if teams < 2 else teams, "minutes": int(num(body.get("minutes"), 1, 60, 8)),
             "respawn_secs": int(num(body.get("respawn_secs"), 1, 60, 5)), "no_dig": bool(body.get("no_dig", True)),
-            "keep_loot": bool(body.get("keep_loot", False)),   # keep what's picked up: not unless asked
             "kit": kits.clean_kit(body.get("kit") or {})}
 
 

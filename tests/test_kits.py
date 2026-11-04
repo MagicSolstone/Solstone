@@ -115,10 +115,7 @@ def test_things_kept_safe_then_given_back_exactly(game):
     asyncio.run(kits.give_kit(game, U1, kits.clean_kit({"sword": "diamond", "armour": "iron"})))
     game.slots[U1]["container.9"] = ("minecraft:rotten_flesh", 4)                     # picked up in the game
     assert asyncio.run(kits.give_back(game, U1)) is True
-    assert not any("solkit" in v[0] for v in game.slots[U1].values())                  # the kit's gone
-    flesh = {k: v for k, v in game.slots[U1].items() if v[0] == "minecraft:rotten_flesh"}
-    assert list(flesh.values()) == [("minecraft:rotten_flesh", 4)]                     # what they picked up is kept
-    assert {k: v for k, v in game.slots[U1].items() if k not in flesh} == before[U1]  # and their own, exactly, slot for slot
+    assert game.slots[U1] == before[U1]                    # exactly their own, slot for slot: no kit, no pick-ups
     assert any(c == f"execute in minecraft:overworld run tp {U1} 10.5 64.0 -3.5" for c in game.said)   # back where they were
     assert [s["name"] for s in kits.waiting("kit-test")] == [".LongBedrockNameX"]
 
@@ -152,27 +149,25 @@ def own(slots: dict) -> dict:
 
 
 def test_things_gathered_while_solstone_was_down_are_never_lost(game, monkeypatch):
+    """Solstone went down mid-game and they played on: nothing they're carrying is touched. Their things come back
+    once their inventory's empty (they're told once), and never on top of what they have."""
     before = dict(game.slots[U1])
     asyncio.run(kits.stash(game, {"Alex": U1}, "g4"))
     asyncio.run(kits.give_kit(game, U1, kits.clean_kit({"sword": "iron", "armour": "none"})))
     monkeypatch.setattr(kits, "_STARTED", 9e12)                      # Solstone went down and came back since
-    # meanwhile they died out of the kit, and gathered things: a full inventory's worth, armour on too
     game.slots[U1] = {f"container.{i}": (f"minecraft:stone_{i}", 64) for i in range(36)}
     game.slots[U1]["armor.head"] = ("minecraft:iron_helmet", 1)
     gathered = dict(game.slots[U1])
     said = len(game.said)
     asyncio.run(kits.tidy(game, ["Alex"]))
-    # their things from before the game are back exactly; nothing of what they gathered is gone: it's in the pocket
-    assert {k: v for k, v in game.slots[U1].items() if k in before} == before
-    held = [v for b in game.barrels.values() for v in b.values()]
-    assert sorted(held + [v for k, v in game.slots[U1].items() if k not in before]) == sorted(gathered.values())
-    assert not any(" tp " in c for c in game.said[said:])           # not moved: they may have gone somewhere since
-    assert any("kept safe until you have room" in c for c in game.said[said:]) and kits.waiting("kit-test")
-    # they make room (put the lot in a chest): the rest arrives by itself, and nothing's left behind
-    game.slots[U1] = dict(before)
+    assert game.slots[U1] == gathered                                # not one thing of theirs touched
+    assert any("Empty your inventory" in c for c in game.said[said:]) and kits.waiting("kit-test")
     asyncio.run(kits.tidy(game, ["Alex"]))
-    assert sorted(own(game.slots[U1]).values()) == sorted(list(before.values()) + held)    # the rest that was waiting
-    assert not kits.waiting("kit-test") and not any(game.barrels.values())
+    assert sum("Empty your inventory" in c for c in game.said[said:]) == 1          # told once
+    game.slots[U1] = {}                                              # they put the lot in a chest
+    asyncio.run(kits.tidy(game, ["Alex"]))
+    assert game.slots[U1] == before and not kits.waiting("kit-test") and not any(game.barrels.values())
+    assert not any(" tp " in c for c in game.said[said:])           # not moved: they may have gone somewhere since
 
 
 def test_the_kit_alone_is_taken_back(game):
@@ -312,3 +307,24 @@ def test_a_retry_after_a_failed_check_never_duplicates_a_small_inventory(game):
     game.slots[U2] = dict(before)                                    # and their things did arrive
     assert asyncio.run(kits.give_back(game, U2)) is True
     assert game.slots[U2] == before and not kits.waiting("kit-test")
+
+
+def test_an_old_pocket_never_hands_out_copies_or_keeps_anyone_out(game):
+    """Before 1.15.18 an old "pocket" of copies (their own hotbar, from the earlier bugs) handed things out whenever
+    there was room, and kept them out of the next game (no kit, their own things kept on). Now it's emptied."""
+    before = dict(game.slots[U1])
+    asyncio.run(kits.stash(game, {"Alex": U1}, "old"))
+    d = settings_store.load()[kits.SECTION]
+    s = d["stash"][f"kit-test:{U1}"]
+    s["restored"], s["pocket"] = True, 5                             # their things back, an old pocket left over
+    settings_store.save_section(kits.SECTION, d)
+    v = d["vault"]["kit-test"]
+    for spot in kits._barrels(v, 5):
+        game.barrels[spot] = {0: ("minecraft:diamond_sword", 1)}     # a copy of their own sword
+    game.slots[U1] = dict(before)
+    done = asyncio.run(kits.stash(game, {"Alex": U1}, "new"))        # the next game: they're in it
+    assert done == ["Alex"] and game.slots[U1] == {}
+    assert all(not game.barrels[spot] for spot in kits._barrels(v, 5))   # the copies are gone, never handed out
+    asyncio.run(kits.give_kit(game, U1, kits.clean_kit({"sword": "iron"})))
+    assert asyncio.run(kits.give_back(game, U1)) is True
+    assert game.slots[U1] == before and not kits.waiting("kit-test")     # exactly once

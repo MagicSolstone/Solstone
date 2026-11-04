@@ -287,6 +287,9 @@ async def _wings(srv, r: dict, names: list[str]) -> list[str]:
         if n not in racing:
             note = component([("★ ", "gold"), ("Your things couldn't be kept safe just now, so you're watching this one. Nothing of yours was touched.", "yellow")])
             await _rcon(srv, f"tellraw {n} {note}")
+    await _rcon(srv, f"scoreboard objectives add {DEATHS} deathCount")
+    for n in racing:
+        await _rcon(srv, f"scoreboard players set {ids[n]} {DEATHS} 0")
     for n in racing:
         u = ids[n]
         elytra, rockets = kits.kit_item("minecraft:elytra"), kits.kit_item("minecraft:firework_rocket")
@@ -296,6 +299,27 @@ async def _wings(srv, r: dict, names: list[str]) -> list[str]:
         if r.get("safe_flying"):
             await _rcon(srv, f"effect give {u} minecraft:resistance {r['minutes'] * 60 + 60} 3 true")
     return racing
+
+
+DEATHS = "solrace_d"                       # deaths during an elytra race (a crash: out of the race, home with their things)
+
+
+async def _crashes(srv, r: dict) -> None:
+    """Elytra: whoever died is out of the race. Once they've respawned they get their own things back exactly, and go
+    back where they were before it (the race carries on for the others)."""
+    from . import kits
+    for n, u in (r.get("uuids") or {}).items():
+        st = r["racers"].get(n)
+        if not st or st.get("finished") is not None:
+            continue
+        if not st.get("out"):
+            m = re.search(r"has (\d+) \[", await _rcon(srv, f"scoreboard players get {u} {DEATHS}"))
+            if not m or int(m.group(1)) < 1:
+                continue
+            st["out"] = True
+            await _say(srv, r, [("★ ", "gold"), (n, "aqua"), (" crashed out of the race! Their things are on the way back.", "yellow")])
+        if st["out"] and not st.get("home") and await kits.give_back(srv, u, move=True):
+            st["home"] = True                             # (on the death screen: tried again next time)
 
 
 async def _gear_back(srv, r: dict) -> None:
@@ -372,8 +396,10 @@ async def _track(srv, r: dict) -> None:
     for n in online if not r.get("optin") and r.get("vehicle") != "elytra" else []:      # joined mid-race: in, from the start
         r["racers"].setdefault(n, {"next": 1, "splits": [], "finished": None})
     now = time.time()
+    if r.get("vehicle") == "elytra":
+        await _crashes(srv, r)
     for n, st in r["racers"].items():
-        if st["finished"] or n not in online:
+        if st["finished"] or st.get("out") or n not in online:
             continue
         pos = await _pos(srv, n)
         if not pos:
@@ -411,7 +437,7 @@ async def _track(srv, r: dict) -> None:
         nxt = f"Next: {_label(r, st['next'])} · {int(dist)} m {_direction(dx, dz)}{_height_hint(r, tgt, dy, dist)} · {_fmt(r['ends_at'] - now)} left"
         await _rcon(srv, f"title {n} actionbar {component([(nxt, 'yellow')])}")
     # checkpoints everyone has passed leave the locator bar, so the nearest dot is the next one
-    todo = {st["next"] for st in r["racers"].values() if not st["finished"]}
+    todo = {st["next"] for st in r["racers"].values() if not st["finished"] and not st.get("out")}
     lowest = min(todo, default=last + 1)
     for i in range(1, lowest):
         if i not in r.setdefault("wp_gone", []):
@@ -527,7 +553,7 @@ async def tick(servers: list) -> None:
             mins = bossbar.due_warning(r, r["ends_at"], r["minutes"] * 60)
             if mins:
                 await _say(srv, r, [("★ ", "gold"), (f"{mins} minute{'s' if mins > 1 else ''} left in {r['name']}!", "yellow")])
-            if now >= r["ends_at"] or (r["racers"] and all(st["finished"] is not None for st in r["racers"].values())):
+            if now >= r["ends_at"] or (r["racers"] and all(st["finished"] is not None or st.get("out") for st in r["racers"].values())):
                 await _end(srv, r)
             changed = True
     if changed:

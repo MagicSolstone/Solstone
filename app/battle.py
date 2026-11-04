@@ -228,15 +228,12 @@ async def wrap_wait(srv, r: dict) -> bool:
 
 async def finish(srv, r: dict, tag: str) -> None:
     """Everyone's things back, exactly, and where they were; the rules, teams and scores as they were before.
-    Anything picked up in the game (mob drops, say) is left behind unless the game says keep it (keep_loot)."""
+    Anything picked up in the game (mob drops, say) is left behind: they get back exactly their own things."""
     online = {n.lower() for n in (await S.online_players(srv))[0]}
     for n, p in r["players"].items():
         if n.lower() in online:
             # The game's kit never outlives the game, whatever happened along the way (even with nothing in the vault)
             await kits.strip_kit(srv, p["uuid"])
-            kept = next((s for s in kits.waiting(srv.id) if s["uuid"] == p["uuid"]), None)
-            if not r.get("keep_loot") and kept and not kept.get("restored") and not p.get("returned"):
-                await _rcon(srv, f"clear {p['uuid']}")   # only game pick-ups: their own things are all in the vault
             await kits.give_back(srv, p["uuid"])         # anyone offline gets theirs when they're next on (kits.on_join)
     await rules_off(srv, r)
     await _rcon(srv, f"scoreboard objectives remove {tag}_d")

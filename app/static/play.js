@@ -1067,7 +1067,6 @@ async function viewGames(sid) {
         <label class="check gm-wide"><input type="checkbox" name="night" ${f.night !== false ? "checked" : ""}> 🌙 Make it night while it runs <span class="muted small">(spiders only fight in the dark; the time of day goes back afterwards, for the whole server)</span></label>`) + `
         ${f.coop && game === "arena" ? "" : `<label>Back in after ${numIn("respawn_secs", f.respawn_secs, 1, 60, "seconds")}</label>`}
         <label class="check"><input type="checkbox" name="no_dig" ${f.no_dig ? "checked" : ""}> No digging or building (Adventure mode during the game)</label>
-        <label class="check"><input type="checkbox" name="keep_loot" ${f.keep_loot ? "checked" : ""}> Players keep what they pick up <span class="muted small">(mob drops and the like; off: left behind, and everyone gets back just their own things)</span></label>
         ${kitHtml()}`;
     const options = () => FIGHTS.has(game) ? fightOptions() : game === "hideseek" ? `
         <label>Seeker <select class="input" name="seeker"><option value="">Random</option>${online().map((n) => `<option ${f.seeker === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
@@ -1124,7 +1123,7 @@ async function viewGames(sid) {
       for (const k of ["seeker", "mode", "word"]) if (fm[k]) f[k] = fm[k].value;
       for (const k of ["hide_secs", "minutes", "seconds", "rounds", "hint_after", "radius", "hot_bonus", "hot_far", "hot_on", "hot_off", "layers", "best_of", "shrink_after"]) if (fm[k]) f[k] = +fm[k].value;
       if (fm.hint_after && fm.hint_after.value === "") f.hint_after = 60;            // blank: never
-      for (const k of ["no_dig", "marco", "infect", "give_bow", "hot", "teams", "snowballs", "shrink", "underwater", "peaceful", "optin", "night", "keep_loot"]) if (fm[k]) f[k] = fm[k].checked;
+      for (const k of ["no_dig", "marco", "infect", "give_bow", "hot", "teams", "snowballs", "shrink", "underwater", "peaceful", "optin", "night"]) if (fm[k]) f[k] = fm[k].checked;
       for (const k of ["team_count", "respawn_secs"]) if (fm[k]) f[k] = +fm[k].value;
       if (fm.coop) f.coop = fm.coop.value === "1";
       if (fm.level) f.level = fm.level.value;

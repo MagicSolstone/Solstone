@@ -319,3 +319,22 @@ def test_big_waves_come_out_a_few_at_a_time_and_no_answer_isnt_cleared():
     assert asyncio.run(arena._left(Srv(), r)) is None                                  # no answer: unknown, not 0
     r["queue"], r["last_spawn"] = [], _t.time() - 10
 
+
+
+def test_crashing_out_of_an_elytra_race_sends_you_home_with_your_things(fight):
+    """Die during an elytra race: out of it, back where you were before it, with exactly your own things."""
+    from app import races
+    before = dict(fight.slots[U1])
+    r = {"id": "e2", "name": "Sky loop (elytra)", "minutes": 5, "vehicle": "elytra", "rockets": 16}
+    asyncio.run(races._wings(fight, r, ["Alex", ".LongBedrockNameX"]))
+    r["racers"] = {n: {"next": 1, "splits": [], "finished": None} for n in ("Alex", ".LongBedrockNameX")}
+    asyncio.run(races._crashes(fight, r))
+    assert not r["racers"]["Alex"].get("out")                                          # nobody's crashed yet
+    fight.scores[(U1, "solrace_d")] = 1                                                # Alex hit a hillside
+    asyncio.run(races._crashes(fight, r))
+    assert r["racers"]["Alex"]["out"] and r["racers"]["Alex"]["home"]
+    assert fight.slots[U1] == before and not r["racers"][".LongBedrockNameX"].get("out")
+    assert any(c.startswith(f"execute in minecraft:overworld run tp {U1} ") for c in fight.said)     # back where they were
+    assert [s["name"] for s in kits.waiting(fight.id)] == [".LongBedrockNameX"]        # still racing: still kept safe
+    asyncio.run(races._gear_back(fight, r))
+    assert not kits.waiting(fight.id)
