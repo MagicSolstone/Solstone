@@ -1,3 +1,19 @@
+# Solstone 1.15.17
+
+- **No automatic banners for contests, races and games.** They used to appear by themselves ("starting soon", "on now", and the result for half an hour afterwards). Now they only show if you turn them on: **Announcements → Also show banners for contests, races and games**. It's off to start. Your own announcements and holiday banners are unchanged.
+- **In the world right now, on the home page:** each running server's status card opens with the time in the game and the weather (☀️ morning, 🌅 sunset, 🌙 night, 🌧️ rain, ⛈️ storms), in matching colours. The clock ticks along while people are playing. Nothing about who's on.
+- **Time and weather instead of "Day N":** the World page and players' overview show the game's clock and the weather. The day number reset whenever the time was set, so it wasn't reliable.
+- **Fixed: the world's day count being reset.** The mob arena's "make it night", and the time buttons on Control, used `/time set`, which resets the day count. That's why it showed Day 3 after weeks of play. They now move the clock forward with `/time add` instead, which keeps it.
+- **Lately, on the Events pages:** contests, races and games from the last 3 days stay listed with how they went, never who. For example: "Survived all 7 waves · 3 players", "12 took part · best 42 fish", "4 racers · 3 finished · fastest 1:12".
+- **Mob arena fixes:**
+  - **Monsters are one team:** they can't hurt or target each other, so they all come for the players. Before, big waves fought among themselves (spears and arrows) and wiped themselves out.
+  - **They come out a few a second,** spread around the monster spots, instead of all at once in one heap.
+  - **A wave only counts as cleared when it really is:** everything has come out, and the game twice says none are left. An answer Solstone can't read no longer counts as "none left", which used to skip waves and end the game early.
+- **Fixed: kit gear and duplicates after a game.**
+  - **The kit is taken back slot by slot.** Not every Minecraft version understands the usual `clear` filter, which is how diamond armour and a shield came back after a match.
+  - **Kit items never come back** from the pile of things picked up during the game.
+  - **A retry after a failed check knows your things already went over,** so it doesn't hand them over twice, however few items you had.
+
 # Solstone 1.15.16
 
 - **Fishing is only for servers with the Tide mod.** On a vanilla server fishing stays plain vanilla, and Solstone leaves it alone:
