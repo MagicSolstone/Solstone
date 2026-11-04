@@ -70,9 +70,23 @@ def _save(d: dict) -> None:
     settings_store.save_section(SECTION, d)
 
 
-def kinds() -> list[dict]:
+def kinds(tide: bool = False) -> list[dict]:
+    """`tide`: the server has the Tide fishing mod. Fishing contests are only offered with it: on a vanilla server
+    fishing stays plain vanilla."""
     return [{"key": k, "label": v[0], "emoji": v[1], "unit": v[2][1], "pack": k in FISH_KINDS,
-             "scale": 10 if k == "fish_heaviest" else 1, "retired": k in RETIRED} for k, v in KINDS.items()]
+             "scale": 10 if k == "fish_heaviest" else 1, "retired": k in RETIRED or (k in ROD_KINDS and not tide)}
+            for k, v in KINDS.items()]
+
+
+def _no_fishing(server: str) -> bool:
+    """A real server without the Tide fishing mod (fishing contests aren't for it)."""
+    from . import servers as S
+    from . import tide
+    srv = S.registry.servers.get(server)
+    try:
+        return bool(srv) and not tide.installed(srv)
+    except Exception:
+        return False
 
 
 def _show(c: dict, n: int) -> str:
@@ -103,6 +117,8 @@ def clean(body: dict, server: str) -> dict:
     kind = str(body.get("kind") or "")
     if kind not in KINDS or kind in RETIRED:
         raise ValueError("Pick what the challenge counts")
+    if kind in ROD_KINDS and _no_fishing(server):
+        raise ValueError("Fishing contests need the Tide fishing mod on the server")
     try:
         start = float(body.get("start") or 0) or time.time()
         minutes = max(1, min(240, int(body.get("minutes") or 10)))
@@ -282,6 +298,11 @@ async def _in(srv, c: dict) -> tuple[list[str], list[str]]:
 
 async def _start(srv, c: dict) -> None:
     from . import gather
+    from . import tide as _tide
+    if c["kind"] in ROD_KINDS and not await asyncio.to_thread(_tide.installed, srv):
+        # an older fishing contest (or one in an event night) on a server without Tide: not run, nobody moved
+        c["state"], c["result"] = "skipped", "Fishing contests need the Tide fishing mod on the server"
+        return
     names, online = await _in(srv, c)
     if c.get("gather"):                                  # everyone in it to the event's spot first (and home afterwards)
         c["gathered"] = await gather.send(srv, c["gather"], names)

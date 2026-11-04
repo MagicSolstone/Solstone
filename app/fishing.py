@@ -104,35 +104,23 @@ def files(srv) -> list[dict]:
 
 
 def journal_on(srv) -> bool:
-    """The fishing journal (every catch kept, with its weight, on the website): always with Tide, whose fish show
-    their weight in the game; with the Solstone pack only when an admin turns it on, since the game never shows a
-    pack weight outside a contest (fish caught in contests are announced and scored either way)."""
+    """The fishing journal (every catch kept, with its weight, on the website): only with the Tide fishing mod.
+    On a vanilla server fishing is just part of the game, so Solstone leaves it alone."""
     from . import tide
     try:
-        if tide.installed(srv):
-            return True
+        return bool(tide.installed(srv))
     except Exception:
-        pass
-    return bool((getattr(srv, "settings", None) or {}).get("fishing_journal"))
+        return False
 
 
 def available(srv) -> str | None:
-    """What this server fishes with, for showing the Fishing tab: "tide" (the mod), "pack" (the
-    Solstone data pack is in the world, or catches from it were recorded), or None (plain vanilla:
-    no Fishing tab; the plain fishing contest still works)."""
+    """What this server fishes with, for showing the Fishing tab, its leaderboards and fishing contests: "tide"
+    (the Tide fishing mod), or None. Without Tide fishing stays plain vanilla: no Fishing tab, boards or contests
+    (the Solstone data pack only does the archery and games)."""
     from . import tide
     if not srv.is_java:
         return None
-    if tide.installed(srv):
-        return "tide"
-    try:
-        if any(p.name.startswith(fishpack.PACK_ID) for p in datapacks_dir(srv).iterdir()):
-            return "pack"
-    except OSError:
-        pass
-    if db.q("SELECT 1 FROM fish_catches WHERE server_id=? LIMIT 1", (srv.id,)):
-        return "pack"
-    return None
+    return "tide" if tide.installed(srv) else None
 
 
 def writable(srv) -> bool:
@@ -150,8 +138,7 @@ def writable(srv) -> bool:
 async def install(srv) -> dict:
     """Write the pack into the world (only if that folder is writable), reload, check."""
     if writable(srv):
-        from . import tide
-        (datapacks_dir(srv) / fishpack.PACK_FILE).write_bytes(fishpack.build_zip(new_format(srv), fishing=not tide.installed(srv)))
+        (datapacks_dir(srv) / fishpack.PACK_FILE).write_bytes(fishpack.build_zip(new_format(srv), fishing=False))
     return await reload(srv)
 
 
@@ -246,7 +233,9 @@ def describe(c: dict, name: str) -> str:
 
 
 async def poll(servers: list) -> None:
-    """Read new catches (every few seconds while people are on): record them, tell the contest."""
+    """Read new catches the old pack recorded. Since pack 14 Solstone doesn't track fishing with the pack at all
+    (fishing stays vanilla; with the Tide mod, Tide's own catches are read from the log), so this does nothing."""
+    return
     from . import challenges
     for srv in servers:
         if not srv.is_java or not srv.rcon_conf():

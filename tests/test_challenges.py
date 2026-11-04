@@ -62,7 +62,13 @@ def fake(monkeypatch):
     settings_store.save_section("challenges", {})
 
 
-def test_fishing_contest_start_to_prize(fake):
+def _with_tide(monkeypatch):
+    from app import tide
+    monkeypatch.setattr(tide, "installed", lambda srv: True)
+
+
+def test_fishing_contest_start_to_prize(fake, monkeypatch):
+    _with_tide(monkeypatch)                         # fishing contests are only for servers with Tide
     challenges, srv, pushed = fake
     c = challenges.create(srv.id, {"kind": "fish", "start": time.time() + 60, "minutes": 10,
                                    "prize": {"item": "diamond", "count": 5}, "second": {"item": "minecraft:cookie", "count": 16}})
@@ -126,7 +132,8 @@ def test_validation_and_cancel(fake):
     for gone in ("diamonds", "logs", "stone", "breed", "jumps"):
         with pytest.raises(ValueError):
             challenges.create(srv.id, {"kind": gone, "prize": {"item": "diamond"}})
-    assert {k["key"] for k in challenges.kinds() if not k["retired"]} == {"fish", "mobs", "creepers", "fish_points", "fish_heaviest"}
+    assert {k["key"] for k in challenges.kinds() if not k["retired"]} == {"mobs", "creepers"}           # vanilla: no fishing
+    assert {k["key"] for k in challenges.kinds(tide=True) if not k["retired"]} == {"fish", "mobs", "creepers", "fish_points", "fish_heaviest"}
     c = challenges.create(srv.id, {"kind": "creepers", "start": time.time(), "prize": {"item": "diamond"}})
     asyncio.run(challenges.tick([srv]))
     assert srv.objectives
@@ -198,7 +205,8 @@ def test_live_scoreboard_for_status_page(monkeypatch):
     assert [(r["name"], r["value"]) for r in live[0]["rows"]] == [("bo", "30 lb"), ("amy", "16.2 lb"), ("cy", "0 lb")]
 
 
-def test_contest_rods_given_and_taken_back(fake):
+def test_contest_rods_given_and_taken_back(fake, monkeypatch):
+    _with_tide(monkeypatch)                         # fishing contests are only for servers with Tide
     challenges, srv, _p = fake
     challenges.create(srv.id, {"kind": "fish_heaviest", "minutes": 10, "lure": 5, "prize": {"item": "diamond", "count": 1}})
     asyncio.run(challenges.tick([srv]))
@@ -217,7 +225,8 @@ def test_contest_rods_given_and_taken_back(fake):
     assert challenges.clean({"kind": "mobs", "lure": 5, "prize": {"item": "dirt"}}, "x")["lure"] == 0     # rods only for fishing
 
 
-def test_fishing_hot_zone_bonus(fake):
+def test_fishing_hot_zone_bonus(fake, monkeypatch):
+    _with_tide(monkeypatch)                         # fishing contests are only for servers with Tide
     challenges, srv, _p = fake
     challenges.create(srv.id, {"kind": "fish_points", "minutes": 10, "hot": True, "hot_bonus": 3, "hot_on": 30, "hot_off": 10,
                                "prize": {"item": "diamond", "count": 1}})
@@ -225,14 +234,14 @@ def test_fishing_hot_zone_bonus(fake):
     assert c["hot"] and c["hot_bonus"] == 3 and c["hot_on"] == 30 and c["hot_off"] == 10
     asyncio.run(challenges.tick([srv]))
     d = challenges._load(); d["items"][0]["hot_zone"] = {"on": True, "x": 100.5, "y": 62, "z": 50.5, "until": time.time() + 30}; challenges._save(d)
-    fish = {"name": "Bluegill", "lb": "0.5", "weight": 0.5, "quality": 1, "quality_name": "Normal", "points": 10}
+    fish = {"name": "Bluegill", "lb": 0.5, "weight": 0.5, "quality": 1, "quality_name": "Normal", "points": 10}
     asyncio.run(challenges.on_catch(srv, "Tyler", {**fish, "pos": [102.0, 62.0, 52.0]}))           # cast into it
-    assert "scoreboard players add Tyler solfish_cp 20" in srv.cmds and any("×3 hot zone" in x and "+30 points" in x for x in srv.said)
-    n = len(srv.cmds)
+    tscore = lambda: challenges._load()["items"][0]["tscore"]                                        # noqa: E731  (Tide: Solstone keeps the score)
+    assert tscore()["Tyler"] == 30 and any("×3 hot zone" in x and "+30 points" in x for x in srv.said)
     asyncio.run(challenges.on_catch(srv, "Gimli_Jr", {**fish, "pos": [140.0, 62.0, 52.0]}))        # well outside
-    assert not any("players add" in x for x in srv.cmds[n:])
-    asyncio.run(challenges.on_catch(srv, "Gimli_Jr", {**fish, "pos": None}))                      # an older pack: no position, no bonus
-    assert not any("players add" in x for x in srv.cmds[n:])
+    assert tscore()["Gimli_Jr"] == 10
+    asyncio.run(challenges.on_catch(srv, "Gimli_Jr", {**fish, "pos": None}))                      # no position: no bonus
+    assert tscore()["Gimli_Jr"] == 20
     assert "hot zone open" in challenges.live(srv.id)[0]["sub"]
 
 

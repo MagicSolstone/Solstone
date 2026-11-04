@@ -3,7 +3,6 @@ import asyncio
 import io
 import json
 import re
-import time
 import zipfile
 
 import pytest
@@ -98,69 +97,6 @@ def pond(monkeypatch):
     monkeypatch.setattr(challenges.fwshow, "push", lambda *a, **k: None)
     yield fishing, challenges, srv
     settings_store.save_section("challenges", {})
-
-
-def test_catches_recorded_and_big_ones_announced(pond):
-    from app import db
-    fishing, _ch, srv = pond
-    srv.catches = [("perch", "Yellow Perch", 1, "Normal", 10, 8)]
-    asyncio.run(fishing.poll([srv]))                                     # first look: just remembers where it's up to
-    assert not db.events(srv.id, ["fish", "bigfish"], None, 10)
-    srv.catches += [("bass", "Largemouth Bass", 1, "Normal", 30, 15), ("koi", "Golden Koi", 4, "Exquisite", 69, 480)]
-    asyncio.run(fishing.poll([srv]))
-    evs = db.events(srv.id, ["fish", "bigfish"], None, 10)
-    assert [e["type"] for e in evs] == ["bigfish", "fish"] and evs[0]["player"] == "Gimli_Jr"
-    assert "Gimli_Jr caught an Exquisite Golden Koi · 6.9 lb · 480 points" == evs[0]["message"]
-    to_all = [x for x in srv.said if x.startswith("tellraw @a")]
-    assert len(to_all) == 1 and "Exquisite Golden Koi" in to_all[0]                         # only the big one, outside a contest
-    journal = [x for x in srv.said if "fishing journal" in x]
-    assert len(journal) == 2 and all(x.startswith("tellraw Gimli_Jr") for x in journal) and "(2 of 4 species)" in journal[-1]
-    assert [c["species"] for c in db.fish_catches(srv.id, "Gimli_Jr")] == ["bass", "koi"]
-    asyncio.run(fishing.poll([srv]))
-    assert len(db.events(srv.id, ["fish", "bigfish"], None, 10)) == 2                     # nothing twice
-    assert len(db.fish_catches(srv.id)) == 2
-
-
-def test_vanilla_catches_are_quiet(pond):
-    """With the vanilla pack nothing is said in the game outside a contest; the catch is still kept."""
-    from app import db
-    fishing, _ch, srv = pond
-    srv.basic = True
-    srv.catches = [("minecraft:cod", None, 1, None, 40, 5)]
-    asyncio.run(fishing.poll([srv]))
-    srv.catches += [("minecraft:salmon", None, 1, None, 155, 16)]
-    asyncio.run(fishing.poll([srv]))
-    assert srv.said == []
-    assert [(c["species"], c["name"], c["weight"]) for c in db.fish_catches(srv.id, "Gimli_Jr")][-1] == ("salmon", "Salmon", 15.5)
-    assert db.events(srv.id, ["fish"], None, 1)[0]["message"] == "Gimli_Jr caught a Salmon · 15.5 lb · 16 points"
-
-
-def test_vanilla_catches_in_a_contest_go_in_chat(pond):
-    fishing, challenges, srv = pond
-    challenges.create(srv.id, {"kind": "fish_heaviest", "start": time.time(), "minutes": 10, "prize": {"item": "diamond", "count": 1}})
-    asyncio.run(challenges.tick([srv]))
-    srv.said.clear()
-    asyncio.run(challenges.on_catch(srv, "Tyler", {"name": "Salmon", "lb": "15.5", "weight": 15.5, "quality": 1, "quality_name": "Normal",
-                                                   "points": 16, "basic": True}))
-    assert any(x.startswith("tellraw @a") and "Salmon" in x and "15.5 lb" in x for x in srv.said)
-
-
-def test_biggest_catch_contest(pond):
-    fishing, challenges, srv = pond
-    c = challenges.create(srv.id, {"kind": "fish_heaviest", "start": time.time(), "minutes": 10, "prize": {"item": "diamond", "count": 2}})
-    asyncio.run(challenges.tick([srv]))
-    assert any("solfish_cb" in r for r in srv.reset)                                     # the pack's objective cleared
-    c = challenges.list_for(srv.id)[0]
-    assert c["state"] == "running" and c["objectives"] == ["solfish_cb"]
-    asyncio.run(challenges.on_catch(srv, "Gimli_Jr", {"name": "Northern Pike", "lb": "10.2", "weight": 10.2, "quality": 3, "quality_name": "Prime", "points": 60}))
-    asyncio.run(challenges.on_catch(srv, "Gimli_Jr", {"name": "Bluegill", "lb": "0.5", "weight": 0.5, "quality": 1, "quality_name": "Normal", "points": 5}))
-    assert any("Prime Northern Pike" in s and "new best" in s for s in srv.said)
-    srv.scores[("Gimli_Jr", "solfish_cb")] = 102; srv.scores[("Tyler", "solfish_cb")] = 40
-    d = challenges._load(); d["items"][0]["ends_at"] = time.time() - 1; challenges._save(d)
-    asyncio.run(challenges.tick([srv]))
-    c = challenges.list_for(srv.id)[0]
-    assert c["winners"] == ["Gimli_Jr"] and c["result"] == "Gimli_Jr won Biggest catch with a 10.2 lb Northern Pike!"
-    assert c["best"]["Gimli_Jr"]["name"] == "Northern Pike"
 
 
 def test_fishing_api(client, viewer, sid):
@@ -264,17 +200,14 @@ def test_pack_started_by_solstone_when_the_load_list_didnt_run(monkeypatch):
     assert not any(c.startswith("function") for c in said)                   # running: nothing to start
 
 
-def test_journal_off_only_contest_catches_count(pond):
-    """With the journal off (the default for the pack), a fish caught outside a contest isn't weighed, kept or shown."""
-    import asyncio
-
-    from app import db
-    fishing, challenges, srv = pond
-    srv.settings = {}
-    assert fishing.journal_on(srv) is False
-    before = db.q("SELECT COUNT(*) AS n FROM fish_catches")[0]["n"]
-    srv.catches = []
-    asyncio.run(fishing.poll([srv]))                 # first look: sets the starting point
+def test_fishing_left_alone_without_tide(pond):
+    """Pack 14 on: the pack doesn't track fishing, and Solstone doesn't read catches from it; fishing stays vanilla."""
+    from app import fishpack
+    fishing, _challenges, srv = pond
+    files = fishpack.pack_files(fishing=False)
+    assert not any("solfish/advancement" in f or "solfish/tags/item" in f for f in files)
     srv.catches = [("minecraft:cod", None, 1, "", 50, 6)]
+    said = list(srv.said)
     asyncio.run(fishing.poll([srv]))
-    assert db.q("SELECT COUNT(*) AS n FROM fish_catches")[0]["n"] == before and not srv.said
+    assert srv.said == said
+    assert fishing.journal_on(srv) is False and fishing.available(srv) is None

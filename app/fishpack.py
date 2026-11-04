@@ -1,4 +1,7 @@
-"""Solstone's data pack: the archery and games half, and a light touch on fishing.
+"""Solstone's data pack: the archery and games.
+
+Since pack 14 Solstone installs it without the fishing part below (`fishing=False`): fishing stays plain vanilla, or
+the Tide mod's own with Tide. The fishing part is kept here only for reading what older packs recorded.
 
 Fishing stays vanilla: the same items, odds, names and loot (nothing is written on the fish). The pack only notices
 each fish someone catches and gives it a weight, kept for Solstone (contests, the fishing journal on the website):
@@ -26,7 +29,7 @@ import zipfile
 
 PACK_ID = "solstone-pack"                     # one pack: fishing and the archery games
 PACK_FILE = f"{PACK_ID}.zip"
-VERSION = 13                                   # bump when the pack's content changes
+VERSION = 14                                   # bump when the pack's content changes (14: fishing taken out)
 
 # ------------------------------------------------------------------ the fish (vanilla)
 # key (the vanilla item): (name, smallest lb, biggest lb)

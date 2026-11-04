@@ -210,7 +210,7 @@ def test_pack_without_fishing_for_tide_servers():
     assert "data/solgames/advancement/hit_15.json" in games and "archery" in games["pack.mcmeta"]
 
 
-def test_fishing_tab_only_with_something_to_fish_with(client, sid, tmp_path):
+def test_fishing_tab_only_with_tide(client, sid, tmp_path):
     from app import fishing
     s = client.get(f"/api/servers/{sid}").json()
     assert s["fishing"] == "tide"
@@ -222,7 +222,7 @@ def test_fishing_tab_only_with_something_to_fish_with(client, sid, tmp_path):
     assert fishing.available(Plain()) is None
     (tmp_path / "world" / "datapacks").mkdir(parents=True)
     (tmp_path / "world" / "datapacks" / "solstone-pack.zip").write_bytes(b"PK")
-    assert fishing.available(Plain()) == "pack"
+    assert fishing.available(Plain()) is None               # the pack is just for the games now: no Fishing tab
 
 
 def test_fishing_reset(client, sid, viewer, monkeypatch):
@@ -348,3 +348,18 @@ def test_tackle_guide_from_the_game_then_the_saved_copy(monkeypatch):
     old.id = "guide-test-old"
     g3 = asyncio.run(tide.guide(old, lang))
     assert g3["items"] == [] and "older than 1.0.6" in g3["why"]
+
+
+def test_no_fishing_anywhere_without_tide(client, sid, monkeypatch):
+    """A vanilla server: fishing is just part of the game. No fishing boards or contests, no Fishing tab."""
+    from app import tide
+    monkeypatch.setattr(tide, "installed", lambda srv: False)
+    lb = client.get(f"/api/servers/{sid}/leaderboard").json()
+    keys = {b["key"] for b in lb["boards"]}
+    assert not keys & {"fish_caught", "fishing_level", "heaviest_fish"} and "Fishing" not in lb["groups"] and "mob_kills" in keys
+    s = client.get(f"/api/servers/{sid}").json()
+    assert s["fishing"] is None and s["fishing_journal"] is False
+    kinds = {k["key"]: k["retired"] for k in client.get(f"/api/servers/{sid}/challenges").json()["kinds"]}
+    assert kinds["fish"] and kinds["fish_points"] and kinds["fish_heaviest"] and not kinds["mobs"]
+    r = client.post(f"/api/servers/{sid}/challenges", json={"kind": "fish", "minutes": 5, "prize": {"item": "dirt"}})
+    assert r.status_code == 400 and "Tide" in r.text

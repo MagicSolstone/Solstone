@@ -3084,7 +3084,7 @@ async def get_challenges(sid: str, request: Request):
         spawn = (await asyncio.to_thread(S.world_info, srv, False)).get("spawn")
     except Exception:
         spawn = None
-    return {"kinds": challenges.kinds(), "items": eventgroups.tag(optin.annotate("contest", challenges.list_for(srv.id))), "gifts": challenges.gifts_for(srv.id),
+    return {"kinds": challenges.kinds(await asyncio.to_thread(tide.installed, srv)), "items": eventgroups.tag(optin.annotate("contest", challenges.list_for(srv.id))), "gifts": challenges.gifts_for(srv.id),
             "rcon": bool(srv.rcon_conf()), "now": time.time(), "rcon_echo": _rcon_echo(srv), "spawn": spawn}
 
 
@@ -3324,8 +3324,8 @@ async def fishing_pack(request: Request, server: str = ""):
     auth.require_admin(request)
     srv = await S.registry.get(server) if server else None
     new = fishing.new_format(srv) if srv else request.query_params.get("format") == "26.3"
-    with_fishing = not (srv and await asyncio.to_thread(tide.installed, srv))      # Tide does fishing its own way
-    return Response(fishpack.build_zip(new, fishing=with_fishing), media_type="application/zip",
+    # just the archery and games: fishing stays vanilla (or Tide's own, with the mod)
+    return Response(fishpack.build_zip(new, fishing=False), media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="{fishpack.PACK_FILE}"', "Cache-Control": "no-store"})
 
 

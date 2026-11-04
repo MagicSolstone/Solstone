@@ -194,31 +194,17 @@ async function viewChallenges(sid) {
       : `<ol class="fish-steps"><li><a class="btn sm" href="/api/fishing/${esc(st.file)}?server=${encodeURIComponent(sid)}" download>⬇ Download ${esc(st.file)}</a></li>
           <li>Put the file (still zipped) in this world's <code>datapacks</code> folder: <code>${esc(st.folder.replace(/^\/servers\//, "…/crafty-4/servers/"))}</code></li>
           <li><button class="btn sm primary" type="button" data-fish="reload">Load it</button> <span class="muted small">(runs /reload in the game and checks)</span></li></ol>`;
-    const q = fish.qualities.map((x) => `<span class="fish-q fq-${x.color}">${esc(x.name)} <small>${x.one_in <= 2 ? `${x.chance}%` : `1 in ${x.one_in}`}</small></span>`).join("");
-    const rows = fish.guide.map((g) => `<tr><td>${itemIcon({ id: g.item })}<b>${esc(g.name)}</b></td><td>${g.min_lb}–${g.max_lb} lb</td><td>${g.min_points}–${g.max_points}</td></tr>`).join("");
     const download = `<a class="link-btn" href="/api/fishing/${esc(st.file)}?server=${encodeURIComponent(sid)}" download>Download it again</a>`;
-    if (fish.tide) {      // Tide does the fishing: the pack is only for archery and spleef here
-      return `<section class="section" id="fish-sec"><div class="section-head"><h2>🎯 Solstone data pack</h2><span class="muted">${on ? `In the world${old ? " (an update is ready)" : " ✓"}` : "Not in this world yet"}</span></div>
-        <div class="panel fish-panel">
-          <p>The archery and spleef games need this pack in the world: it notes where each arrow was shot from and how close it hit, and builds the spleef arena. Fishing on this server is tracked through the Tide mod instead: see the Fishing tab.</p>
-          ${!fish.rcon ? `<p class="notice">Needs RCON turned on for this server.</p>` : on && !old ? `<p class="muted small">Loaded (version ${st.version}). <button class="link-btn" type="button" data-fish="reload">Reload</button> · ${download}</p>` : steps}
-          <div id="fish-diag"></div>
-          ${filesHtml(st)}
-          ${old && !st.writable ? `<p class="muted small">Replace the old file with the new download, then load it.</p>` : ""}
-          ${st.error ? `<p class="notice small">${esc(st.error)}</p>` : ""}
-        </div></section>`;
-    }
-    return `<section class="section" id="fish-sec"><div class="section-head"><h2>🎣 Solstone data pack</h2><span class="muted">${on ? `In the world${old ? " (an update is ready)" : " ✓"}` : "Not in this world yet"}</span></div>
+    // The pack is just for archery and spleef: fishing stays vanilla (or the Tide mod's own, with Tide)
+    return `<section class="section" id="fish-sec"><div class="section-head"><h2>🎯 Solstone data pack</h2><span class="muted">${on ? `In the world${old ? " (an update is ready)" : " ✓"}` : "Not in this world yet"}</span></div>
       <div class="panel fish-panel">
-        <p>One data pack for the archery games and fishing contests. <b>Fishing stays vanilla</b>: the same fish, odds and items, and nothing extra in chat. The pack just gives each fish caught a weight, which unlocks the <b>Fishing tournament</b> (most points: a point a pound) and <b>Biggest catch</b> contests: during a contest every catch is announced in chat with its weight, with a scoreboard. Archery: it notes where each shot was taken from and how close to the centre it hit, for the archery games.</p>
+        <p>The archery and spleef games need this pack in the world: it notes where each arrow was shot from and how close it hit, and builds the spleef arena. ${fish.tide ? "Fishing on this server is tracked through the Tide mod: see the Fishing tab." : "Fishing stays plain vanilla: the pack leaves it alone."}</p>
+        ${old && st.version < 14 ? `<p class="muted small">This update takes the old fishing part out of the pack.</p>` : ""}
         ${!fish.rcon ? `<p class="notice">Needs RCON turned on for this server.</p>` : on && !old ? `<p class="muted small">Loaded (version ${st.version}). <button class="link-btn" type="button" data-fish="reload">Reload</button> · ${download}</p>` : steps}
         <div id="fish-diag"></div>
         ${filesHtml(st)}
         ${old && !st.writable ? `<p class="muted small">Replace the old file with the new download, then load it.</p>` : ""}
         ${st.error ? `<p class="notice small">${esc(st.error)}</p>` : ""}
-        <div class="fish-qs">${q}</div>
-        <details class="fish-guide"><summary>Fish sizes</summary><div class="table-wrap"><table class="data"><thead><tr><th>Fish</th><th>Size</th><th>Points</th></tr></thead><tbody>${rows}</tbody></table></div></details>
-        ${fish.recent.length ? `<h3>Recent catches</h3><ul class="fish-recent">${fish.recent.slice(0, 8).map((e) => `<li>${e.player ? faceHtml({ name: e.player }, 20) : ""}<span>${esc(e.message)}</span><time class="muted small">${esc(fmtAgo(e.ts))}</time></li>`).join("")}</ul>` : ""}
       </div></section>`;
   };
   // What's really in the world's datapacks folder: a second (older) copy, or a zip with an extra

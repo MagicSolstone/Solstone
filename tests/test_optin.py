@@ -67,7 +67,9 @@ def _tick(optin, srv):
     asyncio.run(optin.tick([srv]))
 
 
-def test_join_alerts_and_only_joined_players_count(oi):
+def test_join_alerts_and_only_joined_players_count(oi, monkeypatch):
+    from app import tide
+    monkeypatch.setattr(tide, "installed", lambda srv: True)        # fishing contests are only for servers with Tide
     optin, challenges, srv, told = oi
     c = challenges.create(srv.id, {"kind": "fish", "name": "Fishing night", "start": time.time() + 300, "minutes": 10, "optin": True,
                                    "prize": {"item": "diamond", "count": 1}})

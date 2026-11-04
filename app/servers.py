@@ -1165,6 +1165,9 @@ async def leaderboard(srv: Server) -> dict:
 
 def _leaderboard(srv: Server) -> dict:
     rows = []
+    # Fishing boards only with the Tide fishing mod: on a vanilla server fishing is just part of the game
+    fishing = _tide().installed(srv)
+    boards = [b for b in LEADERBOARDS if fishing or b[0] not in LEADERBOARD_GROUPS["Fishing"]]
     for uuid, p in known_players(srv).items():
         if removed(srv, p):                 # off the whitelist: off the boards (back on, and their scores return)
             continue
@@ -1174,8 +1177,8 @@ def _leaderboard(srv: Server) -> dict:
         adv = player_advancements(srv, uuid)
         h["advancements"] = sum(1 for k, a in adv.items() if a["done"] and "/recipes/" not in k and ":recipes/" not in k)
         h.update(_tide().leaderboard_values(srv, uuid))
-        rows.append({"uuid": uuid, "name": p["name"], **{k: h.get(k, 0) for k, _t, _f in LEADERBOARDS}})
+        rows.append({"uuid": uuid, "name": p["name"], **{k: h.get(k, 0) for k, _t, _f in boards}})
     group = {k: g for g, keys in LEADERBOARD_GROUPS.items() for k in keys}
     return {"boards": [{"key": k, "title": t, "kind": f, "group": group.get(k, "More"), "medals": k not in NO_MEDALS}
-                       for k, t, f in LEADERBOARDS],
-            "groups": [*LEADERBOARD_GROUPS, "More"], "players": rows}
+                       for k, t, f in boards],
+            "groups": [g for g in [*LEADERBOARD_GROUPS, "More"] if fishing or g != "Fishing"], "players": rows}
