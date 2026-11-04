@@ -1,3 +1,15 @@
+# Solstone 1.15.8
+
+- **Server stats** (Leaderboards → Server stats): what everyone did on a server, day by day, kept for good. For everyone signed in, server-wide with no names.
+  - **Kept for good:** each day is boiled down to one small row of totals. It's filled in from the history still on hand the first time (up to 180 days), then kept up to date before the old detail is cleared.
+  - **Totals** for the last 30 or 90 days, a year or all time, each with a fun way to picture it ("≈ 11.5 marathons", "about 691 trees").
+  - **One chart at a time:**
+    - 17 things to chart: hours played, monsters, distance, blocks dug and placed, fish, deaths and more;
+    - by day, week or month, with a running total and the exact number on hover.
+  - **When people play:** weekday by hour of the day.
+  - **Records:** busiest day, most on at once, the biggest days, the longest time on in one go.
+- **Fix:** the first thing in an activity line ("Sam dug 40 blocks") wasn't counted, because of the name in front. That affected the home page's Today line and Adventures.
+
 # Solstone 1.15.7
 
 - **Xbox friend watcher:** is joining through the Xbox friend (MCXboxBroadcast) working?
