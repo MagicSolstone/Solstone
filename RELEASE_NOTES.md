@@ -1,3 +1,12 @@
+# Solstone 1.15.5
+
+- **Whitelisting Bedrock players works without Floodgate's `fwhitelist` command.** Floodgate on Fabric doesn't always have it, so adding a name like `.Lego8595` failed with "Unknown or incomplete command". Now, when the game says that:
+  - the player goes on the server's own whitelist by their Floodgate id;
+  - their Xbox id is looked up from the gamertag (trying spaces for underscores too);
+  - the game reloads the whitelist straight away, no restart.
+  - Removing works the same way, and a gamertag that isn't found says so.
+  - The same goes for **Allow** on people turned away, and for letting in someone who asked to join.
+
 # Solstone 1.15.4
 
 - **The join card, by edition:** each server's card is in two clear parts.
