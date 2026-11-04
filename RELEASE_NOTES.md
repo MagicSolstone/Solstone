@@ -1,3 +1,14 @@
+# Solstone 1.15.13
+
+- **Website traffic chart, readable:** in Manage → Solstone, the traffic chart now shows real bars stacked and coloured by who asked: **you**, **other admins**, **signed-in players** and **visitors**. The boxes above double as the legend.
+  - A scale on the left, and a short line saying what each bar is.
+  - Point at or tap a bar to see who asked during that time.
+  - **7 days** shows 6-hour bars and **30 days** shows one bar a day, so they stay readable.
+  - Fixed: every bar used to show as a small dash, because it borrowed the Server stats page's style.
+- **Fixed: games in an event night couldn't be placed on the map.** Setting up a mob arena (or any map-placed game) as part of an event night ignored clicks on the map. One-off games were fine.
+- **Fixed: some holiday reward pictures missing on Events.** Reward pictures on the public Events page and banners now come from any Java server that can draw them, not only the first public one. A picture that can't be drawn yet isn't remembered as missing, so it appears as soon as it can.
+- **🐢 The slowest lately:** under Website traffic, a fold-out list of the latest answers that took over a second, with which page or data each was (by its route, never who asked). Kept until Solstone restarts, to make slowdowns easy to pin down.
+
 # Solstone 1.15.12
 
 - **Firework editor, step by step:** the editor now walks through a firework in the order it happens. There are five numbered steps: 🚀 Launch → 💥 Burst → 🎨 Colours → ✨ Sparkle → 🔊 Sound.

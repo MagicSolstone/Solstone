@@ -27,6 +27,8 @@ _pending: dict[tuple, list] = {}       # (hour, who, kind) -> [requests, bytes o
 _visitors: dict[str, set] = {}         # day -> scrambled visitor ids (not stored, just counted)
 _salt = {"day": "", "salt": b""}
 _net_last: dict = {}
+_slow: list[dict] = []                 # the latest answers that took over a second (kept in memory only)
+SLOW_KEEP = 25
 
 
 def _ensure() -> None:
@@ -53,6 +55,15 @@ def who_of(user) -> str:
     if getattr(user, "role", "") == "admin":
         return f"admin:{user.username}"
     return "player"
+
+
+def note_slow(what: str, secs: float, status: int, now: float | None = None) -> None:
+    """An answer that took over a second: which page or data it was (the route, not who asked), for spotting what's slow."""
+    if secs < SPEED[2]:
+        return
+    with _lock:
+        _slow.append({"at": now or time.time(), "what": what[:120], "secs": round(secs, 2), "status": status})
+        del _slow[:-SLOW_KEEP]
 
 
 def record(path: str, user, ip: str, out_bytes: int, in_bytes: int, secs: float, now: float | None = None) -> None:
@@ -151,4 +162,5 @@ def report(viewer: str, days: int = 1, now: float | None = None) -> dict:
         series.append({"hour": hr, **(hours.get(hr) or {"you": 0, "admins": 0, "players": 0, "visitors": 0, "bytes": 0})})
     return {"days": days, "groups": groups, "kinds": kinds, "hours": series, "visitors": visitors,
             "speed": {"requests": total, "avg_ms": round(secs / total * 1000) if total else None, "buckets": speed},
-            "net": {"rx": net["rx"], "tx": net["tx"], "available": _net() is not None}}
+            "net": {"rx": net["rx"], "tx": net["tx"], "available": _net() is not None},
+            "slow": sorted((x for x in _slow if x["at"] >= since), key=lambda x: -x["at"])}

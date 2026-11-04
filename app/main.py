@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.15.12"
+VERSION = "1.15.13"
 
 
 @asynccontextmanager
@@ -310,6 +310,9 @@ async def require_login(request: Request, call_next):
                 user = await asyncio.to_thread(auth.user_from_request, request)
             traffic.record(path, user, auth.client_ip(request), int(response.headers.get("content-length") or 0),
                            int(request.headers.get("content-length") or 0), took)
+            if took >= 1:          # which route was slow (its pattern, so no names or ids), for Website traffic
+                route = request.scope.get("route")
+                traffic.note_slow(f"{request.method} {getattr(route, 'path', None) or path}", took, response.status_code)
         except Exception:
             log.debug("traffic count failed", exc_info=True)
     return response
@@ -1119,7 +1122,8 @@ async def public_reward_icon(ns: str, name: str):
         if not a or a.vs.version in tried:
             continue
         if not a.ready:
-            a.vs.ensure()
+            if a.vs.state == "missing":        # fetch them once; a failed fetch isn't retried on every request
+                a.vs.ensure()
             continue
         tried.add(a.vs.version)
         data = await asyncio.to_thread(a.icon, f"{ns}:{name}")

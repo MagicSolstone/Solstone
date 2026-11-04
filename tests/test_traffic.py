@@ -34,3 +34,15 @@ def test_counted_by_who_and_how_quick():
     # no address anywhere in what's stored
     stored = str(db.q("SELECT * FROM traffic")) + str(db.q("SELECT * FROM traffic_daily"))
     assert "1.1.1.1" not in stored and "10.0.0" not in stored
+
+
+def test_the_slowest_lately_by_route():
+    from app import traffic
+    traffic._slow.clear()
+    traffic.note_slow("GET /api/servers/{sid}/status", 0.4, 200)            # quick enough: not kept
+    for i in range(30):
+        traffic.note_slow("GET /api/servers/{sid}/status", 1.5 + i, 200)
+    assert len(traffic._slow) == traffic.SLOW_KEEP and traffic._slow[-1]["secs"] == 30.5
+    rep = traffic.report("admin", 1)
+    assert rep["slow"][0]["secs"] == 30.5 and "{sid}" in rep["slow"][0]["what"]
+    traffic._slow.clear()

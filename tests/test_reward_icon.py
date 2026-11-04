@@ -17,7 +17,7 @@ def test_reward_picture_from_any_server_and_404_not_cached(anon, monkeypatch):
         def icon(item):
             asked.append(item)
             return b"PNG" if item == "minecraft:redstone" else None
-        return SimpleNamespace(ready=state["ready"], vs=SimpleNamespace(version="1.21.x", ensure=ensure), icon=icon)
+        return SimpleNamespace(ready=state["ready"], vs=SimpleNamespace(version="1.21.x", ensure=ensure, state="ready" if state["ready"] else "missing"), icon=icon)
 
     monkeypatch.setattr(M, "_assets", fake_assets)
     # Its game files aren't here yet: it starts fetching them, and says not found (not kept anywhere)

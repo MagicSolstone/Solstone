@@ -547,6 +547,9 @@ async function viewAdmin(section = "users") {
       <div class="tr-chart" role="img" aria-label="Requests each ${unit}, by who asked"><div class="tr-plot"></div><div class="tr-tip" hidden></div></div>
       <p class="tr-speed">${sp.requests ? `<b>${quick}%</b> answered in under 0.1 s · on average <b>${sp.avg_ms} ms</b> · ${slow ? `<b class="wl-no">${slow} took over a second</b>` : "none took over a second"}` : "Nothing answered yet in this time."}</p>
       ${kinds ? `<p class="muted small">What was asked for: ${esc(kinds)}</p>` : ""}
+      ${(d.slow || []).length ? `<details class="tr-slow"><summary>🐢 The slowest lately (${d.slow.length}, since Solstone last started)</summary>
+        <ul>${d.slow.map((x) => `<li><span class="muted">${esc(new Date(x.at * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }))}</span>
+          <b>${x.secs.toFixed(1)} s</b> <code>${esc(x.what)}</code>${x.status >= 400 ? ` <span class="wl-no">${x.status}</span>` : ""}</li>`).join("")}</ul></details>` : ""}
       ${d.net.available ? `<p class="muted small">This container's whole network (the website, plus talking to the game, Crafty, Modrinth): <b>${sz(d.net.tx)}</b> sent, <b>${sz(d.net.rx)}</b> received.</p>` : ""}
       <p class="muted small">No addresses are kept: visitors are counted with a scramble that changes every day. Cloudflare's dashboard shows what never reaches here (bots it blocks, countries, attacks).</p>`;
     box.querySelectorAll("[data-trdays]").forEach((b) => b.addEventListener("click", () => { trDays = +b.dataset.trdays; traffic(); }));
