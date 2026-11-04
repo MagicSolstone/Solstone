@@ -1135,7 +1135,7 @@ async function viewGames(sid) {
       if (fm.level) f.level = fm.level.value;
       if (fm.kit_sword) f.kit = { sword: fm.kit_sword.value, armour: fm.kit_armour.value, bow: fm.kit_bow.checked, arrows: +fm.kit_arrows.value, shield: fm.kit_shield.checked, food: fm.kit_food.checked };
       fm.querySelectorAll("[data-wave]").forEach((i) => { f.waves[+i.dataset.wave][i.dataset.mob] = Math.max(1, Math.min(20, +i.value || 1)); });
-      if (fm.when) { f.when = fm.when.value; f.at = fm.at.value; }
+      if (!adding && fm.when && fm.at) { f.when = fm.when.value; f.at = fm.at.value; }   // an event's game has no When (it starts in turn)
     };
     const show = () => openModal(body(), (m) => {
       m.classList.add("gm-modal");

@@ -129,7 +129,7 @@ def main() -> int:
                 pg = browser.new_page(viewport={"width": width, "height": height})
                 pg.add_init_script("""window.__csp = []; document.addEventListener('securitypolicyviolation',
                     (e) => window.__csp.push(e.violatedDirective + ' ' + (e.blockedURI || 'inline') + ' ' + (e.sourceFile || '') + ':' + e.lineNumber));""")
-                pg.on("pageerror", lambda e: problems.append(f"{pg.url}: JS error: {e}"))
+                pg.on("pageerror", lambda e: problems.append(f"{pg.url}: JS error: {e} :: {getattr(e, 'stack', '')[:600]}"))
                 pg.on("console", lambda m: m.type == "error" and not any(s in m.text for s in IGNORED_CONSOLE)
                       and problems.append(f"{pg.url}: console: {m.text}"))
                 r = pg.request.post(f"{base}/api/auth/login", data=ADMIN, headers=H)
@@ -647,6 +647,18 @@ def main() -> int:
             if "Creeper" not in (pg.locator(".gm-waves").text_content() or ""):
                 problems.append("games: adding a monster to a mob arena wave didn't show")
             check(pg, "games-arena-setup")
+            pg.keyboard.press("Escape"); pg.locator("[data-close-modal]").first.click() if pg.locator(".modal [data-close-modal]").count() else None
+            # the same setup as part of an event night: clicking the map sets the arena and the monster spots
+            pg.goto(f"{base}/app#/s/{sid}/challenges"); pg.wait_for_timeout(800)
+            pg.evaluate(f"egAdd = {{ sid: '{sid}', gid: 'smoke-night', title: 'Smoke night', type: 'game' }}")
+            pg.goto(f"{base}/app#/s/{sid}/challenges/games"); pg.wait_for_timeout(1500)
+            pg.click('[data-setup="arena"]'); pg.wait_for_timeout(800)
+            box = pg.locator("#gm-map canvas").first.bounding_box()
+            pg.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2); pg.wait_for_timeout(800)
+            chosen = pg.locator("#gm-chosen").text_content() if pg.locator("#gm-chosen").count() else ""
+            if "Arena at" not in (chosen or ""):
+                problems.append(f"games: in an event night, clicking the map doesn't set the mob arena ({chosen!r})")
+            check(pg, "games-arena-event")
             pg.keyboard.press("Escape"); pg.locator("[data-close-modal]").first.click() if pg.locator(".modal [data-close-modal]").count() else None
             for r in pg.request.get(f"{base}/api/servers/{sid}/games", headers=H).json()["runs"]:
                 if r["game"] in ("koth", "arena"):

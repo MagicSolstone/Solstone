@@ -1110,12 +1110,23 @@ async def public_reward_icon(ns: str, name: str):
     if not _SAFE_ID.match(ns) or not _SAFE_ID.match(name) or f"{ns}:{name}" not in holidaygifts.rewarded_items():
         raise HTTPException(404)
     await S.registry.refresh()
-    srv = next((x for x in _public_servers_list() if x.is_java), None)
-    a = _assets(srv) if srv else None
-    data = await asyncio.to_thread(a.icon, f"{ns}:{name}") if a and a.ready else None
-    if not data:
-        raise HTTPException(404)
-    return Response(data, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+    # Drawn from any Java server's game that can: the public ones first, then the rest (only the picture is shared).
+    # A server whose game files aren't here yet starts fetching them, so it can next time.
+    public = [x for x in _public_servers_list() if x.is_java]
+    tried: set[str] = set()
+    for srv in [*public, *(x for x in S.registry.servers.values() if x.is_java and x not in public)]:
+        a = _assets(srv)
+        if not a or a.vs.version in tried:
+            continue
+        if not a.ready:
+            a.vs.ensure()
+            continue
+        tried.add(a.vs.version)
+        data = await asyncio.to_thread(a.icon, f"{ns}:{name}")
+        if data:
+            return Response(data, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+    # Not drawable yet: never let a browser or Cloudflare keep the "not found"
+    raise HTTPException(404, headers={"Cache-Control": "no-store"})
 
 
 
