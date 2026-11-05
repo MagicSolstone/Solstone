@@ -1,3 +1,10 @@
+# Solstone 1.15.28
+
+- **Fixed: the mob arena (and King of the Hill) handing out only armour and a shield.** Commands that only work on players (give, clear, title, messages, game modes, scores) were aimed at each player by their id, and the game quietly turned those away. Armour and the shield go on a different way, so they arrived; the sword, bow, arrows and food never did, and nobody's own things were cleared for the game. Every command aimed at one player now goes out with their name (a long Bedrock name works too), for every game, race and message. Getting your things back at the end already worked, and still does.
+- The same fix means these now arrive as they should: the countdown titles ("Back in…", "Heading back in…"), messages to one player ("Your things are back"), your game mode put back after a game, and the arena's own kill and death counts.
+- The elytra race's rockets (and the boat for boat races) arrive again: they were turned away the same way.
+- **A safety net when a game starts:** if a player's inventory isn't empty after their things are put in the vault, it's emptied slot by slot (their things are already safe in the vault).
+
 # Solstone 1.15.27
 
 - **Holiday descriptions keep their lines.** A new line in a holiday's description is now a new line on the Events page (the box is bigger too).
