@@ -719,6 +719,18 @@ def main() -> int:
                 problems.append("fireworks: the launch list is missing its fireworks")
             pg.locator(".fw-pick .fwp-grid button").nth(2).click(); pg.wait_for_timeout(200)
             check(pg, "firework-launch-list")
+            pg.locator('.fw-pick [data-pace="lively"]').click(); pg.wait_for_timeout(200)
+            if pg.evaluate("localStorage.getItem('solstone-fw-pace')") != '"lively"' or pg.evaluate("FW.pace") != "lively":
+                problems.append("fireworks: picking Lively in the launch list didn't stick for this viewer")
+            pg.locator('.fw-pick [data-pace="normal"]').click(); pg.wait_for_timeout(200)
+            # one Show switch for the whole site: off at home is off in the app too
+            pg.evaluate("localStorage.setItem('solstone-sky', 'false')")
+            pg.goto(f"{base}/app#/events"); pg.reload(); pg.wait_for_timeout(1200)
+            if pg.locator('.fwbar [data-sky="auto"][aria-pressed="true"]').count():
+                problems.append("fireworks: the Show switch isn't the same on every page")
+            pg.evaluate("localStorage.setItem('solstone-sky', 'true')")
+            pg.goto(f"{base}/app#/"); pg.reload(); pg.wait_for_timeout(1200)
+            pg.click(".fwbar [data-sky='pick']"); pg.wait_for_timeout(300)
             pg.mouse.click(5, 5); pg.wait_for_timeout(200)
             if pg.locator(".fw-pick:not([hidden])").count():
                 problems.append("fireworks: the launch list didn't close")

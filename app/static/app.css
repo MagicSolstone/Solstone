@@ -2618,3 +2618,10 @@ body.ui-hidden .manage-sub { display: none; }
 .rd-table th { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
 .rd-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rd-split { display: block; font-size: .75rem; }
+.fwp-pace { display: flex; gap: 6px; flex-wrap: wrap; }
+.fwp-pace button { flex: 1; min-width: 70px; border: 1px solid var(--line); background: rgba(255,255,255,.04); color: inherit; border-radius: 999px; padding: 4px 10px; cursor: pointer; font: inherit; font-size: .85rem; }
+.fwp-pace button[aria-pressed="true"] { background: var(--copper); border-color: var(--copper); color: #fff; }
+.fwp-pace small { opacity: .8; }
+.fwp-pace-row { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; font-size: .85rem; color: var(--muted); }
+.fwp-pace-row > span { white-space: nowrap; }
+.fwp-pace-row .fwp-pace { flex: 1; }

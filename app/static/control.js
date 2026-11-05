@@ -786,6 +786,7 @@ function fireworksSettingsHtml(fw) {
     <p class="muted small" style="margin:-4px 0 14px">Dragon, bow and arrow, and tree are show-pieces: their frequencies are compared with each other, and “Show-pieces” below sets how often any of them appears.</p>
     <div class="fw-row"><span>Colours</span><div class="fw-colors">${FW_COLORS.map((c) => `<button type="button" class="fw-swatch" data-color="${c}" aria-pressed="${fw.colors.includes(c)}" style="--c:${c}" aria-label="Colour ${c}"></button>`).join("")}</div></div>
     <div class="fw-row"><span>How often</span>${seg("pace", [["calm", "Calm"], ["normal", "Normal"], ["lively", "Lively"]], fw.pace)}</div>
+    <p class="muted small">Everyone's usual. Each person can pick their own in the 🎆 Launch list (Show pace), just for their device.</p>
     <div class="fw-row"><span>Show-pieces</span>${seg("showpieces", [["rare", "Rare"], ["sometimes", "Sometimes"], ["often", "Often"]], fw.showpieces)}</div>
     <p class="muted small">Creeper, heart and tree keep their own colours, and willows are often classic gold. The ▶ buttons are easiest to watch with the Show switch (bottom right) turned off.</p>`;
 }

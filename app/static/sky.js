@@ -22,7 +22,10 @@ function applyFireworkSettings(c) {
   FW.kinds = c.kinds || null;
   FW.weights = c.weights || null;
   FW.colors = c.colors?.length ? c.colors : FW_COLORS;
-  FW.pace = FW_PACE[c.pace] ? c.pace : "normal";
+  FW.pace_site = FW_PACE[c.pace] ? c.pace : "normal";          // the admins' choice: everyone's default
+  let mine = null;
+  try { mine = JSON.parse(localStorage.getItem("solstone-fw-pace") || "null"); } catch { /* storage is optional */ }
+  FW.pace = FW_PACE[mine] ? mine : FW.pace_site;                    // this viewer's own, if they picked one
   FW.showpieces = FW_SPECIAL_CHANCE[c.showpieces] != null ? c.showpieces : "sometimes";
   FW.custom = Array.isArray(c.custom) ? c.custom : [];
   FW.theme = c.theme || null;

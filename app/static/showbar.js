@@ -321,11 +321,17 @@ const FW_KIND_NAMES = { ball: ["⚪", "Ball"], large: ["🔴", "Big ball"], star
 
 // opts: key (localStorage name for the Show switch), defaultOn, hide (offer "hide the page"),
 // controls (false = director only), onEvent(item) to show a message.
+const SKY_KEY = "solstone-sky";
+const PACES = [["calm", "Calm"], ["normal", "Normal"], ["lively", "Lively"]];
+
 function startShowBar(scene, opts = {}) {
   const els = [];
   const cleanup = [];
   if (opts.controls !== false) {
-    let on = lsGet(opts.key || "solstone-sky", null);
+    // one Show switch for the whole site (the home pages and the app once kept one each, so it seemed to switch
+    // itself back on or off going from Home to Events)
+    let on = lsGet(SKY_KEY, null);
+    if (on == null) on = lsGet("solstone-sky-home", null) ?? lsGet("solstone-sky-app", null);
     if (on == null) on = !!opts.defaultOn && !matchMedia("(prefers-reduced-motion: reduce)").matches;
     scene.setAuto(on);
 
@@ -370,6 +376,9 @@ function startShowBar(scene, opts = {}) {
           ${maker ? `<div class="fwp-grid">${byMaker[maker].slice(0, 60).map(madeBtn).join("")}</div>` : '<p class="fwp-hint">Pick someone to see their fireworks.</p>'}`
         : others.length ? `<h5>Made by players</h5><div class="fwp-grid">${others.slice(0, 60).map(madeBtn).join("")}</div>` : "";
       pop.innerHTML = `<div class="fwp-head"><h4>Launch a firework</h4><button type="button" class="fwp-x" data-close aria-label="Close">✕</button></div>
+        <div class="fwp-pace-row"><span title="How often fireworks go off by themselves (with Show on). Just for you on this device.">Show pace${on ? "" : " <small>(Show's off)</small>"}</span>
+          <div class="fwp-pace" role="group" aria-label="How often fireworks go off by themselves, on this device">${PACES.map(([v, l]) =>
+            `<button type="button" data-pace="${v}" aria-pressed="${FW.pace === v}" title="${v === FW.pace_site ? "The site's usual" : ""}">${l}</button>`).join("")}</div></div>
         <button type="button" class="fwp-surprise" data-fire="">🎲 Surprise me</button>
         <div class="fwp-grid">${kinds.map((k) => `<button type="button" data-fire="${k}"><span aria-hidden="true">${FW_KIND_NAMES[k][0]}</span>${FW_KIND_NAMES[k][1]}</button>`).join("")}</div>
         ${mine.length ? `<h5>My fireworks</h5><div class="fwp-grid">${mine.slice(0, 60).map(madeBtn).join("")}</div>` : ""}
@@ -389,6 +398,11 @@ function startShowBar(scene, opts = {}) {
       else if (b.dataset.fire != null) fire(b.dataset.fire);
       else if (b.dataset.made != null) fire((FW.custom || [])[+b.dataset.made]);
       else if (b.dataset.maker != null) { maker = maker === b.dataset.maker ? null : b.dataset.maker; renderPop(); place(); }
+      else if (b.dataset.pace != null) {
+        FW.pace = b.dataset.pace;
+        lsSet("solstone-fw-pace", b.dataset.pace === FW.pace_site ? null : b.dataset.pace);    // the usual: follow the site's
+        renderPop(); place();
+      }
     });
     const closePop = (e) => { if (!pop.hidden && !pop.contains(e.target) && !bar.contains(e.target)) setPop(false); };
     const escPop = (e) => { if (e.key === "Escape" && !pop.hidden) setPop(false); };
@@ -400,7 +414,7 @@ function startShowBar(scene, opts = {}) {
       if (!s) return;
       const k = s.dataset.sky;
       if (k === "pick") setPop(pop.hidden);
-      else if (k === "auto") { on = !on; scene.setAuto(on); lsSet(opts.key || "solstone-sky", on); sync(); }
+      else if (k === "auto") { on = !on; scene.setAuto(on); lsSet(SKY_KEY, on); sync(); }
       else if (k === "sound") { FWAudio.setOn(!FWAudio.on); if (FWAudio.on) scene.launch(); sync(); }
       else if (k === "hide") setHidden(!document.body.classList.contains("ui-hidden"));
     });
