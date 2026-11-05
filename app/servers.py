@@ -194,7 +194,7 @@ class Server:
         conf = self.rcon_conf()
         if not conf:
             return None
-        cmd = long_names_to_uuids(self, cmd)
+        cmd = long_names_to_uuids(self, player_targets(self, cmd))
         if time.monotonic() < self._rcon_backoff:
             raise RconError(self.rcon_error or "RCON unavailable (retrying shortly)")
         if self._rcon is None or (self._rcon.host, self._rcon.port, self._rcon.password) != conf:
@@ -879,6 +879,45 @@ def _dirs(srv: Server) -> dict[str, Path]:
 # wherever a name does for a player on the server, so a command naming one of them goes out with their UUID instead.
 # (Not for whitelist, op and ban, which look a name up rather than find someone online.)
 _BY_NAME_ONLY = ("whitelist ", "fwhitelist ", "op ", "deop ", "ban ", "pardon ", "ban-ip ", "pardon-ip ")
+
+
+# Commands that only take players. The game turns a UUID away for these ("Only players may be affected by this
+# command, but the provided selector includes entities"), and quietly: no kit was handed out in the mob arena (give),
+# nobody's things were cleared (clear), titles and messages never arrived, game modes stayed. Commands like item,
+# data, effect and tp take a UUID fine.
+_PLAYERS_ONLY = {"give", "clear", "tellraw", "title", "gamemode", "xp", "experience", "playsound", "stopsound", "spawnpoint",
+                 "kick", "msg", "tell", "w", "recipe", "advancement", "spectate"}
+_UUID_WORD = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+_names_cache: dict[str, tuple[float, dict[str, str]]] = {}
+
+
+def _names_by_uuid(srv: "Server") -> dict[str, str]:
+    hit = _names_cache.get(srv.id)
+    if hit and time.monotonic() - hit[0] < 30:
+        return hit[1]
+    names = {u: p["name"] for u, p in known_players(srv).items() if p.get("name") and p["name"] != u[:8]}
+    _names_cache[srv.id] = (time.monotonic(), names)
+    return names
+
+
+def player_targets(srv: "Server", cmd: str) -> str:
+    """A player-only command aimed at someone by UUID goes out with their name instead; a name too long for the game
+    (a 17-character Bedrock name) as @a[name="…"], which takes any length. Scores are kept by name too, so
+    "scoreboard players … <uuid>" read and set a score nobody had: it gets the same treatment."""
+    words = cmd.split(" ")
+    head = words[0]
+    if head not in _PLAYERS_ONLY and not (head == "scoreboard" and words[1:2] == ["players"]):
+        return cmd
+    spots = [i for i, w in enumerate(words[:6]) if _UUID_WORD.match(w) or (len(w) > 16 and w[:1] == ".")]
+    if not spots:
+        return cmd
+    names = _names_by_uuid(srv) if any(_UUID_WORD.match(words[i]) for i in spots) else {}
+    for i in spots:
+        name = names.get(norm_uuid(words[i]), words[i]) if _UUID_WORD.match(words[i]) else words[i]
+        if _UUID_WORD.match(name):
+            continue                                   # (someone the server doesn't know by name: left as it was)
+        words[i] = name if len(name) <= 16 else f'@a[name="{name}",limit=1]'
+    return " ".join(words)
 
 
 def long_names_to_uuids(srv: "Server", cmd: str) -> str:

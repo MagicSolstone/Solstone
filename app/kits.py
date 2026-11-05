@@ -262,6 +262,11 @@ async def stash(srv, players: dict[str, str], game: str) -> list[str]:
                                "back": back, "gm": await _gamemode(srv, name)}
             _save(d)
             await _rcon(srv, f"clear {uuid}")
+            left = await _player_items(srv, uuid)
+            if left is None or sum(left[0].values()):        # not empty (the clear didn't take): slot by slot, then
+                log.warning("clearing %s didn't empty their inventory; emptying it slot by slot", name)
+                for src, _w, _i in SLOTS:
+                    await _rcon(srv, f"item replace entity {uuid} {src} with minecraft:air")
             done.append(name)
         await _rcon(srv, f"execute in {DIM} run forceload remove {v['x']} {v['z']}")
     return done

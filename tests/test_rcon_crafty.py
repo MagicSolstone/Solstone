@@ -220,3 +220,25 @@ def test_busy_crafty_never_holds_pages_up():
         assert len(calls) == 2 and (await c.stats("abc"))["cpu"] == 2
         await c.close()
     asyncio.run(run())
+
+
+def test_player_only_commands_go_by_name_not_uuid(monkeypatch):
+    """give, clear, title, tellraw, gamemode and scores turn a UUID away (only players allowed): the mob arena handed
+    out armour (item replace takes a UUID) but no sword, bow or food (give), and didn't clear anyone's things."""
+    from app import servers as S
+    srv = S.Server.__new__(S.Server)
+    srv.id = "t-targets"
+    S._names_cache.pop("t-targets", None)
+    tyler, longb = "0a1b2c3d-0000-4000-8000-000000000001", "00000000-0000-0000-0009-01f2a3b4c5d6"
+    monkeypatch.setattr(S, "known_players", lambda s: {tyler: {"name": "Tyler"}, longb: {"name": ".ABCDEFGHIJKLMNOP"}})
+    t = lambda c: S.long_names_to_uuids(srv, S.player_targets(srv, c))      # noqa: E731
+    assert t(f"give {tyler} minecraft:iron_sword[minecraft:custom_data={{solkit:1b}}] 1").startswith("give Tyler minecraft:iron_sword")
+    assert t(f"clear {tyler}") == "clear Tyler"
+    assert t(f"gamemode adventure {tyler}") == "gamemode adventure Tyler"
+    assert t(f"scoreboard players get {tyler} arena_k") == "scoreboard players get Tyler arena_k"
+    assert t(f'title {longb} actionbar {{"text":"hi"}}') == 'title @a[name=".ABCDEFGHIJKLMNOP",limit=1] actionbar {"text":"hi"}'
+    assert t("tellraw .ABCDEFGHIJKLMNOP {}") == 'tellraw @a[name=".ABCDEFGHIJKLMNOP",limit=1] {}'
+    # commands that take any entity keep the UUID (it's exact)
+    assert t(f"item replace entity {tyler} armor.head with minecraft:air") == f"item replace entity {tyler} armor.head with minecraft:air"
+    assert t(f"data get entity {tyler} Inventory").endswith(f"{tyler} Inventory")
+    assert t("give 11111111-2222-4333-8444-555555555555 minecraft:dirt 1").startswith("give 11111111")   # unknown: as it was
