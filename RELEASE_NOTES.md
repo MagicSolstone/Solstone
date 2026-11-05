@@ -1,3 +1,15 @@
+# Solstone 1.15.20
+
+- **Every game and race works the same way now: in with nothing of yours, home with everything.**
+  - **Applies to:** hide and seek, archery, spleef, the treasure hunt, and races on foot or by boat. The mob arena, King of the Hill and elytra races already did.
+  - **At the start:** your things, where you were and your game mode are kept safe in the sealed vault (and checked). You play with just the game's things: its kit, a Match Bow, a shovel, a boat, wings and rockets, or nothing.
+  - **At the end:** a short countdown (**Back home with your things in 8…**), then the game's things and anything picked up are cleared. You're back where you were, in the game mode you were in, with exactly your own things.
+  - **Prizes arrive once you're home.** Handed out during a game, they'd be cleared along with everything else. The same goes for holiday rewards earned while in a game.
+  - **Treasure hunt:** what's in the chest is the finder's prize, given once they're home.
+  - **Crash out of any race** (die) and you're out of it, and home with your things.
+  - **Nobody joins a race halfway,** since their things weren't kept safe.
+- **Fixed: things could be handed back in the middle of a race.** The tidy-up that returns people's things after a game only knew about games, not races.
+
 # Solstone 1.15.19
 
 - **"Time's paused" on the home page:** while nobody's playing, the server pauses its clock. The "In the world right now" strip now says **⏸ Time's paused while nobody's playing**, and the clock stays put until someone joins.
