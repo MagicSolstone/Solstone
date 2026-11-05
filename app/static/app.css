@@ -2609,3 +2609,6 @@ body.ui-hidden .manage-sub { display: none; }
 .wl-whois-list { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 10px 0; }
 .wl-whois-list dt { color: var(--muted); font-size: .88rem; }
 .wl-whois-list dd { margin: 0; word-break: break-all; }
+.hp-ask-list { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; gap: 6px; }
+.hp-ask-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.hp-ask-status { display: grid; gap: 6px; }

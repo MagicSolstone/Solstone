@@ -156,7 +156,7 @@ function joinCard(site) {
   // New here: the steps, one after another, each a button on this page.
   const steps = [];
   if (site.join_requests) steps.push(`<li class="hp-step" id="step-ask"><span class="hp-step-dot">1</span><div class="hp-step-body">
-      <h3>Ask to join</h3><p class="muted" data-step-text>The server only lets in people on its list. Send your name, and an admin will add you.</p>
+      <h3>Ask to join</h3><div class="muted" data-step-text>The server only lets in people on its list. Send your name, and an admin will add you.</div>
       <button class="btn primary hp-ask-btn glow" type="button" data-open-ask>🙋 Ask to join</button></div></li>`);
   steps.push(`<li class="hp-step" id="step-play"><span class="hp-step-dot">${steps.length + 1}</span><div class="hp-step-body">
       <h3 data-step-title>Get in the game</h3><p class="muted" data-step-text>${site.join_requests ? "Once you're let in, join with the address for your Minecraft:" : "Join with the address for your Minecraft:"}</p>
@@ -169,25 +169,31 @@ function joinCard(site) {
 }
 
 // The step-by-step on the home page follows a request that's out: waiting, then let in.
-function stepState(d) {
+function stepState(list) {
   const ask = $("#step-ask"), play = $("#step-play");
   if (!ask || !play) return;
-  const state = d?.state || "";
-  ask.classList.toggle("done", state === "in" || state === "partly");
-  ask.classList.toggle("waiting", state === "waiting");
-  ask.classList.toggle("denied", state === "denied");
-  play.classList.toggle("now", state === "in" || state === "partly");
-  const btn = $("[data-open-ask]", ask), text = $("[data-step-text]", ask);
-  btn.hidden = state === "waiting" || state === "in" || state === "partly" || state === "denied";
-  // the answer, right here: let in, or not (with the admin's message), and a way to clear it or ask again
-  const again = `<span class="hp-step-acts"><button type="button" class="btn sm primary" data-ask-again>🙋 Ask again</button><button type="button" class="link-btn" data-ask-forget>Clear this</button></span>`;
-  text.innerHTML = state === "waiting" ? `<span class="spin" aria-hidden="true"></span> Request sent for <b>${esc(d.player)}</b>. Waiting for an admin to let you in. You can leave this page: we'll show it here when you come back.`
-    : state === "in" ? `✅ <b>${esc(d.player)}</b> is on the list. Join the game below! <button type="button" class="link-btn" data-ask-forget>Clear this</button>`
-    : state === "partly" ? `✅ <b>${esc(d.player)}</b> is in on some servers, and waiting on the rest.`
-    : state === "denied" ? `<span class="hp-denied">✋ Your request for <b>${esc(d.player)}</b> wasn't accepted this time.</span>
-        ${d.reason ? `<span class="hp-admin-says"><small>The admins said:</small> ${esc(d.reason)}</span>` : ""}${again}`
+  const all = (Array.isArray(list) ? list : list ? [list] : []).filter(Boolean);
+  const has = (st) => all.some((d) => d.state === st);
+  const anyIn = has("in") || has("partly");
+  ask.classList.toggle("done", anyIn && !has("waiting"));
+  ask.classList.toggle("waiting", has("waiting"));
+  ask.classList.toggle("denied", all.length > 0 && all.every((d) => d.state === "denied"));
+  play.classList.toggle("now", anyIn);
+  const btn = $(".hp-ask-btn", ask), text = $("[data-step-text]", ask);
+  btn.hidden = all.length > 0;                        // (the list below has its own "ask for someone else")
+  const row = (d) => {
+    const x = `<button type="button" class="link-btn" data-ask-forget="${esc(d.token)}">Clear</button>`;
+    return `<li class="hp-ask-row ${esc(d.state)}">${d.state === "waiting" ? `<span class="spin" aria-hidden="true"></span> <b>${esc(d.player)}</b>: waiting for an admin`
+      : d.state === "in" ? `✅ <b>${esc(d.player)}</b> is on the list. Join the game below! ${x}`
+      : d.state === "partly" ? `✅ <b>${esc(d.player)}</b> is in on some servers, and waiting on the rest.`
+      : `<span class="hp-denied">✋ <b>${esc(d.player)}</b> wasn't accepted this time.</span>${d.reason ? ` <span class="hp-admin-says"><small>The admins said:</small> ${esc(d.reason)}</span>` : ""} ${x}`}</li>`;
+  };
+  text.innerHTML = all.length
+    ? `<ul class="hp-ask-list">${all.map(row).join("")}</ul>
+       ${has("waiting") ? '<span class="muted small">You can leave this page: we\'ll show it here when you come back.</span>' : ""}
+       <span class="hp-step-acts"><button type="button" class="btn sm" data-open-ask>🙋 Ask for someone else${all.length ? " (or another account)" : ""}</button></span>`
     : "The server only lets in people on its list. Send your name, and an admin will add you.";
-  $("[data-step-title]", play).textContent = state === "waiting" ? "Then get in the game" : state === "in" || state === "partly" ? "You're in! Join the game" : "Get in the game";
+  $("[data-step-title]", play).textContent = has("waiting") && !anyIn ? "Then get in the game" : anyIn ? "You're in! Join the game" : "Get in the game";
 }
 
 // Pop-ups on the home page (Ask to join, Make an account): a <dialog>, closed with ×, Esc or a click outside.
@@ -369,75 +375,88 @@ async function builtinArticle(key) {
     ${key === "join" && hp.site.join_requests ? askFormHtml() : ""}`;
 }
 
-// Asked already? This browser keeps a private ticket for it, so it can show them when they're let in, without
-// anyone else being able to see who's on the list.
-function askTicket() { try { return JSON.parse(localStorage.getItem("solstone-ask") || "null"); } catch { return null; } }
-// A small badge in the corner while a request is out: sent, waiting (it can take a while), then "you're in".
+// Asked already? This browser keeps a private ticket for each request, so it can show when each is let in, without
+// anyone else being able to see who's on the list. Several at once: a family on one computer, or someone with a Java
+// and a Bedrock account. (An older single ticket is moved over.)
+function askTickets() {
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem("solstone-asks") || "[]"); } catch { list = []; }
+  try {
+    const old = JSON.parse(localStorage.getItem("solstone-ask") || "null");
+    if (old?.token && !list.some((t) => t.token === old.token)) list.push(old);
+    localStorage.removeItem("solstone-ask");
+    if (old) localStorage.setItem("solstone-asks", JSON.stringify(list));
+  } catch { /* private window */ }
+  return Array.isArray(list) ? list.filter((t) => t?.token) : [];
+}
+function saveTickets(list) { try { localStorage.setItem("solstone-asks", JSON.stringify(list)); } catch { /* private window */ } }
+const askTicket = () => askTickets()[0] || null;        // (any request at all)
+// A small badge in the corner while requests are out: sent, waiting (it can take a while), then "you're in".
 // It checks every 15 seconds while the page is open (a minute when it's in the background), and never gets stuck: × hides it, a ticket the server no longer knows is dropped,
-// and after a week of waiting the badge stops (the request still shows on the join guide).
+// and after a week of waiting the badge stops (the requests still show on the join guide).
 const ASK_BADGE_DAYS = 7;
 let askTimer = 0;
 async function showAskStatus() {
   clearTimeout(askTimer);
-  const t = askTicket();
-  if (!t?.token) { renderAskBadge(null); stepState(null); return; }
-  let d = null;
-  try {
+  let tickets = askTickets();
+  if (!tickets.length) { renderAskBadge(null); stepState(null); return; }
+  const look = async (t) => {
     const r = await fetch("/api/public/join-request/status", { method: "POST", headers: { "Content-Type": "application/json", "X-Solstone": "1" }, body: JSON.stringify({ token: t.token }) });
-    // Solstone restarting (an error page from the proxy, or no answer at all): try again shortly; the request is safe
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    d = await r.json();
-  } catch { askTimer = setTimeout(showAskStatus, 20000); return; }
-  if (!d) { askTimer = setTimeout(showAskStatus, 20000); return; }
-  if (d.state === "unknown") { forgetAsk(); return; }              // only when Solstone itself says it doesn't know it
-  stepState(d);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);       // Solstone restarting: try again shortly; the request is safe
+    return { ...(await r.json()), token: t.token, at: t.at, hidden: t.hidden };
+  };
+  let all;
+  try { all = await Promise.all(tickets.map(look)); } catch { askTimer = setTimeout(showAskStatus, 20000); return; }
+  const gone = all.filter((d) => d.state === "unknown").map((d) => d.token);   // only when Solstone itself doesn't know it
+  if (gone.length) { tickets = tickets.filter((t) => !gone.includes(t.token)); saveTickets(tickets); all = all.filter((d) => !gone.includes(d.token)); }
+  stepState(all);
   const box = $("#step-ask") ? null : $("#ask-status");
   if (box) {
-    box.hidden = false;
-    box.className = `hp-ask-status ${d.state}`;
-    const each = (d.servers || []).length > 1 ? ` <span class="ask-each">${d.servers.map((x) => `<span class="${x.in ? "in" : ""}">${x.in ? "✅" : "⏳"} ${esc(x.name)}</span>`).join("")}</span>` : "";
-    box.innerHTML = d.state === "denied"
-      ? `Sorry, <b>${esc(d.player)}</b>, your request wasn't accepted this time.${d.reason ? ` The admins said: <i>${esc(d.reason)}</i>` : " If you think that's a mistake, ask an admin you know."} <button type="button" class="link-btn" data-ask-forget>Ask again</button>`
-      : d.state === "in"
-      ? `🎉 <b>${esc(d.player)}</b>, you're in! Join the server now.${each} <button type="button" class="link-btn" data-ask-forget>Hide this</button>`
-      : d.state === "partly"
-        ? `<span class="spin" aria-hidden="true"></span> <b>${esc(d.player)}</b>, you're in on some already, and waiting for an admin on the rest.${each}`
-        : `<span class="spin" aria-hidden="true"></span> Your request for <b>${esc(d.player)}</b> is waiting for an admin. It may not be right away, but they'll get to it as soon as they can.${each}`;
+    box.hidden = !all.length;
+    box.className = "hp-ask-status";
+    box.innerHTML = all.map((d) => {
+      const each = (d.servers || []).length > 1 ? ` <span class="ask-each">${d.servers.map((x) => `<span class="${x.in ? "in" : ""}">${x.in ? "✅" : "⏳"} ${esc(x.name)}</span>`).join("")}</span>` : "";
+      return `<span class="hp-ask-line ${esc(d.state)}">${d.state === "denied"
+        ? `Sorry, <b>${esc(d.player)}</b>, your request wasn't accepted this time.${d.reason ? ` The admins said: <i>${esc(d.reason)}</i>` : ""} <button type="button" class="link-btn" data-ask-forget="${esc(d.token)}">Clear</button>`
+        : d.state === "in" ? `🎉 <b>${esc(d.player)}</b>, you're in! Join the server now.${each} <button type="button" class="link-btn" data-ask-forget="${esc(d.token)}">Hide this</button>`
+        : d.state === "partly" ? `<span class="spin" aria-hidden="true"></span> <b>${esc(d.player)}</b>, you're in on some already, and waiting for an admin on the rest.${each}`
+        : `<span class="spin" aria-hidden="true"></span> The request for <b>${esc(d.player)}</b> is waiting for an admin.${each}`}</span>`;
+    }).join("");
   }
-  const old = Date.now() - (t.at || Date.now()) > ASK_BADGE_DAYS * 86400000;
-  // the home page's Get started step shows it right where they asked; the corner badge is for the other pages
-  renderAskBadge(!$("#step-ask") && (d.state === "in" || d.state === "denied" || (!old && !t.hidden)) ? d : null);
-  if (d.state !== "in" && d.state !== "denied") askTimer = setTimeout(showAskStatus, document.hidden ? 60000 : 15000);
+  // the corner badge (other pages): the news first (someone's in, or not accepted), else what's still waiting
+  const fresh = all.filter((d) => !(Date.now() - (d.at || Date.now()) > ASK_BADGE_DAYS * 86400000) && !d.hidden);
+  const pick = all.find((d) => d.state === "in") || all.find((d) => d.state === "denied") || fresh.find((d) => d.state === "partly") || fresh[0] || null;
+  renderAskBadge(!$("#step-ask") && pick ? { ...pick, more: all.length - 1 } : null);
+  if (all.some((d) => d.state !== "in" && d.state !== "denied")) askTimer = setTimeout(showAskStatus, document.hidden ? 60000 : 15000);
 }
 function renderAskBadge(d) {
   let b = $("#ask-badge");
   if (!d) { b?.remove(); return; }
   if (!b) { b = document.createElement("div"); b.id = "ask-badge"; b.setAttribute("role", "status"); document.body.append(b); }
   b.className = `ask-badge glass ${d.state}`;
+  const more = d.more ? ` (and ${d.more} more request${d.more > 1 ? "s" : ""}: <a href="/">see the home page</a>)` : "";
   b.innerHTML = d.state === "denied"
-    ? `<span aria-hidden="true">✋</span><span><b>Request not accepted</b><small>${d.reason ? "The admins left you a message: " : ""}<a href="/">see the home page</a></small></span><button type="button" class="ask-x" data-ask-forget aria-label="Close">×</button>`
+    ? `<span aria-hidden="true">✋</span><span><b>Request for ${esc(d.player)} not accepted</b><small>${d.reason ? "The admins left a message: " : ""}<a href="/">see the home page</a></small></span><button type="button" class="ask-x" data-ask-forget="${esc(d.token)}" aria-label="Close">×</button>`
     : d.state === "in"
-    ? `<span aria-hidden="true">🎉</span><span><b>You're in, ${esc(d.player)}!</b><small>Join the server now</small></span><button type="button" class="ask-x" data-ask-forget aria-label="Close">×</button>`
+    ? `<span aria-hidden="true">🎉</span><span><b>You're in, ${esc(d.player)}!</b><small>Join the server now${more}</small></span><button type="button" class="ask-x" data-ask-forget="${esc(d.token)}" aria-label="Close">×</button>`
     : `<span class="spin" aria-hidden="true"></span><span><b>${d.state === "partly" ? "You're in on some" : "Request sent"}</b><small>${d.state === "partly"
       ? `In on ${esc(d.servers.filter((x) => x.in).map((x) => x.name).join(", "))}. Waiting on ${esc(d.servers.filter((x) => !x.in).map((x) => x.name).join(", "))}`
-      : `Waiting for an admin to let ${esc(d.player)} in`}</small></span><button type="button" class="ask-x" data-ask-hide aria-label="Hide">×</button>`;
+      : `Waiting for an admin to let ${esc(d.player)} in`}${more}</small></span><button type="button" class="ask-x" data-ask-hide aria-label="Hide">×</button>`;
 }
-function forgetAsk() {
-  try { localStorage.removeItem("solstone-ask"); } catch { /* fine */ }
+// One request off this browser's list (or all of them)
+function forgetAsk(token) {
+  saveTickets(token ? askTickets().filter((t) => t.token !== token) : []);
   clearTimeout(askTimer);
-  renderAskBadge(null);
-  const box = $("#ask-status");
-  if (box) box.hidden = true;
-  stepState(null);
+  showAskStatus();
 }
 document.addEventListener("click", (e) => {
-  if (e.target.closest("[data-ask-forget]")) { forgetAsk(); return; }
+  const f = e.target.closest("[data-ask-forget]");
+  if (f) { forgetAsk(f.dataset.askForget || null); return; }
   if (e.target.closest("[data-open-ask]")) { openPop(askFormHtml(true)); return; }
-  if (e.target.closest("[data-ask-again]")) { forgetAsk(); openPop(askFormHtml(true)); return; }
+  if (e.target.closest("[data-ask-again]")) { openPop(askFormHtml(true)); return; }
   if (e.target.closest("[data-open-signup]")) { openSignup(); return; }
-  if (e.target.closest("[data-ask-hide]")) {          // hide the badge only: the request is still waiting
-    const t = askTicket();
-    if (t) { try { localStorage.setItem("solstone-ask", JSON.stringify({ ...t, hidden: true })); } catch { /* fine */ } }
+  if (e.target.closest("[data-ask-hide]")) {          // hide the badge only: the requests are still waiting
+    saveTickets(askTickets().map((t) => ({ ...t, hidden: true })));
     renderAskBadge(null);
   }
 });
@@ -470,7 +489,7 @@ document.addEventListener("submit", async (e) => {
       body: JSON.stringify({ edition: f.get("edition"), player: f.get("player"), name: f.get("name"), note: f.get("note"), servers: f.getAll("servers"), rules: !!f.get("rules") }) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || "That didn't send. Try again in a moment.");
-    try { localStorage.setItem("solstone-ask", JSON.stringify({ token: d.token, player: d.player, at: Date.now() })); } catch { /* private window */ }
+    saveTickets([...askTickets().filter((t) => (t.player || "").toLowerCase() !== (d.player || "").toLowerCase()), { token: d.token, player: d.player, at: Date.now() }]);
     if (e.target.closest("#hp-pop")) { closePop(); toast("✅ Request sent"); } else e.target.outerHTML = `<p class="hp-ask-done">✅ ${esc(d.message)}</p>`;
     showAskStatus();
   } catch (x) { err.textContent = x.message; }

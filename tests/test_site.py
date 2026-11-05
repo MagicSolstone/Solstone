@@ -111,7 +111,9 @@ def test_ask_to_join(client, anon, monkeypatch):
         assert anon.post("/api/public/join-request", json={"rules": True, "player": "Has Space"}).status_code == 400   # Java names have none
         assert anon.post("/api/public/join-request", json={"rules": True, "player": "x<script>"}).status_code == 400
         assert anon.post("/api/public/join-request", json={"rules": True, "player": "Third"}).status_code == 200
-        assert anon.post("/api/public/join-request", json={"rules": True, "player": "Fourth"}).status_code == 429      # a few an hour
+        for n in ("Fourth", "Fifth", "Sixth", "Seventh", "Eighth"):                             # a family, back to back
+            assert anon.post("/api/public/join-request", json={"rules": True, "player": n}).status_code == 200
+        assert anon.post("/api/public/join-request", json={"rules": True, "player": "Ninth"}).status_code == 429       # eight an hour
     finally:
         client.put("/api/settings/site", json={"join_requests": False})
         main.settings_store.save_section("join_requests", [])

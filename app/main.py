@@ -777,7 +777,7 @@ async def join_request(request: Request):
         if len(public) > 1:
             raise HTTPException(400, "Pick the server (or servers) you'd like to play on")
         picked = list(public)
-    if signup._hit(f"ask:{auth.client_ip(request)}", 3):
+    if signup._hit(f"ask:{auth.client_ip(request)}", 8):  # (a family on one connection can each ask, back to back)
         raise HTTPException(429, "You've asked a few times already. An admin will see it soon")
     token = secrets.token_urlsafe(18)              # only they get this: it shows them when they've been let in
     site.add_join_request(player, name, note, hashlib.sha256(token.encode()).hexdigest(), picked)

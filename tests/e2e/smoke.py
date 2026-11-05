@@ -919,9 +919,23 @@ def main() -> int:
                 anon.click("#ask-form button[type=submit]"); anon.wait_for_timeout(900)
                 if anon.locator("#hp-pop[open]").count() or "waiting" not in (anon.locator("#step-ask").get_attribute("class") or ""):
                     problems.append("home: asking to join didn't close the pop-up and show the request waiting")
-                if "Waiting for an admin" not in (anon.locator("#step-ask").text_content() or ""):
+                if "waiting for an admin" not in (anon.locator("#step-ask").text_content() or "").lower():
                     problems.append("home: the first step doesn't say it's waiting for an admin")
                 check(anon, "site-guide-ask")
+                # someone else in the family asks too, straight after: both requests listed, each waiting
+                anon.click("#step-ask [data-open-ask]"); anon.wait_for_timeout(400)
+                if not anon.locator("#hp-pop[open] #ask-form").count():
+                    problems.append("home: no way to ask for someone else while a request is waiting")
+                else:
+                    anon.fill("#ask-form [name=player]", "Smoke_Sister"); anon.check("#ask-form [name=rules]")
+                    anon.click("#ask-form button[type=submit]"); anon.wait_for_timeout(1200)
+                    rows = anon.locator("#step-ask .hp-ask-row").all_text_contents()
+                    if len(rows) != 2 or not any("Smoke_Kid" in r for r in rows) or not any("Smoke_Sister" in r for r in rows):
+                        problems.append(f"home: two requests back to back aren't both listed ({rows})")
+                    check(anon, "site-home-two-asks")
+                    tok = anon.evaluate("() => (JSON.parse(localStorage.getItem('solstone-asks') || '[]').find((t) => t.player === 'Smoke_Sister') || {}).token")
+                    anon.evaluate("t => localStorage.setItem('solstone-asks', JSON.stringify(JSON.parse(localStorage.getItem('solstone-asks')).filter((x) => x.token !== t)))", tok)
+                    pg.request.post(f"{base}/api/whitelist/deny", data={"player": "Smoke_Sister"}, headers=H)
                 pg.goto(f"{base}/app#/s/{sid}/control"); pg.wait_for_timeout(1800)
                 if "Smoke_Kid" not in (pg.locator(".turned-away.asked").text_content() if pg.locator(".turned-away.asked").count() else ""):
                     problems.append("control: someone who asked to join isn't listed")
@@ -966,7 +980,8 @@ def main() -> int:
                     problems.append("home: someone let in doesn't see that they're in")
                 check(anon, "site-home-youre-in")
                 anon.click("#step-ask [data-ask-forget]"); anon.wait_for_timeout(300)
-                if "done" in (anon.locator("#step-ask").get_attribute("class") or "").split() or anon.locator("#step-ask [data-open-ask]").is_hidden():
+                anon.wait_for_timeout(700)
+                if "done" in (anon.locator("#step-ask").get_attribute("class") or "").split() or not anon.locator("#step-ask [data-open-ask]:visible").count():
                     problems.append("home: Clear this didn't go back to Ask to join")
                 wl.unlink()
                 # asked again, and an admin says no: off the list, and their page says so
@@ -976,7 +991,7 @@ def main() -> int:
                 anon.route("**/api/public/join-request/status", safely(lambda route: route.fulfill(status=502, body="Bad gateway")))
                 anon.reload(); anon.wait_for_timeout(1200)
                 anon.unroute("**/api/public/join-request/status")
-                if not anon.evaluate("() => localStorage.getItem('solstone-ask')"):
+                if "Nope_Kid" not in (anon.evaluate("() => localStorage.getItem('solstone-asks')") or ""):
                     problems.append("home: Solstone restarting (an error page) made a waiting request forget itself")
                 pg.goto(f"{base}/app#/manage/whitelist"); pg.wait_for_timeout(1500)
                 if not pg.locator('.wl-req [data-deny="Nope_Kid"]').count():
@@ -1002,10 +1017,10 @@ def main() -> int:
                             pg.click("#modal-root [data-close]"); pg.wait_for_timeout(200)
                 anon.reload(); anon.wait_for_timeout(1500)
                 step = anon.locator("#step-ask")
-                if "denied" not in (step.get_attribute("class") or "").split() or "real name in the note" not in (step.text_content() or "") or not step.locator("[data-ask-again]").count():
+                if "denied" not in (step.get_attribute("class") or "").split() or "real name in the note" not in (step.text_content() or "") or not step.locator("[data-open-ask]").count():
                     problems.append("home: someone denied doesn't see it (with the admins' message and Ask again) where they asked")
                 check(anon, "site-home-denied")
-                step.locator("[data-ask-again]").click(); anon.wait_for_timeout(400)
+                step.locator("[data-open-ask]").first.click(); anon.wait_for_timeout(400)
                 if not anon.locator("#hp-pop[open] #ask-form").count():
                     problems.append("home: Ask again didn't open the form")
                 anon.keyboard.press("Escape")
