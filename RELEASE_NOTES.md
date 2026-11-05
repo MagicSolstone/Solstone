@@ -1,3 +1,10 @@
+# Solstone 1.15.31
+
+- **Ask to join lives on the home page only.** The form isn't under the join guide any more. Every "Ask to join" link (in the guide, in posts, and old links to `/guides/join#ask`) goes to the home page and opens the Ask to join pop-up there, where the request's progress shows afterwards.
+- **More fireworks at once by hand.** Launching from the fireworks pop-up now allows up to 40 in the air at once (24 on smaller devices), up from 12, so fast clicking fills the sky. The sparks still thin out by themselves when there are a great many, so it stays smooth.
+- **Everyone can pick their own show pace.** The 🎆 Launch list now starts with **Show pace: Calm · Normal · Lively**, just for that person's device. The pace in the fireworks settings is everyone's usual; picking it again goes back to following it.
+- **One Show switch for the whole site.** The home pages and the app each kept their own, so turning the show on at Home didn't carry over to Events, Servers or Manage (and the other way round). Now it's one switch everywhere. (Sound already was.)
+
 # Solstone 1.15.30
 
 - **Fixed: a false "Xbox friend joining isn't working" alert.** When MCXboxBroadcast's regular update to Xbox timed out once ("Failed to update session information… request timed out"), Solstone took it for an outage: it said "Not working right now" and sent a notification, though Bedrock players could join all along. MCXboxBroadcast tries again by itself and says nothing when that works, so one of these is now just noted (admins still see it on the Control page). Only several in a few minutes count as a problem, and once they stop, it's working again. The lines of a stack trace under an error are no longer read as more errors.
