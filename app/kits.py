@@ -562,10 +562,50 @@ async def give_kit(srv, uuid: str, kit: dict) -> None:
             await _rcon(srv, f"give {uuid} {kit_item('minecraft:arrow')} {kit['arrows']}")
     if kit.get("food"):
         await _rcon(srv, f"give {uuid} {kit_item('minecraft:cooked_beef')} 16")
+    worn: list[tuple[str, str]] = []                   # (slot, item) put straight on, checked below
     if kit.get("shield"):
-        await _rcon(srv, f"item replace entity {uuid} weapon.offhand with {kit_item('minecraft:shield')}")
+        worn.append(("weapon.offhand", kit_item("minecraft:shield")))
     if kit.get("armour") and kit["armour"] != "none":
         m = ARMOUR[kit["armour"]]
         for slot, piece in (("armor.head", "helmet"), ("armor.chest", "chestplate"), ("armor.legs", "leggings"), ("armor.feet", "boots")):
-            item = kit_item(f"minecraft:{m}_{piece}")
+            worn.append((slot, kit_item(f"minecraft:{m}_{piece}")))
+    replies = {}
+    for slot, item in worn:
+        replies[slot] = await _rcon(srv, f"item replace entity {uuid} {slot} with {item}")
+    await _check_kit(srv, uuid, kit, worn, replies)
+
+
+def _kit_ids(kit: dict, worn: list[tuple[str, str]]) -> list[str]:
+    """Every item a kit should have handed over, by id."""
+    ids = [f"minecraft:{kit['sword']}_sword"]
+    if kit.get("bow"):
+        ids += ["minecraft:bow"] + (["minecraft:arrow"] if kit.get("infinite") or kit.get("arrows") else [])
+    if kit.get("food"):
+        ids.append("minecraft:cooked_beef")
+    return ids + [item.split("[", 1)[0] for _slot, item in worn]
+
+
+async def _check_kit(srv, uuid: str, kit: dict, worn: list[tuple[str, str]], replies: dict) -> None:
+    """Did it all arrive? Armour or the shield that didn't go on is put on again, and if it still won't, it goes in
+    their inventory (they can wear it from there); anything else missing is given again. What the game said goes in
+    the log, so a version that turns something away shows up."""
+    have = await _player_items(srv, uuid)
+    if have is None:
+        return                                          # couldn't look: (they left, say) nothing more to do
+    missing = [i for i in _kit_ids(kit, worn) if not have[0].get(i)]
+    if not missing:
+        return
+    log.warning("the kit for %s arrived without %s (the game said: %s)", uuid, ", ".join(missing),
+                "; ".join(f"{k}: {v[:120]}" for k, v in replies.items()) or "nothing")
+    for slot, item in worn:
+        if item.split("[", 1)[0] in missing:
             await _rcon(srv, f"item replace entity {uuid} {slot} with {item}")
+    have = await _player_items(srv, uuid) or have
+    for _slot, item in worn:
+        if not have[0].get(item.split("[", 1)[0]):
+            await _rcon(srv, f"give {uuid} {item} 1")      # still not on: in their inventory, to put on themselves
+    for i in missing:
+        if i in [it.split("[", 1)[0] for _s, it in worn] or have[0].get(i):
+            continue
+        n = {"minecraft:arrow": 1 if kit.get("infinite") else kit.get("arrows", 16), "minecraft:cooked_beef": 16}.get(i, 1)
+        await _rcon(srv, f"give {uuid} {kit_item(i)} {n}")

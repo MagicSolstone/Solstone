@@ -360,3 +360,29 @@ def test_the_tidy_up_never_hands_things_back_while_a_game_is_starting(game, monk
     kits._starting["arena-starting"] = 0                             # long past, and still not running: really over
     asyncio.run(kits.tidy(game, ["Alex"]))
     assert game.slots[U1] and not kits.waiting("kit-test")
+
+
+def test_a_kit_that_didnt_all_arrive_is_put_right():
+    """Armour that didn't go on is tried again, then handed over to put on; anything else missing is given again."""
+    import asyncio
+
+    from app import kits
+    said = []
+
+    class Srv:
+        mc_version = "26.3"
+
+        async def rcon(self, cmd, wait=None):
+            said.append(cmd)
+            if cmd.endswith(" Inventory"):                      # the sword, bow and arrows arrived; not the food
+                return ('Tyler has the following entity data: [{Slot: 0b, id: "minecraft:iron_sword", count: 1}, '
+                        '{Slot: 1b, id: "minecraft:bow", count: 1}, {Slot: 2b, id: "minecraft:arrow", count: 16}]')
+            if cmd.endswith(" equipment"):                      # only the shield went on
+                return 'Tyler has the following entity data: {offhand: {id: "minecraft:shield", count: 1}}'
+            return ""
+    kit = kits.clean_kit({"sword": "iron", "armour": "iron", "bow": True, "arrows": 16, "shield": True, "food": True})
+    asyncio.run(kits.give_kit(Srv(), "u-1", kit))
+    gives = [c for c in said if c.startswith("give u-1 ")]
+    assert any("iron_helmet" in c for c in gives) and any("iron_boots" in c for c in gives)          # armour, to wear
+    assert any("cooked_beef" in c and c.endswith(" 16") for c in gives)                             # the food, again
+    assert not any("shield" in c for c in gives) and sum("iron_sword" in c for c in gives) == 1      # nothing doubled
