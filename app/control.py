@@ -252,8 +252,18 @@ async def _player_action(srv: S.Server, player: str, action: str, body: dict, se
             reply = res["output"].strip()
             raise HTTPException(400, f"{p} wasn't added. The game said: {reply}" if reply else f"{p} wasn't added")
         if verb == "add":
-            from . import site                # let in here: their request knows (for their own page)
-            site.mark_let_in(p, srv.id)
+            # Their page hears "you're in" only once they really are on the list: a failed add (a name that doesn't
+            # exist) never answers them, and their request keeps waiting, so the name can be fixed and tried again.
+            # (Without RCON the game's reply can't be read: the whitelist file is the proof.)
+            if await _on_whitelist(srv, p):
+                from . import site
+                site.mark_let_in(p, srv.id)
+            elif res.get("via") != "rcon" or not res["output"].strip():
+                raise HTTPException(409, f"Sent to the game, but {p} isn't on the whitelist yet, so their request is still waiting. "
+                                         "If the name's wrong, fix it and let them in again; if they're added later, their page notices.")
+            else:
+                from . import site
+                site.mark_let_in(p, srv.id)  # the game clearly said yes (the list file may not be where Solstone looks)
         return [res]
     if action in ("op", "deop"):
         return [await run(srv, f"{action} {p}", wait=30)]
@@ -308,6 +318,16 @@ async def bedrock_xuid_for(gamertag: str) -> int | None:
                 if x is not None and str(x).isdigit():
                     return int(x)
     return None
+
+
+async def _on_whitelist(srv: S.Server, name: str, tries: int = 6) -> bool:
+    """Is this name on the server's whitelist file now? (The game writes it as soon as someone's added.)"""
+    for i in range(tries):
+        if S.whitelisted(srv, None, name):
+            return True
+        if i < tries - 1:
+            await asyncio.sleep(0.8)
+    return False
 
 
 def floodgate_uuid(xuid: int) -> str:

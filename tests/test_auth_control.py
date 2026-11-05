@@ -414,3 +414,23 @@ def test_bedrock_whitelist_without_floodgates_command(client, sid, rcon, monkeyp
             wl.unlink(missing_ok=True)
         else:
             wl.write_text(keep)
+
+
+def test_an_add_that_cant_be_confirmed_never_tells_them_theyre_in(client, sid, rcon, monkeypatch):
+    """No readable answer from the game (as without RCON) and they're not on the list: their request keeps waiting,
+    and nothing is sent to them, so the name can be fixed and tried again."""
+    from app import control, site
+
+    async def quick(srv, name, tries=1):
+        return control.S.whitelisted(srv, None, name)
+    monkeypatch.setattr(control, "_on_whitelist", quick)
+    site.add_join_request(".mama_bear_7349", "", "", "")
+    rcon["replies"]["fwhitelist add mama_bear_7349"] = ""
+    try:
+        r = client.post(f"/api/servers/{sid}/control/player/.mama_bear_7349/whitelist_add", json={})
+        assert r.status_code == 409 and "still waiting" in r.json()["detail"]
+        req = next(x for x in site.join_requests() if x["player"] == ".mama_bear_7349")
+        assert sid not in (req.get("done") or []) and not req.get("let_in_at")       # not marked let in
+    finally:
+        site.settings_store.save_section("join_requests", [])
+        site.settings_store.save_section("join_let_in", [])
