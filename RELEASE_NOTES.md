@@ -1,3 +1,11 @@
+# Solstone 1.15.23
+
+- **Letting someone in only tells them once it really worked:** their page says "you're in" only when they're actually on the server's whitelist.
+  - **If Let them in fails** (a gamertag or Java name that doesn't exist), they hear nothing and their request keeps waiting. Fix the name and try again.
+  - **Only Deny ever turns a request down.**
+  - **Before, without RCON,** Solstone couldn't read the game's reply and assumed it worked. Now it checks the whitelist file, and tells you if it can't confirm.
+- **Cancel a request to join:** a waiting request now has **Cancel** next to it. It takes the request back altogether, off the admins' list as well, so nobody's left waiting on something that doesn't matter any more. Only the person who asked can cancel it. Answered requests still have **Clear** to tidy them off the page.
+
 # Solstone 1.15.22
 
 - **Fix the name on a request to join:** typed it wrong? Press **✏️ Fix name** on the request (on the Whitelist page or in Control), then **Let them in**. They still see they're in on the page where they asked, and the request shows the name they first typed.
