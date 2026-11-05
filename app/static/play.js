@@ -635,18 +635,40 @@ function worldMapCanvas(el, sid, o) {
     for (let z = Math.ceil(gz0 / step) * step; toScreen(0, z)[1] < h; z += step) { const sy = Math.round(toScreen(0, z)[1]) + 0.5; ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(w, sy); ctx.stroke(); ctx.fillText(z, 4, sy - 3); }
     o.overlay?.(ctx, toScreen, view);
   }
-  // pan / click / zoom
+  // pan / click / zoom; and points (o.handles) that can be picked up and dragged somewhere else
   let drag = null;
-  cv.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY, cx: view.cx, cz: view.cz, moved: false }; cv.setPointerCapture(e.pointerId); });
+  const at = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  const handleAt = (px, py) => {
+    const hs = o.handles?.() || [];
+    let best = null, bestD = 14;                      // within 14 px of a point: that point
+    hs.forEach((h, i) => { const [sx, sy] = toScreen(h.x, h.z); const dd = Math.hypot(sx - px, sy - py); if (dd < bestD) { best = i; bestD = dd; } });
+    return best;
+  };
+  cv.addEventListener("pointerdown", (e) => {
+    const [px, py] = at(e);
+    drag = { x: e.clientX, y: e.clientY, cx: view.cx, cz: view.cz, moved: false, handle: handleAt(px, py) };
+    cv.setPointerCapture(e.pointerId);
+    if (drag.handle != null) cv.style.cursor = "grabbing";
+  });
   cv.addEventListener("pointermove", (e) => {
-    if (!drag) return;
+    if (!drag) {                                      // hovering: a hand over a point that can be moved
+      if (o.handles) { const [px, py] = at(e); cv.style.cursor = handleAt(px, py) != null ? "grab" : ""; }
+      return;
+    }
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
-    if (drag.moved) { view.cx = drag.cx - dx / view.scale; view.cz = drag.cz - dy / view.scale; draw(); }
+    if (!drag.moved) return;
+    if (drag.handle != null) { const [x, z] = toWorld(...at(e)); o.onMove?.(drag.handle, x, z); draw(); }
+    else { view.cx = drag.cx - dx / view.scale; view.cz = drag.cz - dy / view.scale; draw(); }
   });
   cv.addEventListener("pointerup", (e) => {
     const d = drag; drag = null;
-    if (d && !d.moved) { const r = cv.getBoundingClientRect(); const [x, z] = toWorld(e.clientX - r.left, e.clientY - r.top); o.onClick?.(Math.round(x), Math.round(z)); }
+    cv.style.cursor = "";
+    if (!d) return;
+    const [x, z] = toWorld(...at(e));
+    if (d.handle != null && d.moved) o.onDrop?.(d.handle, Math.round(x), Math.round(z));
+    else if (d.handle != null && o.onPick) o.onPick(d.handle);
+    else if (!d.moved) o.onClick?.(Math.round(x), Math.round(z));
   });
   const zoom = (f, px, py) => {
     const [wx, wz] = toWorld(px, py);
@@ -770,7 +792,8 @@ async function viewRaces(sid) {
       <form class="rc-edit" id="rc-form" autocomplete="off">
         <div class="rc-top"><label>Course name <input class="input" name="name" maxlength="40" value="${esc(editing.name)}" placeholder="Mountain loop" required></label>
           <div class="btn-row"><button class="btn" type="button" id="rc-cancel">Cancel</button><button class="btn primary" type="submit">Save course</button></div></div>
-        <p class="muted small">Click the map to add points in order: the first is the start, the last is the finish. Or stand somewhere in the game and add that spot.</p>
+        <p class="muted small">Click the map to add points in order: the first is the start, the last is the finish. Or stand somewhere in the game and add that spot.
+          <b>Drag a point</b> on the map to move it. <b>Click a point</b> to pick it: the next click on the map adds a new point right after it.</p>
         <div class="rc-grid">
           <div class="rc-map" id="rc-map"></div>
           <div class="rc-side">
@@ -798,15 +821,32 @@ async function viewRaces(sid) {
       onClick: async (x, z) => {
         try { const p = await api(`${base}/spot?x=${x}&z=${z}`); addPoint(p); } catch (e) { showError(esc(e.message), 3000); }
       },
+      handles: () => editing.points,
+      onMove: (i, x, z) => { const p = editing.points[i]; p.x = Math.round(x); p.z = Math.round(z); selected = i; },
+      onDrop: async (i, x, z) => {                   // moved: on the ground there (the height band stays as it was)
+        sync();
+        const p = editing.points[i];
+        p.x = x; p.z = z;
+        try { const g = await api(`${base}/spot?x=${x}&z=${z}`); p.y = g.y; } catch { /* keeps its height */ }
+        selected = i; renderEditor();
+      },
+      onPick: (i) => { sync(); selected = selected === i ? null : i; renderEditor(); },
     });
     if (pts.length > 1) setTimeout(() => map.fit(pts), 0);
+    window.rcEditor = { map, points: () => editing?.points || [] };       // (for the browser tests)
     const sync = () => {
       editing.name = form.name.value;
       $$(".rc-points li", form).forEach((li) => { const p = editing.points[+li.dataset.i]; p.name = li.querySelector("[data-name]").value.trim(); p.radius = +li.querySelector("[data-radius]").value || 4;
         const lo = li.querySelector("[data-low]").value, hi = li.querySelector("[data-high]").value;
         p.low = lo === "" ? null : +lo; p.high = hi === "" ? null : +hi; });
     };
-    const addPoint = (p) => { sync(); editing.points.push({ x: p.x, y: p.y, z: p.z, radius: 4, name: "" }); selected = editing.points.length - 1; renderEditor(); };
+    // after the picked point (to put one in between), or at the end
+    const addPoint = (p) => {
+      sync();
+      const at = selected != null && selected < editing.points.length - 1 ? selected + 1 : editing.points.length;
+      editing.points.splice(at, 0, { x: p.x, y: p.y, z: p.z, radius: 4, name: "" });
+      selected = at; renderEditor();
+    };
     $("#rc-addhere").addEventListener("click", async () => {
       try { addPoint(await api(`${base}/spot?player=${encodeURIComponent($("#rc-player").value)}`)); } catch (e) { showError(esc(e.message), 4000); }
     });

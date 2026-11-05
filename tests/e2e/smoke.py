@@ -608,6 +608,30 @@ def main() -> int:
                 problems.append("banners: a holiday with a reward isn't one banner showing the reward")
             check(pg, "reward-banner")
             pg.request.put(f"{base}/api/fireworks/show", data={"calendar": cal}, headers=H)
+            # the course editor: drag a point to move it, pick one and add a new point right after it
+            course = pg.request.post(f"{base}/api/servers/{sid}/races/courses", headers=H, data={"name": "Smoke loop", "dim": "minecraft:overworld",
+                     "points": [{"x": 0, "y": 64, "z": 0}, {"x": 40, "y": 64, "z": 0}, {"x": 80, "y": 64, "z": 0}]}).json()
+            pg.goto(f"{base}/app#/s/{sid}/challenges/races"); pg.wait_for_timeout(1200)
+            pg.click(f'[data-cid="{course["id"]}"] [data-edit]'); pg.wait_for_timeout(1200)
+            pos = pg.evaluate("""() => { const cv = document.querySelector('#rc-map canvas'); const r = cv.getBoundingClientRect();
+                return { left: r.left, top: r.top, w: cv.clientWidth, h: cv.clientHeight }; }""")
+            def screen(x, z):                                 # the map's own view, read back from the page
+                v = pg.evaluate("() => ({ cx: rcEditor.map.view.cx, cz: rcEditor.map.view.cz, s: rcEditor.map.view.scale })")
+                return pos["left"] + pos["w"] / 2 + (x - v["cx"]) * v["s"], pos["top"] + pos["h"] / 2 + (z - v["cz"]) * v["s"]
+            x1, y1 = screen(40, 0)
+            pg.mouse.move(x1, y1); pg.mouse.down(); pg.mouse.move(x1 + 30, y1 + 40, steps=6); pg.mouse.up(); pg.wait_for_timeout(900)
+            moved = pg.evaluate("() => rcEditor.points().map((p) => [p.x, p.z])")
+            if len(moved) != 3 or moved[1] == [40, 0] or moved[0] != [0, 0]:
+                problems.append(f"course editor: dragging a point didn't move it ({moved})")
+            x0, y0 = screen(0, 0)
+            pg.mouse.click(x0, y0); pg.wait_for_timeout(500)                       # pick the start
+            pg.mouse.click(x0 + 25, y0 - 60); pg.wait_for_timeout(900)            # a new point right after it
+            pts = pg.evaluate("() => rcEditor.points().length")
+            if pts != 4 or pg.evaluate("() => rcEditor.points()[0].x") != 0:
+                problems.append(f"course editor: a point picked then a click on the map didn't add one after it ({pts})")
+            check(pg, "race-course-drag")
+            pg.click("#rc-cancel"); pg.wait_for_timeout(400)
+            pg.request.delete(f"{base}/api/servers/{sid}/races/courses/{course['id']}", headers=H)
             # setting up King of the Hill and the mob arena (no game here: the page is told RCON is on)
             def games_on(route):
                 if route.request.method != "GET":
