@@ -220,6 +220,7 @@ async def stash(srv, players: dict[str, str], game: str) -> list[str]:
     empty-handed, ready for a kit. Anyone not in the list wasn't touched."""
     from .games import _gamemode
     done = []
+    _starting[game] = time.time()                       # from now the game counts as on (see _in_live_game)
     async with _lock:
         d = _load()
         v = await _vault(srv, d)
@@ -423,12 +424,19 @@ def _in_live_game(s: dict) -> bool:
     from .races import _load as races_load
     if s.get("game") in _heading_home:
         return True
+    if time.time() - _starting.get(s.get("game"), 0) < STARTING_GRACE:
+        return True          # just kept safe: the game's still getting going (not marked running yet)
     return (any(r["id"] == s.get("game") and r["state"] in ACTIVE for r in games_load()["runs"])
             or any(r["id"] == s.get("game") and r["state"] in ("countdown", "running") for r in races_load()["runs"]))
 
 
 # ------------------------------------------------------------------ every game: in with nothing, home with everything
 _heading_home: dict[str, float] = {}       # game id -> when its trip home started (the tidy-up leaves those alone)
+# game id -> when things were last kept safe for it. A game saves everyone's things, then takes a few seconds (kits,
+# monsters) before it's marked running; the tidy-up, on its own loop, once took that for a game that was over and
+# handed everything back at the start (own things kept through the game, the kit on top). Not any more.
+_starting: dict[str, float] = {}
+STARTING_GRACE = 120
 _tasks: set = set()
 HOME_SECS = 8
 

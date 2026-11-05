@@ -101,6 +101,7 @@ def setup_vault(monkeypatch) -> None:
 @pytest.fixture
 def game(monkeypatch):
     setup_vault(monkeypatch)
+    monkeypatch.setattr(kits, "STARTING_GRACE", 0)                  # (each test's "game" is over unless it says)
     yield FakeGame()
     settings_store.save_section(kits.SECTION, {})
 
@@ -346,3 +347,16 @@ def test_a_prize_won_in_a_game_waits_till_theyre_home(game, monkeypatch):
 
 async def _online(names):
     return (names, "rcon")
+
+
+def test_the_tidy_up_never_hands_things_back_while_a_game_is_starting(game, monkeypatch):
+    """The game's still getting ready (not marked running yet) when the tidy-up comes by: it once handed everything
+    straight back, so they played with their own things and the kit on top."""
+    monkeypatch.setattr(kits, "STARTING_GRACE", 120)
+    asyncio.run(kits.stash(game, {"Alex": U1}, "arena-starting"))
+    assert game.slots[U1] == {}
+    asyncio.run(kits.tidy(game, ["Alex"]))                           # (no run marked running yet)
+    assert game.slots[U1] == {} and kits.waiting("kit-test")         # left alone: the game's on
+    kits._starting["arena-starting"] = 0                             # long past, and still not running: really over
+    asyncio.run(kits.tidy(game, ["Alex"]))
+    assert game.slots[U1] and not kits.waiting("kit-test")
