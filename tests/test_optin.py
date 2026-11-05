@@ -55,7 +55,6 @@ def oi(monkeypatch):
     async def send(_srv, cmds, delay=0):
         told.extend(cmds)
     monkeypatch.setattr(optin.welcome, "send", send)
-    monkeypatch.setattr(challenges.fwshow, "push", lambda *a, **k: None)
     optin.save({"alerts": [600, 300, 60]})
     yield optin, challenges, srv, told
     for sec in ("challenges", "races", "games", "optin_state", "optin"):

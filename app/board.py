@@ -68,7 +68,7 @@ def clean_item(it: dict) -> dict | None:
             # "custom": the admin's own two or three colours, as a gradient
             "colors": [c for c in (str(x or "").strip().lower() for x in (it.get("colors") or [])[:3]) if _HEX.match(c)],
             "start": _dt(it.get("start")), "end": _dt(it.get("end")), "countdown": _dt(it.get("countdown")),
-            "done_text": _line(it.get("done_text"), 80), "show": re.sub(r"[^a-z0-9_-]", "", str(it.get("show") or ""))[:24],
+            "done_text": _line(it.get("done_text"), 80),
             "say": bool(it.get("say")), "where": where, "server": str(it.get("server") or "")[:64]}
 
 
@@ -98,10 +98,6 @@ def save(body: dict) -> dict:
 
 
 # ------------------------------------------------------------------ what's showing now
-def _show(sid: str) -> dict | None:
-    return fwshow.resolved(fwshow.get_show(sid)) if sid else None
-
-
 def item_window(it: dict) -> tuple[float | None, float | None, float | None]:
     start, end, cd = _ts(it["start"]), _ts(it["end"]), _ts(it["countdown"])
     if cd and not end:
@@ -129,8 +125,7 @@ def active(where: str, sid: str | None = None, names: bool = True, now: datetime
         if (start and t < start) or (end and t >= end):
             continue
         out.append({"id": f"n-{it['id']}", "kind": "note", "text": it["text"], "detail": it["detail"], "emoji": it["emoji"],
-                    "style": it["style"], "colors": it.get("colors") or [], "countdown": cd, "done_text": it["done_text"] or "It's here!",
-                    "show": _show(it["show"]) if cd and it["show"] else None})
+                    "style": it["style"], "colors": it.get("colors") or [], "countdown": cd, "done_text": it["done_text"] or "It's here!"})
     if cfg["bedtime"]["show"] and where in ("home", "status", "app") and servers:
         pt = playtime.config()
         for srv in servers:

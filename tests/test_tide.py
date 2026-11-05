@@ -135,7 +135,6 @@ def lake(monkeypatch):
     monkeypatch.setattr(S, "online_players", online)
     monkeypatch.setattr(tide, "installed", lambda _s: True)
     monkeypatch.setattr(tide, "species", lambda _s: [{"id": "tide:pike", "name": "Pike"}, {"id": "tide:bluegill", "name": "Bluegill"}])
-    monkeypatch.setattr(challenges.fwshow, "push", lambda *a, **k: None)
     yield challenges, tide, srv
     settings_store.save_section("challenges", {})
 

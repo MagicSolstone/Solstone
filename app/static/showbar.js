@@ -19,8 +19,7 @@ document.addEventListener("click", (e) => {
 /* Solstone — everything around the fireworks sky that isn't drawing it:
    - the fireworks control in the corner (launch one from a list, the Show switch, sound, hide the page),
    - firework sounds made in the browser (Web Audio, nothing to download),
-   - the "director": fireworks for things happening in the game, holiday themes,
-     scheduled finales and the New Year countdown.
+   - the "director": a firework when someone joins the game.
    Loaded after sky.js and hud.js. Pages call startShowBar(scene, opts). */
 "use strict";
 
@@ -426,22 +425,15 @@ function startShowBar(scene, opts = {}) {
     }
   }
 
-  // ---- director: game events, holidays, finales (the holiday banner itself is in board.js)
-  const count = document.createElement("div");
-  count.className = "fw-countdown"; count.hidden = true;
-  document.body.append(count); els.push(count);
-  let last = -1, pollT = 0, tickT = 0, done = new Set();
+  // ---- director: a firework when someone joins (holiday colours come with the settings; the banner is in board.js)
+  let last = -1, pollT = 0;
   const runShow = (show) => {
     const n = Math.max(1, Math.min(5, show.count || 1));
     for (let i = 0; i < n; i++) setTimeout(() => {
-      if (show.play) return;
       if (show.design) scene.launch(show.design);
-      else if (show.kind === "showpiece") scene.showpiece();
       else if (show.kind === "random" || !show.kind) scene.launch();
       else scene.launch(show.kind);
     }, i * 450);
-    if (show.show) scene.boost(show.show);
-    if (show.play) scene.playShow(show.play);
   };
   const poll = async () => {
     clearTimeout(pollT);
@@ -456,25 +448,6 @@ function startShowBar(scene, opts = {}) {
       } catch { /* try again soon */ }
     }
     pollT = setTimeout(poll, 4000);
-  };
-  const tick = () => {
-    const now = Date.now() / 1000;
-    let cd = null;
-    for (const f of FW.finales || []) {
-      if (f.countdown && f.start - now <= 10 && f.start - now > 0) cd = Math.ceil(f.start - now);
-      if (now >= f.start && now < f.end && !done.has(f.id + f.start)) {
-        done.add(f.id + f.start);
-        scene.boost(f.end - now, f.show);
-        if (!f.show) for (let i = 0; i < (f.countdown ? 10 : 4); i++) setTimeout(() => scene.launch(), i * 220);   // the opening salvo
-        if (f.countdown || f.message) {
-          count.hidden = false; count.classList.add("msg"); count.textContent = f.message || f.name;
-          setTimeout(() => { count.hidden = true; count.classList.remove("msg"); }, 6000);
-        }
-      }
-    }
-    if (cd != null) { count.hidden = false; count.classList.remove("msg"); count.textContent = String(cd); }
-    else if (!count.classList.contains("msg")) count.hidden = true;
-    tickT = setTimeout(tick, 250);
   };
   // The sky follows a server's in-game time and weather (Show settings → Sky).
   let skyT = 0, lastSkySid = null;
@@ -493,13 +466,13 @@ function startShowBar(scene, opts = {}) {
   };
   // Pages call bar.skyChanged() when the server in view changes.
   const skyChanged = (force) => { if (force || (opts.skyServer?.() || "") !== lastSkySid) pollSky(); };
-  // Settings (theme, finales) refresh now and then, so a page left open picks up a new day.
+  // Settings (the day's theme) refresh now and then, so a page left open picks up a new day.
   const refresh = setInterval(() => { fwLoaded = null; loadFireworkSettings(); }, 10 * 60 * 1000);
-  loadFireworkSettings().then(() => { poll(); tick(); pollSky(); });
+  loadFireworkSettings().then(() => { poll(); pollSky(); });
   return {
     skyChanged,
     remove() {
-      clearTimeout(pollT); clearTimeout(tickT); clearInterval(refresh); clearTimeout(skyT);
+      clearTimeout(pollT); clearInterval(refresh); clearTimeout(skyT);
       cleanup.forEach((f) => f()); els.forEach((e) => e.remove());
     },
   };

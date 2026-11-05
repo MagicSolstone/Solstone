@@ -30,7 +30,7 @@ import random
 import secrets
 import time
 
-from . import bossbar, challenges, db, fwshow, hotzone, hud, settings_store
+from . import bossbar, challenges, db, hotzone, hud, settings_store
 from . import servers as S
 from .control import check_name, component
 from .races import _direction, _fmt, _pos, _rcon
@@ -191,8 +191,6 @@ async def _award(srv, r: dict, winners: list[str]) -> None:
     for w in winners:
         if prize:
             await challenges.award(srv, w, prize, f"won {r['name']}")
-    if winners:
-        fwshow.push(srv.id, srv.display_name, "challenge", winners[0], r["result"])
 
 
 async def _countdown(srv, r: dict) -> None:
@@ -558,8 +556,6 @@ async def _th_tick(srv, r: dict) -> None:
         await _rcon(srv, f"execute in {r['dim']} run setblock {c['x']} {c['y']} {c['z']} {'minecraft:water' if r.get('underwater_spot') else 'minecraft:air'}")
         await _rcon(srv, f"execute in {r['dim']} run forceload remove {c['x']} {c['z']}")
         _finish(srv, r, result)
-        if finder:
-            fwshow.push(srv.id, srv.display_name, "challenge", finder, result)
     elif now >= r["phase_ends"]:
         await _say(srv, [("★ ", "gold"), ("Time's up! Nobody found the treasure. It was at ", "yellow"), (f"{c['x']}, {c['y']}, {c['z']}", "white"), (".", "yellow")], "Time's up", "The treasure is gone")
         await _rcon(srv, f"execute in {r['dim']} run setblock {c['x']} {c['y']} {c['z']} {'minecraft:water' if r.get('underwater_spot') else 'minecraft:air'}")

@@ -1106,7 +1106,7 @@ async def get_board(request: Request):
             uuids.setdefault(p["name"].lower(), u)
     return {**board.config(), "players": sorted(players.values(), key=str.lower), "uuids": uuids,
             "servers": [{"id": x.id, "name": x.display_name, "bedtime": bool(playtime.rules_for(playtime.config(), x.id))} for x in _board_servers()],
-            "shows": [{"id": x["id"], "name": x["name"]} for x in fwshow.shows()], "now": time.time()}
+            "now": time.time()}
 
 
 @app.put("/api/board")
@@ -1350,7 +1350,7 @@ def _with_makers(designs: list[dict], user: auth.User | None) -> list[dict]:
 @app.get("/api/public/fireworks")
 async def public_fireworks(request: Request):
     custom = await asyncio.to_thread(_with_makers, _show_designs(), request.state.user)
-    return JSONResponse({**_fireworks_cfg(), "custom": custom, **fwshow.today_state(), "base_shows": fwshow.base_shows_resolved()},
+    return JSONResponse({**_fireworks_cfg(), "custom": custom, **fwshow.today_state()},
                         headers={"Cache-Control": "no-cache"})
 
 
@@ -1359,10 +1359,8 @@ async def my_join_firework(request: Request):
     """The firework that goes off when you join the server (your join firework), if join fireworks are on."""
     user = auth.require_user(request)
     sigs = fwshow.signatures()
-    cfg = fwshow.events_cfg()["join"]
     mine = next((sigs[p["name"].lower()] for p in user.players if p["name"].lower() in sigs), "")
-    return {"firework": mine, "players": [p["name"] for p in user.players],
-            "active": bool(cfg["on"] and cfg["firework"] == "signature")}
+    return {"firework": mine, "players": [p["name"] for p in user.players], "active": fwshow.join_cfg()["on"]}
 
 
 @app.put("/api/fireworks/my-join")
@@ -1390,7 +1388,7 @@ async def set_my_join_firework(request: Request):
 
 @app.get("/api/public/fireworks/feed")
 async def firework_feed(request: Request, since: int = -1):
-    """Fireworks set off by things happening in the game. Player names only for people signed in."""
+    """Join fireworks: someone joined the game. Player names only for people signed in."""
     names = request.state.user is not None
     feed = fwshow.feed_since(since, names)
     if not _admin_viewing():      # nothing from a private server, not even that something happened there
@@ -1407,11 +1405,11 @@ async def get_firework_show(request: Request):
     for srv in S.registry.servers.values():
         for p in S.known_players(srv).values():
             players.setdefault(p["name"].lower(), p["name"])
-    return {"events": fwshow.events_cfg(), "signatures": fwshow.signatures(), "calendar": fwshow.calendar(),
+    return {"join": fwshow.join_cfg(), "signatures": fwshow.signatures(), "calendar": fwshow.calendar(),
             "players": sorted(players.values(), key=str.lower), "today": fwshow.today_state(),
             "calendar_defaults": [fwshow._clean_entry(e) for e in fwshow.DEFAULT_CALENDAR],
             "creators": _creators_summary(),
-            "shows": fwshow.shows(), "base_shows": fwshow.base_shows(), "overlaps": await asyncio.to_thread(fwshow.overlaps),
+            "overlaps": await asyncio.to_thread(fwshow.overlaps),
             "servers": [{"id": x.id, "name": x.display_name} for x in S.registry.servers.values() if x.is_java and not x.settings.get("hidden")]}
 
 
@@ -1419,21 +1417,17 @@ async def get_firework_show(request: Request):
 async def put_firework_show(request: Request):
     user = auth.require_admin(request)
     body = await _body(request)
-    if isinstance(body.get("events"), dict):
-        fwshow.save_events(body["events"])
+    if isinstance(body.get("join"), dict):
+        fwshow.save_join(body["join"])
     if isinstance(body.get("signatures"), dict):
         fwshow.save_signatures(body["signatures"])
     if isinstance(body.get("calendar"), list):
         fwshow.save_calendar(body["calendar"])
-    if isinstance(body.get("shows"), list):
-        fwshow.save_shows(body["shows"])
-    if isinstance(body.get("base_shows"), dict):
-        fwshow.save_base_shows(body["base_shows"])
     if isinstance(body.get("creators"), dict):
         cw = _creator_weights()
         cw.update({str(k)[:32]: _weight(v) for k, v in body["creators"].items()})
         settings_store.save_section("fw_creators", cw)
-    auth.audit(user, None, "fireworks_show", ", ".join(sorted(k for k in body if k in ("events", "signatures", "calendar", "creators", "shows", "base_shows"))))
+    auth.audit(user, None, "fireworks_show", ", ".join(sorted(k for k in body if k in ("join", "signatures", "calendar", "creators"))))
     return await get_firework_show(request)
 
 
@@ -1445,19 +1439,12 @@ def _creators_summary() -> list[dict]:
     return [{"name": n, "designs": c, "weight": cw.get(n, 1)} for n, c in sorted(by.items(), key=lambda x: x[0].lower())]
 
 
-@app.post("/api/fireworks/test-event")
-async def test_firework_event(request: Request):
-    """Pretend an event happened, to see what it sets off."""
+@app.post("/api/fireworks/test-join")
+async def test_join_firework(request: Request):
+    """What goes off when this player joins (the page plays it in a preview)."""
     auth.require_admin(request)
-    body = await _body(request)
-    ev = body.get("event")
-    if ev not in fwshow.EVENT_DEFAULTS:
-        raise HTTPException(400, "Unknown event")
-    player = str(body.get("player") or "") or None
-    if body.get("preview"):               # just say what it would launch; the page plays it in a preview
-        return {"ok": True, "show": fwshow._resolve(ev, player)}
-    fwshow.push("test", "Test", ev, player, f"Test: {ev}" + (f" for {player}" if player else ""))
-    return {"ok": True}
+    player = str((await _body(request)).get("player") or "") or None
+    return {"ok": True, "show": fwshow.resolve_join(player, check_on=False)}
 
 
 # ---- the sky follows a server's in-game time and weather

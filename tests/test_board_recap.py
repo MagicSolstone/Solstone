@@ -78,7 +78,7 @@ def test_announcements_bedtime_and_no_birthdays(client, viewer, anon, sid):
     past = (now - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M")
     assert viewer.get("/api/board").status_code == 403
     cfg = client.put("/api/board", json={
-        "items": [{"text": "  Build contest  ", "emoji": "🏗️", "style": "party", "countdown": soon, "show": "grand-finale", "say": True},
+        "items": [{"text": "  Build contest  ", "emoji": "🏗️", "style": "party", "countdown": soon, "say": True},
                   {"text": "Old news", "end": past},
                   {"text": "Login only", "where": ["login"]},
                   {"text": ""}, {"text": "bad dates", "start": "tomorrow", "style": "loud"}],
@@ -87,13 +87,13 @@ def test_announcements_bedtime_and_no_birthdays(client, viewer, anon, sid):
     assert [i["text"] for i in cfg["items"]] == ["Build contest", "Old news", "Login only", "bad dates"]
     assert cfg["items"][3]["start"] == "" and cfg["items"][3]["style"] == "info"
     assert "birthdays" not in cfg and "birthday_soon" not in cfg                    # birthdays aren't kept any more
-    assert "Tyler" in cfg["players"] and any(s["id"] == "grand-finale" for s in cfg["shows"])
+    assert "Tyler" in cfg["players"] and "shows" not in cfg
 
     items = viewer.get(f"/api/public/board?where=app&sid={sid}").json()["items"]
     texts = [i["text"] for i in items]
     assert "Build contest" in texts and not any("birthday" in t for t in texts) and "Old news" not in texts and "Login only" not in texts
     note = next(i for i in items if i["text"] == "Build contest")
-    assert note["countdown"] > time.time() and note["show"]["name"] == "Grand finale"
+    assert note["countdown"] > time.time() and "show" not in note
 
     # Anonymous: no app banners; login page without player names while the status page is off.
     assert anon.get("/api/public/board?where=app").status_code == 401

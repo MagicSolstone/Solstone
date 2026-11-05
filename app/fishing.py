@@ -292,8 +292,6 @@ async def _celebrate(srv, who: str, c: dict, contest: bool) -> None:
         await _rcon(srv, "title @a times 10 70 20")
         await _rcon(srv, f"title @a subtitle {sub}")
         await _rcon(srv, f"title @a title {component([('✦ MYTHIC CATCH ✦', 'light_purple!')])}")
-        from . import fwshow
-        fwshow.push(srv.id, srv.display_name, "challenge", who, f"{who} caught a {fish}!")
 
 
 async def _journal(srv, who: str, c: dict) -> None:

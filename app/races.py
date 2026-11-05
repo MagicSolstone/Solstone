@@ -31,7 +31,7 @@ import re
 import secrets
 import time
 
-from . import bossbar, challenges, db, fwshow, settings_store
+from . import bossbar, challenges, db, settings_store
 from . import servers as S
 from .control import check_name, clean_text, component
 from .rcon import RconError
@@ -415,8 +415,6 @@ async def _track(srv, r: dict) -> None:
                 await _rcon(srv, f"execute as {n} at @s run playsound minecraft:ui.toast.challenge_complete master @s")
                 done = f"Finished {_ordinal(place)}! {_fmt(st['finished'])}"
                 await _rcon(srv, f"title {n} actionbar {component([(done, 'gold')])}")
-                if place == 1:
-                    fwshow.push(srv.id, srv.display_name, "challenge", n, f"{n} won {r['name']}")
                 continue
             await _rcon(srv, f"execute as {n} at @s run playsound minecraft:entity.experience_orb.pickup master @s ~ ~ ~ 1 1.2")
             await _say(srv, r, [("✔ ", "green"), (n, "aqua"), (f" reached {_label(r, st['next'])} ({_fmt(st['splits'][-1])})", None)])

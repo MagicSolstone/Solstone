@@ -688,20 +688,15 @@ def main() -> int:
                 if r["game"] in ("koth", "arena"):
                     pg.request.delete(f"{base}/api/servers/{sid}/games/{r['id']}", headers=H)
             pg.unroute(f"**/api/servers/{sid}/games")
-            # fireworks settings: every tab, then edit a show (copy a step)
+            # fireworks settings: just The show and Join fireworks (no shows, no game events)
             pg.goto(f"{base}/app#/fireworks/settings"); pg.wait_for_timeout(1200)
-            for tab in pg.locator(".fws-tabs [data-tab]").all():
-                tab.click(); pg.wait_for_timeout(300)
-            pg.click('.fws-tabs [data-tab="shows"]'); pg.wait_for_timeout(300)
-            edit = pg.locator(".fws-show-row [data-edit]")
-            if edit.count():
-                edit.first.click(); pg.wait_for_timeout(300)
-                n = pg.locator(".fws-step[data-k]").count()
-                pg.locator(".fws-step[data-k] [data-dup]").first.click(); pg.wait_for_timeout(300)
-                if pg.locator(".fws-step[data-k]").count() != n + 1:
-                    problems.append("show editor: copying a step didn't add one")
-                pg.click(".fws-show-edit [data-cancel]"); pg.wait_for_timeout(300)
-            check(pg, "fireworks-shows")
+            tabs = [t.get_attribute("data-tab") for t in pg.locator(".fws-tabs [data-tab]").all()]
+            if tabs != ["show", "join"]:
+                problems.append(f"fireworks settings: tabs should be The show and Join fireworks, not {tabs}")
+            pg.click('.fws-tabs [data-tab="join"]'); pg.wait_for_timeout(300)
+            if not pg.locator("[data-join-on]").count():
+                problems.append("fireworks settings: no switch for join fireworks")
+            check(pg, "fireworks-join")
 
             # an admin on someone's page while they play: the same buttons as Control (faked online: no game here)
             def online_now(route):

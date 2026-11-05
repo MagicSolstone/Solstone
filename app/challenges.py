@@ -21,7 +21,7 @@ import secrets
 import time
 from datetime import datetime, timedelta
 
-from . import bossbar, db, fwshow, hotzone, hud, optin, settings_store
+from . import bossbar, db, hotzone, hud, optin, settings_store
 from . import servers as S
 from .control import ITEM_RE, clean_text, component
 from .rcon import RconError
@@ -540,8 +540,6 @@ async def _finish(srv, c: dict, d: dict) -> None:
     await _tidy(srv, c)
     c["state"] = "done"
     db.add_event(srv.id, time.time(), "challenge", c["result"], first[0] if first else None)
-    if first:
-        fwshow.push(srv.id, srv.display_name, "challenge", first[0], c["result"])
 
 
 async def _tidy(srv, c: dict) -> None:

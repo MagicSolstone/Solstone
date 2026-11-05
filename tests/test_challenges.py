@@ -57,7 +57,7 @@ def fake(monkeypatch):
         return list(srv.online), "rcon"
     monkeypatch.setattr(S, "online_players", online)
     pushed = []
-    monkeypatch.setattr(challenges.fwshow, "push", lambda *a, **k: pushed.append(a))
+    # (contests no longer set fireworks off on the website)
     yield challenges, srv, pushed
     settings_store.save_section("challenges", {})
 
@@ -94,7 +94,7 @@ def test_fishing_contest_start_to_prize(fake, monkeypatch):
     assert c["state"] == "done" and c["winners"] == ["Gimli_Jr"] and c["seconds"] == ["Tyler"]
     assert ("Gimli_Jr", "minecraft:diamond", 5) in srv.given and ("Tyler", "minecraft:cookie", 16) in srv.given
     assert c["result"] == "Gimli_Jr won Fishing contest with 7 fish!" and not srv.objectives      # cleaned up
-    assert pushed and pushed[0][2] == "challenge"
+    assert pushed == []                                    # no website fireworks for contests any more
 
 
 def test_ties_offline_winners_and_unknown_blocks(fake, monkeypatch):

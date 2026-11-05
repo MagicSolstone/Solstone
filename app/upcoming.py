@@ -105,7 +105,7 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
 
     cfg = board.config()
 
-    # the fireworks calendar: holidays (and the show on the night, if it has one)
+    # the holidays calendar
     for e in fwshow.calendar():
         if not e["enabled"]:
             continue
@@ -121,13 +121,6 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
             add(at, "holiday", e["emoji"], e["name"], "Over, but its reward is still being given" if over else e["message"], all_day=True,
                 live=on_now or over, length=e["days"], about="" if over else e["detail"], reward=holidaygifts.tag(e, s), title_fmt=e["name_fmt"],
                 look={"style": e["banner"]["style"], "colors": e["banner"]["colors"]})
-            f = e["finale"]
-            if f["on"]:
-                hh, mm = (int(x) for x in f["time"].split(":"))
-                st = datetime.combine(s + timedelta(days=f["day"]), datetime.min.time(), zone).replace(hour=hh, minute=mm).timestamp()
-                if st + f["minutes"] * 60 > t:
-                    add(st, "show", "🎆", f"{e['name']} fireworks show", f"{f['minutes']} minutes" + (" · with a countdown" if f["countdown"] else ""),
-                        live=st <= t < st + f["minutes"] * 60)
 
     # announcements counting down to something, or starting later
     for it in cfg["items"]:

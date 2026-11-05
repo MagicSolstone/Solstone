@@ -94,7 +94,6 @@ def pond(monkeypatch):
         return ["Tyler", "Gimli_Jr"], "rcon"
     monkeypatch.setattr(S, "online_players", online)
     monkeypatch.setattr(S, "known_players", lambda _s: {"00000001-0000-0002-0000-000300000004": {"name": "Gimli_Jr"}})
-    monkeypatch.setattr(challenges.fwshow, "push", lambda *a, **k: None)
     yield fishing, challenges, srv
     settings_store.save_section("challenges", {})
 

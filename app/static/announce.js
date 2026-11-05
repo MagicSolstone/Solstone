@@ -49,13 +49,12 @@ function annBannerHtml(it, preview = false) {
 }
 function annBanners(el) {
   const d = ann.data;
-  const showName = (id) => d.shows.find((s) => s.id === id)?.name || id;
   const rows = d.items.map((it, i) => {
     const [cls, label] = annState(it);
     const facts = [
       it.countdown && `⏳ Counts down to ${annLocal(it.countdown)}`,
       it.end && !it.countdown && `Until ${annLocal(it.end)}`,
-      it.show && `🎆 ${showName(it.show)} at zero`, it.say && "💬 Posts in the game",
+      it.say && "💬 Posts in the game",
       it.server && `Only ${d.servers.find((s) => s.id === it.server)?.name || it.server}`,
       it.where.length < ANN_WHERE.length && it.where.map((w) => ANN_WHERE.find(([k]) => k === w)?.[1]).join(", "),
     ].filter(Boolean);
@@ -115,10 +114,9 @@ function annEditHtml(it) {
     <div class="fws-grid">
       <label>Counts down to<input class="input sm" type="datetime-local" name="countdown" value="${esc(it.countdown)}"></label>
       <label class="wide">At zero, the banner says<input class="input sm" name="done_text" value="${esc(it.done_text)}" maxlength="80" placeholder="It's here!"></label>
-      <label>At zero, play<select class="input sm" name="show"><option value="">A few fireworks (celebration look) or nothing</option>${d.shows.map((s) => `<option value="${esc(s.id)}" ${s.id === it.show ? "selected" : ""}>🎬 ${esc(s.name)}</option>`).join("")}</select></label>
     </div>
     <label class="check"><input type="checkbox" name="say" ${it.say ? "checked" : ""}> Post it in the game chat (with a title on screen) when it starts, or at zero if it has a countdown</label>
-    <p class="muted small">Times are in the server's time zone. The last ten seconds of a countdown with a show or the celebration look fill the screen.</p>
+    <p class="muted small">Times are in the server's time zone. At zero the celebration look sets off a few fireworks, and its last ten seconds fill the screen.</p>
     <div class="actions" style="justify-content:flex-start"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-cancel>Cancel</button></div>
   </form>`;
 }
@@ -129,7 +127,7 @@ function annFormItem(form) {
     style: form.querySelector('[data-seg="style"] [aria-pressed="true"]')?.dataset.v || "info",
     colors: [f.get("color0"), f.get("color1"), ...(f.get("use3") ? [f.get("color2")] : [])],
     where: f.getAll("where"), server: f.get("server") || "", start: f.get("start"), end: f.get("end"),
-    countdown: f.get("countdown"), done_text: f.get("done_text").trim(), show: f.get("show"), say: !!f.get("say") };
+    countdown: f.get("countdown"), done_text: f.get("done_text").trim(), say: !!f.get("say") };
 }
 function annWireEdit(form) {
   if (!form) return;
@@ -174,7 +172,7 @@ function annWireEdit(form) {
 // Everything with a date ahead, in one list: contests, races, games, holidays and
 // their shows, announcements counting down.
 const UP_SIGNUP = new Set(["contest", "race", "game", "show"]);      // things people can say they're coming to
-const UP_KIND = { contest: "Contest", race: "Race", game: "Game", holiday: "Holiday", show: "Fireworks", note: "Announcement" };
+const UP_KIND = { contest: "Contest", race: "Race", game: "Game", holiday: "Holiday", note: "Announcement" };
 async function viewUpcoming() {
   curSid = null;
   document.title = `Events · ${SITE_NAME}`;

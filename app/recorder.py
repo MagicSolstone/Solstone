@@ -19,6 +19,8 @@ from datetime import datetime, timedelta
 from . import accounts, adventures, backups, board, challenges, db, eventgroups, fishing, fwshow, gamemsg, games, holidaygifts, kits, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome, xboxwatch, serverstats, traffic
 from . import reading
 from . import servers as S
+
+LEVEL_EVERY = 10                                  # a level milestone in the activity feed every so many levels
 from .logparse import parse_line
 from .notify import maybe_notify
 from .rcon import RconError
@@ -86,7 +88,6 @@ class Recorder:
         self.errors: dict[str, str] = {}   # server id -> last recorder error (cleared on success)
         self.started: float | None = None
         self._levels: dict[tuple[str, str], int] = {}  # (server, player) -> last seen level
-        self._night: dict[str, bool] = {}
         self._offsets: dict[str, float] = {}     # server id -> seconds its log clock is ahead
         self._chat: dict[str, list[tuple[str, str]]] = {}    # server id -> new chat lines (player, text)
         self._catches: dict[str, list[tuple[str, dict]]] = {}  # server id -> new Tide catches (player, catch)
@@ -360,7 +361,7 @@ class Recorder:
                 nudge.on_join(srv, n)                   # what's waiting for them on the website
                 optin.on_join(srv, n)                   # an event coming up they can join
                 if not fwshow.pushed_recently(srv.id, "join", n):
-                    fwshow.push(srv.id, srv.display_name, "join", n, f"{n} joined the game")
+                    fwshow.push_join(srv.id, srv.display_name, n, f"{n} joined the game")
 
         if running and names and srv.is_java and srv.rcon_conf():
             await self._watch_game(srv, names)
@@ -382,14 +383,13 @@ class Recorder:
         if prev is not None and prev != running:
             if running:
                 self._event(srv, now, "server", "Server started")
-                fwshow.push(srv.id, srv.display_name, "start", None, f"{srv.display_name} started")
             else:
                 self._event(srv, now, "server", "Server crashed" if stats.get("crashed") else "Server stopped")
         self._running_state[srv.id] = running
 
     async def _watch_game(self, srv: S.Server, names: list[str]) -> None:
-        """Level milestones and nightfall, for fireworks (levels also go in the activity feed)."""
-        every = fwshow.events_cfg()["level"]["every"]
+        """Level milestones, for the activity feed."""
+        every = LEVEL_EVERY
         try:
             lives = await asyncio.gather(*(S.live_player(srv, n) for n in names), return_exceptions=True)
         except Exception:
@@ -403,18 +403,6 @@ class Recorder:
             if before is not None and lvl > before and lvl // every > before // every:
                 msg = f"{n} reached level {lvl // every * every}"
                 self._event(srv, time.time(), "level", msg, n, None, notify=False)
-                fwshow.push(srv.id, srv.display_name, "level", n, msg)
-        try:
-            w = await S.live_world(srv)
-        except Exception:
-            return
-        t = w.get("time_of_day")
-        if t is None:
-            return
-        night = 13000 <= t < 23000
-        if self._night.get(srv.id) is False and night:
-            fwshow.push(srv.id, srv.display_name, "night", None, f"Night falls on {srv.display_name}")
-        self._night[srv.id] = night
 
     def _event(self, srv: S.Server, ts: float, etype: str, message: str, player: str | None = None,
                uuid: str | None = None, notify: bool = True) -> None:
@@ -571,11 +559,7 @@ class Recorder:
                 if ev.type == "join":
                     welcome.on_join(srv, ev.player)
                     if not fwshow.pushed_recently(srv.id, "join", ev.player):
-                        fwshow.push(srv.id, srv.display_name, "join", ev.player, ev.message)
-                elif ev.type == "advancement":
-                    fwshow.push(srv.id, srv.display_name, fwshow.advancement_kind(ev.message), ev.player, ev.message)
-                elif ev.type == "death":
-                    fwshow.push(srv.id, srv.display_name, "death", ev.player, ev.message)
+                        fwshow.push_join(srv.id, srv.display_name, ev.player, ev.message)
         db.set_log_state(srv.id, st.st_ino, new_offset, head)
         return pending
 

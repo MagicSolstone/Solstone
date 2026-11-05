@@ -1,8 +1,7 @@
-"""The fireworks show beyond random launches: game events that set fireworks off,
-each player's signature join firework, and a calendar of holiday themes and
-scheduled shows (with a New Year countdown).
+"""Fireworks beyond the random mix: each player's join firework (it goes off on every open Solstone page when they
+join), and the calendar of holidays (their colours, favourite kinds, banners and rewards).
 
-Triggers live in a small in-memory feed that every open Solstone page polls.
+Joins live in a small in-memory feed that every open Solstone page polls.
 """
 from __future__ import annotations
 
@@ -15,20 +14,7 @@ from datetime import date, datetime, timedelta
 
 from . import db, fireworks, mcname, settings_store
 
-# ------------------------------------------------------------------ events
-EVENT_TYPES = ("join", "advancement", "challenge", "goal", "death", "level", "night", "start")
-EVENT_DEFAULTS: dict[str, dict] = {
-    "join": {"on": True, "firework": "signature"},
-    "advancement": {"on": True, "firework": "random"},
-    "challenge": {"on": True, "firework": "showpiece"},
-    "goal": {"on": True, "firework": "random"},
-    "death": {"on": True, "firework": "dud"},
-    "level": {"on": True, "firework": "random", "every": 10},
-    "night": {"on": False, "firework": "show", "minutes": 2},
-    "start": {"on": True, "firework": "random"},
-}
-# What an event can launch: these, a built-in kind, or "custom:<id>".
-EVENT_CHOICES = ("signature", "random", "showpiece", "dud", "show", "none")
+# ------------------------------------------------------------------ joins
 BUILTIN_KINDS = ("ball", "large", "star", "burst", "ring", "crossette", "spiral", "willow", "saturn", "pair", "cube", "pickaxe",
                  "axe", "creeper", "heart", "candle", "cake", "fountain", "wheel", "sparkler", "shootingstar", "dragon", "bow", "tree")
 _feed: deque = deque(maxlen=60)
@@ -36,36 +22,24 @@ _feed_lock = threading.Lock()
 _seq = int(time.time() * 1000) % 10**9  # survives restarts without clients seeing old ids as new
 
 
-def events_cfg() -> dict:
-    saved = settings_store.load().get("fw_events") or {}
-    out = {}
-    for k, default in EVENT_DEFAULTS.items():
-        cur = {**default, **(saved.get(k) if isinstance(saved.get(k), dict) else {})}
-        cur["on"] = bool(cur.get("on"))
-        fw = str(cur.get("firework") or default["firework"])
-        if fw not in EVENT_CHOICES and fw not in BUILTIN_KINDS and not fw.startswith(("custom:", "show:")):
-            fw = default["firework"]
-        cur["firework"] = fw
-        if "every" in default:
-            cur["every"] = max(1, min(100, int(cur.get("every") or default["every"])))
-        if "minutes" in default:
-            cur["minutes"] = max(1, min(30, int(cur.get("minutes") or default["minutes"])))
-        out[k] = cur
-    return out
+def join_cfg() -> dict:
+    """Join fireworks on or off (on unless switched off; the old "Someone joins" game event's switch carries over)."""
+    saved = settings_store.load()
+    j = saved.get("fw_join")
+    if not isinstance(j, dict):
+        old = (saved.get("fw_events") or {}).get("join")
+        j = {"on": old.get("on", True) is not False and old.get("firework") != "none"} if isinstance(old, dict) else {}
+    return {"on": j.get("on", True) is not False}
+
+
+def save_join(body: dict) -> dict:
+    settings_store.save_section("fw_join", {"on": bool((body or {}).get("on"))})
+    return join_cfg()
 
 
 def signatures() -> dict[str, str]:
     saved = settings_store.load().get("fw_signatures") or {}
     return {str(k).lower(): str(v) for k, v in saved.items() if isinstance(v, str)}
-
-
-def save_events(body: dict) -> dict:
-    cur = events_cfg()
-    for k, v in (body or {}).items():
-        if k in cur and isinstance(v, dict):
-            cur[k] = {**cur[k], **v}
-    settings_store.save_section("fw_events", cur)
-    return events_cfg()
 
 
 def save_signatures(body: dict) -> dict[str, str]:
@@ -74,42 +48,25 @@ def save_signatures(body: dict) -> dict[str, str]:
     return signatures()
 
 
-def _resolve(event: str, player: str | None) -> dict | None:
-    """Turn an event into what the sky should launch."""
-    cfg = events_cfg()[event]
-    if not cfg["on"]:
+def resolve_join(player: str | None, check_on: bool = True) -> dict | None:
+    """What goes off when someone joins: their join firework, or a random one."""
+    if check_on and not join_cfg()["on"]:
         return None
-    fw = cfg["firework"]
-    if fw == "signature":
-        sig = signatures().get((player or "").lower())
-        d = fireworks.get_live(sig) if sig else None
-        if d:
-            return {"design": {**d, **fireworks.sanitize(d)}, "count": 1}
-        fw = "random"
-    if fw.startswith("custom:"):
-        d = fireworks.get_live(fw.split(":", 1)[1])
-        return {"design": {**d, **fireworks.sanitize(d)}, "count": 1} if d else {"kind": "random", "count": 1}
-    if fw == "none":
-        return None
-    if fw.startswith("show:"):
-        sh = resolved(get_show(fw.split(":", 1)[1]))
-        return {"play": sh} if sh else {"kind": "random", "count": 1}
-    count = {"challenge": 3, "start": 2}.get(event, 1)
-    if fw == "show":
-        return {"show": cfg.get("minutes", 2) * 60}
-    return {"kind": fw, "count": count}
+    sig = signatures().get((player or "").lower())
+    d = fireworks.get_live(sig) if sig else None
+    if d:
+        return {"design": {**d, **fireworks.sanitize(d)}, "count": 1}
+    return {"kind": "random", "count": 1}
 
 
-def push(server_id: str, server: str, event: str, player: str | None = None, text: str = "") -> None:
+def push_join(server_id: str, server: str, player: str, text: str = "") -> None:
     global _seq
-    if event not in EVENT_DEFAULTS:
-        return
-    show = _resolve(event, player)
+    show = resolve_join(player)
     if not show:
         return
     with _feed_lock:
         _seq += 1
-        _feed.append({"id": _seq, "ts": time.time(), "event": event, "server_id": server_id, "server": server,
+        _feed.append({"id": _seq, "ts": time.time(), "event": "join", "server_id": server_id, "server": server,
                       "player": player, "text": text[:160], "show": show})
 
 
@@ -133,46 +90,28 @@ def feed_since(since: int, names: bool) -> dict:
     return {"last": last, "items": fresh[-12:]}
 
 
-def advancement_kind(message: str) -> str:
-    if "completed the challenge" in message:
-        return "challenge"
-    if "reached the goal" in message:
-        return "goal"
-    return "advancement"
-
-
 # ------------------------------------------------------------------ calendar
 # date.type: fixed (month/day), easter, nth (month, weekday 0=Mon, n 1–4 or -1 for last),
-# weekly (weekday), once (iso date). A finale is a big show at a set time, optionally
-# with a 10-second countdown first.
+# weekly (weekday), once (iso date).
 DEFAULT_CALENDAR = [
     {"id": "newyear", "name": "New Year", "emoji": "🎆", "date": {"type": "fixed", "month": 12, "day": 31}, "days": 2,
      "colors": ["#ffe45c", "#ffffff", "#ffcf5a", "#c46cf0"], "kinds": ["large", "crossette", "willow", "cake", "saturn"],
-     "message": "Happy New Year!", "finale": {"on": True, "day": 1, "time": "00:00", "minutes": 5, "countdown": True}},
+     "message": "Happy New Year!"},
     {"id": "valentine", "name": "Valentine's Day", "emoji": "💖", "date": {"type": "fixed", "month": 2, "day": 14}, "days": 1,
-     "colors": ["#ff5a7a", "#ff8fc0", "#ffffff"], "kinds": ["heart", "heart", "ring"], "message": "Happy Valentine's Day!",
-     "finale": {"on": False, "day": 0, "time": "20:00", "minutes": 5, "countdown": False}},
+     "colors": ["#ff5a7a", "#ff8fc0", "#ffffff"], "kinds": ["heart", "heart", "ring"], "message": "Happy Valentine's Day!"},
     {"id": "stpatrick", "name": "St. Patrick's Day", "emoji": "☘️", "date": {"type": "fixed", "month": 3, "day": 17}, "days": 1,
-     "colors": ["#3fbf5a", "#9be34a", "#ffe45c"], "kinds": ["creeper", "palm", "willow"], "message": "Happy St. Patrick's Day!",
-     "finale": {"on": False, "day": 0, "time": "20:00", "minutes": 5, "countdown": False}},
+     "colors": ["#3fbf5a", "#9be34a", "#ffe45c"], "kinds": ["creeper", "palm", "willow"], "message": "Happy St. Patrick's Day!"},
     {"id": "easter", "name": "Easter", "emoji": "🐣", "date": {"type": "easter"}, "days": 1,
-     "colors": ["#ffb7d5", "#bfe9ff", "#fff3a8", "#c9f2c1"], "kinds": ["ring", "heart", "spiral"], "message": "Happy Easter!",
-     "finale": {"on": False, "day": 0, "time": "19:30", "minutes": 5, "countdown": False}},
+     "colors": ["#ffb7d5", "#bfe9ff", "#fff3a8", "#c9f2c1"], "kinds": ["ring", "heart", "spiral"], "message": "Happy Easter!"},
     {"id": "july4", "name": "Independence Day", "emoji": "🇺🇸", "date": {"type": "fixed", "month": 7, "day": 4}, "days": 1,
      "colors": ["#ff4f4f", "#ffffff", "#5d8bff"], "kinds": ["large", "star", "crossette", "willow", "cake", "candle"],
-     "message": "Happy 4th of July!", "finale": {"on": True, "day": 0, "time": "21:30", "minutes": 10, "countdown": False}},
+     "message": "Happy 4th of July!"},
     {"id": "halloween", "name": "Halloween", "emoji": "🎃", "date": {"type": "fixed", "month": 10, "day": 31}, "days": 1,
-     "colors": ["#ffa13d", "#c46cf0", "#7dff5c"], "kinds": ["creeper", "spiral", "crossette", "dragon"], "message": "Happy Halloween!",
-     "finale": {"on": True, "day": 0, "time": "19:00", "minutes": 5, "countdown": False}},
+     "colors": ["#ffa13d", "#c46cf0", "#7dff5c"], "kinds": ["creeper", "spiral", "crossette", "dragon"], "message": "Happy Halloween!"},
     {"id": "thanksgiving", "name": "Thanksgiving", "emoji": "🦃", "date": {"type": "nth", "month": 11, "weekday": 3, "n": 4}, "days": 1,
-     "colors": ["#ffa13d", "#ff5a4f", "#ffcf5a"], "kinds": ["tree", "willow", "fountain"], "message": "Happy Thanksgiving!",
-     "finale": {"on": False, "day": 0, "time": "19:00", "minutes": 5, "countdown": False}},
+     "colors": ["#ffa13d", "#ff5a4f", "#ffcf5a"], "kinds": ["tree", "willow", "fountain"], "message": "Happy Thanksgiving!"},
     {"id": "christmas", "name": "Christmas", "emoji": "🎄", "date": {"type": "fixed", "month": 12, "day": 24}, "days": 2,
-     "colors": ["#ff4f4f", "#3fbf5a", "#ffffff"], "kinds": ["tree", "tree", "star", "willow", "sparkler"], "message": "Merry Christmas!",
-     "finale": {"on": True, "day": 0, "time": "19:00", "minutes": 5, "countdown": False}},
-    {"id": "friday", "name": "Friday night show", "emoji": "🎇", "date": {"type": "weekly", "weekday": 4}, "days": 1,
-     "colors": [], "kinds": [], "message": "", "enabled": False,
-     "finale": {"on": True, "day": 0, "time": "20:00", "minutes": 10, "countdown": False}},
+     "colors": ["#ff4f4f", "#3fbf5a", "#ffffff"], "kinds": ["tree", "tree", "star", "willow", "sparkler"], "message": "Merry Christmas!"},
 ]
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 _TIME = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
@@ -204,7 +143,6 @@ def _clean_entry(e: dict, fallback_id: str | None = None) -> dict | None:
             d["iso"] = date.fromisoformat(str(dt.get("iso"))).isoformat()
         except ValueError:
             d["iso"] = date.today().isoformat()
-    fin = e.get("finale") if isinstance(e.get("finale"), dict) else {}
     days = num(e.get("days"), 1, 14, 1)
     from .board import STYLES, plain
     # the name and message can be formatted like posts (**bold**, {red}…{/red}); "name" and "message" are the same
@@ -234,10 +172,6 @@ def _clean_entry(e: dict, fallback_id: str | None = None) -> dict | None:
         # everyone who plays during it gets this once (holidaygifts.py)
         "reward": _clean_reward(e.get("reward")),
         "enabled": e.get("enabled", True) is not False,
-        "finale": {"on": bool(fin.get("on")), "day": num(fin.get("day"), 0, days - 1, 0),
-                   "show": str(fin.get("show") or "")[:24],
-                   "time": fin.get("time") if isinstance(fin.get("time"), str) and _TIME.match(fin["time"]) else "20:00",
-                   "minutes": num(fin.get("minutes"), 1, 30, 5), "countdown": bool(fin.get("countdown"))},
     }
 
 
@@ -337,11 +271,11 @@ def _nth(y: int, month: int, weekday: int, n: int) -> date:
 
 
 def today_state(now: datetime | None = None) -> dict:
-    """The theme for today and any finales from a little while ago to a day ahead."""
+    """The theme for today: the colours and favourite kinds of a holiday on now (or within its colour days)."""
     zone = db.tz()
     now = now or datetime.now(zone)
     today = now.date()
-    theme, finales = None, []
+    theme = None
     for e in calendar():
         if not e["enabled"]:
             continue
@@ -352,158 +286,32 @@ def today_state(now: datetime | None = None) -> dict:
                 # the colours for its whole window; its message (the banner on every page) on the day itself
                 theme = {"id": e["id"], "name": e["name"], "emoji": e["emoji"], "message": e["message"] if on_day else "",
                          "colors": e["colors"], "kinds": e["kinds"], "on_day": on_day, "recolor": e["recolor"]}
-            f = e["finale"]
-            if f["on"]:
-                hh, mm = (int(x) for x in f["time"].split(":"))
-                st = datetime.combine(start + timedelta(days=f["day"]), datetime.min.time(), zone).replace(hour=hh, minute=mm)
-                end = st + timedelta(minutes=f["minutes"])
-                if now - timedelta(minutes=f["minutes"]) <= st <= now + timedelta(hours=26) or st <= now < end:
-                    finales.append({"id": e["id"], "name": e["name"], "emoji": e["emoji"], "message": e["message"],
-                                    "start": st.timestamp(), "end": end.timestamp(), "countdown": f["countdown"],
-                                    "colors": e["colors"], "kinds": e["kinds"], "show": resolved(get_show(f["show"])) if f["show"] else None})
-    finales.sort(key=lambda x: x["start"])
-    return {"theme": theme, "finales": finales, "now": now.timestamp()}
+    return {"theme": theme, "now": now.timestamp()}
 
 
 def overlaps(now: datetime | None = None) -> dict[str, list[dict]]:
-    """For the year ahead: days two calendar entries share (the higher one in the list sets the
-    colours and message) and scheduled shows that start together. Small notes, not errors."""
+    """For the year ahead: days two calendar entries share (the higher one in the list sets the colours and
+    message). Small notes, not errors."""
     zone = db.tz()
     today = (now or datetime.now(zone)).date()
     cal = [e for e in calendar() if e["enabled"]]
     order = {e["id"]: i for i, e in enumerate(cal)}
     days: dict[tuple[str, str], list[date]] = {}
-    shows: dict[tuple[str, str], list[date]] = {}
     for i in range(366):
         d = today + timedelta(days=i)
-        active, finales = [], []
+        active = []
         for e in cal:
             for s0 in _starts(e, d):
                 if s0 <= d < s0 + timedelta(days=e["days"]) and (e["colors"] or e["message"] or e["kinds"]) and e not in active:
                     active.append(e)
-                f = e["finale"]
-                if f["on"] and s0 + timedelta(days=f["day"]) == d:
-                    hh, mm = (int(x) for x in f["time"].split(":"))
-                    finales.append((hh * 60 + mm, f["minutes"], e))
         for a_i, a in enumerate(active):
             for b in active[a_i + 1:]:
                 days.setdefault((a["id"], b["id"]), []).append(d)
-        finales.sort(key=lambda x: x[0])
-        for a_i, (sa, ma, a) in enumerate(finales):
-            for sb, _mb, b in finales[a_i + 1:]:
-                if sb < sa + ma and a["id"] != b["id"]:
-                    shows.setdefault((a["id"], b["id"]), []).append(d)
     names = {e["id"]: e["name"] for e in cal}
     out: dict[str, list[dict]] = {e["id"]: [] for e in cal}
-    for kind, pairs in (("day", days), ("show", shows)):
-        for (a, b), ds in pairs.items():
-            first, second = (a, b) if order[a] < order[b] else (b, a)
-            note = {"kind": kind, "dates": [x.isoformat() for x in ds[:3]], "count": len(ds)}
-            out[first].append({**note, "with": names[second], "wins": True})
-            out[second].append({**note, "with": names[first], "wins": False})
+    for (a, b), ds in days.items():
+        first, second = (a, b) if order[a] < order[b] else (b, a)
+        note = {"kind": "day", "dates": [x.isoformat() for x in ds[:3]], "count": len(ds)}
+        out[first].append({**note, "with": names[second], "wins": True})
+        out[second].append({**note, "with": names[first], "wins": False})
     return out
-
-
-# ------------------------------------------------------------------ shows
-# A show is a timeline: at N seconds, launch something (a kind, a design, something
-# random or a show-piece), so many times, from somewhere. Base shows (day and night)
-# replace the random mix while the Show switch is on; special shows play at calendar
-# times or for game events.
-SHOW_WHERE = ("random", "left", "center", "right", "spread", "sides")
-MAX_STEPS = 120
-
-
-def _clean_show(sh: dict) -> dict | None:
-    if not isinstance(sh, dict):
-        return None
-    steps = []
-    for st in (sh.get("steps") or [])[:MAX_STEPS]:
-        if not isinstance(st, dict):
-            continue
-        what = str(st.get("what") or "random")
-        if what not in ("random", "showpiece") and what not in BUILTIN_KINDS and not what.startswith("custom:"):
-            what = "random"
-        try:
-            at = max(0.0, min(600.0, round(float(st.get("at", 0)), 2)))
-            count = max(1, min(12, int(st.get("count", 1))))
-        except (TypeError, ValueError):
-            continue
-        steps.append({"at": at, "what": what[:32], "count": count,
-                      "where": st.get("where") if st.get("where") in SHOW_WHERE else "random"})
-    steps.sort(key=lambda x: x["at"])
-    return {"id": re.sub(r"[^a-z0-9_-]", "", str(sh.get("id") or secrets.token_hex(4)).lower())[:24] or secrets.token_hex(4),
-            "name": str(sh.get("name") or "My show").strip()[:40] or "My show",
-            "steps": steps, "loop_gap": max(0.0, min(30.0, float(sh.get("loop_gap", 2) or 0)))}
-
-
-DEFAULT_SHOWS = [
-    {"id": "gentle-night", "name": "Gentle night", "loop_gap": 3, "steps": [
-        {"at": 0, "what": "willow", "count": 1, "where": "random"}, {"at": 3, "what": "random", "count": 1, "where": "random"},
-        {"at": 6, "what": "spiral", "count": 1, "where": "random"}, {"at": 9, "what": "random", "count": 2, "where": "spread"},
-        {"at": 13, "what": "fountain", "count": 1, "where": "random"}, {"at": 16, "what": "random", "count": 1, "where": "random"}]},
-    {"id": "grand-finale", "name": "Grand finale", "loop_gap": 2, "steps": [
-        {"at": 0, "what": "candle", "count": 2, "where": "sides"}, {"at": 2, "what": "large", "count": 3, "where": "spread"},
-        {"at": 4, "what": "crossette", "count": 2, "where": "sides"}, {"at": 6, "what": "willow", "count": 3, "where": "spread"},
-        {"at": 8, "what": "showpiece", "count": 1, "where": "center"}, {"at": 11, "what": "cake", "count": 2, "where": "sides"},
-        {"at": 13, "what": "random", "count": 5, "where": "spread"}, {"at": 15, "what": "saturn", "count": 1, "where": "center"},
-        {"at": 16, "what": "large", "count": 6, "where": "spread"}]},
-    {"id": "daytime-smoke", "name": "Daytime smoke", "loop_gap": 6, "steps": [
-        {"at": 0, "what": "ball", "count": 1, "where": "random"}, {"at": 5, "what": "ring", "count": 1, "where": "random"},
-        {"at": 10, "what": "fountain", "count": 1, "where": "random"}]},
-]
-
-
-def shows() -> list[dict]:
-    saved = settings_store.load().get("fw_shows")
-    items = saved if isinstance(saved, list) else DEFAULT_SHOWS
-    return [c for c in (_clean_show(x) for x in items) if c]
-
-
-def get_show(sid: str) -> dict | None:
-    return next((x for x in shows() if x["id"] == sid), None)
-
-
-def save_shows(items: list) -> list[dict]:
-    clean = [c for c in (_clean_show(x) for x in (items or [])[:40]) if c]
-    seen: set[str] = set()
-    for c in clean:
-        while c["id"] in seen:
-            c["id"] = f"{c['id'][:18]}-{secrets.token_hex(2)}"
-        seen.add(c["id"])
-    settings_store.save_section("fw_shows", clean)
-    return shows()
-
-
-def base_shows() -> dict:
-    saved = settings_store.load().get("fw_base_shows") or {}
-    return {k: str(saved.get(k) or "") for k in ("day", "night")}
-
-
-def save_base_shows(body: dict) -> dict:
-    cur = base_shows()
-    for k in ("day", "night"):
-        if k in (body or {}):
-            cur[k] = str(body[k] or "")[:24]
-    settings_store.save_section("fw_base_shows", cur)
-    return base_shows()
-
-
-def resolved(sh: dict | None) -> dict | None:
-    """A show ready for the sky: editor fireworks it uses are sent along with it."""
-    if not sh:
-        return None
-    steps = []
-    for st in sh["steps"]:
-        st = dict(st)
-        if st["what"].startswith("custom:"):
-            d = fireworks.get_live(st["what"].split(":", 1)[1])
-            if d:
-                st["design"] = {**d, **fireworks.sanitize(d)}
-            else:
-                st["what"] = "random"
-        steps.append(st)
-    return {**sh, "steps": steps}
-
-
-def base_shows_resolved() -> dict:
-    return {k: resolved(get_show(v)) if v else None for k, v in base_shows().items()}

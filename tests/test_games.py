@@ -97,7 +97,6 @@ def game(monkeypatch):
     monkeypatch.setattr(S, "online_players", online)
     monkeypatch.setattr(S, "live_player", live)
     monkeypatch.setattr(S, "known_players", lambda _s: {u: {"name": n} for n, u in UUID.items()})
-    monkeypatch.setattr(games.fwshow, "push", lambda *a, **k: None)
     yield games, srv
     settings_store.save_section("games", {}); settings_store.save_section("challenges", {})
 

@@ -26,8 +26,6 @@ function applyFireworkSettings(c) {
   FW.showpieces = FW_SPECIAL_CHANCE[c.showpieces] != null ? c.showpieces : "sometimes";
   FW.custom = Array.isArray(c.custom) ? c.custom : [];
   FW.theme = c.theme || null;
-  FW.finales = Array.isArray(c.finales) ? c.finales : [];
-  FW.base_shows = c.base_shows || null;
   FW.sky = c.sky || { mode: "game", daytime: "smoke" };
 }
 // How often each kind comes up (admin settings): 0 off, 0.5 rare, 1 normal, 2 often, 4 lots.
@@ -177,7 +175,7 @@ function startSkyScene(cv, opts = {}) {
   // (FWAudio is a top-level const in showbar.js, so it isn't on window: look it up by name.)
   const hush = () => { try { if (typeof FWAudio !== "undefined") FWAudio.silence(soundBus); } catch { /* sound is optional */ } };
   const snd = (type, info = {}) => { try { opts.sound?.(type, { ...info, bus: soundBus, pan: info.x != null && W ? Math.max(-1, Math.min(1, (info.x / W) * 2 - 1)) : 0 }); } catch { /* sound is optional */ } };
-  let boostUntil = 0;                                // a scheduled show or event: lively for a while
+  let boostUntil = 0;                                // an announcement reaching zero: lively for a while
   const boosting = () => performance.now() < boostUntil;
 
   // ---- static layer: blocky hill with two small silhouettes
@@ -1036,7 +1034,6 @@ function startSkyScene(cv, opts = {}) {
     frame++;
     refreshLand();
     drawBackdrop();
-    runShow();
     const starVis = gsky ? (1 - daylight()) * (1 - rainAmt() * 0.85) : 1;
     for (const s of stars) {                         // slow twinkle
       if (starVis <= 0.02) break;
@@ -1155,67 +1152,18 @@ function startSkyScene(cv, opts = {}) {
     let n = 0;
     while (acc >= STEP_MS && n < 4) { step(); acc -= STEP_MS; n++; }
     if (n === 4) acc = 0;
-    if (!auto && !boosting() && !runner && !rockets.length && !sparks.length && !figures.length && !trees.length && !emitters.length && !events.length) { running = false; frame = 0; step(); return; }
+    if (!auto && !boosting() && !rockets.length && !sparks.length && !figures.length && !trees.length && !emitters.length && !events.length) { running = false; frame = 0; step(); return; }
     raf = requestAnimationFrame(loop);
   }
   function wake() {
     if (running || stopped || document.hidden) return;
     running = true; lastT = 0; loop();
   }
-  // ---- shows: timed lists of launches made in Show settings
-  let runner = null;             // {show, t0, idx, loop, base}
-  function playShow(show, o = {}) {
-    if (!show?.steps?.length) return;
-    runner = { show, t0: frame, idx: 0, loop: !!o.loop, base: !!o.base, until: o.until || 0 };
-    wake();
-  }
-  function fireStep(stp) {
-    const n = Math.max(1, Math.min(12, stp.count || 1));
-    for (let k = 0; k < n; k++) {
-      const off = n > 1 ? k / (n - 1) : 0.5;
-      const x = stp.where === "left" ? W * rand(0.12, 0.3) : stp.where === "right" ? W * rand(0.7, 0.88) : stp.where === "center" ? W * rand(0.42, 0.58)
-        : stp.where === "spread" ? W * (0.12 + 0.76 * off) : stp.where === "sides" ? (k % 2 ? W * rand(0.72, 0.88) : W * rand(0.12, 0.28)) : W * rand(0.1, 0.9);
-      const go = () => {
-        if (stp.design) launchDesign(stp.design, x);
-        else if (stp.what === "random") launch(undefined, { x });
-        else if (stp.what === "showpiece") { const sp = FW_SPECIALS.map((q) => [q, fwWeight(q)]).filter(([, w]) => w > 0); launch(sp.length ? pickWeighted(sp) : "large", { x, keepX: true }); }
-        else if (stp.what.startsWith("custom:")) { const d = FW.custom.find((q) => `custom:${q.id}` === stp.what); d ? launchDesign(d, x) : launch(undefined, { x }); }
-        else launch(stp.what, { x, keepX: true });
-      };
-      if (k === 0) go(); else later(k * rand(5, 12), go);
-    }
-  }
-  function runShow() {
-    if (!runner) return;
-    const steps = runner.show.steps, t = (frame - runner.t0) / 60;
-    while (runner.idx < steps.length && steps[runner.idx].at <= t) fireStep(steps[runner.idx++]);
-    if (runner.idx >= steps.length) {
-      const gap = (runner.show.loop_gap ?? 2) * 60;
-      const last = steps[steps.length - 1].at * 60;
-      if (frame - runner.t0 >= last + gap) {
-        const keep = runner.loop && (runner.base ? auto : runner.until > performance.now());
-        if (keep) { runner.t0 = frame; runner.idx = 0; } else runner = null;
-      }
-    }
-  }
-  const isNightNow = () => (gsky ? daylight() < 0.45 : (() => { const h = new Date().getHours(); return h >= 19 || h < 7; })());
-  // While the Show switch is on, a base show (day or night) replaces the random mix.
-  function baseShow() {
-    const b = FW.base_shows;
-    return b ? (isNightNow() ? b.night : b.day) : null;
-  }
   function daytimePaused() { return isDay() && FW.sky?.daytime === "pause" && !boosting(); }
 
   function schedule() {
     clearTimeout(timer);
     if (!auto && !boosting()) return;
-    const bs = !boosting() && auto ? baseShow() : null;
-    if (bs && !daytimePaused()) {
-      if (!runner || !runner.base || runner.show.id !== bs.id) playShow(bs, { loop: true, base: true });
-      timer = setTimeout(schedule, 2000);           // check again for day/night changes
-      return;
-    }
-    if (runner?.base) runner = null;
     timer = setTimeout(() => {
       if (!document.hidden && !daytimePaused() && rockets.length < 6 && sparks.length < 1400) {
         launch();
@@ -1264,17 +1212,13 @@ function startSkyScene(cv, opts = {}) {
     // One rocket on request (the launch button). Works even with reduced motion,
     // because someone asked for it.
     launch(shape) { if (rockets.length < 12) { launch(shape); wake(); } },
-    // A lively show for a while (scheduled finales, the "show" event), even with Show off.
-    boost(seconds, show) {
+    // Lively for a while (an announcement reaching zero, a holiday preview), even with Show off.
+    boost(seconds) {
       if (reduced) return;
       boostUntil = Math.max(boostUntil, performance.now() + seconds * 1000);
-      if (show?.steps?.length) playShow(show, { loop: true, until: boostUntil });
-      else launch();
+      launch();
       wake(); schedule();
     },
-    // Play a show once (game events, previews in Show settings).
-    playShow(show, o = {}) { playShow(show, o); },
-    stopShow() { runner = null; },
     // In-game time and weather: {time_of_day, moon, raining, thundering, ticking} or null for night.
     setGameSky(info) {
       gsky = info && info.time_of_day != null ? { tod: info.time_of_day, ref: performance.now() - (info.age || 0) * 1000, ticking: !!info.ticking, moon: info.moon || 0,
@@ -1293,7 +1237,7 @@ function startSkyScene(cv, opts = {}) {
     hush,
     clear() {
       hush();
-      rockets.length = 0; sparks.length = 0; figures.length = 0; trees.length = 0; emitters.length = 0; events.length = 0; groups.length = 0; runner = null;
+      rockets.length = 0; sparks.length = 0; figures.length = 0; trees.length = 0; emitters.length = 0; events.length = 0; groups.length = 0;
       if (!running) { frame = 0; step(); }
     },
     // Launch a design straight from the Firework editor.

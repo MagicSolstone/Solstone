@@ -9,7 +9,7 @@ function startLoginScene() {
   const card = document.querySelector(".login-card");
   if (!cv || !card) return;
   const scene = startSkyScene(cv, { avoid: card, dim: () => 0.25 });
-  // No controls here, but holidays, scheduled shows and game events still play.
+  // No controls here, but holidays' colours and join fireworks still play.
   const bar = startShowBar(scene, { controls: false });
   const board = startBoard(document.getElementById("login-board"), { where: "login", scene: () => scene, max: 2 });
   loginScene.stop = () => { scene.stop(); bar.remove(); board?.remove(); };

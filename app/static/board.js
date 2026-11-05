@@ -219,8 +219,7 @@ function startBoard(el, opts = {}) {
     if (it.kind === "bedtime") { bigText(it.done_text || "Time for bed!"); return; }
     bigText(`${it.emoji ? `${it.emoji} ` : ""}${it.done_text || annPlain(it.text)}`);
     if (!scene) return;
-    if (it.show) scene.boost(60, it.show);
-    else if (it.style === "party") scene.celebrate(8);
+    if (it.style === "party") scene.celebrate(8);
   }
   function tick() {
     const t = now();

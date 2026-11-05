@@ -60,7 +60,6 @@ def race(monkeypatch):
     async def online(_s):
         return list(srv.online), "rcon"
     monkeypatch.setattr(S, "online_players", online)
-    monkeypatch.setattr(races.fwshow, "push", lambda *a, **k: None)
     yield races, srv, challenges
     settings_store.save_section("races", {}); settings_store.save_section("challenges", {})
 
