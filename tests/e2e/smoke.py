@@ -176,7 +176,7 @@ def main() -> int:
                 "fireworks-editor": "#/fireworks", "fireworks-settings": "#/fireworks/show",
                 "announcements": "#/manage/announcements", "admin": "#/manage/users", "manage-servers": "#/manage/servers",
                 "manage-activity": "#/manage/activity", "manage-whitelist": "#/manage/whitelist", "website": "#/manage/website",
-                "manage-holidays": "#/manage/holidays", "manage-notifications": "#/manage/notifications",
+                "manage-holidays": "#/manage/events", "manage-notifications": "#/manage/notifications",
             }
             pg.goto(f"{base}/app"); pg.wait_for_timeout(1200)
             for name, hash_ in routes.items():
@@ -527,7 +527,7 @@ def main() -> int:
             pg.goto(f"{base}/app#/manage/notifications"); pg.wait_for_timeout(1200)
             if not pg.locator("#notify-form").count() or pg.locator("#modal-root .modal").count():
                 problems.append("manage: Notifications isn't shown as a page")
-            pg.goto(f"{base}/app#/manage/holidays"); pg.wait_for_timeout(1200)
+            pg.goto(f"{base}/app#/manage/events"); pg.wait_for_timeout(1200)
             if pg.locator(".fws-cal-row").count() < 5:
                 problems.append("manage: Holidays doesn't list the holidays")
             else:

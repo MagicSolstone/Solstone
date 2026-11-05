@@ -1,3 +1,13 @@
+# Solstone 1.15.27
+
+- **Holiday descriptions keep their lines.** A new line in a holiday's description is now a new line on the Events page (the box is bigger too).
+- **Underline** in everything formatted on the website: posts, announcements, holidays and their rewards. Wrap words in `__two underscores__`, or use the new **U** button next to **B** and **I**.
+- **A reward's message in the game can have lines**, up to 5. Each line is its own line in the chat, with the game's colours carrying on.
+- **The reward on a holiday's banner says "Now until" its last day**, like "Now until Tue 30 Dec" (or "Today only"), so it's clear the reward is on the whole time the banner is up. The holiday editor's preview shows the real date.
+- **Your own words for the banner after the holiday.** With "Keep the banner up on those extra days" checked, there's a new box for what it says after the holiday, like "Merry Christmas! Rewards still available through the end of the week". Leave it blank for the usual "Christmas is over, but there's still time for its reward!".
+- The Events page no longer mentions fireworks shows.
+- **Manage → Announcements → Holidays is now "Events"**, since it can hold any day you plan for, not just holidays: a server birthday, a building week, a family get-together. Everything in it works as before, and old links to it still work. On the Events page, these show with an "Event" tag.
+
 # Solstone 1.15.26
 
 - **Fireworks are simpler: no more scheduled shows or game-event fireworks.**

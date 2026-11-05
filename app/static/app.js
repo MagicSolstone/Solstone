@@ -170,7 +170,7 @@ function wireMobileMenu() {
 const MANAGE_GROUPS = [
   ["players", "👥 Players", [["users", "Accounts"], ["whitelist", "Whitelist"]]],
   ["website", "🌐 Website", [["website", "Website"]]],
-  ["announce", "📣 Announcements", [["announcements", "Banners"], ["holidays", "Holidays"]]],
+  ["announce", "📣 Announcements", [["announcements", "Banners"], ["events", "Events"]]],
   ["community", "💬 Community", [["messages", "Messages"], ["votes", "Votes"]]],
   ["playtime", "⏰ Play time", [["playtime", "Play time"]]],
   ["solstone", "⚙️ Solstone", [["servers", "Servers & history"], ["notifications", "Notifications"], ["activity", "Activity log"]]],
@@ -1714,6 +1714,7 @@ async function route() {
     // Manage: the old addresses lead to their tab
     const OLD = { admin: "users", announcements: "announcements", website: "website" };
     if (OLD[parts[0]]) { location.replace(`#/manage/${OLD[parts[0]]}`); return; }
+    if (parts[0] === "manage" && parts[1] === "holidays") { location.replace("#/manage/events"); return; }     // (its old name)
     if ((parts[0] === "fireworks" && parts[1] === "settings") || (parts[0] === "manage" && parts[1] === "fireworks")) { location.replace("#/fireworks/show"); return; }
     setManageNav(parts[0] === "manage" ? parts[1] || "announcements" : null);
     if (parts[0] === "manage") {
@@ -1722,7 +1723,7 @@ async function route() {
       else if (tab === "website") await viewWebsite();
       else if (tab === "whitelist") await viewWhitelist();
       else if (tab === "notifications") await viewNotifications();
-      else if (tab === "holidays") await viewHolidays();
+      else if (tab === "events") await viewHolidays();
       else if (tab === "playtime") await viewPlaytime();
       else if (tab === "votes") await viewManageVotes();
       else if (tab === "messages") await viewManageMessages(parts[2]);

@@ -1,5 +1,5 @@
 /* Solstone — Firework settings (admins): what the show launches, each player's join firework,
-   and the calendar of holidays (their colours, banners and rewards). Loaded after app.js,
+   and the calendar of events: holidays and any special days (their colours, banners and rewards). Loaded after app.js,
    control.js and editor.js. */
 "use strict";
 
@@ -25,7 +25,7 @@ async function viewFireworkSettings() {
   setView(`<div class="fwe-head"><h1>Fireworks</h1>
       ${fireworksTabs("show")}
       <p class="muted" id="fws-today"></p>
-      <p class="muted small">Holidays and their colours: <a href="#/manage/holidays">Manage → Announcements → Holidays</a></p></div>
+      <p class="muted small">Holidays, special days and their colours: <a href="#/manage/events">Manage → Announcements → Events</a></p></div>
     <nav class="fwe-tabs fws-tabs" role="tablist" aria-label="Show settings">${FWS_TABS.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${fws.tab === k}">${l}</button>`).join("")}</nav>
     <div id="fws-body"></div>`);
   $$(".fws-tabs [data-tab]").forEach((b) => b.addEventListener("click", () => {
@@ -35,10 +35,10 @@ async function viewFireworkSettings() {
   renderFws();
 }
 function renderToday() {
-  if (!$("#fws-today")) return;                     // Manage → Announcements → Holidays has no "today" line
+  if (!$("#fws-today")) return;                     // Manage → Announcements → Events has no "today" line
   const t = fws.data.today, bits = [];
   if (t.theme) bits.push(`Today: <b>${esc(t.theme.emoji)} ${esc(t.theme.name)}</b>`);
-  $("#fws-today").innerHTML = bits.join(" · ") || "No holiday today.";
+  $("#fws-today").innerHTML = bits.join(" · ") || "No event today.";
 }
 async function fwsSave(body, msg = "Saved") {
   try {
@@ -133,12 +133,12 @@ function renderJoin(el) {
 async function viewHolidays() {
   if (!isAdmin()) { location.replace("#/"); return; }
   curSid = null;
-  document.title = `Holidays · ${SITE_NAME}`;
+  document.title = `Events · ${SITE_NAME}`;
   fillServersMenu(state.servers, null);
   const [data, designs] = await Promise.all([api("/api/fireworks/show"), api("/api/fireworks").catch(() => [])]);
   fws.data = data; fws.designs = designs; fws.editing = null;
-  setView(`<div class="fwe-head"><h1>Holidays</h1>
-      <p class="muted">Holidays and special days. The ones switched <b>On</b> show on the <a href="#/events">Events</a> page, put their message on every page that day and colour the fireworks. Switch off the ones you don't celebrate, or add your own.</p></div>
+  setView(`<div class="fwe-head"><h1>Events</h1>
+      <p class="muted">Holidays and any other days you plan for: a server birthday, a building week, a family get-together. The ones switched <b>On</b> show on the <a href="#/events">Events</a> page, put their banner on every page and colour the fireworks, and can give a reward for playing. Switch off the ones you don't celebrate, or add your own.</p></div>
     <div id="hol-body"></div>`);
   renderCalendar($("#hol-body"));
 }
@@ -163,7 +163,7 @@ function renderCalendar(el) {
         ${fwsOverlapNote(e.id)}<div class="fwe-dots">${e.colors.map((c) => `<i style="background:${c}"></i>`).join("")}</div></div>
       <label class="check small"><input type="checkbox" data-en ${e.enabled ? "checked" : ""}> On</label>
       <button type="button" class="btn sm" data-edit>Edit</button></div>`).join("")}</div>
-    <div class="btn-row" style="margin-top:12px"><button type="button" class="btn" id="fws-add">+ Add a date</button>
+    <div class="btn-row" style="margin-top:12px"><button type="button" class="btn" id="fws-add">+ Add an event</button>
       <button type="button" class="btn" id="fws-reset">Restore the standard holidays</button></div></section>`;
   el.querySelectorAll(".fws-cal-row").forEach((row) => {
     const i = +row.dataset.i;
@@ -172,7 +172,7 @@ function renderCalendar(el) {
   });
   if (fws.editing != null && cal[fws.editing]) wireCalEdit(el, fws.editing);
   $("#fws-add")?.addEventListener("click", async () => {
-    const next = [...fweCopy(cal), { name: "New holiday", emoji: "🎉", date: { type: "fixed", month: new Date().getMonth() + 1, day: new Date().getDate() }, days: 1,
+    const next = [...fweCopy(cal), { name: "New event", emoji: "🎉", date: { type: "fixed", month: new Date().getMonth() + 1, day: new Date().getDate() }, days: 1,
       colors: ["#ff8fc0", "#ffe45c", "#4fd7e6"], kinds: ["heart", "star", "crossette"], message: "", enabled: true }];
     await fwsSave({ calendar: next }, "Added");
     fws.editing = fws.data.calendar.length - 1; renderCalendar(el);
@@ -198,7 +198,7 @@ function calEditHtml(e, i) {
     <div class="hol-preview-wrap"><div class="hol-phases seg" role="group" aria-label="Preview the banner"></div><div class="hol-preview" aria-label="Preview"></div>
       <p class="hol-timeline muted small"></p></div>
 
-    <fieldset class="hol-sec"><legend>📅 The holiday</legend>
+    <fieldset class="hol-sec"><legend>📅 The event</legend>
       ${webFmt}
       <div class="fws-grid">
         <label class="wide">Name<input class="input" name="name" maxlength="120" value="${esc(e.name_fmt || e.name)}"></label>
@@ -236,7 +236,7 @@ function calEditHtml(e, i) {
         <label class="inl">Given from ${num("rbefore", rw.before || 0, 0, 30)} days before to ${num("rafter", rw.after || 0, 0, 30)} days after
           <span class="muted small">(0 and 0: just ${e.days > 1 ? "its days" : "the day"}; Thursday's Thanksgiving through Sunday: 0 and 3)</span></label>
         <label class="check"><input type="checkbox" name="rbanner" ${rw.banner ? "checked" : ""}> Keep the banner up on those extra days <span class="muted small">(the reward shows on it the whole time)</span></label>
-        <label class="wide hol-after" ${rw.banner && rw.after ? "" : "hidden"}>The banner after the holiday says <span class="muted small">(blank: “${esc(e.name)} is over, but there's still time for its reward!”)</span>
+        <label class="wide hol-after" ${rw.banner && rw.after ? "" : "hidden"}>The banner after the event says <span class="muted small">(blank: “${esc(e.name)} is over, but there's still time for its reward!”)</span>
           <input class="input" name="rafter_text" maxlength="160" value="${esc(rw.after_text || "")}" placeholder="Merry Christmas! Rewards still available through the end of the week"></label>
         <label class="wide">Description <span class="muted small">on the Events page and the banner</span>${webFmt}
           <input class="input" name="rnote" maxlength="300" value="${esc(rw.note || "")}" placeholder="Reward for playing ${esc(e.name)}${rw.after ? " weekend" : ""}!"></label>

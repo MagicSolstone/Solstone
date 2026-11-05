@@ -172,7 +172,7 @@ function annWireEdit(form) {
 // Everything with a date ahead, in one list: contests, races, games, holidays and
 // their shows, announcements counting down.
 const UP_SIGNUP = new Set(["contest", "race", "game", "show"]);      // things people can say they're coming to
-const UP_KIND = { contest: "Contest", race: "Race", game: "Game", holiday: "Holiday", note: "Announcement" };
+const UP_KIND = { contest: "Contest", race: "Race", game: "Game", holiday: "Event", note: "Announcement" };
 async function viewUpcoming() {
   curSid = null;
   document.title = `Events · ${SITE_NAME}`;
@@ -188,10 +188,10 @@ async function viewUpcoming() {
         ${UP_SIGNUP.has(it.kind) ? `<button type="button" class="btn sm up-coming ${it.me ? "on" : ""}" data-coming="${esc(it.key)}" aria-pressed="${it.me}"
 >${it.me ? "✅ I'm coming" : "🙋 I'm coming!"}${it.coming ? ` · ${it.coming}` : ""}</button>` : ""}</span></li>`);
   setView(`<div class="fwe-head"><h1>Events</h1>
-      <p class="muted">Everything planned for the next ${d.days} days: contests, races and games, holidays, and announcements counting down.${isAdmin() ? ` Add things from a server's <b>Contests</b> page, <a href="#/manage/holidays">Holidays</a> or <a href="#/manage/announcements">Announcements</a>.` : ""}</p></div>
+      <p class="muted">Everything planned for the next ${d.days} days: contests, races and games, holidays and special days, and announcements counting down.${isAdmin() ? ` Add things from a server's <b>Contests</b> page, <a href="#/manage/holidays">Holidays</a> or <a href="#/manage/announcements">Announcements</a>.` : ""}</p></div>
     ${d.items.length ? upTimeline(d.items, row, "panel") : `<div class="panel up-empty"><span class="up-empty-emoji" aria-hidden="true">🗓️</span><h2>No events scheduled</h2>
-          <p class="muted">Nothing's planned for the next ${Math.round(d.days / 30)} months yet. Contests, races and holidays show up here when they're added.</p>
-          ${isAdmin() ? `<p class="muted small">Add a contest from a server's <b>Contests</b> page, a holiday on <a href="#/manage/holidays">Holidays</a>, or a countdown in <a href="#/manage/announcements">Announcements</a>.</p>` : ""}</div>`}
+          <p class="muted">Nothing's planned for the next ${Math.round(d.days / 30)} months yet. Contests, races, holidays and special days show up here when they're added.</p>
+          ${isAdmin() ? `<p class="muted small">Add a contest from a server's <b>Contests</b> page, a holiday or special day on <a href="#/manage/events">Events</a>, or a countdown in <a href="#/manage/announcements">Announcements</a>.</p>` : ""}</div>`}
     ${upPastHtml(d.past, "panel")}`);
   const every = [...d.items, ...d.items.flatMap((x) => x.parts || [])];
   $$("[data-coming-all]", view()).forEach((b) => b.addEventListener("click", async () => {
