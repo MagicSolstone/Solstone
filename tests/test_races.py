@@ -86,7 +86,7 @@ def test_full_race(race, easy_vault):
     assert races.busy()
     asyncio.run(races.tick([srv]))                                   # countdown: markers, teleport
     r = races.runs_for(srv.id)[0]
-    assert r["state"] == "countdown" and srv.entities.count("block_display") == 4 and srv.entities.count("text_display") == 4
+    assert r["state"] == "countdown" and srv.entities.count("block_display") == 4 * (1 + races.EDGE_POSTS) and srv.entities.count("text_display") == 4
     assert len(srv.forced) == 3
     # lined up side by side on the start line (2 blocks apart, across the way to the first checkpoint)
     assert sorted(round(srv.pos[n][2]) for n in ("Tyler", "Gimli_Jr")) == [-1, 1] and all(round(srv.pos[n][0]) == 0 for n in ("Tyler", "Gimli_Jr"))

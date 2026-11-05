@@ -30,6 +30,11 @@ async def _rc(srv, cmd: str) -> str:
         return f"error: {e}"
 
 
+def _races_dust(srv) -> str:
+    from .races import _dust
+    return _dust(srv, (0.3, 1.0, 0.3), 3)
+
+
 def _bad(reply: str) -> bool:
     low = reply.lower()
     return any(h in low for h in _ERROR_HINTS) or low.startswith("error:")
@@ -119,6 +124,7 @@ async def run(srv, near: list[tuple[float, float]], assets) -> dict:
                                             f"playsound minecraft:entity.player.levelup master {NOBODY} ~ ~ ~ 1 1"], "countdowns, big archery shots")
         await c.cmd("On screen", "Particles", [f"{ow} particle minecraft:end_rod {x} {y} {z} 1 1 1 0.01 5 force {NOBODY}",
                                                f"{ow} particle minecraft:flame {x} {y} {z} 1 0.1 1 0.01 5 force {NOBODY}",
+                                               f"{ow} particle {_races_dust(srv)} {x} {y} {z} 1 1 1 0 5 force {NOBODY}",
                                                f"{ow} particle minecraft:campfire_signal_smoke {x} {y} {z} 0.3 2 0.3 0.01 2 force {NOBODY}"],
                      "race checkpoint beams, hot zones")
 

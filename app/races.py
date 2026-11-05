@@ -1,8 +1,9 @@
 """Waypoint races: a start, checkpoints in order, a finish. All vanilla.
 
 Courses are laid out on Solstone's map (or at a player's spot) and saved. When a race runs:
-- each point gets a tall glowing glass column (a block_display, so no blocks are placed) with a
-  floating label (a text_display) and particles; glowing outlines show through hills;
+- each point gets a tall glowing glass column, three blocks wide (a block_display, so no blocks are placed),
+  thin glowing posts round the edge of the circle that counts, a floating label (a text_display) and big
+  coloured dots; glowing outlines show through hills;
 - the chunks under the points are force-loaded for the race, so the markers can always be
   removed afterwards;
 - everyone is optionally lined up at the start and held still, then a 10-second countdown and GO
@@ -173,6 +174,19 @@ async def _rcon(srv, cmd: str) -> str:
         return ""
 
 
+COLUMN_W = 3                       # how wide a checkpoint's glowing column is (blocks)
+EDGE_POSTS = 8                     # thin posts marking the edge of the circle that counts
+
+
+def _dust(srv, rgb: tuple[float, float, float], scale: float) -> str:
+    """Big coloured dots (easier to see than white sparkles), in the version's own syntax."""
+    v = srv.mc_version or ""
+    nums = [int(x) for x in re.findall(r"\d+", v)[:3]] + [0, 0, 0]
+    if nums[0] >= 26 or (nums[0] == 1 and (nums[1], nums[2]) >= (20, 5)):
+        return f"minecraft:dust{{color:[{rgb[0]},{rgb[1]},{rgb[2]}],scale:{scale}}}"
+    return f"minecraft:dust {rgb[0]} {rgb[1]} {rgb[2]} {scale}"
+
+
 def _tag(r: dict) -> str:
     return f"solrace_{r['id']}"
 
@@ -190,12 +204,23 @@ async def _place_markers(srv, r: dict) -> None:
         x, y, z = p["x"], p["y"], p["z"]
         low, high = _band(r, p) if (p.get("low") is not None or r.get("vehicle") == "elytra") else (0, 32)
         bottom, tall = y + max(low, -5), max(2, high - max(low, -5))        # the column: just where it counts
+        # the column: three blocks wide (one was easy to lose against the sky), glowing through hills
         out = await _rcon(srv, f"execute in {dim} run summon minecraft:block_display {x} {bottom} {z} "
                                f"{{Tags:[\"solrace\",\"{_tag(r)}\"],block_state:{{Name:\"minecraft:{glass}\"}},Glowing:1b,glow_color_override:{glow},"
                                f"view_range:8f,brightness:{{sky:15,block:15}},transformation:{{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],"
-                               f"translation:[-0.5f,0f,-0.5f],scale:[1f,{tall}f,1f]}}}}")
+                               f"translation:[-{COLUMN_W / 2}f,0f,-{COLUMN_W / 2}f],scale:[{COLUMN_W}f,{tall}f,{COLUMN_W}f]}}}}")
         if out and "summoned" not in out.lower():
             errors.append(out[:160])
+        # its edge: thin glowing posts round the circle that counts, so it's plain how close is close enough
+        rad = float(p.get("radius") or 0)
+        if rad >= 3:
+            for k in range(EDGE_POSTS):
+                a = 2 * math.pi * k / EDGE_POSTS
+                ex, ez = x + rad * math.cos(a), z + rad * math.sin(a)
+                await _rcon(srv, f"execute in {dim} run summon minecraft:block_display {ex:.2f} {bottom} {ez:.2f} "
+                                 f"{{Tags:[\"solrace\",\"{_tag(r)}\"],block_state:{{Name:\"minecraft:{glass}\"}},Glowing:1b,glow_color_override:{glow},"
+                                 f"view_range:4f,brightness:{{sky:15,block:15}},transformation:{{left_rotation:[0f,0f,0f,1f],right_rotation:[0f,0f,0f,1f],"
+                                 f"translation:[-0.2f,0f,-0.2f],scale:[0.4f,{min(tall, 12)}f,0.4f]}}}}")
         if i > 0:                       # a dot on everyone's locator bar (1.21.6+): an armor stand buried under the point
             # (not Invisible: invisible entities are left off the locator bar)
             await _rcon(srv, f"execute in {dim} run summon minecraft:armor_stand {x} {y - 2} {z} "
@@ -443,7 +468,8 @@ async def _track(srv, r: dict) -> None:
             p = pts[i]
             low, high = _band(r, p) if p.get("low") is not None else (0, 16)
             mid, half = p["y"] + (low + high) / 2, max(1, (high - low) / 2)
-            await _rcon(srv, f"execute in {dim} run particle minecraft:end_rod {p['x']} {mid} {p['z']} {p['radius'] / 3} {min(half, 16)} {p['radius'] / 3} 0.02 90 force")
+            rgb = (1.0, 0.8, 0.2) if i == last else (0.3, 1.0, 0.3)          # gold for the finish, green for the rest
+            await _rcon(srv, f"execute in {dim} run particle {_dust(srv, rgb, 3)} {p['x']} {mid} {p['z']} {p['radius'] / 3} {min(half, 16)} {p['radius'] / 3} 0 70 force")
             await _rcon(srv, f"execute in {dim} run particle minecraft:glow {p['x']} {p['y'] + max(low, 0) + 1} {p['z']} {p['radius'] / 2} 0.5 {p['radius'] / 2} 0 30 force")
 
 

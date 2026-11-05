@@ -297,7 +297,9 @@ def test_the_markers_show_where_a_checkpoint_counts(fight):
          "points": [{"x": 0, "y": 64, "z": 0, "radius": 4, "name": ""}, {"x": 50, "y": 64, "z": 0, "radius": 8, "name": "", "low": 60, "high": 100}]}
     asyncio.run(races._place_markers(fight, r))
     col = [c for c in fight.said if "block_display 50" in c][0]
-    assert " 124 0 " in col and "scale:[1f,40f,1f]" in col                                   # from 60 up to 100 up
+    assert " 124 0 " in col and "scale:[3f,40f,3f]" in col                                   # from 60 up to 100 up, 3 wide
+    posts = [c for c in fight.said if "block_display" in c and "scale:[0.4f" in c]
+    assert len(posts) == 2 * races.EDGE_POSTS and any("block_display 58.00 124 0.00" in c for c in posts)   # round its 8-block edge
 
 
 def test_big_waves_come_out_a_few_at_a_time_and_no_answer_isnt_cleared():
