@@ -12,6 +12,7 @@ import io
 import json
 import logging
 import math
+import re
 import struct
 import threading
 import time
@@ -659,7 +660,14 @@ def surface_y(world: Path, dim: str, x: float, z: float) -> int | None:
 
 
 # ------------------------------------------------------------------ files, cache and the queue
+_DIM = re.compile(r"^[a-z0-9_.-]+:[a-z0-9_./-]+$")
+
+
 def region_dir(world: Path, dim: str) -> Path | None:
+    # a dimension's name only (minecraft:overworld, a mod's own like twilightforest:twilight_forest): never a way out
+    # of the world's folder ("..")
+    if not isinstance(dim, str) or not _DIM.match(dim) or ".." in dim:
+        return None
     simple = {"minecraft:overworld": world / "region", "minecraft:the_nether": world / "DIM-1" / "region", "minecraft:the_end": world / "DIM1" / "region"}
     if dim in simple and simple[dim].is_dir():
         return simple[dim]

@@ -242,3 +242,13 @@ def test_player_only_commands_go_by_name_not_uuid(monkeypatch):
     assert t(f"item replace entity {tyler} armor.head with minecraft:air") == f"item replace entity {tyler} armor.head with minecraft:air"
     assert t(f"data get entity {tyler} Inventory").endswith(f"{tyler} Inventory")
     assert t("give 11111111-2222-4333-8444-555555555555 minecraft:dirt 1").startswith("give 11111111")   # unknown: as it was
+
+
+def test_a_map_dimension_name_cant_leave_the_world(tmp_path):
+    from app import worldmap
+    (tmp_path / "region").mkdir()
+    (tmp_path / "dimensions" / "minecraft" / "x" / "region").mkdir(parents=True)
+    assert worldmap.region_dir(tmp_path, "minecraft:overworld") == tmp_path / "region"
+    assert worldmap.region_dir(tmp_path, "minecraft:x") is not None
+    for bad in ("minecraft:../../..", "../x:y", "minecraft:x/../../../etc", "a b:c", "", None):
+        assert worldmap.region_dir(tmp_path, bad) is None
