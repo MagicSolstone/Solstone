@@ -479,3 +479,26 @@ def test_spleef_without_snowballs_by_default():
     from app import spleef
     s = spleef.settings({}, lambda v, lo, hi, d: d if v is None else max(lo, min(hi, float(v))))
     assert s["snowballs"] is False
+
+
+
+def test_treasure_hints_fit_the_area_and_where_you_face():
+    from app import games
+    small, big = games._bands(100), games._bands(500)
+    word = lambda bands, d: next(w for lim, w, _c in bands if d < lim)     # noqa: E731
+    assert word(small, 5) == word(big, 5) == "Burning hot!" and word(small, 15) == "Hot"
+    assert word(small, 200) == "Freezing" and word(big, 200) == "Cool" and word(big, 300) == "Cold" and word(big, 90) == "Warm"
+    # yaw 0 faces south (+z); turning right is towards west (-x)
+    assert games._relative(0, 0, 10) == "⬆ straight ahead"
+    assert games._relative(0, -10, 0).endswith("to your right") and games._relative(0, 10, 0).endswith("to your left")
+    assert games._relative(0, 0, -10) == "⬇ behind you" and "ahead, to your right" in games._relative(0, -10, 10)
+    assert games._relative(180, 0, -10) == "⬆ straight ahead"           # facing north
+
+
+def test_the_treasure_compass_points_at_the_chest():
+    from types import SimpleNamespace
+
+    from app import games
+    srv = SimpleNamespace(mc_version="26.3")
+    c = games._treasure_compass(srv, {"dim": "minecraft:overworld", "chest": {"x": 10, "y": 64, "z": -5}})
+    assert "lodestone_tracker" in c and "pos:[I;10,64,-5]" in c and "solkit:1b" in c and "tracked:false" in c

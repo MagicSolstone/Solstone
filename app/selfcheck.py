@@ -175,7 +175,9 @@ async def run(srv, near: list[tuple[float, float]], assets) -> dict:
         await c.cmd("Items and players", "Giving prizes and special items", [
             f"give {NOBODY} minecraft:diamond 1",
             f"give {NOBODY} minecraft:diamond_shovel[minecraft:custom_data={{solspleef:1b}},minecraft:unbreakable={{}},minecraft:item_name={name}]",
-            f"give {NOBODY} {_rod(srv)}"], "prizes, spleef shovels, contest rods")
+            f"give {NOBODY} {_rod(srv)}",
+            f'give {NOBODY} minecraft:compass[minecraft:lodestone_tracker={{target:{{dimension:"minecraft:overworld",pos:[I;{x},{y},{z}]}},tracked:false}}] 1'],
+            "prizes, spleef shovels, contest rods, the treasure compass")
         await c.cmd("Items and players", "Taking special items back", [
             f"clear {NOBODY} minecraft:diamond_shovel[minecraft:custom_data={{solspleef:1b}}]",
             f"clear {NOBODY} minecraft:fishing_rod[minecraft:custom_data={{solrod:1b}}]", f"clear {NOBODY} minecraft:snowball"],

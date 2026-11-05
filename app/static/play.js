@@ -1038,7 +1038,7 @@ async function viewGames(sid) {
     const f = { game, when: "now", at: "", center: null, radius: game === "treasure" ? 150 : 40, spot: null, target: null, place_target: false,
       hide_secs: 60, minutes: game === "treasure" ? 15 : game === "archery" ? 10 : 6, seeker: "", no_dig: true, marco: true, infect: true,
       mode: "bullseye", word: "HORSE", give_bow: true, hint_after: 5, items: [], prize: null, hot: false, hot_bonus: 2, hot_far: 40, hot_on: 45, hot_off: 20,
-      underwater: false, g: { on: false, spot: null, r: 4 }, layers: 1, best_of: 3, teams: false, snowballs: false, shrink: true, shrink_after: 60,
+      underwater: false, compass: true, edge: true, g: { on: false, spot: null, r: 4 }, layers: 1, best_of: 3, teams: false, snowballs: false, shrink: true, shrink_after: 60,
       seconds: 120, rounds: 1, peaceful: true, optin: true,
       // King of the Hill and the mob arena
       spawns: [], mob_spots: [], pick: "center", team_count: 2, respawn_secs: 5, level: "normal", coop: true, waves: [{ zombie: 3 }, { zombie: 4, skeleton: 2 }],
@@ -1131,6 +1131,9 @@ async function viewGames(sid) {
         <label>Time limit ${numIn("minutes", f.minutes, 3, 60, "minutes")}</label>
         <label>Show the direction after ${numIn("hint_after", f.hint_after >= 60 ? "" : f.hint_after, 0, 59, "minutes", { placeholder: "never", optional: true })}
           <small class="muted">0: straight away · blank: never</small></label>
+        <label class="check gm-wide"><input type="checkbox" name="compass" ${f.compass !== false ? "checked" : ""}> At the hint, everyone gets a <b>treasure compass</b> that points straight at the chest
+          <small class="muted">(otherwise the hint is in words: “ahead, to your left”)</small></label>
+        <label class="check gm-wide"><input type="checkbox" name="edge" ${f.edge !== false ? "checked" : ""}> Show the area: sparkles along its edge and a column of them in the middle</label>
         <label class="check gm-wide"><input type="checkbox" name="underwater" ${f.underwater ? "checked" : ""}> It can be underwater, on the bottom of a lake or the sea (otherwise always on dry ground, never in a tree)</label>
         <div class="gm-items"><span class="lbl">In the chest</span>${f.items.map((it, i) => `<span class="chip">${itemIcon({ id: it.item })} ${it.count} × ${esc(it.name)} <button type="button" class="chip-x" data-rmitem="${i}" aria-label="Remove">×</button></span>`).join("")}
           <button type="button" class="btn sm" id="gm-additem">＋ Add treasure</button></div>`
@@ -1164,7 +1167,7 @@ async function viewGames(sid) {
       for (const k of ["seeker", "mode", "word"]) if (fm[k]) f[k] = fm[k].value;
       for (const k of ["hide_secs", "minutes", "seconds", "rounds", "hint_after", "radius", "hot_bonus", "hot_far", "hot_on", "hot_off", "layers", "best_of", "shrink_after"]) if (fm[k]) f[k] = +fm[k].value;
       if (fm.hint_after && fm.hint_after.value === "") f.hint_after = 60;            // blank: never
-      for (const k of ["no_dig", "marco", "infect", "give_bow", "hot", "teams", "snowballs", "shrink", "underwater", "peaceful", "optin", "night"]) if (fm[k]) f[k] = fm[k].checked;
+      for (const k of ["no_dig", "marco", "infect", "give_bow", "hot", "teams", "snowballs", "shrink", "underwater", "compass", "edge", "peaceful", "optin", "night"]) if (fm[k]) f[k] = fm[k].checked;
       for (const k of ["team_count", "respawn_secs"]) if (fm[k]) f[k] = +fm[k].value;
       if (fm.coop) f.coop = fm.coop.value === "1";
       if (fm.level) f.level = fm.level.value;

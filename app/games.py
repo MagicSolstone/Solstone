@@ -102,7 +102,7 @@ def create(server: str, body: dict) -> dict:
         r.update(area={**_point(body.get("center"), "middle of the area"), "r": round(_num(body.get("radius"), 20, 1000, 150))},
                  spot=_point(body["spot"], "spot") if body.get("spot") else None, items=[i for i in items if i],
                  minutes=int(_num(body.get("minutes"), 3, 60, 15)), hint_after=int(_num(body.get("hint_after"), 0, 60, 5)),
-                 underwater=bool(body.get("underwater")))
+                 underwater=bool(body.get("underwater")), compass=bool(body.get("compass", True)), edge=bool(body.get("edge", True)))
         if not r["items"]:
             raise ValueError("Put something in the treasure chest")
     elif kind == "spleef":
@@ -465,6 +465,68 @@ async def _marco(srv, r: dict, player: str) -> None:
 _BANDS = [(10, "Burning hot!", "red"), (20, "Hot", "gold"), (40, "Warm", "yellow"), (80, "Cool", "aqua"), (150, "Cold", "blue"), (1e9, "Freezing", "dark_aqua")]
 
 
+def _bands(radius: float) -> list[tuple[float, str, str]]:
+    """How warm, by distance. Burning hot and Hot stay close (that's where the chest is); Warm, Cool and Cold stretch
+    with a big area, so a 500-block hunt isn't "Freezing" nearly everywhere."""
+    r = max(0.0, float(radius or 0))
+    return [(10, "Burning hot!", "red"), (20, "Hot", "gold"), (max(40, r * 0.2), "Warm", "yellow"),
+            (max(80, r * 0.45), "Cool", "aqua"), (max(150, r * 0.9), "Cold", "blue"), (1e9, "Freezing", "dark_aqua")]
+
+
+_ROT = re.compile(r"\[\s*(-?[\d.]+)f?\s*,")
+
+
+def _relative(yaw: float, dx: float, dz: float) -> str:
+    """Which way the chest is from where someone's looking: no compass needed, the same on Java and Bedrock.
+    (Minecraft's yaw: 0 is south, and it grows turning right.)"""
+    want = math.degrees(math.atan2(-dx, dz))
+    rel = (want - yaw + 180) % 360 - 180                  # -180..180: negative is to the left
+    a = abs(rel)
+    side = "right" if rel > 0 else "left"
+    if a <= 22.5:
+        return "⬆ straight ahead"
+    if a <= 67.5:
+        return f"{'↗' if rel > 0 else '↖'} ahead, to your {side}"
+    if a <= 112.5:
+        return f"{'➡' if rel > 0 else '⬅'} to your {side}"
+    if a <= 157.5:
+        return f"{'↘' if rel > 0 else '↙'} behind you, to the {side}"
+    return "⬇ behind you"
+
+
+async def _yaw(srv, name: str) -> float | None:
+    m = _ROT.search(await _rcon(srv, f"data get entity {name} Rotation"))
+    return float(m.group(1)) if m else None
+
+
+def _treasure_compass(srv, r: dict) -> str:
+    """A compass that points at the chest (a lodestone compass with no lodestone), marked as the game's: it goes when
+    they're home with their things."""
+    from .kits import KIT_TAG
+    from .races import _new_text
+    c = r["chest"]
+    name = '"Treasure compass"' if _new_text(srv) else "'\"Treasure compass\"'"
+    return (f'minecraft:compass[minecraft:lodestone_tracker={{target:{{dimension:"{r["dim"]}",pos:[I;{c["x"]},{c["y"]},{c["z"]}]}},tracked:false}},'
+            f"minecraft:custom_data={{{KIT_TAG}:1b}},minecraft:item_name={name}]")
+
+
+async def _th_edge(srv, r: dict) -> None:
+    """The area's edge in sparkles on the ground, a stretch at a time all the way round, and a column of them in the
+    middle: somewhere to start (or to stay away from)."""
+    a = r["area"]
+    n = max(24, min(360, round(2 * math.pi * a["r"] / 4)))       # about every 4 blocks
+    i0 = r.get("edge_i", 0)
+    for k in range(i0, i0 + 30):
+        ang = 2 * math.pi * (k % n) / n
+        x, z = a["x"] + a["r"] * math.cos(ang), a["z"] + a["r"] * math.sin(ang)
+        await _rcon(srv, f"execute in {r['dim']} positioned {x:.1f} 320 {z:.1f} positioned over motion_blocking_no_leaves "
+                         f"run particle minecraft:end_rod ~ ~1.2 ~ 0.1 0.8 0.1 0 6 force")
+    r["edge_i"] = (i0 + 30) % n
+    if r.get("ticks_th", 0) % 3 == 0:
+        await _rcon(srv, f"execute in {r['dim']} positioned {a['x']} 320 {a['z']} positioned over motion_blocking_no_leaves "
+                         f"run particle minecraft:end_rod ~ ~6 ~ 0.15 5 0.15 0 40 force")
+
+
 async def _height(srv, dim: str, x: int, z: int, tag: str, heightmap: str) -> int | None:
     from .races import _POS
     await _rcon(srv, f"execute in {dim} positioned {x} 320 {z} positioned over {heightmap} run summon minecraft:marker ~ ~ ~ {{Tags:[\"{tag}\"]}}")
@@ -524,7 +586,8 @@ async def _th_start(srv, r: dict) -> None:
         r["chest_error"] = out[:160]
     r["chest"] = {"x": x, "y": y, "z": z}
     r["state"], r["phase_ends"] = "running", time.time() + r["minutes"] * 60
-    await _say(srv, [("★ ", "gold"), ("Treasure hunt! ", "yellow"), (f"A chest of treasure is hidden within {a['r']} blocks{' (it could be underwater!)' if r.get('underwater') else ''}. Watch your hotbar: it says how warm you are.", None)],
+    await _say(srv, [("★ ", "gold"), ("Treasure hunt! ", "yellow"), (f"A chest of treasure is hidden within {a['r']} blocks{' (it could be underwater!)' if r.get('underwater') else ''}"
+                     f"{' of the sparkling column (the sparkles on the ground mark the edge)' if r.get('edge', True) else ''}. Watch your hotbar: it says how warm you are.", None)],
                "Treasure hunt!", "Find the chest")
 
 
@@ -532,6 +595,15 @@ async def _th_tick(srv, r: dict) -> None:
     now, c = time.time(), r["chest"]
     online = await entrants(srv, r)
     hint = now - r["started"] >= r["hint_after"] * 60 if r.get("started") else False
+    r["ticks_th"] = r.get("ticks_th", 0) + 1
+    if r.get("edge", True):
+        await _th_edge(srv, r)
+    if hint and r.get("compass", True) and not r.get("compass_given"):
+        r["compass_given"] = True                         # once: everyone playing gets one (taken back when they're home)
+        for n in online:
+            await _rcon(srv, f"give {n} {_treasure_compass(srv, r)} 1")
+            await _say(srv, [("★ ", "gold"), ("Hint! ", "yellow"), ("Here's a treasure compass: it points straight at the chest.", None)], who=n)
+    bands = _bands(r["area"]["r"])
     near = {}
     for n in online:
         q = await _pos(srv, n)
@@ -539,8 +611,11 @@ async def _th_tick(srv, r: dict) -> None:
             continue
         d = math.dist(q, (c["x"] + 0.5, c["y"], c["z"] + 0.5))
         near[n] = d
-        word, color = next((w, col) for lim, w, col in _BANDS if d < lim)
-        extra = f" · {_direction(c['x'] - q[0], c['z'] - q[2])}" if hint and d > 10 else ""
+        word, color = next((w, col) for lim, w, col in bands if d < lim)
+        extra = ""
+        if hint and d > 10:
+            yaw = await _yaw(srv, n)
+            extra = f" · {_relative(yaw, c['x'] + 0.5 - q[0], c['z'] + 0.5 - q[2]) if yaw is not None else _direction(c['x'] - q[0], c['z'] - q[2])}"
         await _bar(srv, n, f"{word}{extra} · {_fmt(r['phase_ends'] - now)} left", color)
     r["warmest"] = min(near, key=near.get) if near else None
     out = await _rcon(srv, f"execute in {r['dim']} run data get block {c['x']} {c['y']} {c['z']} Items")

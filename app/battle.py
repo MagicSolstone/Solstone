@@ -235,6 +235,7 @@ async def finish(srv, r: dict, tag: str) -> None:
             # The game's kit never outlives the game, whatever happened along the way (even with nothing in the vault)
             await kits.strip_kit(srv, p["uuid"])
             await kits.give_back(srv, p["uuid"])         # anyone offline gets theirs when they're next on (kits.on_join)
+    await kits.sweep(srv)                              # the kit's things left on the ground: thrown down, or dropped
     await rules_off(srv, r)
     await _rcon(srv, f"scoreboard objectives remove {tag}_d")
     for t in r.get("teams") or {}:

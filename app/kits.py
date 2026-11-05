@@ -479,6 +479,12 @@ def send_home(srv, kept: dict[str, str], game_id: str, secs: int = HOME_SECS, af
     return task
 
 
+async def sweep(srv) -> None:
+    """The game's things left lying about (thrown down, or dropped by someone who died) go when the game's over: they
+    were only ever the game's. Nothing of anyone's own: only items marked as a kit's."""
+    await _rcon(srv, f'kill @e[type=minecraft:item,nbt={{Item:{{components:{{"minecraft:custom_data":{{{KIT_TAG}:1b}}}}}}}}]')
+
+
 async def _home(srv, kept: dict[str, str], game_id: str, secs: int, after) -> None:
     from . import challenges
     from .control import component
@@ -493,6 +499,7 @@ async def _home(srv, kept: dict[str, str], game_id: str, secs: int, after) -> No
                     await challenges.deliver_now(srv, n)         # a prize won, now there's somewhere safe for it
             except Exception:
                 log.exception("sending %s home failed (tried again when they're next on)", n)
+        await sweep(srv)
         if after:
             await after()
     except Exception:
