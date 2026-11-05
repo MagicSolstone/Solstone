@@ -1,3 +1,9 @@
+# Solstone 1.15.21
+
+- **Choose how long past events stay on the Events page:** Manage → Website → Site details → **Past events on the Events page**. Choose don't show them, 1 day, 2, 3, 5, a week, 2 weeks or 30 days. It's 3 days to start. Finished contests, races and games are now kept long enough for a month of it.
+- **Fixed: keeping your own things through a game.** A game saves everyone's things, then takes a few seconds to get ready (the kit, the monsters) before it's marked as running. The tidy-up that returns things after games runs on its own, and took those few seconds for a game that was over. It handed everything straight back, so you played with your own things and the kit on top. A game now counts as on from the moment it saves anyone's things.
+- **Edit race courses on the map:** in the course editor, **drag any point** to move it. It lands on the ground there and the route redraws as you go. **Click a point** to pick it, and the next click on the map adds a new point right after it, so you can put a checkpoint in between without starting over.
+
 # Solstone 1.15.20
 
 - **Every game and race works the same way now: in with nothing of yours, home with everything.**
