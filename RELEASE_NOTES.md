@@ -1,3 +1,12 @@
+# Solstone 1.15.22
+
+- **Fix the name on a request to join:** typed it wrong? Press **✏️ Fix name** on the request (on the Whitelist page or in Control), then **Let them in**. They still see they're in on the page where they asked, and the request shows the name they first typed.
+  - **Bedrock tip:** Xbox shows newer gamertags like "mama bear#7349". On the server that's **.mama_bear7349**: a dot, spaces as `_`, and the number joined straight on.
+- **Who is this?** On the Whitelist page, click any name on a server's list to see its id there, who that id belongs to, and whether they've played on the server (and under what name).
+  - **Bedrock:** the Xbox gamertag that owns the account, looked up through GeyserMC.
+  - **Java:** the Mojang name.
+- **Ask to join for more than one person (or account):** after asking, the home page lists every request from that browser, each with its own status (waiting, you're in, not accepted). **🙋 Ask for someone else (or another account)** is always there, so a family, or someone with both a Java and a Bedrock account, can ask back to back. Up to 8 requests an hour from one internet connection (it was 3).
+
 # Solstone 1.15.21
 
 - **Choose how long past events stay on the Events page:** Manage → Website → Site details → **Past events on the Events page**. Choose don't show them, 1 day, 2, 3, 5, a week, 2 weeks or 30 days. It's 3 days to start. Finished contests, races and games are now kept long enough for a month of it.
