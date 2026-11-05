@@ -50,3 +50,25 @@ def test_solstone_starting_reads_what_it_said_lately():
         assert xboxwatch.status(sid, True, True)["state"] == "ok"
     finally:
         xboxwatch.forget(sid)
+
+
+def test_a_session_update_that_timed_out_isnt_an_outage():
+    """MCXboxBroadcast says nothing when an update works, so one timed-out update (and its stack trace) was taken for
+    an outage: "not working" and a notification, while Bedrock players could join all along."""
+    sid = "xb-update"
+    xboxwatch.forget(sid)
+    t0 = 1_000_000.0
+    xboxwatch.feed(sid, "[11:59:18] [MCXboxBroadcast Thread-1/INFO]: [mcxboxbroadcast] [Primary Session] WebSocket session reconnected", t0)
+    xboxwatch.feed(sid, "[14:31:51] [MCXboxBroadcast Thread-1/ERROR]: [mcxboxbroadcast] [Primary Session] Failed to update session information!", t0 + 100)
+    xboxwatch.feed(sid, "com.rtm516.mcxboxbroadcast.core.exceptions.SessionUpdateException: request timed out", t0 + 100)
+    xboxwatch.feed(sid, "\tat com.rtm516.mcxboxbroadcast.core.SessionManagerCore.updateSessionInternal(SessionManagerCore.java:366)", t0 + 100)
+    assert xboxwatch.check(sid, "Family", now=t0 + 1000) == []
+    assert xboxwatch.status(sid, True, True, admin=True)["state"] == "ok"
+    assert "Failed to update session" in xboxwatch.status(sid, True, True, admin=True)["problem"]      # still shown to admins
+    # failing again and again: that is a problem; and once it stops failing, it's working again
+    for k in range(3):
+        xboxwatch.feed(sid, "[14:40:00] [MCXboxBroadcast Thread-1/ERROR]: [mcxboxbroadcast] [Primary Session] Failed to update session information!", t0 + 2000 + k * 30)
+    msgs = xboxwatch.check(sid, "Family", now=t0 + 2000 + 60 + xboxwatch.GRACE + 1)
+    assert len(msgs) == 1 and "isn't working" in msgs[0]
+    back = xboxwatch.check(sid, "Family", now=t0 + 2060 + xboxwatch.UPDATE_QUIET + 5)
+    assert back and "working again" in back[0]

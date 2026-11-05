@@ -8,6 +8,10 @@ server's log, and Solstone reads that log anyway, so it watches what it says:
     every so often and normally takes a second or two, so it only counts as a problem if it doesn't reconnect within
     GRACE seconds.
   - an error from it: noted (the last one is shown to admins), and the same grace before it counts as down.
+  - "Failed to update session information" (a request to Xbox that timed out, say): it tries again on its own every
+    little while and says nothing when that works, so one isn't a problem. Only several in a few minutes count; and
+    once they stop for a while, it's working again.
+  - the lines of a stack trace under an error (no time at the front) are part of that error, not more errors.
 
 Down for longer than the grace: a notification ("Xbox friend joining isn't working"), and another when it's back.
 The home page shows the state under the gamertag; the server's Control page shows the details.
@@ -23,6 +27,10 @@ _OK = ("websocket session reconnected", "session was successful", "created sessi
        "successfully logged in", "successfully created")
 _LOST = ("connection to websocket lost", "re-creating session", "httprelaysignaling websocket")
 _BAD = ("failed", "unable to", "could not", "exception", "error")
+_UPDATE_FAIL = ("failed to update session", "sessionupdateexception")
+UPDATE_FAILS = 3                # update failures within UPDATE_WINDOW before it counts as a problem
+UPDATE_WINDOW = 300
+UPDATE_QUIET = 300              # no more update failures for this long: working again
 _CLOCK = re.compile(r"^\[(\d{2}):(\d{2}):(\d{2})\]")
 
 _state: dict[str, dict] = {}    # server id -> {"state", "since", "lost_at", "drops": [ts...], "problem", "problem_at", "seen"}
@@ -38,15 +46,32 @@ def _st(sid: str) -> dict:
                                    "problem_at": None, "seen": False, "told_down": False})
 
 
+def _trace(line: str) -> bool:
+    """A stack trace's line ("\tat com.rtm516…", "com.rtm516…Exception: …", "Caused by: …"), not a log line of its own."""
+    low = line.strip().lower()
+    return line[:1] in ("\t", " ") or low.startswith(("at ", "caused by", "com.", "java.", "org.", "net.", "io.", "... "))
+
+
 def feed(sid: str, line: str, ts: float) -> None:
     """One log line about MCXboxBroadcast (or Microsoft's relay it uses), written at ts."""
     st = _st(sid)
     low = line.lower()
+    if _trace(line):
+        return                                         # a stack trace's lines: part of the error above, already noted
     st["seen"] = True
     if any(k in low for k in _OK):
         if st["state"] != "ok":
             st["state"], st["since"] = "ok", ts
-        st["lost_at"] = None
+        st["lost_at"], st["fails_only"] = None, False
+        st["update_fails"] = []
+        return
+    if any(k in low for k in _UPDATE_FAIL):
+        st["problem"], st["problem_at"] = line.split("]: ", 1)[-1].strip()[:200], ts
+        st["update_fails"] = [t for t in st.get("update_fails", []) if t > ts - UPDATE_WINDOW] + [ts]
+        if len(st["update_fails"]) >= UPDATE_FAILS and st["lost_at"] is None:
+            st["lost_at"], st["fails_only"] = st["update_fails"][0], True
+            if st["state"] == "ok":
+                st["state"], st["since"] = "reconnecting", ts
         return
     if any(k in low for k in _LOST):
         if st["state"] == "ok" or st["lost_at"] is None:
@@ -73,6 +98,10 @@ def check(sid: str, name: str, now: float | None = None) -> list[str]:
     if not st:
         return []
     out = []
+    fails = st.get("update_fails") or []
+    if st.get("fails_only") and fails and now - fails[-1] > UPDATE_QUIET:
+        # the updates that kept failing have stopped failing (it says nothing when they work): working again
+        st["state"], st["since"], st["lost_at"], st["fails_only"], st["update_fails"] = "ok", now, None, False, []
     if st["state"] in ("reconnecting", "unknown") and st["lost_at"] and now - st["lost_at"] > GRACE:
         st["state"], st["since"] = "down", st["lost_at"]
     if st["state"] == "down" and not st["told_down"]:
