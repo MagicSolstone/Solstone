@@ -818,6 +818,17 @@ async def join_request_status(request: Request):
     return {"state": state, "player": r["player"], "servers": each}
 
 
+@app.post("/api/public/join-request/withdraw")
+async def join_request_withdraw(request: Request):
+    """Take back your own request to join (only you can: with the private token your browser kept)."""
+    body = await _body(request)
+    token = str(body.get("token") or "")[:64]
+    r = site.withdraw_join_request(hashlib.sha256(token.encode()).hexdigest() if token else "")
+    if r:
+        log.info("join request for %s withdrawn by the person who asked", r.get("player"))
+    return {"ok": True, "withdrawn": bool(r)}         # (gone already: fine either way, their page drops it)
+
+
 def _saw_answer(token_hash: str) -> None:
     """They've seen their answer: noted for Manage → Whitelist, and a notification the first time."""
     r = site.mark_seen(token_hash)

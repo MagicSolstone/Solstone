@@ -623,3 +623,27 @@ def test_who_a_whitelisted_name_really_is(client, sid, monkeypatch):
             path.unlink()
         else:
             path.write_text(old)
+
+
+def test_the_person_who_asked_can_cancel_their_request(client, anon, monkeypatch):
+    """Asked by mistake (or with a typo they'll send again): they take it back, and it's off the admins' list too.
+    Only they can (with their private token)."""
+    from app import main, notify, signup
+
+    async def fake_send(*a, **k):
+        return []
+    monkeypatch.setattr(notify, "send", fake_send)
+    signup._sent.clear()
+    client.put("/api/settings/site", json={"join_requests": True})
+    try:
+        r = anon.post("/api/public/join-request", json={"rules": True, "player": "Oops_Kid"}).json()
+        assert any(x["player"] == "Oops_Kid" for x in client.get("/api/whitelist").json()["requests"])
+        assert anon.post("/api/public/join-request/withdraw", json={"token": "not-theirs"}).json()["withdrawn"] is False
+        assert any(x["player"] == "Oops_Kid" for x in main.site.join_requests())                     # still there
+        assert anon.post("/api/public/join-request/withdraw", json={"token": r["token"]}).json()["withdrawn"] is True
+        assert not any(x["player"] == "Oops_Kid" for x in client.get("/api/whitelist").json()["requests"])   # gone for the admins
+        assert anon.post("/api/public/join-request/status", json={"token": r["token"]}).json()["state"] == "unknown"
+    finally:
+        client.put("/api/settings/site", json={"join_requests": False})
+        main.settings_store.save_section("join_requests", [])
+        signup._sent.clear()

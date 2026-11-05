@@ -933,9 +933,14 @@ def main() -> int:
                     if len(rows) != 2 or not any("Smoke_Kid" in r for r in rows) or not any("Smoke_Sister" in r for r in rows):
                         problems.append(f"home: two requests back to back aren't both listed ({rows})")
                     check(anon, "site-home-two-asks")
-                    tok = anon.evaluate("() => (JSON.parse(localStorage.getItem('solstone-asks') || '[]').find((t) => t.player === 'Smoke_Sister') || {}).token")
-                    anon.evaluate("t => localStorage.setItem('solstone-asks', JSON.stringify(JSON.parse(localStorage.getItem('solstone-asks')).filter((x) => x.token !== t)))", tok)
-                    pg.request.post(f"{base}/api/whitelist/deny", data={"player": "Smoke_Sister"}, headers=H)
+                    # asked by mistake: Cancel takes it back, off the admins' list too
+                    anon.once("dialog", lambda dlg: dlg.accept())
+                    anon.click('#step-ask [data-ask-cancel][data-player="Smoke_Sister"]'); anon.wait_for_timeout(1200)
+                    rows = anon.locator("#step-ask .hp-ask-row").all_text_contents()
+                    if any("Smoke_Sister" in r for r in rows) or len(rows) != 1:
+                        problems.append(f"home: Cancel didn't take a waiting request off the list ({rows})")
+                    if any(r["player"] == "Smoke_Sister" for r in pg.request.get(f"{base}/api/whitelist", headers=H).json()["requests"]):
+                        problems.append("home: a cancelled request is still on the admins' list")
                 pg.goto(f"{base}/app#/s/{sid}/control"); pg.wait_for_timeout(1800)
                 if "Smoke_Kid" not in (pg.locator(".turned-away.asked").text_content() if pg.locator(".turned-away.asked").count() else ""):
                     problems.append("control: someone who asked to join isn't listed")

@@ -264,6 +264,19 @@ def mark_let_in(player: str, sid: str) -> None:
     settings_store.save_section("join_requests", reqs)
 
 
+def withdraw_join_request(token_hash: str) -> dict | None:
+    """The person who asked takes their request back (asked by mistake, or a typo they'll send again): off the
+    admins' list too, so nobody's left waiting on a request that doesn't matter any more. Returns it, if it was there."""
+    if not token_hash:
+        return None
+    reqs = join_requests()
+    mine = [r for r in reqs if r.get("token") == token_hash]
+    if not mine:
+        return None
+    settings_store.save_section("join_requests", [r for r in reqs if r.get("token") != token_hash])
+    return mine[0]
+
+
 def finish_join_request(token_hash: str) -> None:
     """In on everything they asked for: off the list, kept a while so their page still says "you're in"."""
     reqs = join_requests()

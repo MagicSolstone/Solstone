@@ -183,9 +183,10 @@ function stepState(list) {
   btn.hidden = all.length > 0;                        // (the list below has its own "ask for someone else")
   const row = (d) => {
     const x = `<button type="button" class="link-btn" data-ask-forget="${esc(d.token)}">Clear</button>`;
-    return `<li class="hp-ask-row ${esc(d.state)}">${d.state === "waiting" ? `<span class="spin" aria-hidden="true"></span> <b>${esc(d.player)}</b>: waiting for an admin`
+    const cancel = `<button type="button" class="link-btn" data-ask-cancel="${esc(d.token)}" data-player="${esc(d.player)}">Cancel</button>`;
+    return `<li class="hp-ask-row ${esc(d.state)}">${d.state === "waiting" ? `<span class="spin" aria-hidden="true"></span> <b>${esc(d.player)}</b>: waiting for an admin ${cancel}`
       : d.state === "in" ? `✅ <b>${esc(d.player)}</b> is on the list. Join the game below! ${x}`
-      : d.state === "partly" ? `✅ <b>${esc(d.player)}</b> is in on some servers, and waiting on the rest.`
+      : d.state === "partly" ? `✅ <b>${esc(d.player)}</b> is in on some servers, and waiting on the rest. ${cancel}`
       : `<span class="hp-denied">✋ <b>${esc(d.player)}</b> wasn't accepted this time.</span>${d.reason ? ` <span class="hp-admin-says"><small>The admins said:</small> ${esc(d.reason)}</span>` : ""} ${x}`}</li>`;
   };
   text.innerHTML = all.length
@@ -443,6 +444,16 @@ function renderAskBadge(d) {
       ? `In on ${esc(d.servers.filter((x) => x.in).map((x) => x.name).join(", "))}. Waiting on ${esc(d.servers.filter((x) => !x.in).map((x) => x.name).join(", "))}`
       : `Waiting for an admin to let ${esc(d.player)} in`}${more}</small></span><button type="button" class="ask-x" data-ask-hide aria-label="Hide">×</button>`;
 }
+// Take a request back altogether (asked by mistake, or a typo to send again): off the admins' list too.
+async function cancelAsk(token, player) {
+  if (!confirm(`Cancel the request for ${player}? The admins won't see it any more. You can always ask again.`)) return;
+  try {
+    const r = await fetch("/api/public/join-request/withdraw", { method: "POST", headers: { "Content-Type": "application/json", "X-Solstone": "1" }, body: JSON.stringify({ token }) });
+    if (!r.ok) throw new Error();
+  } catch { toast("That didn't go through. Try again in a moment."); return; }
+  toast("Request cancelled");
+  forgetAsk(token);
+}
 // One request off this browser's list (or all of them)
 function forgetAsk(token) {
   saveTickets(token ? askTickets().filter((t) => t.token !== token) : []);
@@ -452,6 +463,8 @@ function forgetAsk(token) {
 document.addEventListener("click", (e) => {
   const f = e.target.closest("[data-ask-forget]");
   if (f) { forgetAsk(f.dataset.askForget || null); return; }
+  const c = e.target.closest("[data-ask-cancel]");
+  if (c) { cancelAsk(c.dataset.askCancel, c.dataset.player); return; }
   if (e.target.closest("[data-open-ask]")) { openPop(askFormHtml(true)); return; }
   if (e.target.closest("[data-ask-again]")) { openPop(askFormHtml(true)); return; }
   if (e.target.closest("[data-open-signup]")) { openSignup(); return; }
