@@ -169,6 +169,7 @@ function startSkyScene(cv, opts = {}) {
   let stars = [], land = null, groundY = 0, cardBox = null, hill = [], watcher = { x: 0, y: 0 };
   const rockets = [], sparks = [], figures = [], trees = [];
   const SPARK_SOFT = 2200, SPARK_HARD = 3600;        // effects thin out past these
+  const MANUAL_MAX = (navigator.hardwareConcurrency || 4) >= 6 ? 40 : 24;   // launched by hand, in the air at once (was 12)
   // Sound: the page passes opts.sound(type, info); pan is -1 (left) to 1 (right). Every scene
   // has its own sound channel, cut when the sky is cleared or stopped.
   const soundBus = `sky${(window.__skySeq = (window.__skySeq || 0) + 1)}`;
@@ -1211,7 +1212,9 @@ function startSkyScene(cv, opts = {}) {
     },
     // One rocket on request (the launch button). Works even with reduced motion,
     // because someone asked for it.
-    launch(shape) { if (rockets.length < 12) { launch(shape); wake(); } },
+    // (up to MANUAL_MAX in the air at once: plenty for fast clicking; the sparks thin out by themselves past
+    // SPARK_SOFT, so a big burst stays smooth, and smaller devices get a lower ceiling)
+    launch(shape) { if (rockets.length < MANUAL_MAX) { launch(shape); wake(); } },
     // Lively for a while (an announcement reaching zero, a holiday preview), even with Show off.
     boost(seconds) {
       if (reduced) return;
