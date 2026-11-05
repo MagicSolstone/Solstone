@@ -1,3 +1,9 @@
+# Solstone 1.15.25
+
+- **What people read:** a new section in Manage → Solstone, under Website traffic, lists each page of the website (the home page, News & Help, Events, every news post and guide, the rules) with how many **views**, how many different **people** (not signed in · signed-in players), how many **read it** (opened a post or guide, scrolled to the end, and kept it open 15 seconds or more), and the average **time on it**. Look back 7 days, 30 days or a year. Admins' own visits aren't counted, bots are left out, and nobody is named: it keeps counts per page, per day.
+- **Holiday rewards can have up to 9 items** (a hotbar's worth), up from 3. As before, each waits until the player has room for it.
+- **The events timeline counts in days:** "In 21 days" instead of "In 3 weeks", and the gaps between events say "21 days" too.
+
 # Solstone 1.15.24
 
 - **Memory on the home page:** each running server's status now has a **Memory** card next to CPU, showing how much it's using and what share of the computer's RAM that is. On phones the cards now fill even rows, and an odd one out stretches across the full width, so there's never a gap. Memory has its own little graph of the last 6 hours, like CPU.
