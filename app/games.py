@@ -50,7 +50,7 @@ def _load() -> dict:
 
 def _save(d: dict) -> None:
     done = [r for r in d["runs"] if r["state"] not in ("scheduled", *ACTIVE)]
-    keep = {r["id"] for r in sorted(done, key=lambda r: -r["start"])[:20]}
+    keep = {r["id"] for r in sorted(done, key=lambda r: -r["start"])[:60]}     # (enough for a month of Lately)
     d["runs"] = [r for r in d["runs"] if r["state"] in ("scheduled", *ACTIVE) or r["id"] in keep or r.get("owed")]
     settings_store.save_section(SECTION, d)
 

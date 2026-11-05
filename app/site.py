@@ -32,7 +32,8 @@ DEFAULTS = {"name": "Solstone", "tagline": "", "java_address": "", "bedrock_addr
             # Making an account starts off: the home page walks people through it.
             "builtin_off": ["account"],
             "main_server": "",
-            "units": "km"}                # distances everywhere: "km" or "miles"            # shown first everywhere (home page, Ask to join), starred; its addresses feed the join guide
+            "units": "km",
+            "past_days": 3}               # finished contests, races and games stay under Lately on Events this long (0: not shown)                # distances everywhere: "km" or "miles"            # shown first everywhere (home page, Ask to join), starred; its addresses feed the join guide
 GUIDE_MAX = 8000
 _EMAIL = re.compile(r"^[^@\s<>()\[\]\\,;:\"]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$")
 _SLUG = re.compile(r"[^a-z0-9]+")
@@ -204,6 +205,11 @@ def clean_config(body: dict) -> dict:
         out["builtin_off"] = sorted({k for k in body["builtin_off"] or [] if k in ROLES})
     if "units" in body:
         out["units"] = "miles" if body["units"] == "miles" else "km"
+    if "past_days" in body:
+        try:
+            out["past_days"] = max(0, min(30, int(body["past_days"])))
+        except (TypeError, ValueError):
+            pass
     for k in ("home_live", "signup", "join_requests", "home_title"):
         if k in body:
             out[k] = bool(body[k])

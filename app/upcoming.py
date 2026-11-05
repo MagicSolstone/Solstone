@@ -153,10 +153,14 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
 PAST_DAYS = 3
 
 
-def past(server_names: dict[str, str], days: int = PAST_DAYS, now: float | None = None) -> list[dict]:
+def past(server_names: dict[str, str], days: int | None = None, now: float | None = None) -> list[dict]:
     """Contests, races and games that finished in the last few days, newest first, each with how it went, never
     who: "12 took part · best 42 fish", "Survived all 7 waves", "4 racers · fastest 1:12"."""
-    from . import games, races
+    from . import games, races, site
+    if days is None:                                       # Manage → Website → Site details
+        days = site.config().get("past_days", PAST_DAYS)
+    if not days:
+        return []
     now = now or time.time()
     since = now - days * 86400
     zone = db.tz()
@@ -195,5 +199,5 @@ def past(server_names: dict[str, str], days: int = PAST_DAYS, now: float | None 
             how = f"{n} player{'s' if n != 1 else ''}"
         add(r.get("ended"), emoji, r.get("name") or games.KINDS[r["game"]][0], how, r["server"])
     out.sort(key=lambda x: -x["at"])
-    return out[:20]
+    return out[:40]
 

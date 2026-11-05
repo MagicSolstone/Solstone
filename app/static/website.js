@@ -330,6 +330,8 @@ function wsSite(el) {
     <label class="check"><input type="checkbox" name="home_title" ${s.home_title ? "checked" : ""}> Show the name (and tagline) big at the top of the home page <small>Off: just the bar at the top, with the logo and name</small></label>
     <div class="row2"><label>News on the home page <small>The newest (pinned first), then a <b>More news</b> button. 0: none</small><input class="input" type="number" name="home_news" min="0" max="12" value="${s.home_news ?? 3}"></label>
       <label>Guides on the home page <small>Then a <b>More guides</b> button. 0: none</small><input class="input" type="number" name="home_guides" min="0" max="12" value="${s.home_guides ?? 4}"></label></div>
+    <label>Past events on the Events page <small>Finished contests, races and games stay under <b>Lately</b>, with how they went (never who), for</small><select class="input" name="past_days">
+      ${[[0, "Don't show them"], [1, "1 day"], [2, "2 days"], [3, "3 days"], [5, "5 days"], [7, "A week"], [14, "2 weeks"], [30, "30 days"]].map(([v, l]) => `<option value="${v}" ${(s.past_days ?? 3) === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
     <fieldset class="ws-joins"><legend>How to join each server <small class="muted">One card per server on the home page, with how it's doing</small></legend>
       <p class="muted small">Each server gets its own card. Leave Bedrock empty for Java only, or Java empty for Bedrock only; a server with neither isn't shown. Private servers never show. The join guide uses the first server's addresses.</p>
       ${(state.servers || []).filter((x) => !x.private).map((x, i) => `<div class="ws-join" data-sid="${esc(x.id)}">
@@ -418,6 +420,7 @@ function wsSite(el) {
     body.home_title = !!f.get("home_title");
     body.units = f.get("units") === "miles" ? "miles" : "km";
     body.home_news = +f.get("home_news"); body.home_guides = +f.get("home_guides");
+    body.past_days = +f.get("past_days");
     body.join_requests = !!f.get("join_requests");
     body.signup = !!f.get("signup");
     try {

@@ -53,7 +53,7 @@ ROD_KINDS = ("fish", "fish_points", "fish_heaviest")
 # Kept so old contests still show properly, but no longer offered: not enough of a real race.
 RETIRED = ("diamonds", "logs", "stone", "breed", "jumps", "walk")
 SECTION = "challenges"
-KEEP_DONE = 30                          # finished challenges kept for the history list
+KEEP_DONE = 60                          # finished challenges kept for the history list (and a month of Lately)
 _SCORE = re.compile(r"has (-?\d+)")
 
 
