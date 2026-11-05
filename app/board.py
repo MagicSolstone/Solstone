@@ -44,7 +44,7 @@ def _line(v, n: int) -> str:
     return " ".join(str(v or "").split())[:n]
 
 
-_MARKS = [(re.compile(r"\[([^\]]+)\]\([^)\s]+\)"), r"\1"), (re.compile(r"\*\*([^*]+)\*\*"), r"\1"),
+_MARKS = [(re.compile(r"\[([^\]]+)\]\([^)\s]+\)"), r"\1"), (re.compile(r"\*\*([^*]+)\*\*"), r"\1"), (re.compile(r"__([^_]+?)__"), r"\1"),
           (re.compile(r"(^|[\s(])[*_]([^*_]+)[*_]"), r"\1\2"), (re.compile(r"\{/?[a-z]+\}"), "")]
 
 
@@ -157,7 +157,7 @@ def holiday_banners(now: datetime) -> list[dict]:
     """One banner for each holiday, all the way through (Manage → Announcements → Holidays):
       - before it: "Christmas is in 3 days", counting down (from as many days before as it asks);
       - on its day(s): its message;
-      - after it, while its reward is still being given: "Christmas is over, but there's still time for its reward".
+      - after it, while its reward is still being given: its own words, or "Christmas is over, but there's still time for its reward".
     Whenever its reward is being given, the banner shows it (the items, its description, and the last day for it),
     and the banner stays up for the reward's days before and after if the reward asks for that. Its look is its own."""
     from . import holidaygifts
@@ -184,13 +184,13 @@ def holiday_banners(now: datetime) -> list[dict]:
                     break                                   # (a plain weekly show night: no banner of its own)
                 phase = {"kind": "holiday", "text": e["message_fmt"] or e["name_fmt"], "countdown": None}
             else:
-                phase = {"kind": "reward", "text": f"{e['name_fmt']} is over, but there's still time for its reward!", "countdown": None}
+                phase = {"kind": "reward", "text": rw.get("after_text") or f"{e['name_fmt']} is over, but there's still time for its reward!", "countdown": None}
             b = {"id": f"hol-{e['id']}-{s.isoformat()}-{phase['kind']}", "emoji": e["emoji"] or "🎉", "detail": "",
                  "style": e["banner"]["style"], "colors": e["banner"]["colors"], **phase}
             if giving:
                 t = holidaygifts.tag(e, s)
                 b.update(items=t["items"], reward_note=t["note"],
-                         reward_until="Today only" if r_last == today else f"Play by {r_last.strftime('%a %-d %b')}")
+                         reward_until="Today only" if r_last == today else f"Now until {r_last.strftime('%a %-d %b')}")
             out.append(b)
             break
     return out

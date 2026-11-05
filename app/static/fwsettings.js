@@ -190,7 +190,7 @@ function calEditHtml(e, i) {
   const num = (name, v, min, max, w = 64) => `<input class="input sm" type="number" name="${name}" min="${min}" max="${max}" value="${v}" style="width:${w}px">`;
   const sel = (name, opts, cur) => `<select class="input sm" name="${name}">${opts.map(([v, l]) => `<option value="${v}" ${String(v) === String(cur) ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
   const bn = e.banner || { show: true, style: "party", colors: [] }, rw = e.reward || {};
-  const webFmt = `<span class="ann-fmt" role="toolbar" aria-label="Formatting"><button type="button" class="btn sm" data-wrap="**|**" title="Bold"><b>B</b></button><button type="button" class="btn sm" data-wrap="*|*" title="Italic"><i>I</i></button>
+  const webFmt = `<span class="ann-fmt" role="toolbar" aria-label="Formatting"><button type="button" class="btn sm" data-wrap="**|**" title="Bold"><b>B</b></button><button type="button" class="btn sm" data-wrap="*|*" title="Italic"><i>I</i></button><button type="button" class="btn sm" data-wrap="__|__" title="Underline"><u>U</u></button>
         <button type="button" class="btn sm" data-link title="A link">🔗 Link</button>
         ${POST_COLOURS.map(([k, l]) => `<button type="button" class="ann-col pf-swatch-${k}" data-wrap="{${k}}|{/${k}}" title="${l}" aria-label="${l}"></button>`).join("")}
         <span class="muted small">Select words in the box you were last in, then pick.</span></span>`;
@@ -213,7 +213,7 @@ function calEditHtml(e, i) {
         <label class="inl">Lasts ${num("days", e.days, 1, 14)} day(s)</label>
       </div>
       <label class="fws-detail">Description on the Events page <span class="muted small">optional, under its name</span>
-        <textarea class="input" name="detail" rows="2" maxlength="600" placeholder="Log in any time this week for a present!">${esc(e.detail || "")}</textarea></label>
+        <textarea class="input" name="detail" rows="4" maxlength="600" placeholder="Log in any time this week for a present!">${esc(e.detail || "")}</textarea></label>
     </fieldset>
 
     <fieldset class="hol-sec"><legend>📣 Its banner <span class="muted small">one banner on every page, from the countdown to the last day of its reward</span></legend>
@@ -235,14 +235,17 @@ function calEditHtml(e, i) {
       <div class="hol-rw-opts" ${(rw.items || []).length ? "" : "hidden"}>
         <label class="inl">Given from ${num("rbefore", rw.before || 0, 0, 30)} days before to ${num("rafter", rw.after || 0, 0, 30)} days after
           <span class="muted small">(0 and 0: just ${e.days > 1 ? "its days" : "the day"}; Thursday's Thanksgiving through Sunday: 0 and 3)</span></label>
-        <label class="check"><input type="checkbox" name="rbanner" ${rw.banner ? "checked" : ""}> Keep the banner up on those extra days <span class="muted small">(after the holiday it says there's still time for the reward)</span></label>
+        <label class="check"><input type="checkbox" name="rbanner" ${rw.banner ? "checked" : ""}> Keep the banner up on those extra days <span class="muted small">(the reward shows on it the whole time)</span></label>
+        <label class="wide hol-after" ${rw.banner && rw.after ? "" : "hidden"}>The banner after the holiday says <span class="muted small">(blank: “${esc(e.name)} is over, but there's still time for its reward!”)</span>
+          <input class="input" name="rafter_text" maxlength="160" value="${esc(rw.after_text || "")}" placeholder="Merry Christmas! Rewards still available through the end of the week"></label>
         <label class="wide">Description <span class="muted small">on the Events page and the banner</span>${webFmt}
           <input class="input" name="rnote" maxlength="300" value="${esc(rw.note || "")}" placeholder="Reward for playing ${esc(e.name)}${rw.after ? " weekend" : ""}!"></label>
         <label class="wide">Message in the game when they get it <span class="muted small">the game's own colours; then what they got</span>
           <span class="wel-tools hol-game-fmt">${WELCOME_COLOURS.map(([c, hex, l]) => `<button type="button" class="wel-col" data-code="&${c}" style="background:${hex}" title="${l}" aria-label="${l}"></button>`).join("")}
             ${WELCOME_STYLES.map(([c, t, l]) => `<button type="button" class="btn sm wel-sty" data-code="&${c}" title="${l}" aria-label="${l}">${t}</button>`).join("")}
             <button type="button" class="btn sm" data-code="{player}" title="Their name">{player}</button></span>
-          <input class="input" name="rmessage" maxlength="200" value="${esc(rw.message || "")}" placeholder="&6&l${esc(e.name)}!&r &eA present for being here"></label>
+          <textarea class="input" name="rmessage" rows="3" maxlength="600" placeholder="&6&l${esc(e.name)}!&r &eA present for being here">${esc(rw.message || "")}</textarea>
+          <span class="muted small">Each line is its own line in the chat (up to 5).</span></label>
         <div class="wel-preview hol-game-preview"></div>
         <p class="muted small">No room in their inventory? It waits (nothing's dropped on the ground): they're told to make room, and it arrives by itself when they do.</p>
       </div>
@@ -270,12 +273,20 @@ function holPhases(e) {
   return [((e.banner_days || 0) > 0 || (stay && rw.before > 0)) && e.date.type !== "weekly" && ["soon", "Before"], ["day", "On the day"],
     stay && rw.after > 0 && ["after", "After"]].filter(Boolean);
 }
+// The last day of a holiday's reward, as the banner says it ("Now until Sat 27 Dec"), from the next time it comes round.
+function holUntil(e) {
+  const rw = e.reward || {};
+  if (!e.next) return rw.after ? `Now until ${rw.after} day${rw.after === 1 ? "" : "s"} after` : "";
+  const [y, m, d] = e.next.split("-").map(Number);
+  const last = new Date(y, m - 1, d + (e.days || 1) - 1 + (rw.after || 0));
+  return (e.days || 1) === 1 && !rw.after && !rw.before ? "Today only" : `Now until ${last.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })}`;
+}
 function holBannerHtml(e, phase) {
   const rw = e.reward || {}, items = (rw.items || []).map((x) => ({ ...x, name: x.name || itemName({ id: x.item }) }));
   const name = e.name_fmt || e.name, days = Math.max(1, e.banner_days || 1);
-  const text = phase === "soon" ? `${name} is ${days === 1 ? "tomorrow" : `in ${days} days`}` : phase === "after" ? `${name} is over, but there's still time for its reward!` : (e.message_fmt || name);
+  const text = phase === "soon" ? `${name} is ${days === 1 ? "tomorrow" : `in ${days} days`}` : phase === "after" ? (rw.after_text || `${name} is over, but there's still time for its reward!`) : (e.message_fmt || name);
   const giving = items.length && (phase === "day" || phase === "after" || (rw.before || 0) >= days);
-  const it = { style: e.banner.style, colors: e.banner.style === "custom" ? e.banner.colors : [], items, reward_note: rw.note, reward_until: rw.after ? `Until ${rw.after} day${rw.after === 1 ? "" : "s"} after` : "" };
+  const it = { style: e.banner.style, colors: e.banner.style === "custom" ? e.banner.colors : [], items, reward_note: rw.note, reward_until: holUntil(e) };
   return `<div class="bn bn-${esc(it.style)}"${annLook(it)}><span class="bn-emoji">${esc(e.emoji || "🎉")}</span>
     <div class="bn-text"><b>${annFmt(text)}</b>${giving ? bnRewardHtml(it) : ""}</div>${phase === "soon" ? `<span class="bn-cd">${days} d 0 h</span>` : ""}</div>`;
 }
@@ -299,6 +310,7 @@ function wireCalEdit(el, i) {
     draft.banner = { show: !!f.get("bshow"), style: form.querySelector('[data-seg="bstyle"] [aria-pressed="true"]')?.dataset.v || "party",
       colors: [f.get("bcolor0"), f.get("bcolor1"), ...(f.get("buse3") ? [f.get("bcolor2")] : [])] };
     draft.reward = { items: draft.reward?.items || [], message: f.get("rmessage") || "", note: f.get("rnote") || "", banner: !!f.get("rbanner"),      // items: picked below
+      after_text: f.get("rafter_text") || "",
       before: Math.max(0, Math.min(30, +f.get("rbefore") || 0)), after: Math.max(0, Math.min(30, +f.get("rafter") || 0)) };
     draft.colors_before = Math.max(0, Math.min(30, +f.get("cbefore") || 0));
     draft.colors_after = Math.max(0, Math.min(30, +f.get("cafter") || 0));
@@ -340,6 +352,9 @@ function wireCalEdit(el, i) {
     holShow();
   }));
   form.querySelector('[name="bshow"]').addEventListener("change", (ev) => { form.querySelector(".hol-bn-opts").hidden = !ev.target.checked; holShow(); });
+  const afterBox = () => { form.querySelector(".hol-after").hidden = !(form.querySelector('[name="rbanner"]').checked && +form.querySelector('[name="rafter"]').value > 0); };
+  form.querySelector('[name="rbanner"]')?.addEventListener("change", afterBox);
+  form.querySelector('[name="rafter"]')?.addEventListener("input", afterBox);
   // the preview: the banner as it'll look before, on and after the day, and when it shows
   let phase = "day";
   const holShow = () => {

@@ -93,7 +93,7 @@ function annEditHtml(it) {
       <label class="wide">Message<input class="input" name="text" value="${esc(it.text)}" maxlength="300" required placeholder="Build contest: castles!"></label>
     </div>
     <div class="ann-fmt" role="toolbar" aria-label="Formatting (for the box you were last in)">
-      <button type="button" class="btn sm" data-wrap="**|**" title="Bold"><b>B</b></button><button type="button" class="btn sm" data-wrap="*|*" title="Italic"><i>I</i></button>
+      <button type="button" class="btn sm" data-wrap="**|**" title="Bold"><b>B</b></button><button type="button" class="btn sm" data-wrap="*|*" title="Italic"><i>I</i></button><button type="button" class="btn sm" data-wrap="__|__" title="Underline"><u>U</u></button>
       <button type="button" class="btn sm" data-link title="A link">🔗 Link</button>
       ${POST_COLOURS.map(([k, l]) => `<button type="button" class="ann-col pf-swatch-${k}" data-wrap="{${k}}|{/${k}}" title="${l}" aria-label="${l}"></button>`).join("")}
       <span class="muted small">Select some words in the message or the smaller line, then pick.</span></div>
@@ -182,13 +182,13 @@ async function viewUpcoming() {
       <span class="up-emoji" aria-hidden="true">${esc(it.emoji || "•")}</span>
       <div class="up-main"><b>${it.link ? `<a href="${esc(it.link)}">${upTitle(it)}</a>` : upTitle(it)}</b>
         ${it.then ? "" : `<span class="muted small">${esc([UP_KIND[it.kind], it.server, it.detail, it.days > 1 ? `${it.days} days` : ""].filter(Boolean).join(" · "))}</span>`}
-        ${it.about ? `<span class="up-about">${annFmt(it.about)}</span>` : ""}${rewardLineHtml(it.reward)}
+        ${it.about ? `<span class="up-about">${annLines(it.about)}</span>` : ""}${rewardLineHtml(it.reward)}
         ${it.who?.length ? `<span class="small up-who">🙋 ${esc(it.who.join(", "))}</span>` : ""}</div>
       <span class="up-when">${it.live ? '<span class="state-pill live"><span class="status-dot on"></span>On now</span>' : it.time ? esc(it.time) : ""}
         ${UP_SIGNUP.has(it.kind) ? `<button type="button" class="btn sm up-coming ${it.me ? "on" : ""}" data-coming="${esc(it.key)}" aria-pressed="${it.me}"
 >${it.me ? "✅ I'm coming" : "🙋 I'm coming!"}${it.coming ? ` · ${it.coming}` : ""}</button>` : ""}</span></li>`);
   setView(`<div class="fwe-head"><h1>Events</h1>
-      <p class="muted">Everything planned for the next ${d.days} days: contests, races and games, holidays and their fireworks shows, and announcements counting down.${isAdmin() ? ` Add things from a server's <b>Contests</b> page, <a href="#/manage/holidays">Holidays</a> or <a href="#/manage/announcements">Announcements</a>.` : ""}</p></div>
+      <p class="muted">Everything planned for the next ${d.days} days: contests, races and games, holidays, and announcements counting down.${isAdmin() ? ` Add things from a server's <b>Contests</b> page, <a href="#/manage/holidays">Holidays</a> or <a href="#/manage/announcements">Announcements</a>.` : ""}</p></div>
     ${d.items.length ? upTimeline(d.items, row, "panel") : `<div class="panel up-empty"><span class="up-empty-emoji" aria-hidden="true">🗓️</span><h2>No events scheduled</h2>
           <p class="muted">Nothing's planned for the next ${Math.round(d.days / 30)} months yet. Contests, races and holidays show up here when they're added.</p>
           ${isAdmin() ? `<p class="muted small">Add a contest from a server's <b>Contests</b> page, a holiday on <a href="#/manage/holidays">Holidays</a>, or a countdown in <a href="#/manage/announcements">Announcements</a>.</p>` : ""}</div>`}

@@ -3,7 +3,7 @@
    what visitors see. The text is escaped first and only then formatted, so it can never carry HTML of its own.
 
    One line break is a new line; a blank line is a new paragraph.
-   # Heading · ## Subheading · ### Small heading · **bold** · *italic* · - list · 1. list · > quote · --- line
+   # Heading · ## Subheading · ### Small heading · **bold** · *italic* · __underline__ · - list · 1. list · > quote · --- line
    [a link](https://…) or (mailto:…) · ![a picture](/api/public/images/…) · {red}coloured{/red} · {big}bigger{/big} · {small}smaller{/small} */
 "use strict";
 
@@ -20,6 +20,7 @@ function inline(s) {
       (_, alt, size, src) => `<img class="post-img${size ? ` post-img-${size}` : ""}" src="${src}" alt="${alt}" loading="lazy" tabindex="0" title="Tap to see it big">`)
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/__([^_]+?)__/g, "<u>$1</u>")
     .replace(/(^|[\s(>])[*_]([^*_]+)[*_](?=[\s).,!?:;<]|$)/g, "$1<i>$2</i>")
     .replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:|\/(?!\/)|#[\w-]+(?=\)))[^\s)]*)\)/g, (_, t, href) =>
       `<a href="${href}"${/^(\/|#|mailto:)/.test(href) ? "" : ' target="_blank" rel="noopener"'}>${t}</a>`);

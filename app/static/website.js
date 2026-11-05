@@ -67,6 +67,7 @@ function wsEditHtml(p) {
     <div class="ws-fmt" role="toolbar" aria-label="Formatting">
       <button type="button" class="btn sm" data-wrap="**" title="Bold"><b>B</b></button>
       <button type="button" class="btn sm" data-wrap="*" title="Italic"><i>I</i></button>
+      <button type="button" class="btn sm" data-wrap="__" title="Underline"><u>U</u></button>
       <select class="input sm" data-line aria-label="Heading"><option value="">Heading…</option><option value="# ">Heading</option><option value="## ">Subheading</option><option value="### ">Small heading</option></select>
       <select class="input sm" data-style aria-label="Colour"><option value="">Colour…</option>${POST_COLOURS.map(([k, l]) => `<option value="${k}" class="pf-${k}">${l}</option>`).join("")}</select>
       <select class="input sm" data-style aria-label="Size"><option value="">Size…</option>${POST_SIZES.map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
@@ -184,7 +185,7 @@ function wsPosts(el) {
     ta.setRangeText(out, a, b, "select");
     changed();
   };
-  form.querySelectorAll("[data-wrap]").forEach((b) => b.addEventListener("click", () => wrap(b.dataset.wrap, b.dataset.wrap, b.title === "Bold" ? "bold text" : "slanted text")));
+  form.querySelectorAll("[data-wrap]").forEach((b) => b.addEventListener("click", () => wrap(b.dataset.wrap, b.dataset.wrap, ({ Bold: "bold text", Underline: "underlined text" })[b.title] || "slanted text")));
   form.querySelectorAll("[data-prefix]").forEach((b) => b.addEventListener("click", () => prefixLines(b.dataset.prefix.replace("&gt;", ">"))));
   form.querySelector("[data-line]").addEventListener("change", (e) => { if (e.target.value) prefixLines(e.target.value); e.target.value = ""; });
   form.querySelectorAll("[data-style]").forEach((s) => s.addEventListener("change", (e) => {

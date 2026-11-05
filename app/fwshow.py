@@ -196,7 +196,9 @@ def _clean_reward(r) -> dict:
             return 0
     # given from this many days before the holiday to this many after it (Thanksgiving through the weekend: 0 and 3)
     # the message in the game when they get it: the game's own & colour codes, like the welcome message
-    return {"items": items, "message": " ".join(str(r.get("message") or "").split())[:200],
+    lines = [" ".join(x.split())[:200] for x in str(r.get("message") or "").replace("\r", "").split("\n")]
+    return {"items": items, "message": "\n".join([x for x in lines if x][:5])[:600] if any(lines) else "",           # up to 5 lines in the chat
+            "after_text": " ".join(str(r.get("after_text") or "").split())[:160],      # the banner after the holiday, if not the usual words
             "before": days(r.get("before")), "after": days(r.get("after")),
             # its own line on the Events page and its banner ("Reward for playing Thanksgiving weekend"), formatted like posts
             "note": " ".join(str(r.get("note") or "").split())[:300],
@@ -207,6 +209,17 @@ def calendar() -> list[dict]:
     saved = settings_store.load().get("fw_calendar")
     items = saved if isinstance(saved, list) else DEFAULT_CALENDAR
     return [c for c in (_clean_entry(e) for e in items) if c]
+
+
+def with_next(cal: list[dict], today: date | None = None) -> list[dict]:
+    """Each holiday with the day it next starts (or the one on now, reward days included), for the editor's preview."""
+    today = today or datetime.now(db.tz()).date()
+    out = []
+    for e in cal:
+        tail = e["days"] + (e["reward"]["after"] if e["reward"]["items"] else 0)
+        nxt = [s for s in _starts(e, today) if s + timedelta(days=tail) > today]
+        out.append({**e, "next": min(nxt).isoformat() if nxt else None})
+    return out
 
 
 def save_calendar(items: list) -> list[dict]:

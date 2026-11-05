@@ -100,7 +100,10 @@ def test_one_banner_from_the_countdown_to_the_last_reward_day():
         day = banners(0)
         assert len(day) == 1 and day[0]["text"] == "Happy Thanksgiving!" and day[0]["items"]
         after = banners(-2)                                 # two days on: still one banner, now about the reward
-        assert len(after) == 1 and after[0]["kind"] == "reward" and "still time" in after[0]["text"] and after[0]["reward_until"].startswith("Play by")
+        assert len(after) == 1 and after[0]["kind"] == "reward" and "still time" in after[0]["text"] and after[0]["reward_until"].startswith("Now until")
+        cal[0]["reward"]["after_text"] = "Happy  Thanksgiving! Rewards   still on through the weekend"   # its own words after the day
+        assert banners(-2)[0]["text"] == "Happy Thanksgiving! Rewards still on through the weekend"
+        cal[0]["reward"]["after_text"] = ""
         assert banners(-4) == []                            # the reward's over: so is the banner
         cal[0]["reward"]["banner"] = False                  # not kept up for the reward's extra days
         assert banners(-2) == []
@@ -167,3 +170,11 @@ def test_a_holiday_reward_can_hold_up_to_nine_things():
     from app import fwshow
     items = [{"item": f"minecraft:{x}", "count": 1} for x in ("cake", "cookie", "apple", "bread", "carrot", "melon_slice", "pumpkin_pie", "sweet_berries", "honey_bottle", "golden_apple")]
     assert len(fwshow._clean_reward({"items": items})["items"]) == 9
+
+
+def test_a_rewards_game_message_keeps_its_lines():
+    r = fwshow._clean_reward({"items": [{"item": "cake"}], "message": "&6Merry Christmas!\r\n\n&aJohn 3:16  For God so loved\nline 3\n4\n5\n6"})
+    assert r["message"].split("\n") == ["&6Merry Christmas!", "&aJohn 3:16 For God so loved", "line 3", "4", "5"]
+    assert board.plain("__under__ and **bold**") == "under and bold"
+    nxt = fwshow.with_next([fwshow._clean_entry({"id": "x", "name": "X", "date": {"type": "fixed", "month": 12, "day": 25}})])[0]["next"]
+    assert nxt.endswith("-12-25")

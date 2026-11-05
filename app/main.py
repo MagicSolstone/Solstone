@@ -1405,7 +1405,7 @@ async def get_firework_show(request: Request):
     for srv in S.registry.servers.values():
         for p in S.known_players(srv).values():
             players.setdefault(p["name"].lower(), p["name"])
-    return {"join": fwshow.join_cfg(), "signatures": fwshow.signatures(), "calendar": fwshow.calendar(),
+    return {"join": fwshow.join_cfg(), "signatures": fwshow.signatures(), "calendar": fwshow.with_next(fwshow.calendar()),
             "players": sorted(players.values(), key=str.lower), "today": fwshow.today_state(),
             "calendar_defaults": [fwshow._clean_entry(e) for e in fwshow.DEFAULT_CALENDAR],
             "creators": _creators_summary(),

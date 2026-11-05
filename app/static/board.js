@@ -19,6 +19,8 @@ function fmtCountdown(sec) {
 function annFmt(text) {
   return typeof inline === "function" ? inline(esc(text || "")) : esc(text || "");
 }
+// The same, keeping its lines (a holiday's description on the Events pages).
+const annLines = (text) => String(text || "").split("\n").map(annFmt).join("<br>");
 // A banner's own colours (the "Your colours" look): a gradient of two or three, see-through enough to read on.
 function annLook(it) {
   const cs = (it.style === "custom" && it.colors?.length ? it.colors : []).filter((c) => /^#[0-9a-f]{6}$/i.test(c));

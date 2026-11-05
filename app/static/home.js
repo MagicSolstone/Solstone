@@ -406,9 +406,9 @@ async function eventsPage() {
   const d = await getJSON("/api/public/upcoming");
   const row = (it) => (it.kind === "event" ? upEventHtml(it) : `<li class="up-item ${it.live ? "live" : ""} ${it.then ? "up-then" : ""}${upLook(it).cls}"${upLook(it).style}><span class="up-emoji" aria-hidden="true">${esc(it.emoji || "•")}</span>
     <div class="up-main"><b>${upTitle(it)}</b>${it.then ? "" : `<span class="muted small">${esc([it.server, it.detail, it.days > 1 ? `${it.days} days` : ""].filter(Boolean).join(" · "))}</span>`}
-      ${it.about ? `<span class="up-about">${inline(esc(it.about))}</span>` : ""}${rewardLineHtml(it.reward)}</div>
+      ${it.about ? `<span class="up-about">${esc(it.about).split("\n").map(inline).join("<br>")}</span>` : ""}${rewardLineHtml(it.reward)}</div>
     <span class="up-when">${it.live ? "On now" : it.time ? esc(it.time) : ""}</span></li>`);
-  return `<section><h1>Events</h1><p class="muted">Contests, races, holidays and fireworks shows coming up. <a href="/app#/events">Sign in</a> to say you're coming and see who else is.</p></section>
+  return `<section><h1>Events</h1><p class="muted">Contests, races, games and holidays coming up. <a href="/app#/events">Sign in</a> to say you're coming and see who else is.</p></section>
     ${d.items.length ? `<section>${upTimeline(d.items, row, "glass")}</section>`
       : '<section class="glass hp-empty"><p class="muted">Nothing planned yet. Check back soon!</p></section>'}
     ${upPastHtml(d.past, "glass")}`;

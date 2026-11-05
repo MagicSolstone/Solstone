@@ -581,7 +581,7 @@ def main() -> int:
             # (from yesterday, three days long: on whatever "today" is for the server's time zone and the browser's)
             party = {"id": "smokeparty", "name": "Smoke weekend", "emoji": "🥧", "days": 3,
                      "date": {"type": "once", "iso": time.strftime("%Y-%m-%d", time.localtime(time.time() - 86400))},
-                     "detail": "Come and play!", "reward": {"items": [{"item": "minecraft:pumpkin_pie", "count": 3}], "after": 3,
+                     "detail": "Play the week for a gift!\nRemember, God loves **YOU**! Share the {green}__good news__{/green}.\n{gold}John 3:16{/gold}", "reward": {"items": [{"item": "minecraft:pumpkin_pie", "count": 3}], "after": 3,
                                                             "note": "Reward for playing **Smoke weekend**", "banner": True}}
             soon_iso = time.strftime("%Y-%m-%d", time.localtime(time.time() + 6 * 86400))
             later = {"id": "smokefeast", "name": "Smoke feast", "emoji": "🦃", "days": 1, "date": {"type": "once", "iso": soon_iso},
@@ -599,6 +599,9 @@ def main() -> int:
                 problems.append("events: a holiday with a reward isn't one simple dot (with a gold ring), or the reward's dates are drawn on the line")
             if not ev.locator(".up-item.up-look").count():
                 problems.append("events: a holiday's card doesn't take its banner's look")
+            about = ev.locator('.up-item:has-text("Smoke weekend") .up-about')
+            if not about.count() or about.first.locator("br").count() != 2 or not about.first.locator("u").count():
+                problems.append("events: a holiday's description doesn't keep its lines and underline")
             check(ev, "events-reward")
             if os.environ.get("SMOKE_SHOTS"):
                 ev.screenshot(path=os.path.join(os.environ["SMOKE_SHOTS"], "events-timeline-full.png"), full_page=True)
@@ -606,6 +609,8 @@ def main() -> int:
             pg.goto(f"{base}/app#/events"); pg.reload(); pg.wait_for_timeout(1500)
             if pg.locator('.bn[data-id^="hol-smokeparty"]').count() != 1 or not pg.locator('.bn[data-id^="hol-smokeparty"] .bn-reward .rw-item').count():
                 problems.append("banners: a holiday with a reward isn't one banner showing the reward")
+            elif "Now until" not in (pg.locator('.bn[data-id^="hol-smokeparty"] .bn-until').text_content() or ""):
+                problems.append("banners: a holiday's reward doesn't say 'Now until' its last day")
             check(pg, "reward-banner")
             pg.request.put(f"{base}/api/fireworks/show", data={"calendar": cal}, headers=H)
             # the course editor: drag a point to move it, pick one and add a new point right after it
