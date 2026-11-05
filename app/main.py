@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 import httpx
 
 from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, arena, fishpack, gamemsg, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap, xboxwatch, serverstats, traffic
+from . import reading
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -2294,6 +2295,36 @@ async def traffic_report(request: Request, days: int = 1):
     """Manage → Solstone: what the website answered, by who, by hour, how quick; and the container's own network."""
     user = auth.require_admin(request)
     return await asyncio.to_thread(traffic.report, user.username, max(1, min(30, days)))
+
+
+@app.post("/api/public/read")
+async def public_read(request: Request):
+    """A website page reporting itself: opened, read to the end, how long it was on screen (reading.py). Admins'
+    own visits aren't counted; nobody's named."""
+    body = await _body(request)
+    page = str(body.get("page") or "")[:120]
+    if not reading.page_ok(page) or reading.is_bot(request.headers.get("user-agent", "")):
+        return {"ok": True, "counted": False}
+    title = str(body.get("title") or "")[:120]
+    if page.startswith("/post/"):                     # a post's own title (and only posts that are really there)
+        p = await asyncio.to_thread(site.post, page[6:])
+        if not p:
+            return {"ok": True, "counted": False}
+        title = p["title"]
+    try:
+        secs = float(body.get("secs") or 0)
+    except (TypeError, ValueError):
+        secs = 0
+    ok = await asyncio.to_thread(reading.note, page, title, str(body.get("event") or ""), str(body.get("id") or ""),
+                                 getattr(request.state, "user", None), auth.client_ip(request), secs)
+    return {"ok": True, "counted": ok}
+
+
+@app.get("/api/reading")
+async def reading_report(request: Request, days: int = 30):
+    """Manage → Solstone: what people read on the website (views, people, read to the end, time on it)."""
+    auth.require_admin(request)
+    return await asyncio.to_thread(reading.report, max(1, min(730, days)))
 
 
 @app.get("/api/servers/{sid}/stats/history")

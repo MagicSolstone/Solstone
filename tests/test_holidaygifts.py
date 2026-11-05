@@ -161,3 +161,9 @@ def test_events_keep_a_holiday_while_its_reward_is_still_on():
         assert not [i for i in upcoming.items({}) if i["kind"] == "holiday"]
     finally:
         settings_store.save_section("fw_calendar", keep)
+
+
+def test_a_holiday_reward_can_hold_up_to_nine_things():
+    from app import fwshow
+    items = [{"item": f"minecraft:{x}", "count": 1} for x in ("cake", "cookie", "apple", "bread", "carrot", "melon_slice", "pumpkin_pie", "sweet_berries", "honey_bottle", "golden_apple")]
+    assert len(fwshow._clean_reward({"items": items})["items"]) == 9

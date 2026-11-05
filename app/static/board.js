@@ -93,7 +93,7 @@ function upTimeline(items, row, cls = "panel") {
     const g = groups[groups.length - 1];
     if (g && g.date === it.date) g.items.push(it); else groups.push({ date: it.date, items: [it] });
   }
-  const until = (d) => { const n = between(today, d); return n === 1 ? "Tomorrow" : n < 60 ? `In ${n} days` : `In ${Math.round(n / 7)} weeks`; };
+  const until = (d) => { const n = between(today, d); return n === 1 ? "Tomorrow" : `In ${n} days`; };
   const list = (l) => `<ul class="up-list ${cls}">${l.map(row).join("")}</ul>`;
   const name = (x) => (x.title_fmt ? annFmt(x.title_fmt) : esc(x.title));
   const t = iso(today);
@@ -106,7 +106,7 @@ function upTimeline(items, row, cls = "panel") {
   let prev = today;
   for (const g of groups) {
     const d = toDay(g.date), gap = between(prev, d);
-    if (gap > 1) html += `<li class="tl-gap" aria-hidden="true"><span>${gap % 7 ? `${gap} days` : gap === 7 ? "a week" : `${gap / 7} weeks`}</span></li>`;
+    if (gap > 1) html += `<li class="tl-gap" aria-hidden="true"><span>${gap} days</span></li>`;
     html += `<li class="tl-step${gift(g.items)}"><span class="tl-node" aria-hidden="true"></span>
       <div class="tl-date"><b>${esc(long(d))}</b><span>${until(d)}</span></div>${list(g.items)}</li>`;
     prev = d;

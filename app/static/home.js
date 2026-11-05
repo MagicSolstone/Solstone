@@ -618,12 +618,51 @@ async function route() {
   }
   if (!path.startsWith("/post/") && !path.startsWith("/guides/")) document.title = nav && nav !== "home" ? `${SECTIONS[nav][0]} · ${hp.site.name}` : hp.site.name;
   main.innerHTML = html;
+  if (!/<h1>(Not found|Couldn't load this page)<\/h1>/.test(html) && !path.includes("__preview__")) readStart(path);
   document.querySelectorAll("[data-nav]").forEach((a) => a.toggleAttribute("aria-current", a.dataset.nav === nav));
   showAskStatus();
   if (path === "/" && location.hash === "#ask" && hp.site.join_requests) { history.replaceState(null, "", "/"); openPop(askFormHtml(true)); }
   else if (path === "/" && location.hash === "#account" && hp.site.signup) { history.replaceState(null, "", "/"); openSignup(); }
   else if (["#faq", "#ask", "#contact", "#news", "#guides"].includes(location.hash)) $(location.hash)?.scrollIntoView(); else window.scrollTo(0, 0);
 }
+
+// What people read, for the admins (Manage → Solstone → What people read): a view when a page opens, "read" once
+// they've reached the end and had it open 15 seconds, and how long it was on screen. Admins' own visits don't count,
+// and nobody's named: it's counts per page.
+const readT = { id: "", page: "", seen: 0, since: 0, end: false, read: false, sent: 0, article: false };
+function readSend(event, extra = {}) {
+  if (!readT.page) return;
+  try {
+    fetch("/api/public/read", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json", "X-Solstone": "1" },
+      body: JSON.stringify({ id: readT.id, page: readT.page, title: document.title.split(" · ")[0], event, ...extra }) }).catch(() => {});
+  } catch { /* never in the way */ }
+}
+const readTime = () => readT.seen + (readT.since ? Date.now() - readT.since : 0);
+function readLeave() {
+  const s = Math.round(readTime() / 1000);
+  if (readT.page && s > 0 && s !== readT.sent) { readT.sent = s; readSend("time", { secs: s }); }
+}
+function readCheck() {
+  if (!readT.page || readT.read || !readT.article) return;
+  const body = $(".hp-article .hp-body");
+  if (body && body.getBoundingClientRect().bottom <= innerHeight + 40) readT.end = true;
+  if (readT.end && readTime() >= 15000) { readT.read = true; readSend("read"); }
+}
+function readStart(path) {
+  if (path === readT.page) return;
+  readLeave();
+  const id = window.crypto?.randomUUID?.() || `${Date.now()}${Math.random()}`.replace(".", "");
+  Object.assign(readT, { id, page: path, seen: 0, since: document.hidden ? 0 : Date.now(), end: false, read: false, sent: 0,
+    article: path.startsWith("/post/") || path.startsWith("/guides/") });
+  readSend("view");
+  readCheck();
+}
+addEventListener("scroll", readCheck, { passive: true });
+setInterval(readCheck, 3000);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { readT.seen = readTime(); readT.since = 0; readLeave(); } else readT.since = Date.now();
+});
+addEventListener("pagehide", readLeave);
 
 // The status panel keeps itself current while the home page is open (the server is only asked every 15 s).
 setInterval(async () => {

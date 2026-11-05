@@ -2642,3 +2642,9 @@ body.ui-hidden .manage-sub { display: none; }
 .ut-out { display: flex; gap: 8px; align-items: baseline; }
 .ut-out > span:last-child { display: grid; }
 .ut-now { color: #ef5f5f; }
+.rd-wrap { overflow-x: auto; }
+.rd-table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.rd-table th, .rd-table td { padding: 7px 8px; border-bottom: 1px solid var(--glass-edge); text-align: left; vertical-align: top; }
+.rd-table th { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+.rd-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rd-split { display: block; font-size: .75rem; }

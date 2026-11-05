@@ -17,6 +17,7 @@ import time
 from datetime import datetime, timedelta
 
 from . import accounts, adventures, backups, board, challenges, db, eventgroups, fishing, fwshow, gamemsg, games, holidaygifts, kits, gather, guard, notify, nudge, optin, playtime, races, modupdates, recap, selfbackup, skins, tide, votegame, welcome, xboxwatch, serverstats, traffic
+from . import reading
 from . import servers as S
 from .logparse import parse_line
 from .notify import maybe_notify
@@ -214,6 +215,8 @@ class Recorder:
 
     async def traffic_flush(self) -> None:
         await asyncio.to_thread(traffic.flush)        # the website's counts into the database (traffic.py)
+        if int(time.time()) % 3600 < 60:               # once an hour: what people read, older than two years, goes
+            await asyncio.to_thread(reading.prune)
 
     async def prune(self) -> None:
         for sid in list(S.registry.servers):           # each day's totals, kept for good, before the detail goes

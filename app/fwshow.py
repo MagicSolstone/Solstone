@@ -241,11 +241,14 @@ def _clean_entry(e: dict, fallback_id: str | None = None) -> dict | None:
     }
 
 
+REWARD_ITEMS = 9                                 # a holiday's reward: up to a hotbar's worth of different things
+
+
 def _clean_reward(r) -> dict:
     from . import challenges
     r = r if isinstance(r, dict) else {}
     items = []
-    for x in (r.get("items") or [])[:3]:
+    for x in (r.get("items") or [])[:REWARD_ITEMS]:
         try:
             p = challenges.clean_prize(x)
         except ValueError:

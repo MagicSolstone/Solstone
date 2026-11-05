@@ -482,6 +482,8 @@ async function viewAdmin(section = "users") {
       <div class="panel"><p>A server's own settings (its name, Private, the web map, bedtime) are on its page: open it from <b>Servers</b> and press ⚙.</p></div></section>
     <section class="section"><div class="section-head"><h2>🌐 Website traffic</h2><span class="muted">What Solstone answered, who asked, and how quickly</span></div>
       <div class="panel" id="traffic" style="max-width:860px"><p class="muted">Loading…</p></div></section>
+    <section class="section"><div class="section-head"><h2>📖 What people read</h2><span class="muted">Each page of the website: how many looked, and read it to the end</span></div>
+      <div class="panel" id="reading" style="max-width:860px"><p class="muted">Loading…</p></div></section>
     <section class="section"><div class="section-head"><h2>💾 Storage</h2><span class="muted">How much room Solstone takes, and what grows</span></div>
       <div class="panel" id="storage" style="max-width:720px"><p class="muted">Loading…</p></div></section>
     <section class="section"><div class="section-head"><h2>Solstone's own backups</h2><span class="muted">Accounts, settings, posts and history</span></div>
@@ -589,6 +591,29 @@ async function viewAdmin(section = "users") {
     chart.addEventListener("pointerleave", () => { tip.hidden = true; plot.querySelectorAll("g.on").forEach((x) => x.classList.remove("on")); });
   };
   traffic();
+  // what people read: each page's views, people, read to the end and time on it (admins' own visits not counted)
+  let rdDays = 30;
+  const readingView = async () => {
+    const box = $("#reading");
+    if (!box) return;
+    const d = await api(`/api/reading?days=${rdDays}`).catch(() => null);
+    if (!d) { box.innerHTML = `<p class="muted">Couldn't load it.</p>`; return; }
+    const secs = (n) => (n == null ? "–" : n < 60 ? `${n} s` : `${Math.floor(n / 60)} min${n % 60 ? ` ${n % 60} s` : ""}`);
+    const name = (p) => (p.page === "/" ? "🏠 Home page" : p.page === "/help" ? "📰 News & Help" : p.page === "/events" ? "📅 Events" : esc(p.title));
+    const rows = d.pages.map((p) => `<tr><td><a href="${esc(p.page)}" target="_blank" rel="noopener">${name(p)}</a>${p.page.startsWith("/guides/") ? ' <span class="chip">Guide</span>' : ""}</td>
+        <td class="num">${p.views.toLocaleString()}</td>
+        <td class="num" title="${p.visitors} not signed in, ${p.players} signed-in players">${p.people.toLocaleString()}<small class="muted rd-split">${p.visitors} · ${p.players}</small></td>
+        <td class="num">${p.article ? `${p.reads.toLocaleString()}${p.views ? ` <small class="muted">${Math.round(Math.min(1, p.reads / p.views) * 100)}%</small>` : ""}` : '<span class="muted">–</span>'}</td>
+        <td class="num">${secs(p.avg_secs)}</td></tr>`).join("");
+    const total = d.daily.reduce((n, x) => n + x.views, 0);
+    box.innerHTML = `<div class="st-filters"><div class="seg" role="group" aria-label="How long">${[[7, "7 days"], [30, "30 days"], [365, "A year"]].map(([n, l]) => `<button type="button" data-rddays="${n}" aria-pressed="${rdDays === n}">${l}</button>`).join("")}</div></div>
+      ${rows ? `<p class="muted small">${total.toLocaleString()} page view${total === 1 ? "" : "s"} in all.</p>
+      <div class="rd-wrap"><table class="rd-table"><thead><tr><th>Page</th><th class="num">Views</th><th class="num" title="Different people (not signed in · signed-in players)">People</th><th class="num" title="Reached the end and had it open ${d.read_secs} seconds or more">Read it</th><th class="num">Time on it</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>` : `<p class="muted">Nobody's looked yet in this time (your own visits don't count).</p>`}
+      <p class="muted small"><b>People</b> counts each person once a day (not signed in · signed-in players). <b>Read it</b>: news posts and guides opened, scrolled to the end, and kept open ${d.read_secs} seconds or more. <b>Time on it</b>: the average while it was on their screen. Admins' visits aren't counted, and nobody's named: these are counts per page.</p>`;
+    box.querySelectorAll("[data-rddays]").forEach((b) => b.addEventListener("click", () => { rdDays = +b.dataset.rddays; readingView(); }));
+  };
+  readingView();
   (async () => {
     const box = $("#storage");
     if (!box) return;

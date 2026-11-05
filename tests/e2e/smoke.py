@@ -1425,6 +1425,11 @@ def main() -> int:
             pg.click('#traffic [data-trdays="7"]'); pg.wait_for_timeout(600)
             if pg.locator("#traffic .tr-plot g[data-i]").count() != 28:
                 problems.append("traffic: 7 days isn't shown as 6-hour bars")
+            # what people read: the pages visitors opened in this test (as anon), not the admin's own
+            rd = pg.locator("#reading").text_content() if pg.locator("#reading").count() else ""
+            if not pg.locator("#reading .rd-table tbody tr").count() or "Home page" not in rd:
+                problems.append(f"manage: no 'What people read' table with the pages visitors opened: {rd[:120]!r}")
+            pg.locator("#reading").scroll_into_view_if_needed(); check(pg, "manage-reading")
             browser.close()
     except Exception:
         print("\napp log (the test stopped early):\n" + (root / "app.log").read_text()[-4000:])

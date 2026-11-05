@@ -288,7 +288,7 @@ function calEditHtml(e, i) {
     <fieldset class="hol-sec fws-reward"><legend>🎁 Reward <span class="muted small">everyone who plays during it gets this once (each server, each year); no items: no reward</span></legend>
       <div class="fws-reward-items">${(rw.items || []).map((it, k) => `<span class="fws-reward-item">${itemIcon({ id: it.item })}<b>${esc(it.count)} × ${esc(it.name || itemName({ id: it.item }))}</b>
         <button type="button" class="chip-x" data-rm-reward="${k}" aria-label="Remove ${esc(it.name || it.item)}">×</button></span>`).join("")}
-        ${(rw.items || []).length < 3 ? `<button type="button" class="btn sm" data-add-reward>＋ Add an item</button>` : ""}</div>
+        ${(rw.items || []).length < 9 ? `<button type="button" class="btn sm" data-add-reward>＋ Add an item</button>` : ""}</div>
       <div class="hol-rw-opts" ${(rw.items || []).length ? "" : "hidden"}>
         <label class="inl">Given from ${num("rbefore", rw.before || 0, 0, 30)} days before to ${num("rafter", rw.after || 0, 0, 30)} days after
           <span class="muted small">(0 and 0: just ${e.days > 1 ? "its days" : "the day"}; Thursday's Thanksgiving through Sunday: 0 and 3)</span></label>
@@ -428,7 +428,7 @@ function wireCalEdit(el, i) {
     if (!sid) { showError("Add a Java server first: the items come from it", 4000); return; }
     read();
     openGiveItem(sid, "", { title: `A reward for ${draft.name}`, pick: (item, count) => {
-      draft.reward = { ...(draft.reward || {}), items: [...(draft.reward?.items || []), { item: item.id, count, name: item.name }].slice(0, 3) };
+      draft.reward = { ...(draft.reward || {}), items: [...(draft.reward?.items || []), { item: item.id, count, name: item.name }].slice(0, 9) };
       fws.data.calendar[i] = draft; fws.moreOpen = !!form.querySelector(".fws-more")?.open; renderCalendar(el);
     } });
   });
