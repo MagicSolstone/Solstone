@@ -111,6 +111,7 @@ function statusPanel(site) {
       s.version ? tile("Minecraft", esc(s.version), s.loader ? s.loader.charAt(0).toUpperCase() + s.loader.slice(1) : "") : "",
       s.up_since ? tile("Up for", esc(sinceText(s.up_since * 1000)), s.uptime_7d != null ? `${Math.round(s.uptime_7d * 1000) / 10}% of the last 7 days` : "") : "",
       s.cpu != null ? tile("CPU", `${Math.round(Number(s.cpu))}%`, "", sparkline(tr.cpu, 0, 100, `CPU over ${hrs}`)) : "",
+      s.mem ? tile("Memory", esc(s.mem), s.mem_percent != null ? `${Math.round(Number(s.mem_percent))}% of the computer's RAM` : "") : "",
     ].join("");
     return `<article class="hp-status-card"><header><span class="hp-dot on"></span><h3>${esc(s.name)}</h3><span class="hp-status-word">Online</span></header>
       ${worldStrip(s.world)}<div class="hp-stats">${tiles}</div>${todayHtml(s.today)}${tr.players ? `<p class="hp-spark-note muted small">Graphs: ${esc(hrs)}</p>` : ""}</article>`;
@@ -316,7 +317,7 @@ async function eventsPage() {
   const row = (it) => (it.kind === "event" ? upEventHtml(it) : `<li class="up-item ${it.live ? "live" : ""} ${it.then ? "up-then" : ""}${upLook(it).cls}"${upLook(it).style}><span class="up-emoji" aria-hidden="true">${esc(it.emoji || "•")}</span>
     <div class="up-main"><b>${upTitle(it)}</b>${it.then ? "" : `<span class="muted small">${esc([it.server, it.detail, it.days > 1 ? `${it.days} days` : ""].filter(Boolean).join(" · "))}</span>`}
       ${it.about ? `<span class="up-about">${inline(esc(it.about))}</span>` : ""}${rewardLineHtml(it.reward)}</div>
-    <span class="up-when">${it.live ? "On now" : it.time ? esc(it.time) : '<span class="muted small">All day</span>'}</span></li>`);
+    <span class="up-when">${it.live ? "On now" : it.time ? esc(it.time) : ""}</span></li>`);
   return `<section><h1>Events</h1><p class="muted">Contests, races, holidays and fireworks shows coming up. <a href="/app#/events">Sign in</a> to say you're coming and see who else is.</p></section>
     ${d.items.length ? `<section>${upTimeline(d.items, row, "glass")}</section>`
       : '<section class="glass hp-empty"><p class="muted">Nothing planned yet. Check back soon!</p></section>'}

@@ -2139,7 +2139,10 @@ a.glance-me:hover { border-color: var(--gold); }
 .hp-stat b { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
 .hp-stat b small { font-size: .75em; color: var(--muted); font-weight: 600; }
 .hp-stat small { font-size: .78rem; }
-@media (max-width: 480px) { .hp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) {
+  .hp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hp-stats > .hp-stat:last-child:nth-child(odd) { grid-column: 1 / -1; }      /* an odd one out: the full width, no gap */
+}
 
 /* Sign-in page: a clear way to make an account, and home */
 .login-new { display: grid; gap: 6px; justify-items: center; margin-top: 6px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.1); }

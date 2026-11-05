@@ -186,7 +186,7 @@ async function viewUpcoming() {
         ${it.then ? "" : `<span class="muted small">${esc([UP_KIND[it.kind], it.server, it.detail, it.days > 1 ? `${it.days} days` : ""].filter(Boolean).join(" · "))}</span>`}
         ${it.about ? `<span class="up-about">${annFmt(it.about)}</span>` : ""}${rewardLineHtml(it.reward)}
         ${it.who?.length ? `<span class="small up-who">🙋 ${esc(it.who.join(", "))}</span>` : ""}</div>
-      <span class="up-when">${it.live ? '<span class="state-pill live"><span class="status-dot on"></span>On now</span>' : it.time ? esc(it.time) : '<span class="muted small">All day</span>'}
+      <span class="up-when">${it.live ? '<span class="state-pill live"><span class="status-dot on"></span>On now</span>' : it.time ? esc(it.time) : ""}
         ${UP_SIGNUP.has(it.kind) ? `<button type="button" class="btn sm up-coming ${it.me ? "on" : ""}" data-coming="${esc(it.key)}" aria-pressed="${it.me}"
 >${it.me ? "✅ I'm coming" : "🙋 I'm coming!"}${it.coming ? ` · ${it.coming}` : ""}</button>` : ""}</span></li>`);
   setView(`<div class="fwe-head"><h1>Events</h1>
