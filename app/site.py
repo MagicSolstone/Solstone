@@ -234,6 +234,21 @@ def add_join_request(player: str, name: str, note: str, token_hash: str = "", se
     return req
 
 
+def rename_join_request(player: str, to: str) -> bool:
+    """An admin fixes the name on a request (typed wrong: ".mama_bear_7349" for ".mama_bear7349"). The request is
+    the same one, so the person who asked still hears they're in, on the page where they asked."""
+    reqs = join_requests()
+    hit = False
+    for r in reqs:
+        if r.get("player", "").lower() == player.lower():
+            r.setdefault("asked_as", r["player"])
+            r["player"] = to
+            hit = True
+    if hit:
+        settings_store.save_section("join_requests", reqs)
+    return hit
+
+
 def wants(r: dict, sid: str) -> bool:
     """Did this request ask for that server? (Older requests didn't say: any server.)"""
     return not r.get("servers") or sid in r["servers"]

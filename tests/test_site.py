@@ -548,3 +548,76 @@ def test_distances_in_miles_reach_every_page(client, anon):
         assert 'content="km"' in anon.get("/").text                     # anything else: kilometres
     finally:
         client.put("/api/settings/site", json={"units": "km"})
+
+
+def test_fixing_a_requests_name_still_tells_them_theyre_in(client, anon, monkeypatch, sid):
+    """Typed wrong (".mama_bear_7349"): an admin fixes it, lets them in, and the page where they asked still hears."""
+    from app import main, notify, signup
+
+    async def fake_send(*a, **k):
+        return []
+    monkeypatch.setattr(notify, "send", fake_send)
+    signup._sent.clear()
+    client.put("/api/settings/site", json={"join_requests": True})
+    try:
+        r = anon.post("/api/public/join-request", json={"rules": True, "player": "mama bear 7349", "edition": "bedrock"}).json()
+        assert any(x["player"] == ".mama_bear_7349" for x in main.site.join_requests())
+        assert client.post("/api/whitelist/rename", json={"player": ".mama_bear_7349", "to": "bad name!"}).status_code == 400
+        assert client.post("/api/whitelist/rename", json={"player": ".nobody", "to": ".x"}).status_code == 404
+        assert client.post("/api/whitelist/rename", json={"player": ".mama_bear_7349", "to": ".mama_bear7349"}).status_code == 200
+        req = next(x for x in client.get("/api/whitelist").json()["requests"] if x["player"] == ".mama_bear7349")
+        assert req["asked_as"] == ".mama_bear_7349"
+        main.site.mark_let_in(".mama_bear7349", sid)                                    # what Let them in does
+        st = anon.post("/api/public/join-request/status", json={"token": r["token"]}).json()
+        assert st["state"] == "in" and st["player"] == ".mama_bear7349"
+    finally:
+        client.put("/api/settings/site", json={"join_requests": False})
+        main.settings_store.save_section("join_requests", [])
+        main.settings_store.save_section("join_let_in", [])
+        signup._sent.clear()
+
+
+def test_who_a_whitelisted_name_really_is(client, sid, monkeypatch):
+    import json as _json
+
+    from app import control
+    from app import servers as S
+    srv = S.registry.servers[sid]
+    path = srv.dir / "whitelist.json"
+    old = path.read_text() if path.exists() else None
+    xuid = 2535412345678901
+    h = f"{xuid:032x}"
+    uid = f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
+    path.write_text(_json.dumps([{"uuid": uid, "name": ".mama_bear7349"}]))
+
+    class Resp:
+        status_code = 200
+
+        def json(self):
+            return {"gamertag": "mama bear7349"}
+
+    class Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url):
+            assert url.endswith(f"/{xuid}")
+            return Resp()
+    import httpx
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
+    try:
+        w = client.get(f"/api/whitelist/whois?sid={sid}&name=.mama_bear7349").json()
+        assert w["bedrock"] and w["xuid"] == str(xuid) and w["gamertag"] == "mama bear7349" and w["played"] is False
+        assert client.get(f"/api/whitelist/whois?sid={sid}&name=.someone_else").status_code == 404
+        assert control.floodgate_uuid(xuid) == uid
+    finally:
+        if old is None:
+            path.unlink()
+        else:
+            path.write_text(old)

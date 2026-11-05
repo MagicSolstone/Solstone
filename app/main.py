@@ -2424,7 +2424,7 @@ def _open_requests(servers: list) -> list[dict]:
                  "in": x in (r.get("done") or []) or S.whitelisted(by_id[x], None, r["player"])} for x in want]
         if each and all(e["in"] for e in each):
             continue                                  # done everywhere: their own page says so
-        reqs.append({**{k: r.get(k) for k in ("player", "name", "note", "ts")}, "bedrock": mcname.is_bedrock(r["player"]), "servers": each})
+        reqs.append({**{k: r.get(k) for k in ("player", "name", "note", "ts", "asked_as")}, "bedrock": mcname.is_bedrock(r["player"]), "servers": each})
     return reqs
 
 
@@ -2516,6 +2516,42 @@ async def clear_answered(request: Request):
     body = await _body(request)
     player = str(body.get("player") or "").strip() or None
     return {"cleared": await asyncio.to_thread(site.clear_answered, player)}
+
+
+@app.post("/api/whitelist/rename")
+async def rename_request(request: Request):
+    """Fix the name on a request to join (typed wrong). They still hear they're in on the page where they asked."""
+    user = auth.require_admin(request)
+    body = await _body(request)
+    old, to = str(body.get("player") or ""), str(body.get("to") or "").strip()
+    if not mcname.is_name(to):
+        raise HTTPException(400, "That isn't a Minecraft name: letters, numbers and _ (and a . in front for Bedrock)")
+    if not site.rename_join_request(old, to):
+        raise HTTPException(404, "That request isn't there any more")
+    auth.audit(user, None, "join_request_renamed", f"{old} → {to}")
+    return {"ok": True, "player": to}
+
+
+@app.get("/api/whitelist/whois")
+async def whitelist_whois(sid: str, name: str, request: Request):
+    """Who a name on a server's whitelist really is: its id there, the Xbox gamertag or Java name that id belongs to
+    now, and whether that player has played on the server (and under what name)."""
+    auth.require_admin(request)
+    srv = await _server(sid)
+    def read():
+        try:
+            return json.loads((srv.dir / "whitelist.json").read_text()) or []
+        except (OSError, ValueError):
+            return []
+    entry = next((e for e in await asyncio.to_thread(read) if str(e.get("name", "")).lower() == name.lower()), None)
+    if not entry or not entry.get("uuid"):
+        raise HTTPException(404, f"{name} isn't on {srv.display_name}'s whitelist")
+    out = await control.whose(str(entry["uuid"]))
+    kp = await asyncio.to_thread(S.known_players, srv)
+    want = str(entry["uuid"]).replace("-", "").lower()
+    known = next((p for u, p in kp.items() if u.replace("-", "").lower() == want), None)
+    out.update(name=entry.get("name"), played=bool(known), played_as=(known or {}).get("name"))
+    return out
 
 
 @app.post("/api/whitelist/deny")

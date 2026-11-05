@@ -266,6 +266,29 @@ def _no_command(out: str) -> bool:
 
 
 GEYSER_XUID_URL = "https://api.geysermc.org/v2/xbox/xuid/{gamertag}"
+GEYSER_GAMERTAG_URL = "https://api.geysermc.org/v2/xbox/gamertag/{xuid}"
+MOJANG_PROFILE_URL = "https://sessionserver.mojang.com/session/minecraft/profile/{uuid}"
+
+
+async def whose(uuid: str) -> dict:
+    """Who a whitelist id really belongs to, asked of Xbox (Bedrock, through GeyserMC) or Mojang (Java)."""
+    import httpx
+    h = uuid.replace("-", "").lower()
+    out: dict = {"uuid": uuid, "bedrock": h.startswith("0000000000000000")}
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            if out["bedrock"]:
+                out["xuid"] = str(int(h, 16))
+                r = await c.get(GEYSER_GAMERTAG_URL.format(xuid=out["xuid"]))
+                if r.status_code == 200:
+                    out["gamertag"] = (r.json() or {}).get("gamertag")
+            else:
+                r = await c.get(MOJANG_PROFILE_URL.format(uuid=h))
+                if r.status_code == 200:
+                    out["java_name"] = (r.json() or {}).get("name")
+    except (httpx.HTTPError, ValueError) as e:
+        out["error"] = f"Couldn't ask {'Xbox' if out['bedrock'] else 'Mojang'} just now ({type(e).__name__})"
+    return out
 
 
 async def bedrock_xuid_for(gamertag: str) -> int | None:

@@ -363,7 +363,7 @@ async function viewControl(sid) {
       <div><h3>Operators</h3><div class="chips">${chips(L.ops, "deop", "Remove operator")}</div></div></div>
       ${(info.asked || []).length ? `<div class="turned-away asked"><h3>Asked to join <small class="muted">from the website's join guide</small></h3>
         <ul>${info.asked.map((b) => `<li><code class="ta-name">${esc(b.player)}</code>${b.player.startsWith(".") ? ' <span class="chip">Bedrock</span>' : ""}${b.name ? ` <span>${esc(b.name)}</span>` : ""}<span class="muted small">${esc(fmtAgo(b.ts))}</span>
-          <button class="btn sm" type="button" data-copy-name="${esc(b.player)}">Copy</button><button class="btn sm primary" type="button" data-allow="${esc(b.player)}">Let them in</button><button class="btn sm danger" type="button" data-deny="${esc(b.player)}">Deny</button>
+          <button class="btn sm" type="button" data-copy-name="${esc(b.player)}">Copy</button><button class="btn sm" type="button" data-fix-name="${esc(b.player)}">✏️ Fix name</button><button class="btn sm primary" type="button" data-allow="${esc(b.player)}">Let them in</button><button class="btn sm danger" type="button" data-deny="${esc(b.player)}">Deny</button>
           ${b.note ? `<p class="ta-note">“${esc(b.note)}”</p>` : ""}</li>`).join("")}</ul></div>` : ""}
       ${(info.blocked || []).length ? `<div class="turned-away"><h3>Tried to join <small class="muted">turned away by the whitelist in the last two weeks</small></h3>
         <ul>${info.blocked.map((b) => `<li><code class="ta-name">${esc(b.name)}</code>${b.bedrock ? ' <span class="chip">Bedrock</span>' : ""}<span class="muted small">${esc(fmtAgo(b.ts))}</span>
@@ -376,6 +376,9 @@ async function viewControl(sid) {
     if (copy) { navigator.clipboard?.writeText(copy.dataset.copyName).then(() => showToast("Copied", 1500), () => showToast(esc(copy.dataset.copyName), 4000)); return; }
     const deny = e.target.closest("[data-deny]");
     if (deny) { if (await denyRequest(deny.dataset.deny)) { info.asked = (info.asked || []).filter((b) => b.player !== deny.dataset.deny); renderLists(); } return; }
+    const fix = e.target.closest("[data-fix-name]");
+    if (fix) { const to = await fixRequestName(fix.dataset.fixName); const b = (info.asked || []).find((x) => x.player === fix.dataset.fixName);
+      if (to && b) { b.player = to; renderLists(); } return; }
     if (allow) {
       const n = allow.dataset.allow;
       if (await confirmBox(`Let ${n} in?`, "They're added to the whitelist and can join straight away.", "Let them in", false)) {
@@ -804,6 +807,35 @@ function wireFireworksSettings(el, fw) {
   });
 }
 
+// Fix the name on a request to join (typed wrong). Their page still hears they're in: it goes by their request.
+async function fixRequestName(player) {
+  const bedrockHint = player.startsWith(".")
+    ? " Bedrock: a dot, then the gamertag with spaces as _ and its number joined on. Xbox's \"mama bear#7349\" is .mama_bear7349." : "";
+  const to = await promptBox(`Fix ${player}'s name`, `The name as it is in the game.${bedrockHint}`, player, 17);
+  if (!to || to === player) return "";
+  try { await post("/api/whitelist/rename", { player, to }); showToast(`Now ${esc(to)}: let them in when ready`, 3000); return to; }
+  catch (err) { showError(esc(err.message), 6000); return ""; }
+}
+// Who a name on a whitelist really is: its id there, who Xbox or Mojang says owns that id, and whether they've played.
+async function whoisBox(sid, name) {
+  openModal(`<h2>Who is ${esc(name)}?</h2><p class="muted">Checking…</p>`, () => {});
+  let w;
+  try { w = await api(`/api/whitelist/whois?sid=${encodeURIComponent(sid)}&name=${encodeURIComponent(name)}`); }
+  catch (err) { closeModal(); showError(esc(err.message), 5000); return; }
+  const owner = w.bedrock ? w.gamertag : w.java_name;
+  const match = owner && (w.bedrock ? `.${owner.replace(/ /g, "_")}`.toLowerCase() === name.toLowerCase() : owner.toLowerCase() === name.toLowerCase());
+  openModal(`<h2>Who is ${esc(name)}?</h2>
+    <dl class="wl-whois-list">
+      <dt>On the whitelist as</dt><dd><code>${esc(w.name)}</code> ${w.bedrock ? '<span class="chip">Bedrock</span>' : '<span class="chip">Java</span>'}</dd>
+      <dt>Their id</dt><dd><code>${esc(w.uuid)}</code></dd>
+      ${w.bedrock ? `<dt>Xbox account number (XUID)</dt><dd><code>${esc(w.xuid || "?")}</code></dd>` : ""}
+      <dt>${w.bedrock ? "Xbox says that's" : "Mojang says that's"}</dt><dd>${owner ? `<b>${esc(owner)}</b> ${match ? '<span class="wl-in">✅ matches</span>' : '<span class="wl-no">⚠️ a different name: they may have changed it</span>'}` : `<span class="muted">${esc(w.error || "Couldn't find out")}</span>`}</dd>
+      <dt>Played here</dt><dd>${w.played ? `✅ Yes${w.played_as && w.played_as !== w.name ? `, as <b>${esc(w.played_as)}</b>` : ""}` : '<span class="muted">Not yet: once they join, their id here is theirs for sure</span>'}</dd>
+    </dl>
+    <p class="muted small">The id is what the server really goes by. ${w.bedrock ? "For Bedrock it's built from the Xbox account number, so it's the same account whatever the gamertag looks like." : "For Java it's their Mojang account."}</p>
+    <div class="actions"><button class="btn" type="button" data-close>Close</button></div>`, (m) => $("[data-close]", m).addEventListener("click", closeModal));
+}
+
 // Say no to someone who asked to join (Manage → Players → Whitelist and Control): their page tells them it wasn't accepted.
 // Saying no, with a reason they'll see where they asked ("Ask again with your real name in the note").
 function denyRequest(player) {
@@ -845,7 +877,9 @@ async function viewWhitelist() {
     const waiting = r.servers.filter((x) => !x.in);
     return `<li class="wl-req"><div class="wl-who"><code class="ta-name">${esc(r.player)}</code>${r.bedrock ? ' <span class="chip">Bedrock</span>' : ""}
         ${r.name ? `<span>${esc(r.name)}</span>` : ""}<span class="muted small">${ago(r.ts)}</span>
-        <button class="btn sm" type="button" data-copy-name="${esc(r.player)}">Copy</button></div>
+        <button class="btn sm" type="button" data-copy-name="${esc(r.player)}">Copy</button>
+        <button class="btn sm" type="button" data-fix-name="${esc(r.player)}" title="Typed it wrong? Fix it, then let them in: they still hear they're in">✏️ Fix name</button></div>
+      ${r.asked_as && r.asked_as !== r.player ? `<p class="muted small">Asked as <code>${esc(r.asked_as)}</code></p>` : ""}
       ${r.note ? `<p class="ta-note">“${esc(r.note)}”</p>` : ""}
       <div class="wl-servers">${r.servers.map((x) => pill(x.id, x.name, x.in, r.player)).join("")}
         ${waiting.length > 1 ? `<button class="btn sm" type="button" data-let-all="${esc(r.player)}" data-sids="${esc(waiting.map((x) => x.id).join(","))}">Let in on all ${waiting.length}</button>` : ""}
@@ -866,7 +900,7 @@ async function viewWhitelist() {
         <button class="btn sm primary" type="submit">Add</button></form>
       <div class="wl-grid">${d.servers.map((s) => `<div class="panel"><h3>${esc(s.name)}${s.private ? ' <span class="chip">Private</span>' : ""}</h3>
         <p class="muted small">The whitelist is <b>${s.enabled ? "on" : "off"}</b>${s.enabled ? "" : ": anyone with the address can join"}.</p>
-        <div class="chips">${s.whitelist.length ? s.whitelist.map((n) => `<span class="chip">${esc(n)}<button class="chip-x" type="button" data-unlist="${esc(n)}" data-sid="${esc(s.id)}" aria-label="Remove ${esc(n)}">×</button></span>`).join("") : '<span class="muted">Nobody yet</span>'}</div></div>`).join("")}</div></section>`);
+        <div class="chips">${s.whitelist.length ? s.whitelist.map((n) => `<span class="chip"><button type="button" class="link-btn wl-whois" data-whois="${esc(n)}" data-sid="${esc(s.id)}" title="Who is this?">${esc(n)}</button><button class="chip-x" type="button" data-unlist="${esc(n)}" data-sid="${esc(s.id)}" aria-label="Remove ${esc(n)}">×</button></span>`).join("") : '<span class="muted">Nobody yet</span>'}</div></div>`).join("")}</div></section>`);
   const letIn = async (name, sid) => {
     try { await post(`/api/servers/${encodeURIComponent(sid)}/control/player/${encodeURIComponent(name)}/whitelist_add`, {}); return true; }
     catch (err) { showError(`${esc(d.servers.find((x) => x.id === sid)?.name || sid)}: ${esc(err.message)}`, 7000); return false; }
@@ -895,6 +929,10 @@ async function viewWhitelist() {
     const copy = e.target.closest("[data-copy-name]"), one = e.target.closest("[data-let]"), all = e.target.closest("[data-let-all]"), un = e.target.closest("[data-unlist]");
     const deny = e.target.closest("[data-deny]");
     if (deny) { if (await denyRequest(deny.dataset.deny)) viewWhitelist(); return; }
+    const fix = e.target.closest("[data-fix-name]");
+    if (fix) { if (await fixRequestName(fix.dataset.fixName)) viewWhitelist(); return; }
+    const who = e.target.closest("[data-whois]");
+    if (who) { whoisBox(who.dataset.sid, who.dataset.whois); return; }
     if (copy) { navigator.clipboard?.writeText(copy.dataset.copyName).then(() => showToast("Copied", 1500), () => showToast(esc(copy.dataset.copyName), 4000)); return; }
     if (one) { one.disabled = true; if (await letIn(one.dataset.let, one.dataset.sid)) { showToast(`${esc(one.dataset.let)} can join now`, 2500); viewWhitelist(); } else one.disabled = false; return; }
     if (all) {
