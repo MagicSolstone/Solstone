@@ -132,6 +132,7 @@ def test_a_prize_waits_for_room_instead_of_dropping(monkeypatch):
     monkeypatch.setattr(challenges.S, "online_players", online)
     srv = RoomServer()
     srv.said = []
+    srv.full = 36                                                        # not a space free
     keep = challenges._load()
     try:
         challenges._save({**keep, "gifts": []})
@@ -178,3 +179,24 @@ def test_a_rewards_game_message_keeps_its_lines():
     assert board.plain("__under__ and **bold**") == "under and bold"
     nxt = fwshow.with_next([fwshow._clean_entry({"id": "x", "name": "X", "date": {"type": "fixed", "month": 12, "day": 25}})])[0]["next"]
     assert nxt.endswith("-12-25")
+
+
+def test_a_prize_too_big_for_any_inventory_comes_in_parts(monkeypatch):
+    """64 cakes don't stack: 64 spaces, more than an inventory has. They come as far as there's room, the rest later."""
+    async def online(srv):
+        return ["Alex"], "rcon"
+    monkeypatch.setattr(challenges.S, "online_players", online)
+    srv = RoomServer()
+    srv.said, srv.full = [], 0                                           # an empty inventory: 36 spaces
+    keep = challenges._load()
+    try:
+        challenges._save({**keep, "gifts": []})
+        assert challenges.slots_needed("minecraft:cake", 64) == 64
+        assert not asyncio.run(challenges.award(srv, "Alex", {"item": "minecraft:cake", "count": 64}, "won the race"))
+        assert "give Alex minecraft:cake 36" in srv.said and any("part of your reward" in c for c in srv.said)
+        left = challenges._load()["gifts"]
+        assert len(left) == 1 and left[0]["count"] == 28
+        asyncio.run(challenges.waiting_for_room(srv, ["Alex"]))       # room again (the pretend inventory never fills)
+        assert "give Alex minecraft:cake 28" in srv.said and not challenges._load()["gifts"]
+    finally:
+        challenges._save(keep)

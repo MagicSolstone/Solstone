@@ -393,8 +393,8 @@ def _places(scores: dict[str, int]) -> tuple[list[str], list[str]]:
 
 # ------------------------------------------------------------------ prizes: never dropped on the ground
 # The game's /give drops whatever doesn't fit at the player's feet, where it can be lost (lava, a fall, someone
-# else picking it up). So a prize is only given when there's room for all of it; otherwise it waits, they're told
-# once, and it arrives by itself as soon as they've made room (checked every few seconds while they're on).
+# else picking it up). So a prize is only given as far as there's room for it; the rest waits, they're told once,
+# and it arrives by itself as soon as they've made room (checked every few seconds while they're on).
 _ONE = re.compile(r"(_sword|_pickaxe|_axe|_shovel|_hoe|_helmet|_chestplate|_leggings|_boots|_bucket|_boat|_raft|_shulker_box|_bed"
                   r"|_horse_armor|_stew|_soup|potion|^music_disc_.*|^bow|^crossbow|^trident|^elytra|^shield|^saddle|^enchanted_book"
                   r"|^written_book|^writable_book|^totem_of_undying|^mace|^fishing_rod|_on_a_stick|^flint_and_steel|^shears|^brush"
@@ -402,11 +402,15 @@ _ONE = re.compile(r"(_sword|_pickaxe|_axe|_shovel|_hoe|_helmet|_chestplate|_legg
 _SIXTEEN = re.compile(r"(^ender_pearl|^snowball|egg|^honey_bottle|_sign|_banner|^armor_stand|^bucket)$")
 
 
-def slots_needed(item: str, count: int) -> int:
-    """Inventory spaces a prize takes (a guess from the item: tools and armour one each, pearls 16 a space, most 64)."""
+def per_slot(item: str) -> int:
+    """How many fit in one inventory space (a guess from the item: tools, armour and cake one each, pearls 16, most 64)."""
     name = item.split("[", 1)[0].split(":")[-1]
-    per = 1 if _ONE.search(name) else 16 if _SIXTEEN.search(name) else 64
-    return max(1, math.ceil(count / per))
+    return 1 if _ONE.search(name) else 16 if _SIXTEEN.search(name) else 64
+
+
+def slots_needed(item: str, count: int) -> int:
+    """Inventory spaces a prize takes."""
+    return max(1, math.ceil(count / per_slot(item)))
 
 
 async def free_slots(srv, player: str) -> int | None:
@@ -422,21 +426,30 @@ def _what(item: str, count: int) -> str:
     return f"{count} {item.split('[', 1)[0].split(':')[-1].replace('_', ' ')}"
 
 
-async def _hand_over(srv, player: str, item: str, count: int) -> str:
-    """"given", "full" (no room yet: nothing given) or "" (not given: not on, say)."""
+async def _hand_over(srv, player: str, item: str, count: int) -> tuple[str, int]:
+    """("given", count), ("part", how many) when only some fit (the rest waits for room: 64 cakes don't stack and
+    need more spaces than an inventory has, so all at once could never happen), ("full", 0) with no room at all,
+    or ("", 0) when it wasn't given (not on, say)."""
     room = await free_slots(srv, player)
+    give = count
     if room is not None and room < slots_needed(item, count):
-        return "full"
-    out = await _rcon(srv, f"give {player} {item} {count}")
-    return "given" if out and "gave" in out.lower() else ""
+        give = min(count, room * per_slot(item))
+        if give <= 0:
+            return "full", 0
+    out = await _rcon(srv, f"give {player} {item} {give}")
+    if not (out and "gave" in out.lower()):
+        return "", 0
+    return ("given", count) if give >= count else ("part", give)
 
 
-async def _full_note(srv, player: str, g: dict) -> None:
-    if g.get("told"):
+async def _full_note(srv, player: str, g: dict, got: int = 0) -> None:
+    if g.get("told") and not got:
         return
     g["told"] = True
-    n = slots_needed(g["item"], g["count"])
-    await _rcon(srv, f"tellraw {player} " + component([("🎁 ", "gold"), (f"A reward is waiting for you ({_what(g['item'], g['count'])}), but your inventory is full. ", "yellow"),
+    n = min(36, slots_needed(g["item"], g["count"]))
+    head = (f"Here's part of your reward ({_what(g['item'], got)}): it didn't all fit. {_what(g['item'], g['count'])} more is waiting. " if got
+            else f"A reward is waiting for you ({_what(g['item'], g['count'])}), but your inventory is full. ")
+    await _rcon(srv, f"tellraw {player} " + component([("🎁 ", "gold"), (head, "yellow"),
                                                         (f"Make room ({n} empty space{'s' if n != 1 else ''}) and it'll arrive by itself.", "white")]))
 
 
@@ -446,10 +459,13 @@ async def _give(srv, d: dict, player: str, prize: dict, why: str, online: set[st
     g = {"server": srv.id, "player": player, "item": prize["item"], "count": prize["count"], "why": why, "at": time.time(),
          **({"note": note} if note else {})}
     if player.lower() in online and not kits.has_things_kept(srv.id, player):   # (in a game: it'd be cleared with the kit)
-        got = await _hand_over(srv, player, prize["item"], prize["count"])
+        got, n = await _hand_over(srv, player, prize["item"], prize["count"])
         if got == "given":
             return True
-        if got == "full":
+        if got == "part":
+            g["count"] -= n
+            await _full_note(srv, player, g, n)
+        elif got == "full":
             await _full_note(srv, player, g)
     d["gifts"].append(g)
     return False
@@ -479,7 +495,12 @@ async def _deliver(srv, d: dict, player: str) -> bool:
         return False                                  # in a game: when they're home
     changed = False
     for g in [g for g in d["gifts"] if g["server"] == srv.id and g["player"].lower() == player.lower()]:
-        got = await _hand_over(srv, player, g["item"], g["count"])
+        got, n = await _hand_over(srv, player, g["item"], g["count"])
+        if got == "part":                            # some of it now; the rest when there's room again
+            g["count"] -= n
+            await _full_note(srv, player, g, n)
+            changed = True
+            break
         if got == "given":
             d["gifts"].remove(g)
             changed = True
