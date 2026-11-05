@@ -34,7 +34,7 @@ from .crafty import crafty
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.15.23"
+VERSION = "1.15.24"
 
 
 @asynccontextmanager
@@ -601,6 +601,19 @@ def _history(sid: str, what: str, days: int, now: float | None = None) -> dict:
         x["secs"] = round(((x["to"] or now) - x["from"]))
         if x["kind"] == "down" and x["secs"] <= 300 and x["to"]:
             x["kind"] = "restart"                                             # back within 5 minutes
+    # each day's real downtime (quick restarts don't count), split at midnight: the bar's colour goes by it
+    down_by_day: dict[str, float] = {}
+    for x in downs:
+        if x["kind"] != "down":
+            continue
+        a, b = x["from"], x["to"] or now
+        while a < b:
+            d0 = datetime.fromtimestamp(a, zone)
+            nxt = (d0.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).timestamp()
+            down_by_day[d0.date().isoformat()] = down_by_day.get(d0.date().isoformat(), 0) + min(b, nxt) - a
+            a = min(b, nxt)
+    for bar in bars:
+        bar["down_secs"] = round(down_by_day.get(bar["day"], 0))
     share = lambda d: _uptime(sid, d)                                         # noqa: E731
     return {"what": "uptime", "days": days, "bars": bars, "outages": downs[::-1][:60],
             "percent": {"24h": share(1), "7d": share(7), "30d": share(30)}, "now": now}

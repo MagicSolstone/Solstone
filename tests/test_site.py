@@ -677,6 +677,7 @@ def test_a_cards_history_and_its_uptime_story(client):
         down = next(o for o in u["outages"] if o["kind"] == "down")
         assert 1700 < down["secs"] < 1900
         assert len(u["bars"]) == 7 and u["bars"][-1]["up"] is not None and u["bars"][0]["up"] is None
+        assert 1700 < sum(b["down_secs"] for b in u["bars"]) < 1900              # the half hour; the restart doesn't count
         assert set(u["percent"]) == {"24h", "7d", "30d"} and 0.85 < u["percent"]["24h"] < 1
         m = main._history("hist-test", "mem_mb", 1, now)
         assert len(m["values"]) == 96 and m["high"] == 3000.0 and m["values"][-1] == 3000.0 and m["values"][0] is None

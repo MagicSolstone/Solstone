@@ -879,7 +879,8 @@ def main() -> int:
                 q = route.request.url
                 now = time.time()
                 if "what=uptime" in q:
-                    bars = [{"day": time.strftime("%Y-%m-%d", time.localtime(now - (29 - i) * 86400)), "up": None if i < 3 else 0.97 if i == 20 else 0.9993 if i % 7 == 0 else 1.0} for i in range(30)]
+                    bars = [{"day": time.strftime("%Y-%m-%d", time.localtime(now - (29 - i) * 86400)), "up": None if i < 3 else 0.97 if i == 20 else 0.9993 if i % 7 == 0 else 1.0,
+                             "down_secs": 2580 if i == 20 else 600 if i == 25 else 0} for i in range(30)]
                     outs = [{"from": now - 3 * 3600, "to": now - 3 * 3600 + 150, "secs": 150, "kind": "restart"},
                             {"from": now - 9 * 86400, "to": now - 9 * 86400 + 2580, "secs": 2580, "kind": "down"},
                             {"from": now - 12 * 86400, "to": now - 12 * 86400 + 900, "secs": 900, "kind": "unwatched"}]
@@ -891,7 +892,8 @@ def main() -> int:
             anon.route("**/api/public/site/history*", history)
             anon.locator('#hp-status [data-hist="uptime"]').first.click(); anon.wait_for_timeout(700)
             pop = anon.locator("#hp-pop").text_content() or ""
-            if "Times it went down" not in pop or "Restarted" not in pop or "43 min" not in pop or anon.locator("#hp-pop .ut-bar").count() < 30:
+            if "Times it went down" not in pop or "Restarted" not in pop or "43 min" not in pop or anon.locator("#hp-pop .ut-bar").count() < 30 \
+                    or anon.locator("#hp-pop .ut-bars .ut-bar.bad").count() != 1 or anon.locator("#hp-pop .ut-bars .ut-bar.ok").count() != 1:
                 problems.append("home: the uptime card doesn't open its story (each day, and the times it went down)")
             check(anon, "m-home-uptime")
             anon.keyboard.press("Escape")

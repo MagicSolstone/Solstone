@@ -1,3 +1,10 @@
+# Solstone 1.15.24
+
+- **Memory on the home page:** each running server's status now has a **Memory** card next to CPU, showing how much it's using and what share of the computer's RAM that is. On phones the cards now fill even rows, and an odd one out stretches across the full width, so there's never a gap. Memory has its own little graph of the last 6 hours, like CPU.
+- **Events: no more "All day"** under holidays. It sat below the rewards and read like part of them. Holidays already show under their date, and timed events still show their time.
+- **Tap a card for its history:** on the home page's status, tap **Playing now**, **TPS**, **CPU** or **Memory** for a bigger graph of the last 24 hours, 7 days or 30 days, with the lowest, average and highest.
+- **Uptime, like a status page:** tap **Up for** (or **See its uptime** while a server is offline) for its uptime over 24 hours, 7 days and 30 days, a bar for each day (green: up all day; yellow: down under 30 minutes; red: down 30 minutes or more), and every time it went down: when, and how long until it was back. A quick restart (back within 5 minutes, like the nightly one) shows as a restart, not an outage. Times Solstone itself was off or updating show as "not watched" and don't count against the server. It shows counts and times only, never who was playing.
+
 # Solstone 1.15.23
 
 - **Letting someone in only tells them once it really worked:** their page says "you're in" only when they're actually on the server's whitelist.

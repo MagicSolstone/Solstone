@@ -244,8 +244,9 @@ function longFor(secs) {
 }
 function uptimeView(d) {
   const day = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
-  const tone = (u) => (u == null ? "none" : u >= 0.999 ? "good" : u >= 0.95 ? "ok" : "bad");
-  const bars = d.bars.map((b) => `<span class="ut-bar ${tone(b.up)}" title="${esc(day(b.day))}: ${b.up == null ? "not watched" : `up ${pct(b.up)}`}"></span>`).join("");
+  // green: up all day (quick restarts don't count); yellow: down under 30 minutes; red: down 30 minutes or more
+  const tone = (b) => (b.up == null ? "none" : !b.down_secs ? "good" : b.down_secs < 1800 ? "ok" : "bad");
+  const bars = d.bars.map((b) => `<span class="ut-bar ${tone(b)}" title="${esc(day(b.day))}: ${b.up == null ? "not watched" : b.down_secs ? `down ${longFor(b.down_secs)} (up ${pct(b.up)})` : `up all day (${pct(b.up)})`}"></span>`).join("");
   const at = (t) => new Date(t * 1000).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   const kinds = { down: ["🔴", "Down"], restart: ["🔁", "Restarted"], unwatched: ["⚪", "Not watched"] };
   const rows = d.outages.map((o) => {
@@ -255,7 +256,7 @@ function uptimeView(d) {
   }).join("");
   return `<div class="hist-nums"><span><small>24 hours</small><b>${pct(d.percent["24h"])}</b></span><span><small>7 days</small><b>${pct(d.percent["7d"])}</b></span><span><small>30 days</small><b>${pct(d.percent["30d"])}</b></span></div>
     <div class="ut-bars" style="--n:${d.bars.length}" role="img" aria-label="Each day's uptime">${bars}</div>
-    <div class="ut-legend muted small"><span><i class="ut-bar good"></i> All day</span><span><i class="ut-bar ok"></i> A little down</span><span><i class="ut-bar bad"></i> Down a while</span><span><i class="ut-bar none"></i> Not watched</span></div>
+    <div class="ut-legend muted small"><span><i class="ut-bar good"></i> All day</span><span><i class="ut-bar ok"></i> Down under 30 min</span><span><i class="ut-bar bad"></i> Down 30 min or more</span><span><i class="ut-bar none"></i> Not watched</span></div>
     <h3 class="hist-h">Times it went down</h3>
     ${rows ? `<ul class="ut-outs">${rows}</ul>` : `<p class="muted">✅ Not once in the last ${esc(HIST_SPANS.find((x) => x[0] === d.days)[1])}.</p>`}
     <p class="muted small">🔁 A restart is back within 5 minutes (like the nightly one). ⚪ Not watched: Solstone itself was off or updating, so it doesn't count against the server.</p>`;
