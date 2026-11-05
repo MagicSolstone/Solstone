@@ -1,3 +1,15 @@
+# Solstone 1.15.29
+
+- **Treasure hunt: a treasure compass.** When the hint starts, everyone playing gets a compass that points straight at the chest. It's the game's, so it goes when they're home with their things. You can switch it off in the setup.
+- **Treasure hunt: hints that make sense without a compass.** The hint now says where the chest is from where you're looking: "⬆ straight ahead", "↗ ahead, to your right", "⬅ to your left", "⬇ behind you". It used to say "north-east", which needed knowing which way north is.
+- **Treasure hunt: see the area.** Sparkles run along the edge of the area on the ground, and a column of sparkles marks the middle, so players know where to start (or that it's on). You can switch it off in the setup.
+- **Treasure hunt: warmth fits the area.** Burning hot (under 10 blocks) and Hot (under 20) stay the same; Warm, Cool and Cold stretch with a big area, so a 500-block hunt isn't "Freezing" almost everywhere.
+- **The game's things don't stay on the ground.** At the end of the mob arena, King of the Hill, races and the other games, any kit items left lying around (thrown down, or dropped by someone who died) are cleared away. Only the game's own items: nothing of anyone's.
+- The compatibility check also tries the treasure compass.
+- **Race checkpoints are easier to see.** Each checkpoint's glowing column is now three blocks wide instead of one, thin glowing posts mark the edge of the circle you have to reach, and the white sparkles are now big coloured dots (green, and gold for the finish). The floating names, the locator-bar dots and the height hints are as before.
+- **Fixed: a prize too big for any inventory never arrived.** Some items don't stack (cake, tools, armour, potions…), so 64 cakes need 64 spaces, more than an inventory has: it waited for room that could never be there. Prizes and rewards now come as far as there's room, and the rest arrives by itself as space opens up ("Here's part of your reward…"). A prize already waiting, like those 64 cakes, starts coming the next time its winner is on.
+- **Kits check themselves.** After handing out a kit (mob arena, King of the Hill), Solstone looks at what the player actually has. Armour or a shield that didn't go on is put on again, and if it still won't, it goes in their inventory to wear; anything else missing (sword, bow, arrows, food) is given again. What the game said is written in Solstone's log, so if a Minecraft version turns something away it shows up there.
+
 # Solstone 1.15.28
 
 - **Fixed: the mob arena (and King of the Hill) handing out only armour and a shield.** Commands that only work on players (give, clear, title, messages, game modes, scores) were aimed at each player by their id, and the game quietly turned those away. Armour and the shield go on a different way, so they arrived; the sword, bow, arrows and food never did, and nobody's own things were cleared for the game. Every command aimed at one player now goes out with their name (a long Bedrock name works too), for every game, race and message. Getting your things back at the end already worked, and still does.
