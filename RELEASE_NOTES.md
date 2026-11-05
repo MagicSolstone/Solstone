@@ -1,3 +1,12 @@
+# Solstone 1.15.26
+
+- **Fireworks are simpler: no more scheduled shows or game-event fireworks.**
+  - Gone from Fireworks → Firework show: the **Shows** tab (the show builder, and the day and night base shows) and the **Game events** tab (fireworks on the website for advancements, deaths, level milestones, nightfall, the server starting, and contest, race and game winners).
+  - Gone from holidays: their scheduled shows and the New Year countdown. They're also off the Events page. Holidays keep their colours, favourite kinds, banners, messages and rewards.
+  - Gone from announcements: "At zero, play a show". The celebration look still sets off a few fireworks at zero.
+  - What stays: **The show** tab (kinds, colours, pace, and everyone's fireworks from the editor), and **Join fireworks**. That tab now has its own switch for whether a firework goes off when someone joins: their own join firework, or a random one. Players can still pick their own.
+  - Level milestones still show in the activity feed.
+
 # Solstone 1.15.25
 
 - **What people read:** a new section in Manage → Solstone, under Website traffic, lists each page of the website (the home page, News & Help, Events, every news post and guide, the rules) with how many **views**, how many different **people** (not signed in · signed-in players), how many **read it** (opened a post or guide, scrolled to the end, and kept it open 15 seconds or more), and the average **time on it**. Look back 7 days, 30 days or a year. Admins' own visits aren't counted, bots are left out, and nobody is named: it keeps counts per page, per day.
