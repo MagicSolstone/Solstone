@@ -647,3 +647,48 @@ def test_the_person_who_asked_can_cancel_their_request(client, anon, monkeypatch
         client.put("/api/settings/site", json={"join_requests": False})
         main.settings_store.save_section("join_requests", [])
         signup._sent.clear()
+
+
+def test_a_cards_history_and_its_uptime_story(client):
+    """Tap a card on the home page: the line further back, and (uptime) each day's share and every time it was down,
+    told apart from a quick restart and from when Solstone itself wasn't watching."""
+    import time
+
+    from app import db, main
+    now = time.time()
+    db.x("DELETE FROM metrics WHERE server_id='hist-test'")
+    rows = []
+    t = now - 6 * 3600
+    while t < now:
+        h = (now - t) / 3600
+        run = 0 if 4.0 < h <= 4.5 else 0 if 2.0 < h <= 2.05 else 1          # down half an hour; a 3-minute restart
+        if 3.0 < h <= 3.2:                                                   # Solstone off for 12 minutes
+            t += 30
+            continue
+        rows.append((t, run))
+        t += 30
+    for ts, run in rows:
+        db.x("INSERT INTO metrics(server_id, ts, running, players, cpu, mem_mb, tps) VALUES (?,?,?,?,?,?,?)",
+             ("hist-test", ts, run, 2 if run else 0, 40.0, 3000.0, 19.8))
+    try:
+        u = main._history("hist-test", "uptime", 7, now)
+        kinds = [o["kind"] for o in u["outages"]]
+        assert kinds.count("down") == 1 and kinds.count("restart") == 1 and kinds.count("unwatched") == 1
+        down = next(o for o in u["outages"] if o["kind"] == "down")
+        assert 1700 < down["secs"] < 1900
+        assert len(u["bars"]) == 7 and u["bars"][-1]["up"] is not None and u["bars"][0]["up"] is None
+        assert set(u["percent"]) == {"24h", "7d", "30d"} and 0.85 < u["percent"]["24h"] < 1
+        m = main._history("hist-test", "mem_mb", 1, now)
+        assert len(m["values"]) == 96 and m["high"] == 3000.0 and m["values"][-1] == 3000.0 and m["values"][0] is None
+        assert main._history("hist-test", "players", 1, now)["high"] == 2
+        assert "mem_mb" in main._trend("hist-test")
+        assert client.get("/api/public/site/history", params={"sid": "hist-test", "what": "names", "days": 1}).status_code == 400
+        assert client.get("/api/public/site/history", params={"sid": "hist-test", "what": "uptime", "days": 3}).status_code == 400
+        assert client.get("/api/public/site/history", params={"sid": "nope", "what": "uptime", "days": 7}).status_code == 404
+    finally:
+        db.x("DELETE FROM metrics WHERE server_id='hist-test'")
+
+
+def test_the_history_endpoint_answers_for_a_public_server(client, sid):
+    r = client.get("/api/public/site/history", params={"sid": sid, "what": "uptime", "days": 30})
+    assert r.status_code == 200 and "outages" in r.json()

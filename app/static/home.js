@@ -97,21 +97,28 @@ setInterval(() => {                          // a game minute is under a second:
 }, 2500);
 function statusPanel(site) {
   if (!site.servers?.length) return "";
-  const tile = (label, value, hint = "", spark = "") => `<div class="hp-stat"><span class="hp-stat-label">${esc(label)}</span><b>${value}</b>${hint ? `<small class="muted">${esc(hint)}</small>` : ""}${spark}</div>`;
   const card = (s) => {
+    // each card opens its story further back (tap or click); Minecraft's version has none
+    const tile = (label, value, hint = "", spark = "", what = "") => {
+      const inner = `<span class="hp-stat-label">${esc(label)}</span><b>${value}</b>${hint ? `<small class="muted">${esc(hint)}</small>` : ""}${spark}`;
+      return what ? `<button type="button" class="hp-stat hp-stat-btn" data-hist="${esc(what)}" data-sid="${esc(s.id)}" data-name="${esc(s.name)}" title="More about ${esc(label.toLowerCase())}">${inner}</button>`
+        : `<div class="hp-stat">${inner}</div>`;
+    };
     if (!s.running) return `<article class="hp-status-card off"><header><span class="hp-dot"></span><h3>${esc(s.name)}</h3><span class="hp-status-word">Offline</span></header>
-      <p class="muted small">It's not running right now.${s.uptime_7d != null ? ` Up ${Math.round(s.uptime_7d * 1000) / 10}% of the last 7 days.` : ""}</p></article>`;
+      <p class="muted small">It's not running right now.${s.uptime_7d != null ? ` Up ${Math.round(s.uptime_7d * 1000) / 10}% of the last 7 days.` : ""}
+        <button type="button" class="link-btn" data-hist="uptime" data-sid="${esc(s.id)}" data-name="${esc(s.name)}">See its uptime</button></p></article>`;
     const tps = s.tps == null ? null : Number(s.tps);
     const smooth = tps == null ? "" : tps >= 19.5 ? "Smooth" : tps >= 15 ? "A little laggy" : "Laggy";
     const tr = s.trend || {}, hrs = `the last ${tr.hours || 6} hours`;
     const tiles = [
       tile("Playing now", `${s.online}${s.max ? ` <small>/ ${s.max}</small>` : ""}`, "", sparkline(tr.players, 0, 4, `Players over ${hrs}`)
-        + (s.online ? `<span class="hp-eds">${s.online - (s.on_bedrock || 0) ? `<span>${edIcon("java", 12)} ${s.online - (s.on_bedrock || 0)} on Java</span>` : ""}${s.on_bedrock ? `<span>${edIcon("bedrock", 12)} ${s.on_bedrock} on Bedrock</span>` : ""}</span>` : "")),
-      tps != null ? tile("TPS", tps.toFixed(1), `${smooth}${s.mspt != null ? ` · ${Number(s.mspt).toFixed(0)} ms a tick` : ""}`, sparkline(tr.tps, 0, 20, `TPS over ${hrs}`)) : "",
+        + (s.online ? `<span class="hp-eds">${s.online - (s.on_bedrock || 0) ? `<span>${edIcon("java", 12)} ${s.online - (s.on_bedrock || 0)} on Java</span>` : ""}${s.on_bedrock ? `<span>${edIcon("bedrock", 12)} ${s.on_bedrock} on Bedrock</span>` : ""}</span>` : ""), "players"),
+      tps != null ? tile("TPS", tps.toFixed(1), `${smooth}${s.mspt != null ? ` · ${Number(s.mspt).toFixed(0)} ms a tick` : ""}`, sparkline(tr.tps, 0, 20, `TPS over ${hrs}`), "tps") : "",
       s.version ? tile("Minecraft", esc(s.version), s.loader ? s.loader.charAt(0).toUpperCase() + s.loader.slice(1) : "") : "",
-      s.up_since ? tile("Up for", esc(sinceText(s.up_since * 1000)), s.uptime_7d != null ? `${Math.round(s.uptime_7d * 1000) / 10}% of the last 7 days` : "") : "",
-      s.cpu != null ? tile("CPU", `${Math.round(Number(s.cpu))}%`, "", sparkline(tr.cpu, 0, 100, `CPU over ${hrs}`)) : "",
-      s.mem ? tile("Memory", esc(s.mem), s.mem_percent != null ? `${Math.round(Number(s.mem_percent))}% of the computer's RAM` : "") : "",
+      s.up_since ? tile("Up for", esc(sinceText(s.up_since * 1000)), s.uptime_7d != null ? `${Math.round(s.uptime_7d * 1000) / 10}% of the last 7 days` : "", "", "uptime") : "",
+      s.cpu != null ? tile("CPU", `${Math.round(Number(s.cpu))}%`, "", sparkline(tr.cpu, 0, 100, `CPU over ${hrs}`), "cpu") : "",
+      s.mem ? tile("Memory", esc(s.mem), s.mem_percent != null ? `${Math.round(Number(s.mem_percent))}% of the computer's RAM` : "",
+        sparkline(tr.mem_mb, 0, Math.max(0, ...(tr.mem_mb || []).filter((x) => x != null)) * 1.15, `Memory over ${hrs}`), "mem_mb") : "",
     ].join("");
     return `<article class="hp-status-card"><header><span class="hp-dot on"></span><h3>${esc(s.name)}</h3><span class="hp-status-word">Online</span></header>
       ${worldStrip(s.world)}<div class="hp-stats">${tiles}</div>${todayHtml(s.today)}${tr.players ? `<p class="hp-spark-note muted small">Graphs: ${esc(hrs)}</p>` : ""}</article>`;
@@ -197,6 +204,88 @@ function stepState(list) {
     : "The server only lets in people on its list. Send your name, and an admin will add you.";
   $("[data-step-title]", play).textContent = has("waiting") && !anyIn ? "Then get in the game" : anyIn ? "You're in! Join the game" : "Get in the game";
 }
+
+// A status card's story further back: a bigger line over a day, a week or a month, or (uptime) every day's share
+// and each time it went down, like a status page. Counts and times only: nothing about who.
+const HIST = {
+  players: { title: "Players", fmt: (v) => `${Math.round(v)}`, lo: 0, note: "The most playing at once, in each stretch." },
+  tps: { title: "TPS", fmt: (v) => v.toFixed(1), lo: 0, hi: 20, note: "20 is perfectly smooth. Below 15 you'd notice lag." },
+  cpu: { title: "CPU", fmt: (v) => `${Math.round(v)}%`, lo: 0, hi: 100, note: "How hard the server's working (100% is one whole core)." },
+  mem_mb: { title: "Memory", fmt: (v) => (v >= 1024 ? `${(v / 1024).toFixed(2)} GB` : `${Math.round(v)} MB`), lo: 0, note: "Java grabs memory and gives it back slowly, so a high flat line is normal." },
+  uptime: { title: "Uptime" },
+};
+const HIST_SPANS = [[1, "24 hours"], [7, "7 days"], [30, "30 days"]];
+function bigChart(d, h) {
+  const v = d.values || [], have = v.filter((x) => x != null);
+  if (have.length < 2) return `<p class="muted">Not enough to draw yet: Solstone checks every 30 seconds while the server's running.</p>`;
+  const W = 520, H = 160, P = 4, n = v.length, lo = h.lo ?? Math.min(...have), top = Math.max(h.hi ?? 0, ...have) * (h.hi ? 1 : 1.12), span = top - lo || 1;
+  const xy = (x, i) => [P + (i / (n - 1)) * (W - 2 * P), H - P - ((x - lo) / span) * (H - 2 * P)];
+  const runs = [];
+  let cur = [];
+  v.forEach((x, i) => { if (x == null) { if (cur.length) runs.push(cur); cur = []; } else cur.push(xy(x, i)); });
+  if (cur.length) runs.push(cur);
+  const line = runs.map((r) => (r.length === 1 ? `M${r[0][0].toFixed(1)} ${r[0][1].toFixed(1)}h2` : `M${r.map((p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("L")}`)).join("");
+  const area = runs.filter((r) => r.length > 1).map((r) => `M${r[0][0].toFixed(1)} ${H - P}L${r.map((p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("L")}L${r[r.length - 1][0].toFixed(1)} ${H - P}Z`).join("");
+  const when = (t) => new Date(t * 1000).toLocaleString([], d.days === 1 ? { hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric" });
+  return `<figure class="hist-chart"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(h.title)} over the last ${esc(HIST_SPANS.find((x) => x[0] === d.days)[1])}">
+      <line x1="0" x2="${W}" y1="${H - P}" y2="${H - P}" class="hist-base"/><path class="hist-area" d="${area}"/><path class="hist-line" d="${line}"/></svg>
+    <figcaption><span>${esc(when(d.start))}</span><span>${d.days === 1 ? "now" : "today"}</span></figcaption></figure>
+    <div class="hist-nums"><span><small>Lowest</small><b>${esc(h.fmt(d.low))}</b></span><span><small>Average</small><b>${esc(h.fmt(d.average))}</b></span><span><small>Highest</small><b>${esc(h.fmt(d.high))}</b></span></div>
+    <p class="muted small">${esc(h.note)} Gaps are when it wasn't running.</p>`;
+}
+const pct = (x) => (x == null ? "–" : `${(Math.floor(x * 1000) / 10).toFixed(x >= 0.9995 ? 0 : 1)}%`);
+function longFor(secs) {
+  const m = Math.round(secs / 60);
+  if (m < 1) return "under a minute";
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60), r = m % 60;
+  if (h < 48) return `${h} h${r ? ` ${r} min` : ""}`;
+  return `${Math.floor(h / 24)} days ${h % 24} h`;
+}
+function uptimeView(d) {
+  const day = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  const tone = (u) => (u == null ? "none" : u >= 0.999 ? "good" : u >= 0.95 ? "ok" : "bad");
+  const bars = d.bars.map((b) => `<span class="ut-bar ${tone(b.up)}" title="${esc(day(b.day))}: ${b.up == null ? "not watched" : `up ${pct(b.up)}`}"></span>`).join("");
+  const at = (t) => new Date(t * 1000).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const kinds = { down: ["🔴", "Down"], restart: ["🔁", "Restarted"], unwatched: ["⚪", "Not watched"] };
+  const rows = d.outages.map((o) => {
+    const [icon, word] = kinds[o.kind] || kinds.down;
+    return `<li class="ut-out ${esc(o.kind)}"><span aria-hidden="true">${icon}</span><span><b>${word}</b> ${o.to ? `for ${esc(longFor(o.secs))}` : `<b class="ut-now">now</b>, for ${esc(longFor(o.secs))} so far`}
+      <small class="muted">${esc(at(o.from))}${o.to ? ` → back ${esc(at(o.to))}` : ""}</small></span></li>`;
+  }).join("");
+  return `<div class="hist-nums"><span><small>24 hours</small><b>${pct(d.percent["24h"])}</b></span><span><small>7 days</small><b>${pct(d.percent["7d"])}</b></span><span><small>30 days</small><b>${pct(d.percent["30d"])}</b></span></div>
+    <div class="ut-bars" style="--n:${d.bars.length}" role="img" aria-label="Each day's uptime">${bars}</div>
+    <div class="ut-legend muted small"><span><i class="ut-bar good"></i> All day</span><span><i class="ut-bar ok"></i> A little down</span><span><i class="ut-bar bad"></i> Down a while</span><span><i class="ut-bar none"></i> Not watched</span></div>
+    <h3 class="hist-h">Times it went down</h3>
+    ${rows ? `<ul class="ut-outs">${rows}</ul>` : `<p class="muted">✅ Not once in the last ${esc(HIST_SPANS.find((x) => x[0] === d.days)[1])}.</p>`}
+    <p class="muted small">🔁 A restart is back within 5 minutes (like the nightly one). ⚪ Not watched: Solstone itself was off or updating, so it doesn't count against the server.</p>`;
+}
+let histAsk = 0;                                   // (only the last one asked for is shown)
+async function openHistory(sid, what, name, days = what === "uptime" ? 30 : 1) {
+  const h = HIST[what];
+  if (!h) return;
+  const tabs = HIST_SPANS.map(([n, label]) => `<button type="button" class="chip-btn ${n === days ? "on" : ""}" data-hist-days="${n}" aria-pressed="${n === days}">${label}</button>`).join("");
+  const frame = (body) => `<h2>${esc(h.title)} <small class="muted">· ${esc(name)}</small></h2><div class="hist-tabs" role="group" aria-label="How far back">${tabs}</div><div class="hist-body">${body}</div>`;
+  const wire = (box) => box.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-hist-days]");
+    if (b) openHistory(sid, what, name, Number(b.dataset.histDays));
+  });
+  if (!$("#hp-pop")?.open) openPop(frame(`<p class="muted"><span class="spin" aria-hidden="true"></span> Looking back…</p>`), wire);
+  else { const box = $("#hp-pop .hp-pop-body"); box.innerHTML = frame(`<p class="muted"><span class="spin" aria-hidden="true"></span> Looking back…</p>`); }
+  const ask = ++histAsk;
+  let d;
+  try {
+    const r = await fetch(`/api/public/site/history?sid=${encodeURIComponent(sid)}&what=${encodeURIComponent(what)}&days=${days}`);
+    if (!r.ok) throw new Error();
+    d = await r.json();
+  } catch { $("#hp-pop .hist-body").innerHTML = `<p class="muted">Couldn't look that up just now. Try again in a moment.</p>`; return; }
+  const body = $("#hp-pop .hist-body");
+  if (body && ask === histAsk) body.innerHTML = what === "uptime" ? uptimeView(d) : bigChart(d, h);
+}
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-hist]");
+  if (t) openHistory(t.dataset.sid, t.dataset.hist, t.dataset.name);
+});
 
 // Pop-ups on the home page (Ask to join, Make an account): a <dialog>, closed with ×, Esc or a click outside.
 function openPop(html, wire) {

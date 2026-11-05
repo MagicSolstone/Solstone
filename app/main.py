@@ -542,19 +542,94 @@ def _today(sid: str) -> dict:
     return {k: round(out[k]) for k in keep if out.get(k)}
 
 
+HISTORY_WHAT = ("players", "tps", "cpu", "mem_mb", "uptime")
+HISTORY_SPANS = {1: 96, 7: 84, 30: 60}            # days -> points: every 15 minutes, 2 hours, 12 hours
+CHECK_GAP = 180                                   # longer than this between Solstone's checks: it wasn't watching
+
+
+def _history(sid: str, what: str, days: int, now: float | None = None) -> dict:
+    """A card's story on the home page: the line further back, or (uptime) the share of each day it was up, every time
+    it went down and for how long, and when Solstone itself wasn't watching (not counted against the server)."""
+    now = now or time.time()
+    start = now - days * 86400
+    rows = db.q("SELECT ts, running, players, cpu, tps, mem_mb FROM metrics WHERE server_id=? AND ts>=? ORDER BY ts", (sid, start))
+    if what != "uptime":
+        points = HISTORY_SPANS[days]
+        step = days * 86400 / points
+        sums: list[list[float]] = [[] for _ in range(points)]
+        for r in rows:
+            if r["running"] and r[what] is not None:
+                sums[min(points - 1, int((r["ts"] - start) // step))].append(r[what])
+        vals = [None if not b else round(max(b) if what == "players" else sum(b) / len(b), 1) for b in sums]
+        seen = [v for b in sums for v in b]
+        return {"what": what, "days": days, "start": start, "step": step, "values": vals,
+                "low": round(min(seen), 1) if seen else None, "high": round(max(seen), 1) if seen else None,
+                "average": round(sum(seen) / len(seen), 1) if seen else None}
+    # uptime: each day's share, and the times it was down
+    zone = db.tz()
+    first_day = datetime.fromtimestamp(start, zone).replace(hour=0, minute=0, second=0, microsecond=0)
+    per_day: dict[str, list[int]] = {}
+    for r in rows:
+        k = datetime.fromtimestamp(r["ts"], zone).date().isoformat()
+        d = per_day.setdefault(k, [0, 0])
+        d[0] += 1
+        d[1] += 1 if r["running"] else 0
+    bars = []
+    for i in range(days + 1):
+        day = (first_day + timedelta(days=i)).date()
+        if day > datetime.fromtimestamp(now, zone).date():
+            break
+        n, up = per_day.get(day.isoformat(), [0, 0])
+        bars.append({"day": day.isoformat(), "up": round(up / n, 4) if n else None})
+    bars = bars[-days:]
+    downs, prev, down_at = [], None, None
+    for r in rows:
+        if prev is not None and r["ts"] - prev["ts"] > CHECK_GAP:      # Solstone wasn't running (or couldn't look)
+            if down_at is not None:
+                downs.append({"from": down_at, "to": prev["ts"], "kind": "down"})
+                down_at = None
+            downs.append({"from": prev["ts"], "to": r["ts"], "kind": "unwatched"})
+        if not r["running"] and down_at is None:
+            down_at = r["ts"]
+        elif r["running"] and down_at is not None:
+            downs.append({"from": down_at, "to": r["ts"], "kind": "down"})
+            down_at = None
+        prev = r
+    if down_at is not None:
+        downs.append({"from": down_at, "to": None, "kind": "down"})          # down right now
+    for x in downs:
+        x["secs"] = round(((x["to"] or now) - x["from"]))
+        if x["kind"] == "down" and x["secs"] <= 300 and x["to"]:
+            x["kind"] = "restart"                                             # back within 5 minutes
+    share = lambda d: _uptime(sid, d)                                         # noqa: E731
+    return {"what": "uptime", "days": days, "bars": bars, "outages": downs[::-1][:60],
+            "percent": {"24h": share(1), "7d": share(7), "30d": share(30)}, "now": now}
+
+
+@app.get("/api/public/site/history")
+async def public_site_history(sid: str, what: str, days: int = 1):
+    """The history behind a card on the home page's status (counts and times only: nothing about anyone)."""
+    if what not in HISTORY_WHAT or days not in HISTORY_SPANS:
+        raise HTTPException(400, "Pick what and how far back")
+    await S.registry.refresh()
+    if not any(s.id == sid for s in _public_servers_list()):
+        raise HTTPException(404, "Server not found")
+    return JSONResponse(await asyncio.to_thread(_history, sid, what, days), headers={"Cache-Control": "public, max-age=60"})
+
+
 def _trend(sid: str, hours: int = 6, points: int = 36) -> dict:
     """The last few hours of Solstone's own checks, for the little graphs on the home page: players, TPS and CPU,
     averaged into even slices (None where the server was off or nothing was seen)."""
     now = time.time()
     start, step = now - hours * 3600, hours * 3600 / points
-    rows = db.q("SELECT ts, running, players, cpu, tps FROM metrics WHERE server_id=? AND ts>=? ORDER BY ts", (sid, start))
-    out = {"players": [None] * points, "tps": [None] * points, "cpu": [None] * points}
-    sums = [{"players": [], "tps": [], "cpu": []} for _ in range(points)]
+    rows = db.q("SELECT ts, running, players, cpu, tps, mem_mb FROM metrics WHERE server_id=? AND ts>=? ORDER BY ts", (sid, start))
+    out = {"players": [None] * points, "tps": [None] * points, "cpu": [None] * points, "mem_mb": [None] * points}
+    sums = [{"players": [], "tps": [], "cpu": [], "mem_mb": []} for _ in range(points)]
     for r in rows:
         i = min(points - 1, int((r["ts"] - start) // step))
         if not r["running"]:
             continue
-        for k in ("players", "tps", "cpu"):
+        for k in ("players", "tps", "cpu", "mem_mb"):
             if r[k] is not None:
                 sums[i][k].append(r[k])
     for i, b in enumerate(sums):

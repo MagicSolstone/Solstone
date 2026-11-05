@@ -847,8 +847,9 @@ def main() -> int:
             def running(route):                  # the server as if it were up (there's no game here)
                 d = json.loads(route.fetch().text())
                 up = {"running": True, "online": 3, "on_bedrock": 1, "max": 10, "tps": 19.9, "started": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 3 * 3600 - 600)),
-                      "cpu": 23, "mem": "6.40 GB", "mem_percent": 20, "trend": {"hours": 6, "players": [None] * 6 + [0, 1, 1, 2, 3, 3, 2, 2, 3, 4, 3, 3] * 2 + [3] * 6,
-                                           "tps": [None] * 6 + [20, 19.8, 19.9, 18.2, 20, 20] * 5, "cpu": [None] * 6 + [12, 18, 25, 40, 22, 19] * 5},
+                      "cpu": 23, "mem": "6.40 GB", "mem_percent": 20, "up_since": time.time() - 3 * 3600 - 600, "uptime_7d": 0.9991, "trend": {"hours": 6, "players": [None] * 6 + [0, 1, 1, 2, 3, 3, 2, 2, 3, 4, 3, 3] * 2 + [3] * 6,
+                                           "tps": [None] * 6 + [20, 19.8, 19.9, 18.2, 20, 20] * 5, "cpu": [None] * 6 + [12, 18, 25, 40, 22, 19] * 5,
+                                           "mem_mb": [None] * 6 + [5800, 6100, 6400, 6300, 6550, 6400] * 5},
                       "today": {"players": 4, "mobs": 37, "mined": 1240, "logs": 64, "fish": 9, "advancements": 3, "travelled": 5400},
                       "world": {"t": 12400, "rain": False, "thunder": False, "as_of": time.time(), "ticking": True}}
                 for x in d.get("servers", []):
@@ -873,9 +874,36 @@ def main() -> int:
                 problems.append("home: no Memory card next to CPU")
             anon.set_viewport_size({"width": 390, "height": 800}); anon.wait_for_timeout(400)
             anon.locator("#hp-status").scroll_into_view_if_needed(); check(anon, "m-home-six-cards")
-            anon.set_viewport_size({"width": 1280, "height": 800})
-            if anon.locator("#hp-status .hp-spark").count() < 3:
-                problems.append("home: no little graphs for players, TPS and CPU")
+            # each card opens its story further back; uptime like a status page (fake history: there's no game here)
+            def history(route):
+                q = route.request.url
+                now = time.time()
+                if "what=uptime" in q:
+                    bars = [{"day": time.strftime("%Y-%m-%d", time.localtime(now - (29 - i) * 86400)), "up": None if i < 3 else 0.97 if i == 20 else 0.9993 if i % 7 == 0 else 1.0} for i in range(30)]
+                    outs = [{"from": now - 3 * 3600, "to": now - 3 * 3600 + 150, "secs": 150, "kind": "restart"},
+                            {"from": now - 9 * 86400, "to": now - 9 * 86400 + 2580, "secs": 2580, "kind": "down"},
+                            {"from": now - 12 * 86400, "to": now - 12 * 86400 + 900, "secs": 900, "kind": "unwatched"}]
+                    route.fulfill(json={"what": "uptime", "days": 30, "bars": bars, "outages": outs, "percent": {"24h": 0.9983, "7d": 0.9991, "30d": 0.9962}, "now": now})
+                else:
+                    import math
+                    vals = [None] * 10 + [round(5600 + 900 * math.sin(i / 9) + (i % 5) * 40) for i in range(86)]
+                    route.fulfill(json={"what": "mem_mb", "days": 1, "start": now - 86400, "step": 900, "values": vals, "low": 4700, "high": 6500, "average": 5650})
+            anon.route("**/api/public/site/history*", history)
+            anon.locator('#hp-status [data-hist="uptime"]').first.click(); anon.wait_for_timeout(700)
+            pop = anon.locator("#hp-pop").text_content() or ""
+            if "Times it went down" not in pop or "Restarted" not in pop or "43 min" not in pop or anon.locator("#hp-pop .ut-bar").count() < 30:
+                problems.append("home: the uptime card doesn't open its story (each day, and the times it went down)")
+            check(anon, "m-home-uptime")
+            anon.keyboard.press("Escape")
+            anon.set_viewport_size({"width": 1280, "height": 800}); anon.wait_for_timeout(300)
+            anon.locator('#hp-status [data-hist="mem_mb"]').first.click(); anon.wait_for_timeout(700)
+            if not anon.locator("#hp-pop .hist-line").count() or "6.35 GB" not in (anon.locator("#hp-pop .hist-nums").text_content() or ""):
+                problems.append("home: the Memory card doesn't open a bigger graph")
+            check(anon, "site-home-memory-history")
+            anon.keyboard.press("Escape")
+            anon.unroute("**/api/public/site/history*")
+            if anon.locator("#hp-status .hp-spark").count() < 4:
+                problems.append("home: no little graphs for players, TPS, CPU and memory")
             if "37 mobs defeated" not in (anon.locator("#hp-status .hp-today").text_content() if anon.locator("#hp-status .hp-today").count() else ""):
                 problems.append("home: no Today line (what everyone did, added up)")
             if "5.4 km travelled" not in (anon.locator("#hp-status .hp-today").text_content() or ""):

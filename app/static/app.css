@@ -2615,3 +2615,30 @@ body.ui-hidden .manage-sub { display: none; }
 .hp-ask-list { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; gap: 6px; }
 .hp-ask-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .hp-ask-status { display: grid; gap: 6px; }
+.hp-stat-btn { font: inherit; color: inherit; text-align: left; border: 0; cursor: pointer; transition: background .15s; }
+.hp-stat-btn:hover, .hp-stat-btn:focus-visible { background: rgba(255, 255, 255, .1); }
+.hist-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip-btn { font: inherit; font-size: .85rem; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--glass-edge); background: transparent; color: inherit; cursor: pointer; }
+.chip-btn.on { background: var(--accent, #6aa9ff); border-color: transparent; color: #0b0f1a; font-weight: 600; }
+.hist-chart { margin: 0; }
+.hist-chart svg { width: 100%; height: 160px; display: block; }
+.hist-line { fill: none; stroke: var(--accent, #6aa9ff); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.hist-area { fill: var(--accent, #6aa9ff); opacity: .15; }
+.hist-base { stroke: var(--glass-edge); vector-effect: non-scaling-stroke; }
+.hist-chart figcaption { display: flex; justify-content: space-between; font-size: .78rem; color: var(--muted); margin-top: 4px; }
+.hist-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.hist-nums span { display: grid; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, .05); }
+.hist-nums small { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.hist-nums b { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.hist-h { margin: 6px 0 0; font-size: 1rem; }
+.ut-bars { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 2px; height: 34px; }
+.ut-bar { display: block; border-radius: 3px; background: #3ecf8e; }
+.ut-bar.ok { background: #f5c451; }
+.ut-bar.bad { background: #ef5f5f; }
+.ut-bar.none { background: rgba(255, 255, 255, .14); }
+.ut-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.ut-legend .ut-bar { display: inline-block; width: 10px; height: 10px; vertical-align: -1px; }
+.ut-outs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 260px; overflow: auto; }
+.ut-out { display: flex; gap: 8px; align-items: baseline; }
+.ut-out > span:last-child { display: grid; }
+.ut-now { color: #ef5f5f; }
