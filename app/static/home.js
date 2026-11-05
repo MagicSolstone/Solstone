@@ -438,11 +438,9 @@ async function article(slug) {
   try { p = await getJSON(`/api/public/posts/${encodeURIComponent(slug)}`); } catch { return `<section><h1>Not found</h1><p class="muted">That post isn't here any more. <a href="/">Back home</a></p></section>`; }
   const back = { news: ["/help", "News & Help"], guide: ["/help", "News & Help"], faq: ["/help", "News & Help"] }[p.category] || ["/", "Home"];
   document.title = `${p.title} · ${hp.site.name}`;
-  const join = p.role === "join";            // the join guide: the Ask to join form goes under it
   return `<article class="hp-article glass"><a class="back" href="${back[0]}">← ${esc(back[1])}</a>
     <h1>${esc(p.title)}</h1><p class="hp-post-meta">${esc(dateText(p.created))}${p.author ? ` · ${esc(p.author)}` : ""}</p>
-    <div class="hp-body">${markdown(fillPostVars(p.body, hp.site, join))}</div></article>
-    ${join && hp.site.join_requests ? askFormHtml() : ""}`;
+    <div class="hp-body">${markdown(fillPostVars(p.body, hp.site))}</div></article>`;
 }
 
 // A post being written (Website → Posts → 👁 Preview): from this browser's storage, shown as visitors will see it.
@@ -454,7 +452,7 @@ function previewArticle() {
   return `<p class="hp-preview-note glass">👁 <b>Preview.</b> Only you can see this. Nobody else sees the post until it's published and saved. Press Preview again after changes, or reload this tab.</p>
     <article class="hp-article glass"><a class="back" href="/help">← News &amp; Help</a>
     <h1>${esc(p.title)}</h1><p class="hp-post-meta">${esc(dateText(p.created))}${p.author ? ` · ${esc(p.author)}` : ""}</p>
-    <div class="hp-body">${markdown(fillPostVars(p.body, hp.site, p.role === "join"))}</div></article>`;
+    <div class="hp-body">${markdown(fillPostVars(p.body, hp.site))}</div></article>`;
 }
 
 async function builtinArticle(key) {
@@ -463,8 +461,7 @@ async function builtinArticle(key) {
   const g = BUILTIN[key];
   document.title = `${g.title} · ${hp.site.name}`;
   return `<article class="hp-article glass"><a class="back" href="/help">← News &amp; Help</a>
-    <h1>${esc(g.title)}</h1><div class="hp-body">${markdown(guideText(key, hp.site))}</div></article>
-    ${key === "join" && hp.site.join_requests ? askFormHtml() : ""}`;
+    <h1>${esc(g.title)}</h1><div class="hp-body">${markdown(guideText(key, hp.site))}</div></article>`;
 }
 
 // Asked already? This browser keeps a private ticket for each request, so it can show when each is let in, without
@@ -607,6 +604,7 @@ async function route() {
   try {
     if (path === "/") html = await home();
     else if (path.startsWith("/post/")) { nav = ""; html = await article(decodeURIComponent(path.slice(6))); }
+    else if (path === "/guides/join" && location.hash === "#ask") { history.replaceState(null, "", "/#ask"); route(); return; }   // (the form's old place)
     else if (path === "/guides" || path === "/faq" || path === "/news") { history.replaceState(null, "", { "/faq": "/help#faq", "/news": "/help#news" }[path] || "/help"); route(); return; }   // the old pages
     else if (path.startsWith("/guides/") && BUILTIN[path.slice(8)] && guideOn(hp.site, path.slice(8))) { nav = "help"; html = await builtinArticle(path.slice(8)); }
     else if (path.startsWith("/guides/")) { history.replaceState(null, "", "/help"); route(); return; }       // a guide that's been taken off
@@ -682,6 +680,13 @@ document.addEventListener("click", (e) => {
   if (!a || e.defaultPrevented || a.target || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
   const url = new URL(a.href, location.href);
   if (url.origin !== location.origin) return;
+  if (url.hash === "#ask" && url.pathname !== "/" && (url.pathname === location.pathname || url.pathname.startsWith("/guides/join"))) {
+    e.preventDefault();                                  // Ask to join: on the home page, in its pop-up
+    if (location.pathname === "/") { if (hp.site.join_requests) openPop(askFormHtml(true)); return; }
+    history.pushState(null, "", "/#ask");
+    route();
+    return;
+  }
   if (url.pathname === "/" && (url.hash === "#ask" || url.hash === "#account") && location.pathname === "/") {     // the pop-ups, right here
     e.preventDefault();
     if (url.hash === "#ask" && hp.site.join_requests) openPop(askFormHtml(true)); else if (url.hash === "#account" && hp.site.signup) openSignup();

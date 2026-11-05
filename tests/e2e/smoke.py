@@ -941,8 +941,16 @@ def main() -> int:
                 problems.append("home: the join section still links to the step-by-step guides")
             check(anon, "site-home-ask-button")
             anon.goto(f"{base}/guides/join"); anon.wait_for_timeout(1000)
-            if not anon.locator("#ask-form").count() or not anon.locator('.hp-body a[href="#ask"]').count():
-                problems.append("join guide: no Ask to join form (or link to it) with it turned on")
+            if anon.locator("#ask-form").count() or not anon.locator('.hp-body a[href="/#ask"]').count():
+                problems.append("join guide: the Ask to join form is still under it, or no link to the home page's")
+            anon.locator('.hp-body a[href="/#ask"]').first.click(); anon.wait_for_timeout(1200)
+            if "/guides" in anon.url or not anon.locator("#hp-pop[open] #ask-form").count():
+                problems.append(f"join guide: Ask to join didn't go to the home page with its pop-up open ({anon.url})")
+            anon.keyboard.press("Escape")
+            anon.goto(f"{base}/guides/join#ask"); anon.wait_for_timeout(1500)       # an old link to the form's old place
+            if "/guides" in anon.url or not anon.locator("#hp-pop[open] #ask-form").count():
+                problems.append(f"an old /guides/join#ask link doesn't open Ask to join on the home page ({anon.url})")
+            anon.keyboard.press("Escape")
             anon.goto(f"{base}/"); anon.wait_for_timeout(1200)
             anon.click(".hp-join .hp-ask-btn"); anon.wait_for_timeout(500)
             if not anon.locator("#hp-pop[open] #ask-form").count():

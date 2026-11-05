@@ -14,7 +14,7 @@ const GUIDES = {
     body: (s) => {
       const java = s.java_address || "the address an admin gives you";
       const bed = s.bedrock_address || s.java_address || "the address an admin gives you";
-      const ask = s.join_requests ? "Use the [Ask to join](#ask) form at the bottom of this page (or on the home page)"
+      const ask = s.join_requests ? "Use the [Ask to join](/#ask) form on the home page"
         : s.discord ? `Send your exact in-game name to an admin on [Discord](${s.discord})` : "Send your exact in-game name to an admin";
       return `${s.name} is a Minecraft server you can join from Java Edition or Bedrock Edition. Everyone plays together in the same world.
 
@@ -111,15 +111,15 @@ function rulesLink(site, text = "the rules") {
 
 // {java_address} and the other fill-ins, in any post or guide: the main server's details from Site details (the
 // first card on the home page), so the text stays right when an address, a port or the version changes.
-// onJoinPage: {ask} jumps to the form further down that page; anywhere else it links to it.
+// {ask}: the Ask to join form, on the home page (it opens there).
 // {contact}: the site's contact email as a link, or the next best way to reach an admin
 function contactLink(site) {
   return site.contact ? `[${site.contact}](mailto:${site.contact})` : site.discord ? `[Discord](${site.discord})` : "an admin";
 }
-function fillPostVars(text, site, onJoinPage = false) {
+function fillPostVars(text, site) {
   const vals = { name: site.name, java_address: site.java_address || "", bedrock_address: site.bedrock_address || site.java_address || "",
     bedrock_port: site.bedrock_port, java_version: site.java_version || "the version shown on the home page", discord: site.discord || "",
-    ask: onJoinPage ? "[Ask to join](#ask)" : "[Ask to join](/#ask)", rules: rulesLink(site),
+    ask: "[Ask to join](/#ask)", rules: rulesLink(site),
     contact: contactLink(site), xbox_friend: site.xbox_friend || "" };
   return String(text || "").replace(/\{(\w+)\}/g, (m, k) => (k in vals ? String(vals[k]) : m));
 }
@@ -128,11 +128,11 @@ function fillPostVars(text, site, onJoinPage = false) {
 function guideText(key, site) {
   const own = site[`guide_${key}`];
   if (!own) return GUIDES[key].body(site);
-  return fillPostVars(own, site, key === "join");
+  return fillPostVars(own, site);
 }
 // Solstone's wording with {placeholders} left in: where an admin starts from when rewriting a guide.
 function guideTemplate(key, site) {
   const ph = Object.fromEntries(GUIDE_PLACEHOLDERS.map(([k]) => [k, `{${k}}`]));
   return GUIDES[key].body({ ...site, ...ph, bedrock_port: "{bedrock_port}", java_version: "{java_version}", join_requests: site.join_requests })
-    .replace("[Ask to join](#ask) form", "{ask} form").replace("[the rules](/guides/rules)", "{rules}").replace("the rules first", "{rules} first");
+    .replace("[Ask to join](/#ask) form", "{ask} form").replace("[the rules](/guides/rules)", "{rules}").replace("the rules first", "{rules} first");
 }
