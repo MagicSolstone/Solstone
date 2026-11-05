@@ -1,3 +1,7 @@
+# Solstone 1.15.30
+
+- **Fixed: a false "Xbox friend joining isn't working" alert.** When MCXboxBroadcast's regular update to Xbox timed out once ("Failed to update session information… request timed out"), Solstone took it for an outage: it said "Not working right now" and sent a notification, though Bedrock players could join all along. MCXboxBroadcast tries again by itself and says nothing when that works, so one of these is now just noted (admins still see it on the Control page). Only several in a few minutes count as a problem, and once they stop, it's working again. The lines of a stack trace under an error are no longer read as more errors.
+
 # Solstone 1.15.29
 
 - **Treasure hunt: a treasure compass.** When the hint starts, everyone playing gets a compass that points straight at the chest. It's the game's, so it goes when they're home with their things. You can switch it off in the setup.
