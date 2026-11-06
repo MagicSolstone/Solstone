@@ -308,6 +308,20 @@ def add_event(server_id: str, ts: float, etype: str, message: str, player: str |
              (server_id, ts, etype, player, uuid, message))
 
 
+STARTS = ("Server started",)
+STOPS = ("Server stopping", "Server stopped", "Server crashed")
+
+
+def server_event_near(server_id: str, ts: float, message: str, within: float = 120) -> bool:
+    """Is a start (or a stop) already noted for this server around then? The server's log and Solstone's own checks
+    can both see the same restart: it's written down once."""
+    same = STARTS if message in STARTS else STOPS
+    marks = ",".join("?" * len(same))
+    rows = q(f"SELECT 1 FROM events WHERE server_id=? AND type='server' AND message IN ({marks}) AND ts BETWEEN ? AND ? LIMIT 1",
+             (server_id, *same, ts - within, ts + within))
+    return bool(rows)
+
+
 def events_after(server_id: str, types: list[str], after_id: int = 0, limit: int = 200) -> list[dict]:
     """Newest `limit` events of these types (after_id=0), or everything newer than after_id; oldest first."""
     marks = ",".join("?" * len(types))

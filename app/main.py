@@ -598,6 +598,18 @@ def _history(sid: str, what: str, days: int, now: float | None = None) -> dict:
         prev = r
     if down_at is not None:
         downs.append({"from": down_at, "to": None, "kind": "down"})          # down right now
+    # restarts the server's log noted (a quick one finishes between two checks, so the checks never saw it down)
+    evs = db.q("SELECT ts, message FROM events WHERE server_id=? AND type='server' AND ts>=? ORDER BY ts", (sid, start - 900))
+    stop_at = None
+    for e in evs:
+        if e["message"] in db.STOPS:
+            stop_at = e["ts"]
+        elif e["message"] in db.STARTS and e["ts"] >= start:
+            frm = stop_at if stop_at and e["ts"] - stop_at < 900 else e["ts"]
+            if not any(d["from"] - 60 <= e["ts"] <= (d["to"] or now) + 60 for d in downs):
+                downs.append({"from": frm, "to": e["ts"], "kind": "restart"})
+            stop_at = None
+    downs.sort(key=lambda d: d["from"])
     for x in downs:
         x["secs"] = round(((x["to"] or now) - x["from"]))
         if x["kind"] == "down" and x["secs"] <= 300 and x["to"]:

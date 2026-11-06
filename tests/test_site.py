@@ -693,3 +693,33 @@ def test_a_cards_history_and_its_uptime_story(client):
 def test_the_history_endpoint_answers_for_a_public_server(client, sid):
     r = client.get("/api/public/site/history", params={"sid": sid, "what": "uptime", "days": 30})
     assert r.status_code == 200 and "outages" in r.json()
+
+
+def test_a_quick_restart_between_checks_still_counts(client):
+    """The nightly restart takes under a minute: Solstone's checks (every 30 s) can miss it entirely, so "up for" kept
+    counting from days ago. The server's log saw it: up-for starts again, and the uptime history shows the restart."""
+    import time
+
+    from app import db, main
+    sid, now = "restart-test", time.time()
+    db.x("DELETE FROM metrics WHERE server_id=?", (sid,))
+    db.x("DELETE FROM events WHERE server_id=?", (sid,))
+    try:
+        rows, t = [], now - 3 * 86400
+        while t < now:                                                           # running at every check for 3 days
+            rows.append((sid, t, 1))
+            t += 30
+        with db._lock:
+            db.conn().executemany("INSERT INTO metrics(server_id, ts, running, players) VALUES (?,?,?,0)", rows)
+        stop, start = now - 7200, now - 7155                                    # 45 seconds down, two hours ago
+        for ts, msg in ((stop, "Server stopping"), (start, "Server started")):
+            assert not db.server_event_near(sid, ts, msg)
+            db.add_event(sid, ts, "server", msg)
+        assert db.server_event_near(sid, start + 20, "Server started")          # Crafty's own "started": noted once
+        assert abs(main._up_since(sid, None) - start) < 1                       # up for two hours, not three days
+        u = main._history(sid, "uptime", 7, now)
+        r = [o for o in u["outages"] if o["kind"] == "restart"]
+        assert len(r) == 1 and r[0]["secs"] == 45 and abs(r[0]["to"] - start) < 1
+    finally:
+        db.x("DELETE FROM metrics WHERE server_id=?", (sid,))
+        db.x("DELETE FROM events WHERE server_id=?", (sid,))

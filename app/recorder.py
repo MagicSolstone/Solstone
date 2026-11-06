@@ -382,10 +382,11 @@ class Recorder:
 
         prev = self._running_state.get(srv.id)
         if prev is not None and prev != running:
-            if running:
-                self._event(srv, now, "server", "Server started")
+            msg = "Server started" if running else ("Server crashed" if stats.get("crashed") else "Server stopped")
+            if msg == "Server crashed" or not db.server_event_near(srv.id, now, msg):
+                self._event(srv, now, "server", msg)
             else:
-                self._event(srv, now, "server", "Server crashed" if stats.get("crashed") else "Server stopped")
+                maybe_notify("server", srv.display_name, msg, sid=srv.id)      # (noted from the log already)
         self._running_state[srv.id] = running
 
     async def _watch_game(self, srv: S.Server, names: list[str]) -> None:
@@ -539,7 +540,17 @@ class Recorder:
                         self._catches.setdefault(srv.id, []).append((c["player"], tide.to_catch(srv, c)))
                 continue
             ev = parse_line(raw, names)
-            if not ev or ev.type == "server":  # start/stop comes from Crafty's state instead
+            if not ev:
+                continue
+            if ev.type == "server":
+                # The log sees every restart, even one quick enough to finish between two of Solstone's checks (so
+                # "up for" starts again, and the uptime history shows it). Noted once: Crafty's state may say so too.
+                ts_dt = now.replace(hour=ev.hour, minute=ev.minute, second=ev.second, microsecond=0)
+                if ts_dt > now + timedelta(seconds=60):
+                    ts_dt -= timedelta(days=1)
+                sts = ts_dt.timestamp() - offset
+                if not db.server_event_near(srv.id, sts, ev.message):
+                    db.add_event(srv.id, sts, "server", ev.message)
                 continue
             if ev.player and ev.type != "blocked":       # turned away at the door: not one of the players
                 names.add(ev.player.lower())
