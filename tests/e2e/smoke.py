@@ -1451,8 +1451,12 @@ def main() -> int:
                 problems.append(f"manage: no 'What people read' table with the pages visitors opened: {rd[:120]!r}")
             pg.locator("#reading").scroll_into_view_if_needed(); check(pg, "manage-reading")
             # two-step sign-in: an admin turns it on (scan, or type the setup key), then signs in with a code
-            sys.path.insert(0, str(HERE.parent.parent))
-            from app.twostep import code_now
+            def code_now(secret):                          # an authenticator app's code (RFC 6238), worked out here: the
+                import base64, hashlib, hmac, struct       # app itself isn't imported in this process (it would want /data)
+                key = base64.b32decode(secret + "=" * (-len(secret) % 8), casefold=True)
+                mac = hmac.new(key, struct.pack(">Q", int(time.time() // 30)), hashlib.sha1).digest()
+                o = mac[-1] & 0x0F
+                return f"{(struct.unpack('>I', mac[o:o + 4])[0] & 0x7FFFFFFF) % 1000000:06d}"
             pg.request.post(f"{base}/api/users", data={"username": "smoke_2fa", "password": "smoke-2fa-pass", "role": "admin"}, headers=H)
             ts = browser.new_page(viewport={"width": 1280, "height": 860})
             ts.on("pageerror", lambda e: problems.append(f"{ts.url}: JS error: {e}"))
