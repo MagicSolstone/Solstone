@@ -489,8 +489,9 @@ def send_home(srv, kept: dict[str, str], game_id: str, secs: int = HOME_SECS, af
 
 
 async def sweep(srv) -> None:
-    """The game's things left lying about (thrown down, or dropped by someone who died) go when the game's over: they
-    were only ever the game's. Nothing of anyone's own: only items marked as a kit's."""
+    """The game's things left lying about go: thrown down in a game (to pick up after), or anywhere at all. A kit's
+    item on the ground is never meant to be there (dying keeps it, with keep-inventory on for games), so this runs
+    every second of a fight, and on every check of the server besides. Nothing of anyone's own: only items marked as a kit's."""
     await _rcon(srv, f'kill @e[type=minecraft:item,nbt={{Item:{{components:{{"minecraft:custom_data":{{{KIT_TAG}:1b}}}}}}}}]')
 
 
@@ -528,6 +529,16 @@ async def tidy(srv, online: list[str]) -> None:
     for s in waiting(srv.id):
         if s["name"].lower() in lower and (s.get("restored") or not _in_live_game(s)):
             await give_back(srv, s["uuid"], move=False)  # (Solstone's catching up: they may have gone somewhere since)
+
+
+async def no_stray_kit(srv, online: list[str]) -> None:
+    """Every poll: a game's things never stay with anyone after it. Lying on the ground: gone. In the hands of
+    someone who isn't in a game (dropped in the game, then picked up after walking out, say): taken back."""
+    await sweep(srv)
+    playing = {s["name"].lower() for s in waiting(srv.id) if not s.get("restored")}
+    for n in online:
+        if n.lower() not in playing:
+            await _rcon(srv, f"clear {n} {KIT_MATCH}")
 
 
 # ------------------------------------------------------------------ the kits themselves

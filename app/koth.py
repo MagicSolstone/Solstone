@@ -79,6 +79,7 @@ async def tick(srv, r: dict) -> None:
     r["ticks"] = r.get("ticks", 0) + 1
     where = {k.lower(): v for k, v in (await _everyone(srv)).items()}
     await battle.left_and_back(srv, r, where)
+    await battle.tidy_ground(srv, r)
     await battle.keep_out(srv, r, where, margin=4)        # people not playing: off the hill (and out of the fight on it)
     await battle.deaths(srv, r, TAG, now)
     await battle.comebacks(srv, r, now)

@@ -399,3 +399,35 @@ def test_a_copy_that_changed_midway_is_simply_made_again(game, monkeypatch):
     assert asyncio.run(kits.stash(game, {"Alex": U1}, "g-retry")) == ["Alex"]
     assert game.slots[U1] == {} and any("hold still" in c for c in game.said)
     assert asyncio.run(kits.give_back(game, U1)) and game.slots[U1] == before          # all of it, once
+
+
+def test_a_games_things_never_stay_with_anyone_after(game):
+    """Dropped in a game, then picked up after walking out: taken back. Lying about anywhere: gone. Nobody in a game
+    right now is touched."""
+    asyncio.run(kits.stash(game, {"Alex": U1}, "g-stray"))
+    game.slots.setdefault("Steve", {}); game.slots.setdefault("Alex", {})              # (by name, for the pretend server)
+    game.said.clear()
+    asyncio.run(kits.no_stray_kit(game, ["Alex", "Steve"]))
+    assert any(c.startswith("kill @e[type=minecraft:item,nbt=") and "solkit:1b" in c for c in game.said)
+    assert f"clear Steve {kits.KIT_MATCH}" in game.said and not any(c.startswith("clear Alex") for c in game.said)
+    asyncio.run(kits.give_back(game, U1))
+    game.said.clear()
+    asyncio.run(kits.no_stray_kit(game, ["Alex"]))
+    assert f"clear Alex {kits.KIT_MATCH}" in game.said                                  # home now: not kept by them
+
+
+def test_the_arena_floor_doesnt_fill_up_with_monster_drops():
+    from app import battle
+    said = []
+
+    class Srv:
+        async def rcon(self, cmd, wait=None):
+            said.append(cmd)
+            return ""
+    r = {"dim": "minecraft:overworld", "zone": {"x": 10, "y": 64, "z": -5, "r": 15}, "ticks": 5}
+    asyncio.run(battle.tidy_ground(Srv(), r, monster_drops=True))
+    assert any("solkit:1b" in c for c in said)
+    assert any("kill @e[type=minecraft:item,x=10,y=64,z=-5,distance=..27]" in c for c in said)
+    said.clear()
+    asyncio.run(battle.tidy_ground(Srv(), {**r, "ticks": 6}, monster_drops=False))
+    assert len(said) == 1                                                                # King of the Hill: just the kit

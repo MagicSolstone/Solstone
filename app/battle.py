@@ -151,6 +151,16 @@ async def ring(srv, r: dict, particle: str = "minecraft:end_rod") -> None:
         await _rcon(srv, f"execute in {r['dim']} run particle {particle} {x:.1f} {c['y'] + 1} {z:.1f} 0.1 0.6 0.1 0 4 force")
 
 
+async def tidy_ground(srv, r: dict, monster_drops: bool = False) -> None:
+    """Each second of a fight: the kit's things thrown down go at once (so they can't be picked up after). In the mob
+    arena, every few seconds, what the monsters dropped in the arena goes too: it would only pile up, and anything
+    picked up in a game is left behind at the end anyway."""
+    await kits.sweep(srv)
+    if monster_drops and (int(r.get("ticks", 0)) % 5 == 0 or r.get("wrap_at") is not None):
+        c = r["zone"]
+        await _rcon(srv, f"execute in {r['dim']} run kill @e[type=minecraft:item,x={c['x']},y={c['y']},z={c['z']},distance=..{c['r'] + 12}]")
+
+
 async def left_and_back(srv, r: dict, where: dict) -> None:
     """Anyone who left mid-game is out of it; back online while it's still on, their things come straight back.
     "Left" means really not on the server, two looks in a row: a position lookup that failed or came back empty (the

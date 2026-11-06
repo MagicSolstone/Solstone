@@ -376,6 +376,7 @@ class Recorder:
             try:
                 if kits.waiting(srv.id):
                     await kits.tidy(srv, names)              # things still in the vault from a game that's over
+                await kits.no_stray_kit(srv, names)          # a game's things: not on the ground, not kept by anyone after
             except Exception:
                 log.exception("giving things back from the vault failed on %s", srv.id)
 

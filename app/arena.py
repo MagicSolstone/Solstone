@@ -273,6 +273,7 @@ async def tick(srv, r: dict) -> None:
     r["ticks"] = r.get("ticks", 0) + 1
     where = {k.lower(): v for k, v in (await _everyone(srv)).items()}
     await battle.left_and_back(srv, r, where)
+    await battle.tidy_ground(srv, r, monster_drops=True)
     await battle.keep_out(srv, r, where)                 # people not playing: moved just outside the arena
     died = await battle.deaths(srv, r, TAG, now)
     if r["coop"]:
@@ -338,6 +339,8 @@ async def _end(srv, r: dict, wiped: bool = False, called_off: bool = False) -> N
     await hud.clear(srv, r)
     r["queue"] = []
     await battle._rcon(srv, f"kill @e[tag={_mob_tag(r)}]")
+    c = r["zone"]                                    # what the last wave dropped
+    await battle._rcon(srv, f"execute in {r['dim']} run kill @e[type=minecraft:item,x={c['x']},y={c['y']},z={c['z']},distance=..{c['r'] + 12}]")
     if r.get("team_made"):
         await battle._rcon(srv, f"team remove {_mob_tag(r)}")
     await _kills(srv, r)
