@@ -102,7 +102,7 @@ async def start(request: Request, typed: str, servers: list[S.Server]) -> dict:
     existing = auth.user_for_player(uuid)
     if existing:
         msg = component([("[Website] ", "gold"), ("You already have an account: ", "yellow"), (existing, "white"),
-                         (". Forgot the password? Ask an admin to set a new one.", "yellow")])
+                         (". Forgot the password? Press ", "yellow"), ("Forgot your password?", "white"), (" on the sign-in page.", "yellow")])
     else:
         code = f"{secrets.randbelow(10**6):06d}"
         _codes[uuid] = {"hash": _hash(code), "name": name, "server": srv.id, "expires": time.time() + CODE_TTL, "tries": 0}
@@ -197,3 +197,62 @@ def finish_link(user: auth.User, typed: str, code: str) -> auth.User:
         raise HTTPException(400, "That code isn't right")
     _link_codes.pop(uuid, None)
     return auth.add_player(user.id, (S.norm_uuid(uuid), entry["name"]))
+
+
+# ---------------------------------------------------------------- forgot the password
+# The same proof again: a code in the game chat, to that player only. Their website login (the one that player is
+# linked to) gets the new password they choose, and is signed out everywhere else.
+_reset_codes: dict[str, dict] = {}      # player uuid -> {hash, name, uid, expires, tries}
+
+
+async def start_reset(request: Request, typed: str, servers: list[S.Server]) -> dict:
+    typed = (typed or "").strip()
+    if not NAME_RE.match(typed):
+        raise HTTPException(400, "Type your Minecraft name as it shows in the game")
+    if _hit(f"ip:{auth.client_ip(request)}", PER_ADDRESS):
+        raise HTTPException(429, "Too many tries. Wait an hour and try again")
+    found = await _find_online(servers, typed)
+    if not found:
+        return {"state": "offline", "message": NOT_ONLINE.format(name=typed)}
+    srv, uuid, name = found
+    if _hit(f"p:{uuid}", PER_PLAYER):
+        return {"state": "sent", "message": "We've sent a few codes already. Use the newest one in the game chat, or wait an hour.", "player": name}
+    login = auth.user_for_player(S.norm_uuid(uuid)) or auth.user_for_player(uuid)
+    uid = None
+    if login:
+        from . import db
+        rows = db.q("SELECT id FROM users WHERE username=? COLLATE NOCASE", (login,))
+        uid = rows[0]["id"] if rows else None
+    if not uid:
+        msg = component([("[Website] ", "gold"), ("There's no website account for this player yet. ", "yellow"),
+                         ("Make one with ", "yellow"), ("Make a new account", "white"), (" on the sign-in page.", "yellow")])
+    else:
+        code = f"{secrets.randbelow(10**6):06d}"
+        _reset_codes[uuid] = {"hash": _hash(code), "name": name, "uid": uid, "expires": time.time() + CODE_TTL, "tries": 0}
+        msg = component([("[Website] ", "gold"), ("Your code to set a new password for ", "yellow"), (login, "white"),
+                         (" is ", "yellow"), (code, "green"), (". Don't share it. It works for 10 minutes.", "yellow")])
+    try:
+        await srv.rcon(f"tellraw {name} {msg}")
+    except Exception:
+        _reset_codes.pop(uuid, None)
+        return {"state": "offline", "message": "We couldn't reach the game just now. Try again in a moment."}
+    return {"state": "sent", "message": CODE_SENT, "player": name}
+
+
+def finish_reset(typed: str, code: str, password: str) -> auth.User:
+    want = _names((typed or "").strip())
+    uuid = next((u for u, c in _reset_codes.items() if c["name"].lower() in want), None)
+    entry = _reset_codes.get(uuid) if uuid else None
+    if not entry or entry["expires"] < time.time():
+        if uuid:
+            _reset_codes.pop(uuid, None)
+        raise HTTPException(400, "That code has run out. Ask for a new one")
+    entry["tries"] += 1
+    if not hmac.compare_digest(entry["hash"], _hash(re.sub(r"\D", "", code or ""))):
+        if entry["tries"] >= CODE_TRIES:
+            _reset_codes.pop(uuid, None)
+            raise HTTPException(400, "Wrong code too many times. Ask for a new one")
+        raise HTTPException(400, "That code isn't right")
+    user = auth.update_user(entry["uid"], password=password)      # (checks it's long enough; signs out everywhere)
+    _reset_codes.pop(uuid, None)
+    return user

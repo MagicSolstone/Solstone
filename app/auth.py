@@ -366,7 +366,7 @@ def list_users() -> list[dict]:
     return [{"id": r["id"], "username": r["username"], "display_name": r["display_name"], "shown": _row_user(r).shown,
              "role": r["role"], "created": r["created_ts"],
              "last_login": r["last_login_ts"], "player_name": r["player_name"], "real_name": r["real_name"],
-             "players": _players_of(r["id"]),
+             "players": _players_of(r["id"]), "two_step": bool(r["totp_secret"]) if "totp_secret" in r.keys() else False,
              "servers": _servers_of(r["servers"])} for r in db.q("SELECT * FROM users ORDER BY username COLLATE NOCASE")]
 
 
@@ -389,6 +389,10 @@ def update_user(uid: int, role: str | None = None, password: str | None = None) 
     if password:
         db.x("UPDATE users SET password_hash=? WHERE id=?", (hash_password(password), uid))
         db.x("DELETE FROM sessions_auth WHERE user_id=?", (uid,))  # sign out everywhere
+        try:
+            db.x("DELETE FROM trusted_devices WHERE user_id=?", (uid,))   # and two-step asks again everywhere
+        except Exception:
+            pass                                                         # (two-step never set up: no such table)
     return get_user(uid)
 
 
@@ -499,6 +503,13 @@ def _login_rows(typed: str):
 
 
 def login(request: Request, username: str, password: str) -> tuple[User, str]:
+    """The password, then a new session (for signing in right after sign-up or a password change). The sign-in page
+    uses check_login and new_session, with two-step sign-in between them."""
+    user = check_login(request, username, password)
+    return user, new_session(request, user)
+
+
+def check_login(request: Request, username: str, password: str) -> User:
     _init()
     ip = client_ip(request)
     name = (username or "").lower()
@@ -517,14 +528,18 @@ def login(request: Request, username: str, password: str) -> tuple[User, str]:
         raise HTTPException(401, "Wrong username or password")
     for k in keys:
         _fails.pop(k, None)
-    user = _row_user(rows[0])
+    return _row_user(rows[0])
+
+
+def new_session(request: Request, user: User) -> str:
+    ip = client_ip(request)
     token = secrets.token_urlsafe(32)
     now = time.time()
     db.x("INSERT INTO sessions_auth VALUES (?,?,?,?,?,?)",
          (_th(token), user.id, now, now + SESSION_DAYS * 86400, ip, (request.headers.get("user-agent") or "")[:200]))
     db.x("UPDATE users SET last_login_ts=? WHERE id=?", (now, user.id))
     db.x("DELETE FROM sessions_auth WHERE expires_ts < ?", (now,))
-    return user, token
+    return token
 
 
 def logout(token: str | None) -> None:

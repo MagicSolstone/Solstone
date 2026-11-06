@@ -52,6 +52,7 @@ function showLogin(message = "") {
       <div class="login-title"><h1>${esc(SITE_NAME)}</h1><p class="tagline" id="login-tagline">Sign in to see the servers</p></div>
       <label>Minecraft name or username<input class="input" name="username" autocomplete="username" autocapitalize="off" required></label>
       <label>Password<input class="input" type="password" name="password" autocomplete="current-password" required></label>
+      <p class="login-forgot"><button type="button" class="link-btn" id="btn-forgot">Forgot your password?</button></p>
       <p class="login-error" role="alert">${esc(message)}</p>
       <button class="btn primary" type="submit">Sign in</button>
       <div class="login-new" id="login-signup" hidden><span class="muted">New here?</span><button type="button" class="btn" id="btn-signup">🌐 Make a new account</button></div>
@@ -65,19 +66,152 @@ function showLogin(message = "") {
     $("#login-signup").hidden = !site.signup;
   }).catch(() => {});
   $("#btn-signup").addEventListener("click", openSignup);
+  $("#btn-forgot").addEventListener("click", () => openPasswordReset((login, pw) => {
+    form.username.value = login; form.password.value = pw; form.requestSubmit();       // signed in with the new password
+  }));
   startLoginScene();
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const f = new FormData(form), btn = form.querySelector("button");
+    const f = new FormData(form), btn = form.querySelector('button[type="submit"]');
     btn.disabled = true;
     try {
       const r = await post("/api/auth/login", { username: f.get("username"), password: f.get("password") });
+      if (r.two_step) { twoStepStep(form, r.ticket); return; }
       signedIn(r.user);
     } catch (err) {
       $(".login-error", form).textContent = err.status === 401 ? "Wrong username or password." : err.message;
       btn.disabled = false;
       form.querySelector('[name="password"]').select();
     }
+  });
+}
+
+// Two-step sign-in, after the password: the code from their authenticator app (or a backup code).
+function twoStepStep(form, ticket) {
+  const card = form;
+  card.innerHTML = `<img src="${esc(SITE_LOGO)}" alt="" width="56" height="56">
+    <div class="login-title"><h1>Two-step sign-in</h1><p class="tagline">Type the 6-digit code from your authenticator app</p></div>
+    <label>Code<input class="input" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="12" required autofocus></label>
+    <label class="check"><input type="checkbox" name="trust" checked> Trust this device for 30 days</label>
+    <p class="login-error" role="alert"></p>
+    <button class="btn primary" type="submit">Sign in</button>
+    <p class="muted small">Phone not with you? Type one of your backup codes instead (like <code>1a2b-3c4d</code>).</p>
+    <p class="login-home"><a href="/app">← Start again</a></p>`;
+  const fresh = card.cloneNode(true);                          // (drop the password step's listener)
+  card.replaceWith(fresh);
+  fresh.querySelector("input").focus();
+  fresh.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = new FormData(fresh), btn = fresh.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    try {
+      const r = await post("/api/auth/login/code", { ticket, code: f.get("code"), trust: !!f.get("trust") });
+      signedIn(r.user);
+    } catch (err) {
+      $(".login-error", fresh).textContent = err.message;
+      btn.disabled = false;
+      fresh.querySelector('[name="code"]').select();
+      if (/Sign in again/.test(err.message)) setTimeout(() => showLogin(err.message), 1500);
+    }
+  });
+}
+
+// Forgot the password: proved through the game, like making the account. A code goes to that player in the
+// game chat; with it they choose a new password, and are signed in with it.
+function openPasswordReset(done) {
+  let player = "";
+  const step1 = () => `<h2>Forgot your password?</h2>
+    <p class="muted">Join the server and stay in the game. We'll send a code to your game chat, so only you can see it.</p>
+    <form id="pr-start"><label>Your Minecraft name <small>As it shows in the game (Bedrock names may start with a dot)</small>
+      <input class="input" name="player" required maxlength="18" autocapitalize="off" autocomplete="off" value="${esc(player)}"></label>
+      <p class="login-error" role="alert"></p>
+      <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Send me a code</button></div></form>`;
+  const step2 = (msg) => `<h2>Check the game chat</h2><p class="muted">${esc(msg)}</p>
+    <form id="pr-finish" autocomplete="off"><label>The six-digit code<input class="input" name="code" inputmode="numeric" maxlength="7" required autocomplete="one-time-code"></label>
+      <label>New password <small>8 or more characters. Not the one for your Microsoft account.</small><input class="input" type="password" name="password" minlength="8" required autocomplete="new-password"></label>
+      <p class="login-error" role="alert"></p>
+      <div class="actions"><button type="button" class="btn" id="pr-back">Send a new code</button><button class="btn primary" type="submit">Set my password</button></div></form>`;
+  openModal(step1(), (m) => {
+    const wire1 = () => $("#pr-start", m).addEventListener("submit", async (e) => {
+      e.preventDefault();
+      player = new FormData(e.target).get("player").trim();
+      try {
+        const r = await post("/api/public/password-reset/start", { player });
+        if (r.state === "offline") { $(".login-error", e.target).textContent = r.message; return; }
+        if (r.player) player = r.player;
+        m.innerHTML = step2(r.message);
+        $("#pr-back", m).addEventListener("click", () => { m.innerHTML = step1(); wire1(); });
+        $("#pr-finish", m).addEventListener("submit", async (e2) => {
+          e2.preventDefault();
+          const f = new FormData(e2.target);
+          try {
+            const d = await post("/api/public/password-reset/finish", { player, code: f.get("code"), password: f.get("password") });
+            closeModal(); showToast("Password changed. Signing you in…", 2500);
+            done?.(d.username, f.get("password"));
+          } catch (err) { $(".login-error", e2.target).textContent = err.message; }
+        });
+        $("#pr-finish input", m).focus();
+      } catch (err) { $(".login-error", e.target).textContent = err.message; }
+    });
+    wire1();
+  });
+}
+
+// Two-step sign-in, in the account menu (admins and Trusted): turn it on (scan, confirm, keep the backup codes),
+// get new backup codes, or turn it off (password and a code).
+async function openTwoStep() {
+  let st;
+  try { st = await api("/api/auth/two-step"); } catch (err) { showError(esc(err.message), 4000); return; }
+  const codesHtml = (codes) => `<div class="ts-codes">${codes.map((c) => `<code>${esc(c)}</code>`).join("")}</div>
+    <p class="muted small">Each works once, instead of a code from your phone. Keep them somewhere safe (printed, or in a password manager). They won't be shown again.</p>
+    <div class="actions"><button type="button" class="btn" data-copy-codes>Copy them</button><button type="button" class="btn primary" data-close-modal>I've saved them</button></div>`;
+  const wireCopy = (m, codes) => m.querySelector("[data-copy-codes]")?.addEventListener("click", () => {
+    navigator.clipboard?.writeText(codes.join("\n")).then(() => showToast("Copied", 1500), () => {});
+  });
+  if (!st.on) {
+    openModal(`<h2>🔐 Two-step sign-in</h2>
+      <p>After your password, Solstone also asks for a 6-digit code from an app on your phone (Google Authenticator, Microsoft Authenticator, 1Password…). A stolen or guessed password alone won't get anyone in.</p>
+      <p class="muted small">Lose your phone? You'll get backup codes. And another admin, or the server itself, can always turn it off for you.</p>
+      <div class="actions"><button type="button" class="btn" data-close-modal>Not now</button><button type="button" class="btn primary" id="ts-begin">Turn on</button></div>`, (m) => {
+      $("#ts-begin", m).addEventListener("click", async () => {
+        let s;
+        try { s = await post("/api/auth/two-step/begin", {}); } catch (err) { showError(esc(err.message), 4000); return; }
+        m.innerHTML = `<h2>Scan this with your app</h2>
+          <div class="ts-qr">${s.svg}</div>
+          <p class="muted small">Can't scan? In the app choose “enter a setup key” and type: <code class="ts-secret">${esc(s.secret)}</code></p>
+          <form id="ts-confirm" autocomplete="off"><label>Then type the 6-digit code it shows<input class="input" name="code" inputmode="numeric" maxlength="7" required autocomplete="one-time-code"></label>
+            <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Turn it on</button></div></form>`;
+        $("#ts-confirm input", m).focus();
+        $("#ts-confirm", m).addEventListener("submit", async (e) => {
+          e.preventDefault();
+          try {
+            const r = await post("/api/auth/two-step/confirm", { code: new FormData(e.target).get("code") });
+            m.innerHTML = `<h2>✅ Two-step sign-in is on</h2><p>Your backup codes:</p>${codesHtml(r.backup_codes)}`;
+            wireCopy(m, r.backup_codes);
+          } catch (err) { showError(esc(err.message), 5000); }
+        });
+      });
+    });
+    return;
+  }
+  openModal(`<h2>🔐 Two-step sign-in is on</h2>
+    <p class="muted">${st.backup_left} backup code${st.backup_left === 1 ? "" : "s"} left.</p>
+    <form id="ts-form" autocomplete="off">
+      <label>A code from your app (or a backup code)<input class="input" name="code" inputmode="numeric" maxlength="12" required autocomplete="one-time-code"></label>
+      <label>Your password <small>Only needed to turn it off</small><input class="input" type="password" name="password" autocomplete="current-password"></label>
+      <div class="actions"><button type="button" class="btn" data-close-modal>Close</button><button type="button" class="btn" id="ts-new">New backup codes</button><button type="button" class="btn danger" id="ts-off">Turn off</button></div></form>`, (m) => {
+    const f = () => new FormData($("#ts-form", m));
+    $("#ts-new", m).addEventListener("click", async () => {
+      try {
+        const r = await post("/api/auth/two-step/backup-codes", { code: f().get("code") });
+        m.innerHTML = `<h2>New backup codes</h2><p class="muted small">The old ones don't work any more.</p>${codesHtml(r.backup_codes)}`;
+        wireCopy(m, r.backup_codes);
+      } catch (err) { showError(esc(err.message), 4000); }
+    });
+    $("#ts-off", m).addEventListener("click", async () => {
+      try { await post("/api/auth/two-step/off", { code: f().get("code"), password: f().get("password") }); closeModal(); showToast("Two-step sign-in is off", 2500); }
+      catch (err) { showError(esc(err.message), 4000); }
+    });
   });
 }
 
@@ -212,6 +346,7 @@ function wireAccountMenu() {
   const close = wireDropMenu($("#btn-account"), $("#account-menu"));
   $("#btn-logout").addEventListener("click", async () => { close(); await post("/api/auth/logout").catch(() => {}); location.href = "/"; });   // signed out: back to the home page
   $("#btn-password").addEventListener("click", () => { close(); openPasswordChange(); });
+  $("#btn-two-step").addEventListener("click", () => { close(); openTwoStep(); });
   $("#btn-display-name").addEventListener("click", () => { close(); openDisplayName(); });
   $("#btn-my-players").addEventListener("click", () => { close(); openMyPlayers(); });
 }
@@ -219,6 +354,7 @@ function wireAccountMenu() {
 function showAccountPlayers(user) {
   const names = (user.players || []).map((p) => p.name).join(", ");
   $("#btn-account").title = [user.real_name, names && `In the game: ${names}`].filter(Boolean).join(" · ");
+  $("#btn-two-step").hidden = !["admin", "trusted"].includes(user.role);
   $("#account-role").textContent = `${(ROLE_NAMES.find(([v]) => v === user.role) || [, "Signed in"])[1]} · signed in as ${user.username}`;
   $("#account-name").textContent = user.shown;
   // players are shown by their Minecraft name (picked in My Minecraft accounts), so no display name of their own

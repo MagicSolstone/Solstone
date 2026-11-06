@@ -465,7 +465,7 @@ async function viewAdmin(section = "users") {
         <td><button class="btn sm" type="button" data-link title="Link this account to the people they play as (Java and Bedrock)">${(u.players || []).length ? esc(u.players.map((p) => p.name).join(", ")) : "Link…"}</button>${ptCfg && (u.players || []).length ? `<br><a class="small muted" href="#/manage/playtime" title="Bedtime and screen time: Manage → Play time">⏰ ${esc(ptSummary(ptCfg.rows.find((r) => r.key === `u${u.id}`)))}</a>` : ""}</td>
         <td>${u.role === "admin" ? '<span class="muted">All</span>' : `<button class="btn sm" type="button" data-srv title="Which servers they see">${u.servers ? esc(u.servers.length === 1 ? srvName(u.servers[0]) : `${u.servers.length} servers`) : "All"}</button>`}</td>
         <td>${esc(fmtWhen(u.last_login))}</td>
-        <td class="row-actions"><button class="btn sm" data-reset>Set password</button>${u.id === me.user.id ? "" : `<button class="btn sm danger" data-del>Remove</button>`}</td></tr>`).join("")}
+        <td class="row-actions">${u.two_step ? `<span class="chip" title="Two-step sign-in is on">🔐</span>${u.id === me.user.id ? "" : '<button class="btn sm" data-ts-off title="Lost their phone and backup codes? Turn it off so they can sign in with just the password">Two-step off</button>'}` : ""}<button class="btn sm" data-reset>Set password</button>${u.id === me.user.id ? "" : `<button class="btn sm danger" data-del>Remove</button>`}</td></tr>`).join("")}
       </tbody></table></div>
       <form class="panel add-user" id="add-user" autocomplete="off"><h3>Add a user</h3>
         <div class="add-grid"><label>Username<input class="input" name="username" required pattern="[A-Za-z0-9_.\\-]{2,32}" autocapitalize="off"></label>
@@ -743,6 +743,12 @@ async function viewAdmin(section = "users") {
         catch (err) { showError(esc(err.message), 5000); }
       });
     });
+  }));
+  $$("[data-ts-off]").forEach((b) => b.addEventListener("click", async () => {
+    const tr = b.closest("tr"), name = tr.querySelector("b").textContent;
+    if (!(await confirmBox(`Turn off two-step sign-in for ${name}?`, "They'll sign in with just their password (and can turn it on again). They're signed out everywhere now.", "Turn off"))) return;
+    try { await post(`/api/users/${tr.dataset.uid}/two-step-off`, {}); showToast(`Two-step sign-in is off for ${esc(name)}`, 2500); viewAdmin("users"); }
+    catch (err) { showError(esc(err.message), 4000); }
   }));
   $$("[data-reset]").forEach((b) => b.addEventListener("click", () => {
     const tr = b.closest("tr"), name = tr.querySelector("b").textContent;

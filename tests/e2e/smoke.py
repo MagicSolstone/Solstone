@@ -1450,6 +1450,50 @@ def main() -> int:
             if not pg.locator("#reading .rd-table tbody tr").count() or "Home page" not in rd:
                 problems.append(f"manage: no 'What people read' table with the pages visitors opened: {rd[:120]!r}")
             pg.locator("#reading").scroll_into_view_if_needed(); check(pg, "manage-reading")
+            # two-step sign-in: an admin turns it on (scan, or type the setup key), then signs in with a code
+            sys.path.insert(0, str(HERE.parent.parent))
+            from app.twostep import code_now
+            pg.request.post(f"{base}/api/users", data={"username": "smoke_2fa", "password": "smoke-2fa-pass", "role": "admin"}, headers=H)
+            ts = browser.new_page(viewport={"width": 1280, "height": 860})
+            ts.on("pageerror", lambda e: problems.append(f"{ts.url}: JS error: {e}"))
+            ts.goto(f"{base}/app"); ts.wait_for_timeout(1200)
+            if not ts.locator("#btn-forgot").count():
+                problems.append("sign-in: no 'Forgot your password?'")
+            else:
+                ts.click("#btn-forgot"); ts.wait_for_timeout(300)
+                if not ts.locator("#pr-start").count():
+                    problems.append("sign-in: Forgot your password? didn't open the game-code form")
+                check(ts, "login-forgot")
+                ts.keyboard.press("Escape"); ts.locator("[data-close-modal]").first.click() if ts.locator(".modal [data-close-modal]").count() else None
+            ts.fill("#login-form [name=username]", "smoke_2fa"); ts.fill("#login-form [name=password]", "smoke-2fa-pass")
+            ts.click("#login-form button[type=submit]"); ts.wait_for_timeout(1200)
+            ts.click("#btn-account"); ts.click("#btn-two-step"); ts.wait_for_timeout(400)
+            ts.click("#ts-begin"); ts.wait_for_timeout(600)
+            if not ts.locator(".ts-qr svg").count():
+                problems.append("two-step: no QR code to scan")
+            check(ts, "two-step-qr")
+            secret = (ts.locator(".ts-secret").text_content() or "").replace(" ", "")
+            ts.fill("#ts-confirm [name=code]", code_now(secret)); ts.click("#ts-confirm button[type=submit]"); ts.wait_for_timeout(800)
+            if ts.locator(".ts-codes code").count() != 10:
+                problems.append("two-step: turning it on didn't show 10 backup codes")
+            check(ts, "two-step-backup-codes")
+            ts.close()
+            ts = browser.new_page(viewport={"width": 1280, "height": 860})
+            ts.goto(f"{base}/app"); ts.wait_for_timeout(1200)
+            ts.fill("#login-form [name=username]", "smoke_2fa"); ts.fill("#login-form [name=password]", "smoke-2fa-pass")
+            ts.click("#login-form button[type=submit]"); ts.wait_for_timeout(900)
+            if not ts.locator("#login-form [name=code]").count():
+                problems.append("two-step: signing in didn't ask for the code")
+            else:
+                check(ts, "two-step-login")
+                time.sleep(31)                                   # the code used to turn it on can't be used again: the next one
+                ts.fill("#login-form [name=code]", code_now(secret)); ts.click("#login-form button[type=submit]"); ts.wait_for_timeout(1500)
+                if ts.locator("#login-root:not([hidden])").count():
+                    problems.append(f"two-step: the code didn't sign in ({ts.locator('.login-error').text_content()!r})")
+            ts.close()
+            uid = next(u["id"] for u in pg.request.get(f"{base}/api/users", headers=H).json() if u["username"] == "smoke_2fa")
+            pg.request.post(f"{base}/api/users/{uid}/two-step-off", data={}, headers=H)
+            pg.request.delete(f"{base}/api/users/{uid}", headers=H)
             browser.close()
     except Exception:
         print("\napp log (the test stopped early):\n" + (root / "app.log").read_text()[-4000:])

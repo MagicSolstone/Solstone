@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 import httpx
 
 from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, arena, fishpack, gamemsg, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap, xboxwatch, serverstats, traffic
-from . import reading
+from . import reading, twostep
 from . import servers as S
 from . import settings_store
 from .rcon import RconError
@@ -55,7 +55,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Solstone", version=VERSION, lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
-PUBLIC_API = {"/api/health", "/api/auth/login"}
+PUBLIC_API = {"/api/health", "/api/auth/login", "/api/auth/login/code"}
 
 # Scripts only from Solstone itself (no inline script, so injected HTML can't run code).
 # Inline style attributes are used throughout, so styles allow them. Skins come from
@@ -1770,12 +1770,107 @@ async def _body(request: Request) -> dict:
 async def login(request: Request):
     body = await _body(request)
     typed = str(body.get("username", ""))
-    user, token = await asyncio.to_thread(auth.login, request, typed, str(body.get("password", "")))
-    auth.audit(user, None, "login", f"as {typed} from {auth.client_ip(request)}" if typed.lower() != user.username.lower()
-               else f"from {auth.client_ip(request)}")
+    user = await asyncio.to_thread(auth.check_login, request, typed, str(body.get("password", "")))
+    if twostep.is_on(user.id) and not twostep.is_trusted(user.id, request.cookies.get(twostep.TRUST_COOKIE)):
+        # the password's right; now the code from their app (no session until then)
+        return {"two_step": True, "ticket": twostep.ticket_for(user.id, auth.client_ip(request))}
+    return _signed_in(request, user, typed)
+
+
+def _signed_in(request: Request, user: auth.User, typed: str, how: str = "", trust: bool = False) -> JSONResponse:
+    token = auth.new_session(request, user)
+    auth.audit(user, None, "login", (f"as {typed} " if typed.lower() != user.username.lower() else "") + f"from {auth.client_ip(request)}{how}")
     resp = JSONResponse({"user": _me(user)})
     auth.set_cookie(resp, request, token)
+    if trust:
+        resp.set_cookie(twostep.TRUST_COOKIE, twostep.trust_device(user.id), max_age=twostep.TRUST_DAYS * 86400, httponly=True,
+                        samesite="lax", secure=auth.is_https(request), path="/")
     return resp
+
+
+@app.post("/api/auth/login/code")
+async def login_code(request: Request):
+    """Two-step sign-in: the code from their authenticator app (or a backup code), after the password."""
+    body = await _body(request)
+    if signup._hit(f"2fa:{auth.client_ip(request)}", 30):
+        raise HTTPException(429, "Too many tries. Wait a while and try again")
+    uid = await asyncio.to_thread(twostep.use_ticket, str(body.get("ticket") or ""), str(body.get("code") or ""))
+    user = auth.get_user(uid)
+    return _signed_in(request, user, user.username, " (two-step)", trust=bool(body.get("trust")))
+
+
+@app.post("/api/public/password-reset/start")
+async def password_reset_start(request: Request):
+    """Forgot the password: a code to that player in the game chat (only whoever's playing as them sees it)."""
+    body = await _body(request)
+    await S.registry.refresh()
+    servers = [x for x in S.registry.servers.values() if x.is_java]
+    return await signup.start_reset(request, str(body.get("player") or ""), servers)
+
+
+@app.post("/api/public/password-reset/finish")
+async def password_reset_finish(request: Request):
+    body = await _body(request)
+    u = await asyncio.to_thread(signup.finish_reset, str(body.get("player") or ""), str(body.get("code") or ""),
+                                str(body.get("password") or ""))
+    auth.audit(u, None, "password_reset", f"{u.username}, proved in the game")
+    return {"ok": True, "username": u.username}
+
+
+@app.get("/api/auth/two-step")
+async def two_step_status(request: Request):
+    user = auth.require_user(request)
+    return twostep.status(user.id)
+
+
+@app.post("/api/auth/two-step/begin")
+async def two_step_begin(request: Request):
+    user = auth.require_user(request)
+    return twostep.begin(user, str((site.config() or {}).get("name") or "Solstone"))
+
+
+@app.post("/api/auth/two-step/confirm")
+async def two_step_confirm(request: Request):
+    user = auth.require_user(request)
+    codes = twostep.confirm(user, str((await _body(request)).get("code") or ""))
+    auth.audit(user, None, "two_step_on", user.username)
+    return {"ok": True, "backup_codes": codes, **twostep.status(user.id)}
+
+
+@app.post("/api/auth/two-step/backup-codes")
+async def two_step_backups(request: Request):
+    user = auth.require_user(request)
+    codes = twostep.new_backups(user, str((await _body(request)).get("code") or ""))
+    auth.audit(user, None, "two_step_backup_codes", user.username)
+    return {"backup_codes": codes, **twostep.status(user.id)}
+
+
+@app.post("/api/auth/two-step/off")
+async def two_step_off(request: Request):
+    """Turning it off takes the password and a code: a session left open somewhere can't do it."""
+    user = auth.require_user(request)
+    body = await _body(request)
+    row = db.q("SELECT password_hash FROM users WHERE id=?", (user.id,))[0]
+    if not auth.verify_password(str(body.get("password", "")), row["password_hash"]):
+        raise HTTPException(400, "Your password is wrong")
+    if not twostep.check(user.id, str(body.get("code") or "")):
+        raise HTTPException(400, "That code isn't right")
+    twostep.turn_off(user.id)
+    auth.audit(user, None, "two_step_off", user.username)
+    return twostep.status(user.id)
+
+
+@app.post("/api/users/{uid}/two-step-off")
+async def admin_two_step_off(uid: int, request: Request):
+    """Another admin turns it off for someone who lost their phone and backup codes."""
+    admin = auth.require_admin(request)
+    u = auth.get_user(uid)
+    if not u:
+        raise HTTPException(404, "No such login")
+    twostep.turn_off(uid)
+    db.x("DELETE FROM sessions_auth WHERE user_id=?", (uid,))
+    auth.audit(admin, None, "two_step_off", f"{u.username} (by an admin)")
+    return {"ok": True}
 
 
 @app.post("/api/auth/logout")

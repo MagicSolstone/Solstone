@@ -100,6 +100,19 @@ For start, stop, restart and backup buttons, the Crafty API key needs command pe
 ### 5. Optional: a live map
 Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web map on port 8100. Then in Solstone open **⚙ Server settings** and paste the map address (e.g. `http://192.168.150.10:8100`). It appears on the World tab.
 
+## Getting back in
+
+- **Forgot a password (players and admins with a linked Minecraft account):** *Forgot your password?* on the sign-in page sends a code to that player in the game chat, the same proof as making the account, and they choose a new one.
+- **Two-step sign-in (admins and Trusted):** account menu → *Two-step sign-in*. A code from an authenticator app after the password, ten one-time backup codes, and "trust this device for 30 days". Lost the phone and the backup codes? Another admin turns it off (Manage → Users → *Two-step off*), or the server does.
+- **From the server itself** (an Unraid terminal or the container's console). Nobody on the internet can use these:
+
+  ```
+  docker exec -it solstone python -m app.cli list
+  docker exec -it solstone python -m app.cli reset-password <login>   # prints a new password
+  docker exec -it solstone python -m app.cli two-step-off <login>
+  docker exec -it solstone python -m app.cli make-admin <login>       # promote a login, or make a new admin
+  ```
+
 ## Environment variables
 
 | Variable | Default | Purpose |
