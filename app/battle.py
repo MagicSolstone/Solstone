@@ -63,6 +63,7 @@ async def ready(srv, r: dict, names: list[str], tag: str) -> list[str]:
     for n in playing:
         r["players"][n] = {"uuid": ids[n], "score": 0, "deaths": 0, "kills": 0}
         await kits.give_kit(srv, ids[n], r["kit"])
+        await kits.move_spawn(srv, ids[n], n, spawn_for(r, n), r["dim"])   # dying: back in here, not home first
         await _rcon(srv, f"gamemode {'adventure' if r.get('no_dig', True) else 'survival'} {ids[n]}")
         await _rcon(srv, f"effect give {ids[n]} minecraft:instant_health 1 10 true")
         await _rcon(srv, f"effect give {ids[n]} minecraft:saturation 1 10 true")

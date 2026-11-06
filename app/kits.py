@@ -366,7 +366,35 @@ async def _restore(srv, d: dict, s: dict, v: dict, move: bool) -> bool:
     await _rcon(srv, f"gamemode {s.get('gm') or 'survival'} {uuid}")
     await _rcon(srv, f"effect give {uuid} minecraft:instant_health 1 10 true")
     await _rcon(srv, f"effect give {uuid} minecraft:saturation 1 10 true")
+    if s.get("spawn_moved"):
+        await _put_spawn_back(srv, s)                    # their own bed (or the world's spawn) again
     return True
+
+
+async def move_spawn(srv, uuid: str, name: str, spot: dict, dim: str) -> None:
+    """For a fight: dying brings them back in the game, not home to their bed first (and then back: a blink). Their own
+    respawn point is written down with their things, and put back when they're home (_put_spawn_back)."""
+    async with _lock:
+        d = _load()
+        s = d["stash"].get(f"{srv.id}:{uuid}")
+        if not s or s.get("restored"):
+            return                                       # (their things aren't in the vault: nothing to put it back with)
+        if not s.get("spawn_moved"):
+            live = await S.live_player(srv, name)
+            s["respawn"] = (live or {}).get("respawn")   # None: they hadn't one of their own (the world's spawn)
+            s["spawn_moved"] = True
+            _save(d)
+    await _rcon(srv, f"execute in {dim} run spawnpoint {uuid} {int(spot['x'])} {int(spot['y'])} {int(spot['z'])}")
+
+
+async def _put_spawn_back(srv, s: dict) -> None:
+    r = s.get("respawn")
+    if not r:
+        w = await asyncio.to_thread(S.world_info, srv, False)
+        r = w.get("spawn")
+    if r:
+        dim = r.get("dimension") or "minecraft:overworld"
+        await _rcon(srv, f"execute in {dim} run spawnpoint {s['uuid']} {int(r['x'])} {int(r['y'])} {int(r['z'])}")
 
 
 async def _drop_old_pocket(srv, d: dict, s: dict, v: dict) -> None:

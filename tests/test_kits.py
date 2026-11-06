@@ -462,3 +462,15 @@ def test_something_dropped_mid_game_goes_straight_back():
     kit = [c for c in said if "solkit:1b" in c]
     assert "PickupDelay:0s" in kit[0] and "run tp @s @p[distance=..48,gamemode=!spectator]" in kit[1]
     assert "unless entity @p[distance=..48" in kit[2] and kit[2].endswith("run kill @s")           # nobody near: gone
+
+
+def test_dying_in_a_fight_brings_you_back_in_it_and_your_bed_is_yours_again_after(game, monkeypatch):
+    async def live(srv, name):
+        return {"respawn": {"x": 120, "y": 70, "z": -40, "dimension": "minecraft:overworld"}}     # their bed
+    monkeypatch.setattr(kits.S, "live_player", live)
+    asyncio.run(kits.stash(game, {"Alex": U1}, "g-spawn"))
+    asyncio.run(kits.move_spawn(game, U1, "Alex", {"x": 5, "y": 64, "z": 9}, "minecraft:overworld"))
+    assert f"execute in minecraft:overworld run spawnpoint {U1} 5 64 9" in game.said                 # respawn: in the arena
+    game.said.clear()
+    assert asyncio.run(kits.give_back(game, U1))
+    assert f"execute in minecraft:overworld run spawnpoint {U1} 120 70 -40" in game.said             # their own bed again

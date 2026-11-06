@@ -164,12 +164,27 @@ async def start(srv, r: dict) -> None:
     await battle._rcon(srv, f"scoreboard objectives add {TAG}_k minecraft.custom:minecraft.mob_kills")
     for p in r["players"].values():
         await battle._rcon(srv, f"scoreboard players set {p['uuid']} {TAG}_k 0")
+    await _clear_strays(srv, r)                      # whatever wandered in before it started
     for n in r["players"]:
         await battle.send_in(srv, r, n)
     r["state"], r["wave"], r["ticks"], r["next_wave"] = "running", 0, 0, time.time() + 5
     how = "Fight together and survive every wave" if r["coop"] else "Most monsters defeated wins"
     await _say(srv, [("★ ", "gold"), ("Mob arena! ", "yellow"), (f"{len(r['waves'])} waves. {how}. ", None), (", ".join(r["players"]), "aqua")],
                "Mob arena!", f"{len(r['waves'])} waves")
+
+
+# Monsters that spawn by themselves (the arena is held at midnight, so they do): cleared from inside it, so a wave
+# is only ever the arena's own. Never animals, pets or villagers: only these.
+HOSTILE = ("zombie", "zombie_villager", "husk", "drowned", "skeleton", "stray", "bogged", "creeper", "spider",
+           "cave_spider", "witch", "enderman", "slime", "phantom", "silverfish", "endermite", "pillager", "vindicator",
+           "evoker", "vex", "ravager", "breeze", "creaking", "parched", "camel_husk", "zombie_nautilus")
+
+
+async def _clear_strays(srv, r: dict) -> None:
+    c, tag = r["zone"], _mob_tag(r)
+    for t in HOSTILE:
+        await battle._rcon(srv, f"execute in {r['dim']} run kill @e[type=minecraft:{t},tag=!{tag},"
+                                f"x={c['x']},y={c['y']},z={c['z']},distance=..{c['r'] + 8}]")
 
 
 def _mob_tag(r: dict) -> str:
@@ -274,6 +289,8 @@ async def tick(srv, r: dict) -> None:
     where = {k.lower(): v for k, v in (await _everyone(srv)).items()}
     await battle.left_and_back(srv, r, where)
     await battle.tidy_ground(srv, r, monster_drops=True)
+    if r["ticks"] % 5 == 1:
+        await _clear_strays(srv, r)                      # (only the arena's own monsters in a wave)
     await battle.keep_out(srv, r, where)                 # people not playing: moved just outside the arena
     died = await battle.deaths(srv, r, TAG, now)
     if r["coop"]:
