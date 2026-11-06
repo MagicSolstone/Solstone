@@ -1,3 +1,10 @@
+# Solstone 1.15.32
+
+- **Security: the map only takes real dimension names.** The world map's dimension (overworld, nether, a mod's own) is now checked to be a dimension's name, so it can never point outside the world's folder. Only signed-in people could reach it, and it could only read map files, but now it can't at all.
+- **Forgot your password?** On the sign-in page. It works like making an account: type your Minecraft name, get a code in the game chat (only whoever's playing as you sees it), and choose a new password. You're signed out everywhere else and signed in with the new one.
+- **Two-step sign-in for admins (and Trusted, if they like).** Account menu → **🔐 Two-step sign-in**: scan the QR code with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…), type its code, and keep the ten one-time backup codes. After that, signing in asks for the 6-digit code after the password, with **Trust this device for 30 days**. Lost the phone? A backup code works; another admin can turn it off for you (Manage → Users → **Two-step off**); or from the server itself.
+- **Getting back in from the server.** On Unraid (a terminal or the container's console): `docker exec -it solstone python -m app.cli reset-password <login>` prints a new password; `two-step-off <login>` turns two-step off; `make-admin <login>` makes a login an admin (or a new admin login); `list` shows them all. Nobody on the internet can use these, and each is in the activity log.
+
 # Solstone 1.15.31
 
 - **Ask to join lives on the home page only.** The form isn't under the join guide any more. Every "Ask to join" link (in the guide, in posts, and old links to `/guides/join#ask`) goes to the home page and opens the Ask to join pop-up there, where the request's progress shows afterwards.
