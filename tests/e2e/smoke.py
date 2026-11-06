@@ -743,7 +743,7 @@ def main() -> int:
                 route.fulfill(json=d)
             pg.route(f"**/api/servers/{sid}/control", safely(xbox_on))
             pg.goto(f"{base}/app#/s/{sid}/control"); pg.reload(); pg.wait_for_timeout(1200)
-            if "Online" not in (pg.locator(".ctl-xbox").text_content() if pg.locator(".ctl-xbox").count() else "") \
+            if "Gamertag online" not in (pg.locator(".ctl-xbox").text_content() if pg.locator(".ctl-xbox").count() else "") \
                     or "Reconnected 4 times" not in pg.locator(".ctl-xbox").text_content():
                 problems.append("control: no Xbox friend panel (working or not, and how often it reconnected)")
             check(pg, "control-xbox")
@@ -940,8 +940,8 @@ def main() -> int:
             if "phones, tablets and Windows" not in (card.locator(".hp-alt summary").text_content() if card.locator(".hp-alt summary").count() else "") \
                     or card.locator('a[href^="/post/"]').count():
                 problems.append("home: Bedrock's 'add it as a server' doesn't say it's for phones, tablets and Windows (or a console link shows with no guide for it)")
-            if "Online" not in (card.locator(".hp-xbox-st.ok").text_content() if card.locator(".hp-xbox-st.ok").count() else ""):
-                problems.append("home: no 'Online' line for the Xbox friend under the gamertag")
+            if "Gamertag online" not in (card.locator(".hp-xbox-st.ok").text_content() if card.locator(".hp-xbox-st.ok").count() else ""):
+                problems.append("home: no 'Gamertag online' line for the Xbox friend under the gamertag")
             card.scroll_into_view_if_needed(); check(anon, "site-home-join-editions")
             check(anon, "site-home-two-servers")
             anon.unroute("**/api/public/site")

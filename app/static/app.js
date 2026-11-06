@@ -1565,12 +1565,6 @@ async function viewWorld(sid) {
         <dt>Total ticks</dt><dd>${fmtDuration(w.game_time)} of world time</dd>
       </dl></div></div>
     <section class="section"><div class="section-head"><h2>Map</h2></div>${map}</section>
-    <section class="section"><div class="section-head"><h2>Where everyone is</h2><span class="muted">Live for players online with RCON, otherwise from their last save</span></div>
-      ${located.length ? `<div class="where">${located.map((p) => `<a class="where-row" ${!isPlayer() || isMine(p.uuid) ? `href="#/s/${encodeURIComponent(sid)}/p/${p.uuid}"` : ""}>${miniHead(p, 32)}
-        <div><b>${esc(p.name)}</b> ${p.online ? '<span class="live-tag" style="font-size:.85rem"><span class="status-dot on"></span>online</span>' : `<span class="faint" style="font-size:.85rem">${esc(fmtAgo(p.last_seen))}</span>`}
-          <div class="coords">${Math.round(p.position.x)}, ${Math.round(p.position.y)}, ${Math.round(p.position.z)}</div></div>
-        <span class="dim-tag ${dimClass(p.position.dimension)}">${esc(dimName(p.position.dimension))}</span></a>`).join("")}</div>` : `<div class="empty"><p>No player positions saved yet.</p></div>`}
-    </section>
     <section class="section"><div class="section-head"><h2>Explored</h2><span class="muted">Chunks generated in each dimension</span>${isAdmin() ? '<button class="btn sm" id="btn-mapcheck" style="margin-left:auto">🔍 Check the map drawing</button>' : ""}</div>
       <div class="panel dims">${w.dimensions.map((d) => `<div class="dim-bar"><span class="dim-tag ${dimClass(d.id)}" style="justify-self:start">${esc(dimName(d.id))}</span>
         <div class="bar-bg"><span style="width:${(d.chunks / maxChunks) * 100}%"></span></div><span class="num">${fmtNum(d.chunks)}</span></div>`).join("") || '<p class="muted">No region files found.</p>'}</div>

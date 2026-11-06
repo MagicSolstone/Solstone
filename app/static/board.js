@@ -133,11 +133,11 @@ function edIcon(kind, size = 16) {
 const isBedrockPlayer = (p) => !!(p?.bedrock || p?.name?.startsWith(".") || /^00000000-0000-0000-000/.test(p?.uuid || ""));
 // Joining through the Xbox friend (MCXboxBroadcast): is it working right now? (xboxwatch.py)
 const XBOX_STATE = {
-  ok: ["ok", "Online", "friends can join right now"],
-  reconnecting: ["wait", "Reconnecting", "usually back in a few seconds"],
-  down: ["down", "Not working right now", "use the server address below for now"],
-  off: ["off", "Offline", "the server is off right now"],
-  unknown: ["off", "Checking", "waiting to hear from the friend account"],
+  ok: ["ok", "Gamertag online", "friends can join through it right now"],
+  reconnecting: ["wait", "Gamertag reconnecting", "usually back in a few seconds"],
+  down: ["down", "Gamertag not working right now", "use the server address below for now"],
+  off: ["off", "Gamertag offline", "the server is off right now"],
+  unknown: ["off", "Checking the gamertag", "waiting to hear from the friend account"],
 };
 function xboxStateHtml(x, cls = "hp-xbox-st") {
   if (!x) return "";
