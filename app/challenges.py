@@ -63,6 +63,11 @@ def _load() -> dict:
     return {"items": list(d.get("items") or []), "gifts": list(d.get("gifts") or [])}
 
 
+def rods_out(sid: str) -> bool:
+    """A contest on this server whose players are fishing with its rods right now."""
+    return any(c.get("server") == sid and c["state"] == "running" and c.get("rodded") for c in _load()["items"])
+
+
 def _save(d: dict) -> None:
     done = [c for c in d["items"] if c["state"] in ("done", "skipped", "cancelled")]
     keep = {c["id"] for c in sorted(done, key=lambda c: -(c.get("ends_at") or c["start"]))[:KEEP_DONE]}

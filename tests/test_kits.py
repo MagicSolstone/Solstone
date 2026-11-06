@@ -430,4 +430,21 @@ def test_the_arena_floor_doesnt_fill_up_with_monster_drops():
     assert any("kill @e[type=minecraft:item,x=10,y=64,z=-5,distance=..27]" in c for c in said)
     said.clear()
     asyncio.run(battle.tidy_ground(Srv(), {**r, "ticks": 6}, monster_drops=False))
-    assert len(said) == 1                                                                # King of the Hill: just the kit
+    assert len(said) == len(kits.GAME_TAGS) and not any("distance=" in c for c in said)   # King of the Hill: just games' things
+    assert {t for t in kits.GAME_TAGS if any(f"{t}:1b" in c for c in said)} == set(kits.GAME_TAGS)
+
+
+def test_every_games_things_not_just_the_kit(game, monkeypatch):
+    """Archery's match bow and arrow, spleef's shovel, and (when no contest is on) a contest's rod: the same."""
+    from app import challenges
+    game.slots.setdefault("Steve", {})
+    monkeypatch.setattr(challenges, "rods_out", lambda sid: False)
+    game.said.clear()
+    asyncio.run(kits.no_stray_kit(game, ["Steve"]))
+    for tag in ("solkit", "solmatch", "solspleef", "solrod"):
+        assert any(c.startswith("kill @e[type=minecraft:item") and f"{tag}:1b" in c for c in game.said), tag
+    assert "clear Steve *[minecraft:custom_data={solmatch:1b}]" in game.said
+    monkeypatch.setattr(challenges, "rods_out", lambda sid: True)                       # a fishing contest is on
+    game.said.clear()
+    asyncio.run(kits.no_stray_kit(game, ["Steve"]))
+    assert not any("solrod" in c for c in game.said)

@@ -488,11 +488,21 @@ def send_home(srv, kept: dict[str, str], game_id: str, secs: int = HOME_SECS, af
     return task
 
 
+# Every mark a game puts on what it hands out: kits (arena, King of the Hill, races' elytra, rockets and boats, the
+# treasure compass), archery's match bow and arrow, spleef's shovel. Only ever on a game's things, never anyone's own.
+GAME_TAGS = (KIT_TAG, "solmatch", "solspleef")
+
+
+def _ground(tag: str) -> str:
+    return f'kill @e[type=minecraft:item,nbt={{Item:{{components:{{"minecraft:custom_data":{{{tag}:1b}}}}}}}}]'
+
+
 async def sweep(srv) -> None:
     """The game's things left lying about go: thrown down in a game (to pick up after), or anywhere at all. A kit's
     item on the ground is never meant to be there (dying keeps it, with keep-inventory on for games), so this runs
     every second of a fight, and on every check of the server besides. Nothing of anyone's own: only items marked as a kit's."""
-    await _rcon(srv, f'kill @e[type=minecraft:item,nbt={{Item:{{components:{{"minecraft:custom_data":{{{KIT_TAG}:1b}}}}}}}}]')
+    for tag in GAME_TAGS:
+        await _rcon(srv, _ground(tag))
 
 
 async def _home(srv, kept: dict[str, str], game_id: str, secs: int, after) -> None:
@@ -535,10 +545,14 @@ async def no_stray_kit(srv, online: list[str]) -> None:
     """Every poll: a game's things never stay with anyone after it. Lying on the ground: gone. In the hands of
     someone who isn't in a game (dropped in the game, then picked up after walking out, say): taken back."""
     await sweep(srv)
+    from . import challenges
+    if not challenges.rods_out(srv.id):                # a fishing contest's rods: not while one's on (they're fishing with them)
+        await _rcon(srv, _ground("solrod"))
     playing = {s["name"].lower() for s in waiting(srv.id) if not s.get("restored")}
     for n in online:
         if n.lower() not in playing:
-            await _rcon(srv, f"clear {n} {KIT_MATCH}")
+            for tag in GAME_TAGS:
+                await _rcon(srv, f"clear {n} *[minecraft:custom_data={{{tag}:1b}}]")
 
 
 # ------------------------------------------------------------------ the kits themselves
