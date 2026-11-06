@@ -741,3 +741,48 @@ def test_an_old_saved_status_isnt_shown_without_trying_for_a_fresh_one(monkeypat
     monkeypatch.setattr(main, "_site_cache", (time.monotonic() - 3 * 3600, [{"id": "s", "trend": "old"}]))
     got = asyncio.run(main._site_servers())
     assert got[0]["trend"] == "new" and calls
+
+
+def test_a_whole_machine_restart_counts_as_down(client):
+    """Unraid rebooted: Solstone was off too, so its checks have a gap. The server's log shows the game started again
+    in that gap: it was down, not just unwatched (the popup showed a green day)."""
+    import time
+
+    from app import db, main
+    sid, now = "reboot-test", time.time()
+    db.x("DELETE FROM metrics WHERE server_id=?", (sid,))
+    db.x("DELETE FROM events WHERE server_id=?", (sid,))
+    try:
+        off, back = now - 7200, now - 7200 + 2400                       # the machine off for 40 minutes, 2 hours ago
+        rows, t = [], now - 2 * 86400
+        while t < now:
+            if not off < t < back:
+                rows.append((sid, t, 1))
+            t += 30
+        with db._lock:
+            db.conn().executemany("INSERT INTO metrics(server_id, ts, running, players) VALUES (?,?,?,0)", rows)
+        started = back - 120                                            # the game came up 2 minutes before Solstone
+        db.add_event(sid, started, "server", "Server started")
+        u = main._history(sid, "uptime", 7, now)
+        d = [o for o in u["outages"] if o["kind"] == "down"]
+        assert len(d) == 1 and abs(d[0]["to"] - started) < 1 and d[0]["secs"] > 2000
+        assert not [o for o in u["outages"] if o["kind"] in ("unwatched", "restart")]
+        assert sum(b["down_secs"] for b in u["bars"]) > 2000                # the day isn't all green
+
+        # Solstone came back first and found the game still starting (9:11 off, 9:35 Solstone back, 9:37 game up)
+        db.x("DELETE FROM events WHERE server_id=?", (sid,))
+        with db._lock:
+            db.conn().executemany("INSERT INTO metrics(server_id, ts, running, players) VALUES (?,?,0,0)",
+                                  [(sid, back + 5 + 30 * i) for i in range(4)])
+        db.x("UPDATE metrics SET running=0 WHERE server_id=? AND ts>=? AND ts<?", (sid, back, back + 130))
+        db.add_event(sid, back + 130, "server", "Server started")
+        u = main._history(sid, "uptime", 7, now)
+        assert [o["kind"] for o in u["outages"]] == ["down"] and abs(u["outages"][0]["from"] - off) < 31
+        assert u["outages"][0]["secs"] > 2400 and sum(b["down_secs"] for b in u["bars"]) > 2400
+        db.x("DELETE FROM metrics WHERE server_id=? AND running=0", (sid,))
+        db.x("DELETE FROM events WHERE server_id=?", (sid,))             # only Solstone was off (an update): not counted
+        u = main._history(sid, "uptime", 7, now)
+        assert [o["kind"] for o in u["outages"]] == ["unwatched"] and not sum(b["down_secs"] for b in u["bars"])
+    finally:
+        db.x("DELETE FROM metrics WHERE server_id=?", (sid,))
+        db.x("DELETE FROM events WHERE server_id=?", (sid,))

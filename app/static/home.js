@@ -259,7 +259,7 @@ function uptimeView(d) {
     <div class="ut-legend muted small"><span><i class="ut-bar good"></i> All day</span><span><i class="ut-bar ok"></i> Down under 30 min</span><span><i class="ut-bar bad"></i> Down 30 min or more</span><span><i class="ut-bar none"></i> Not watched</span></div>
     <h3 class="hist-h">Times it went down</h3>
     ${rows ? `<ul class="ut-outs">${rows}</ul>` : `<p class="muted">✅ Not once in the last ${esc(HIST_SPANS.find((x) => x[0] === d.days)[1])}.</p>`}
-    <p class="muted small">🔁 A restart is back within 5 minutes (like the nightly one). ⚪ Not watched: Solstone itself was off or updating, so it doesn't count against the server.</p>`;
+    <p class="muted small">🔁 A restart is back within 5 minutes (like the nightly one). ⚪ Not watched: Solstone itself was off or updating while the server kept going, so it doesn't count against the server. If the whole machine restarted (the server started again meanwhile), that's counted as down.</p>`;
 }
 let histAsk = 0;                                   // (only the last one asked for is shown)
 async function openHistory(sid, what, name, days = what === "uptime" ? 30 : 1) {

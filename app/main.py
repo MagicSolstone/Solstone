@@ -592,9 +592,23 @@ def _history(sid: str, what: str, days: int, now: float | None = None) -> dict:
         n, up = per_day.get(day.isoformat(), [0, 0])
         bars.append({"day": day.isoformat(), "up": round(up / n, 4) if n else None})
     bars = bars[-days:]
+    # restarts the server's log noted (a quick one finishes between two checks, so the checks never saw it down)
+    evs = db.q("SELECT ts, message FROM events WHERE server_id=? AND type='server' AND ts>=? ORDER BY ts", (sid, start - 900))
     downs, prev, down_at = [], None, None
     for r in rows:
         if prev is not None and r["ts"] - prev["ts"] > CHECK_GAP:      # Solstone wasn't running (or couldn't look)
+            # Was the game server down too? (The whole machine restarted.) It started again in the gap, or Solstone
+            # found it still down: down from Solstone's last look (or its stop, if the log saw one) until it started.
+            began = [e["ts"] for e in evs if e["message"] in db.STARTS and prev["ts"] < e["ts"] <= r["ts"] + 60]
+            if began or not r["running"]:
+                if down_at is None:
+                    stops = [e["ts"] for e in evs if e["message"] in db.STOPS and prev["ts"] - 60 <= e["ts"] <= (began or [r["ts"]])[0]]
+                    down_at = stops[0] if stops else prev["ts"]
+                if began and r["running"]:
+                    downs.append({"from": down_at, "to": began[0], "kind": "down"})
+                    down_at = None
+                prev = r
+                continue
             if down_at is not None:
                 downs.append({"from": down_at, "to": prev["ts"], "kind": "down"})
                 down_at = None
@@ -607,8 +621,6 @@ def _history(sid: str, what: str, days: int, now: float | None = None) -> dict:
         prev = r
     if down_at is not None:
         downs.append({"from": down_at, "to": None, "kind": "down"})          # down right now
-    # restarts the server's log noted (a quick one finishes between two checks, so the checks never saw it down)
-    evs = db.q("SELECT ts, message FROM events WHERE server_id=? AND type='server' AND ts>=? ORDER BY ts", (sid, start - 900))
     stop_at = None
     for e in evs:
         if e["message"] in db.STOPS:
