@@ -1,3 +1,9 @@
+# Solstone 1.15.35
+
+- **Fixed: a quick restart didn't reset "Up for".** Solstone checks each server every 30 seconds, and a restart like the nightly one can be over between two checks, so it never saw the server down: "Up for" kept counting from days before, and the uptime history showed it steady. Now the server's own log tells it ("Stopping server", then "Done"), so "Up for" starts again from the restart, and the uptime history lists it as 🔁 Restarted, with how long it took. A start or stop that both the log and Crafty notice is written down once.
+- **The Xbox friend's status says what it's about:** "Gamertag online · friends can join through it right now" (and Gamertag reconnecting, not working right now, offline), instead of a plain "Online" that read like the server's own status. On the home page's join card and the server's Control page.
+- **The World tab is tidier:** the "Where everyone is" list (names and coordinates) is gone. The map above it still shows everyone where they are, live.
+
 # Solstone 1.15.34
 
 - **Dropped a game's thing? It comes straight back.** During any game (mob arena, King of the Hill, races, treasure hunt, archery, spleef, hide and seek), an item the game handed out that's dropped, by a slip of the Q key or on purpose, is handed straight back to whoever's nearest (normally whoever dropped it) within a second. A sword mid-fight or an elytra mid-race isn't lost, and nothing's left lying about to pick up later. With nobody near (thrown off a cliff), it's simply gone.
