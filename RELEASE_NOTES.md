@@ -1,3 +1,11 @@
+# Solstone 1.15.36
+
+- **Dying in the mob arena or King of the Hill keeps you there.** You used to respawn at your bed at home for a moment, then get moved back to watch from above the arena: a jarring blink. Now everyone's respawn point is in the game while it's on, so dying brings you straight back there. Your own bed (or respawn anchor) is put back when you're home with your things.
+- **Only the arena's own monsters.** The arena is held at midnight, so ordinary monsters can spawn in it and get mixed up with a wave. Monsters that wandered in are now cleared when the arena starts and every few seconds while it's on (only hostile monsters inside the arena: never animals, pets or villagers, and nothing outside it).
+- **/trigger leave takes you out of a game you're in.** In the middle of a race, the mob arena, King of the Hill, a treasure hunt, hide and seek, archery or spleef, `/trigger leave` now takes you out and sends you home with your own things (it used to only take you off events that hadn't started). Everyone else plays on.
+- **Every game checks what it handed out.** A race's elytra, rockets and boat, archery's match bow and arrow, spleef's shovel and the treasure compass are now checked after they're given, like the arena's kit: anything that didn't arrive is given again (worn things that won't go on go in the inventory), and the game's reply goes in Solstone's log ("…'s things for the game arrived without …").
+- **No more zoomed-in view at the start line.** Racers were held still by slowing them to a stop, which narrows the view on Java (the same "zoom" as a slowness potion). Now each sits on an invisible seat until GO, and is put back on if they hop off. Their view is normal.
+
 # Solstone 1.15.35
 
 - **Fixed: a quick restart didn't reset "Up for".** Solstone checks each server every 30 seconds, and a restart like the nightly one can be over between two checks, so it never saw the server down: "Up for" kept counting from days before, and the uptime history showed it steady. Now the server's own log tells it ("Stopping server", then "Done"), so "Up for" starts again from the restart, and the uptime history lists it as 🔁 Restarted, with how long it took. A start or stop that both the log and Crafty notice is written down once.
