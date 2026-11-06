@@ -1,3 +1,10 @@
+# Solstone 1.15.34
+
+- **Dropped a game's thing? It comes straight back.** During any game (mob arena, King of the Hill, races, treasure hunt, archery, spleef, hide and seek), an item the game handed out that's dropped, by a slip of the Q key or on purpose, is handed straight back to whoever's nearest (normally whoever dropped it) within a second. A sword mid-fight or an elytra mid-race isn't lost, and nothing's left lying about to pick up later. With nobody near (thrown off a cliff), it's simply gone.
+- **A game's things can't be kept afterwards.** When a game ends, any of its things left on the ground are cleared; and on every check of the server, any lying about are cleared and any in the hands of someone who isn't in a game are taken back. Dying still keeps the kit: games switch keep-inventory on.
+- **Every game's things, not just the kit.** Archery's match bow and arrow, spleef's shovel, races' elytra, rockets and boats, the treasure compass, and a fishing contest's rods once no contest is on (each game marks what it hands out; nobody's own things are ever touched).
+- **The mob arena's floor stays clear.** What the monsters drop in the arena is cleared every few seconds and once more at the end, so it doesn't pile up (anything picked up in a game is left behind at the end anyway). Only inside the arena: the rest of the world's drops are untouched.
+
 # Solstone 1.15.33
 
 - **Wider race checkpoints.** Each point of a course can now count from up to 40 blocks away (it was 16), and there's a new **Every point: reach within … blocks · Set for all** above the list of points, so a whole course changes in one go. Wide ones are easier to fly through by elytra (10 to 20 is a good start). New points take the size of the point before them. The glowing posts round each checkpoint follow its size, so it's plain how close counts.
