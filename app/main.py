@@ -513,15 +513,24 @@ async def _world_now(srv, online: int) -> dict | None:
             "as_of": w.get("as_of") or time.time(), "ticking": online > 0}
 
 
+SITE_STALE = 60                 # seconds: an older saved status isn't shown without trying for a fresh one first
+
+
 async def _site_servers() -> list:
     """The status for the home page without making anyone wait: the last check (up to 15 s old) straight away, a
-    fresh one started in the background when it's older; only the very first visitor waits, and at most 3 s."""
+    fresh one started in the background when it's older. Older than a minute (nobody's looked in a while), it waits
+    for the fresh one (at most 3 s): an hours-old copy once showed old graphs beside today's numbers."""
     global _site_task
-    fresh = _site_cache and time.monotonic() - _site_cache[0] < 15
-    if not fresh and (_site_task is None or _site_task.done()):
+    age = time.monotonic() - _site_cache[0] if _site_cache else None
+    if (age is None or age >= 15) and (_site_task is None or _site_task.done()):
         _site_task = asyncio.get_running_loop().create_task(_site_status())
-    if _site_cache:
+    if _site_cache and age < SITE_STALE:
         return _site_cache[1]
+    if _site_cache:
+        try:
+            return await asyncio.wait_for(asyncio.shield(_site_task), 3)
+        except Exception:
+            return _site_cache[1]
     try:
         return await asyncio.wait_for(asyncio.shield(_site_task), 3)
     except Exception:

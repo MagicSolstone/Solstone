@@ -723,3 +723,21 @@ def test_a_quick_restart_between_checks_still_counts(client):
     finally:
         db.x("DELETE FROM metrics WHERE server_id=?", (sid,))
         db.x("DELETE FROM events WHERE server_id=?", (sid,))
+
+
+def test_an_old_saved_status_isnt_shown_without_trying_for_a_fresh_one(monkeypatch):
+    """Nobody had looked for hours: the home page once showed that old copy's graphs beside today's numbers."""
+    import asyncio
+    import time
+
+    from app import main
+    calls = []
+
+    async def fresh_status():
+        calls.append(1)
+        return [{"id": "s", "trend": "new"}]
+    monkeypatch.setattr(main, "_site_status", fresh_status)
+    monkeypatch.setattr(main, "_site_task", None)
+    monkeypatch.setattr(main, "_site_cache", (time.monotonic() - 3 * 3600, [{"id": "s", "trend": "old"}]))
+    got = asyncio.run(main._site_servers())
+    assert got[0]["trend"] == "new" and calls

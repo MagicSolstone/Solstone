@@ -602,7 +602,10 @@ async function route() {
   const main = $("#hp-main");
   let nav = "home", html;
   try {
-    if (path === "/") html = await home();
+    if (path === "/") {                              // back to Home from another page: today's status, not the first one
+      if (Date.now() - (hp.siteAt || 0) > 15000) { hp.site = await getJSON("/api/public/site").catch(() => hp.site); hp.siteAt = Date.now(); }
+      html = await home();
+    }
     else if (path.startsWith("/post/")) { nav = ""; html = await article(decodeURIComponent(path.slice(6))); }
     else if (path === "/guides/join" && location.hash === "#ask") { history.replaceState(null, "", "/#ask"); route(); return; }   // (the form's old place)
     else if (path === "/guides" || path === "/faq" || path === "/news") { history.replaceState(null, "", { "/faq": "/help#faq", "/news": "/help#news" }[path] || "/help"); route(); return; }   // the old pages
@@ -662,7 +665,15 @@ document.addEventListener("visibilitychange", () => {
 });
 addEventListener("pagehide", readLeave);
 
-// The status panel keeps itself current while the home page is open (the server is only asked every 15 s).
+// The status panel keeps itself current while the home page is open (the server is only asked every 15 s), and
+// straight away when the tab comes back into view (a tab left in the background skips its updates meanwhile).
+async function refreshStatus() {
+  const el = document.getElementById("hp-status");
+  if (!el || document.hidden) return;
+  try { hp.site = await getJSON("/api/public/site"); hp.siteAt = Date.now(); const fresh = statusPanel(hp.site); if (fresh) el.outerHTML = fresh; } catch { /* next time */ }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshStatus(); });
+addEventListener("pageshow", (e) => { if (e.persisted) refreshStatus(); });     // back to a page the browser kept
 setInterval(async () => {
   const el = document.getElementById("hp-status");
   if (!el || document.hidden) return;
@@ -711,7 +722,7 @@ document.addEventListener("toggle", async (e) => {
 }, true);
 
 document.addEventListener("DOMContentLoaded", async () => {
-  try { hp.site = await getJSON("/api/public/site"); } catch { hp.site = { name: "Solstone", servers: [], live: false }; }
+  try { hp.site = await getJSON("/api/public/site"); hp.siteAt = Date.now(); } catch { hp.site = { name: "Solstone", servers: [], live: false }; }
   $("#hp-name").textContent = $("#hp-foot-name").textContent = hp.site.name;
   if (hp.site.contact) {                                // the footer's Contact: an email link, on every page
     const a = $("#hp-foot-contact a"); a.href = `mailto:${hp.site.contact}`; a.title = hp.site.contact; $("#hp-foot-contact").hidden = false;
