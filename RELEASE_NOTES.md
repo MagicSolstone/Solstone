@@ -1,3 +1,8 @@
+# Solstone 1.15.33
+
+- **Wider race checkpoints.** Each point of a course can now count from up to 40 blocks away (it was 16), and there's a new **Every point: reach within … blocks · Set for all** above the list of points, so a whole course changes in one go. Wide ones are easier to fly through by elytra (10 to 20 is a good start). New points take the size of the point before them. The glowing posts round each checkpoint follow its size, so it's plain how close counts.
+- **Starting a game: no one sits out for picking something up.** When a game starts, everyone's things are copied into the vault and checked. If someone picked something up (or dropped something) while it was being copied, the copy didn't match and they sat that game out with their things untouched. Now the copy is simply made again (up to three tries), so they still play. Players also see **"Keeping your things safe… hold still a moment"** while it happens.
+
 # Solstone 1.15.32
 
 - **Security: the map only takes real dimension names.** The world map's dimension (overworld, nether, a mod's own) is now checked to be a dimension's name, so it can never point outside the world's folder. Only signed-in people could reach it, and it could only read map files, but now it can't at all.
