@@ -1,3 +1,7 @@
+# Solstone 1.15.38
+
+- **Fixed: a whole-machine restart showed as a green day in the uptime popup.** When Unraid restarts, Solstone is off too, so its checks have a gap, and a gap was always called "Not watched" and never counted against the server. Now, if the game server started again during that gap (its log says so), or Solstone came back to find it still starting, it's counted as down: one outage from Solstone's last look until the server was back, and that day's bar turns yellow or red. A gap where only Solstone was off (an update) while the server kept going is still "Not watched", as before.
+
 # Solstone 1.15.37
 
 - **Fixed: the home page's little graphs could be hours old.** To be quick, the home page showed the last saved status straight away and fetched a fresh one in the background, but when nobody had looked in a while, that saved copy was hours old, and its graphs with it (the numbers beside them were fresh). Now a saved status more than a minute old isn't shown without trying for a fresh one first (a few seconds at most). The home page also refreshes its status as soon as you come back to the tab, or come back to Home from another page.
