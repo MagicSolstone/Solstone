@@ -386,3 +386,16 @@ def test_a_kit_that_didnt_all_arrive_is_put_right():
     assert any("iron_helmet" in c for c in gives) and any("iron_boots" in c for c in gives)          # armour, to wear
     assert any("cooked_beef" in c and c.endswith(" 16") for c in gives)                             # the food, again
     assert not any("shield" in c for c in gives) and sum("iron_sword" in c for c in gives) == 1      # nothing doubled
+
+
+def test_a_copy_that_changed_midway_is_simply_made_again(game, monkeypatch):
+    """Something picked up (or dropped) while the copy was made: it's thrown away and made again, so they still play."""
+    game.break_copy = True
+
+    async def wait(_secs):
+        game.break_copy = False                    # they stood still the second time
+    monkeypatch.setattr(kits.asyncio, "sleep", wait)
+    before = dict(game.slots[U1])
+    assert asyncio.run(kits.stash(game, {"Alex": U1}, "g-retry")) == ["Alex"]
+    assert game.slots[U1] == {} and any("hold still" in c for c in game.said)
+    assert asyncio.run(kits.give_back(game, U1)) and game.slots[U1] == before          # all of it, once

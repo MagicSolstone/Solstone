@@ -40,6 +40,7 @@ SLOTS = ([(f"container.{i}", 0, i) for i in range(27)] + [(f"container.{27 + i}"
          + [("armor.head", 1, 9), ("armor.chest", 1, 10), ("armor.legs", 1, 11), ("armor.feet", 1, 12), ("weapon.offhand", 1, 13)])
 KIT_MATCH = f"*[minecraft:custom_data={{{KIT_TAG}:1b}}]"     # every item a kit gave, and nothing else
 _lock = asyncio.Lock()
+STASH_TRIES = 3                       # copying someone's things into the vault: tries before they sit the game out
 _STARTED = time.time()                # things kept safe before this: Solstone was down since (don't move anyone)
 
 
@@ -237,25 +238,33 @@ async def stash(srv, players: dict[str, str], game: str) -> list[str]:
                 continue
             slot = _free_slot(d, srv.id)
             back = await _where(srv, uuid)
-            before = await _player_items(srv, uuid)
-            if slot is None or back is None or before is None:
+            if slot is None or back is None:
                 continue
+            from .control import component
+            await _rcon(srv, f"title {uuid} actionbar " + component([("Keeping your things safe… hold still a moment", "gold")]))
             a, b = _barrels(v, slot)
-            for (x, y, z) in (a, b):
-                await _rcon(srv, f"execute in {DIM} run setblock {x} {y} {z} minecraft:barrel")
-                await _rcon(srv, f"execute in {DIM} run data merge block {x} {y} {z} {{Items:[]}}")
-            for src, which, i in SLOTS:
-                x, y, z = (a, b)[which]
-                await _rcon(srv, f"execute in {DIM} run item replace block {x} {y} {z} container.{i} from entity {uuid} {src}")
-            if await _barrel_items(srv, (a, b)) != before:
+            copied = False
+            # Picked something up (or dropped something) while it was being copied? Nothing's lost: the copy's thrown
+            # away and made again, a few times, before they sit this one out with their things untouched.
+            for attempt in range(STASH_TRIES):
+                before = await _player_items(srv, uuid)
+                if before is None:
+                    break
+                for (x, y, z) in (a, b):
+                    await _rcon(srv, f"execute in {DIM} run setblock {x} {y} {z} minecraft:barrel")
+                    await _rcon(srv, f"execute in {DIM} run data merge block {x} {y} {z} {{Items:[]}}")
+                for src, which, i in SLOTS:
+                    x, y, z = (a, b)[which]
+                    await _rcon(srv, f"execute in {DIM} run item replace block {x} {y} {z} container.{i} from entity {uuid} {src}")
+                if await _barrel_items(srv, (a, b)) == before and await _player_items(srv, uuid) == before:
+                    copied = True
+                    break
+                log.warning("%s's things changed while being copied (try %d of %d)", name, attempt + 1, STASH_TRIES)
+                for (x, y, z) in (a, b):
+                    await _rcon(srv, f"execute in {DIM} run data merge block {x} {y} {z} {{Items:[]}}")
+                await asyncio.sleep(1)
+            if not copied:
                 log.error("couldn't copy %s's things safely; leaving them as they are", name)
-                for (x, y, z) in (a, b):
-                    await _rcon(srv, f"execute in {DIM} run data merge block {x} {y} {z} {{Items:[]}}")
-                continue
-            if await _player_items(srv, uuid) != before:     # picked something up while it was being copied: not this time
-                log.warning("%s's things changed while being copied; leaving them as they are", name)
-                for (x, y, z) in (a, b):
-                    await _rcon(srv, f"execute in {DIM} run data merge block {x} {y} {z} {{Items:[]}}")
                 continue
             # written down first: from here on, a crash still leaves a copy that gets given back
             d["stash"][key] = {"name": name, "uuid": uuid, "server": srv.id, "slot": slot, "game": game, "at": time.time(),
