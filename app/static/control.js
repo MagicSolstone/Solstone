@@ -592,7 +592,7 @@ async function viewAdmin(section = "users") {
   };
   traffic();
   // what people read: each page's views, people, read to the end and time on it (admins' own visits not counted)
-  let rdDays = 30;
+  let rdDays = 30, rdPage = null;
   const readingView = async () => {
     const box = $("#reading");
     if (!box) return;
@@ -606,12 +606,71 @@ async function viewAdmin(section = "users") {
         <td class="num">${p.article ? `${p.reads.toLocaleString()}${p.views ? ` <small class="muted">${Math.round(Math.min(1, p.reads / p.views) * 100)}%</small>` : ""}` : '<span class="muted">–</span>'}</td>
         <td class="num">${secs(p.avg_secs)}</td></tr>`).join("");
     const total = d.daily.reduce((n, x) => n + x.views, 0);
-    box.innerHTML = `<div class="st-filters"><div class="seg" role="group" aria-label="How long">${[[7, "7 days"], [30, "30 days"], [365, "A year"]].map(([n, l]) => `<button type="button" data-rddays="${n}" aria-pressed="${rdDays === n}">${l}</button>`).join("")}</div></div>
-      ${rows ? `<p class="muted small">${total.toLocaleString()} page view${total === 1 ? "" : "s"} in all.</p>
+    box.innerHTML = `<div class="st-filters"><div class="seg" role="group" aria-label="How long">${[[1, "Today"], [7, "7 days"], [30, "30 days"], [365, "A year"]].map(([n, l]) => `<button type="button" data-rddays="${n}" aria-pressed="${rdDays === n}">${l}</button>`).join("")}</div>
+        ${rdPage ? `<button type="button" class="btn sm" data-rdall>Show every page</button>` : ""}</div>
+      ${rows ? `<div class="tr-chart rd-chart" role="img" aria-label="Page views over time"><div class="tr-plot"></div><div class="tr-tip" hidden></div></div>
+      <div class="rd-keys"></div>
+      <p class="muted small">${total.toLocaleString()} page view${total === 1 ? "" : "s"} in all. Each bar is ${({ 3600: "an hour", 21600: "6 hours", 86400: "a day", 604800: "a week" })[d.slot_secs] || "a stretch"}; point at one to see which pages. Tap a page in the list to see just that one.</p>
       <div class="rd-wrap"><table class="rd-table"><thead><tr><th>Page</th><th class="num">Views</th><th class="num" title="Different people (not signed in · signed-in players)">People</th><th class="num" title="Reached the end and had it open ${d.read_secs} seconds or more">Read it</th><th class="num">Time on it</th></tr></thead>
         <tbody>${rows}</tbody></table></div>` : `<p class="muted">Nobody's looked yet in this time (your own visits don't count).</p>`}
       <p class="muted small"><b>People</b> counts each person once a day (not signed in · signed-in players). <b>Read it</b>: news posts and guides opened, scrolled to the end, and kept open ${d.read_secs} seconds or more. <b>Time on it</b>: the average while it was on their screen. Admins' visits aren't counted, and nobody's named: these are counts per page.</p>`;
     box.querySelectorAll("[data-rddays]").forEach((b) => b.addEventListener("click", () => { rdDays = +b.dataset.rddays; readingView(); }));
+    box.querySelector("[data-rdall]")?.addEventListener("click", () => { rdPage = null; readingView(); });
+    box.querySelectorAll(".rd-table tbody tr").forEach((tr, i) => {
+      tr.classList.toggle("on", d.pages[i].page === rdPage);
+      tr.addEventListener("click", (e) => { if (e.target.closest("a")) return; rdPage = rdPage === d.pages[i].page ? null : d.pages[i].page; readingView(); });
+    });
+    if (rows) drawReading(box, d, name);
+  };
+  // The timeline: views in each bar, coloured by page (the five most viewed, the rest together as "Other pages").
+  const RD_COL = ["#6aa9ff", "#5fd08a", "#f2c14e", "#b18cff", "#ff8f6b"];
+  const drawReading = (box, d, name) => {
+    const top = (rdPage ? [d.pages.find((p) => p.page === rdPage)].filter(Boolean) : d.pages.slice(0, RD_COL.length));
+    const keys = top.map((p, i) => ({ page: p.page, label: name(p), col: RD_COL[i] }));
+    const other = !rdPage && d.pages.length > top.length;
+    if (other) keys.push({ page: null, label: "Other pages", col: "#8a93a6" });
+    const val = (s, k) => (k.page ? s.pages[k.page] || 0 : Object.entries(s.pages).filter(([p]) => !top.some((t) => t.page === p)).reduce((n, [, v]) => n + v, 0));
+    box.querySelector(".rd-keys").innerHTML = keys.map((k) => `<span><i class="tr-key" style="--c:${k.col}"></i>${k.label}</span>`).join("");
+    const chart = box.querySelector(".rd-chart"), plot = chart.querySelector(".tr-plot"), tip = chart.querySelector(".tr-tip");
+    const W = Math.max(280, plot.clientWidth), H = 150, L = 34, B = 20, T = 8, pw = W - L, ph = H - B - T;
+    const slots = d.slots, tot = (s) => keys.reduce((n, k) => n + val(s, k), 0);
+    const nice = Math.max(4, Math.ceil(Math.max(1, ...slots.map(tot)) / 4) * 4);
+    const y = (v) => T + ph - (v / nice) * ph, step = pw / slots.length, bw = Math.max(2, Math.min(26, step * 0.72));
+    const when = (s) => {
+      const a = new Date(s.t * 1000);
+      if (d.slot_secs >= 604800) return `Week of ${a.toLocaleDateString([], { month: "short", day: "numeric" })}`;
+      if (d.slot_secs >= 86400) return a.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+      const z = new Date((s.t + d.slot_secs) * 1000), t = (x) => x.toLocaleTimeString([], { hour: "numeric" });
+      return `${d.slot_secs > 3600 ? `${a.toLocaleDateString([], { weekday: "short" })} ` : ""}${t(a)}–${t(z)}`;
+    };
+    const tick = (s) => (d.slot_secs >= 86400 ? new Date(s.t * 1000).toLocaleDateString([], { month: "short", day: "numeric" })
+      : d.slot_secs > 3600 ? new Date(s.t * 1000).toLocaleDateString([], { weekday: "short" }) : new Date(s.t * 1000).toLocaleTimeString([], { hour: "numeric" }));
+    const every = Math.ceil(slots.length / Math.max(3, Math.floor(pw / 70)));
+    const grid = [0, 0.5, 1].map((f) => `<line x1="${L}" x2="${W}" y1="${y(nice * f)}" y2="${y(nice * f)}" class="tr-grid"/><text x="${L - 6}" y="${y(nice * f) + 4}" text-anchor="end" class="tr-axis">${Math.round(nice * f)}</text>`).join("");
+    const bars = slots.map((s, i) => {
+      const x = L + i * step + (step - bw) / 2;
+      let acc = 0;
+      const segs = keys.map((k) => { const v = val(s, k); if (!v) return ""; const y0 = y(acc), y1 = y(acc + v); acc += v; return `<rect x="${x}" y="${y1}" width="${bw}" height="${Math.max(1, y0 - y1)}" fill="${k.col}"/>`; }).join("");
+      const lab = i % every === 0 ? `<text x="${L + i * step + step / 2}" y="${H - 4}" text-anchor="middle" class="tr-axis">${esc(tick(s))}</text>` : "";
+      return `<g data-i="${i}"><rect class="tr-hit" x="${L + i * step}" y="${T}" width="${step}" height="${ph}"/>${segs}</g>${lab}`;
+    }).join("");
+    plot.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${grid}${bars}</svg>`;
+    const show = (e) => {
+      const g = e.target.closest("[data-i]");
+      plot.querySelectorAll("g.on").forEach((x) => x.classList.remove("on"));
+      if (!g) { tip.hidden = true; return; }
+      g.classList.add("on");
+      const s = slots[+g.dataset.i];
+      const all = Object.entries(s.pages).sort((a, b) => b[1] - a[1]);
+      const label = (p) => { const x = d.pages.find((q) => q.page === p); return x ? name(x) : esc(p); };
+      tip.innerHTML = `<b>${esc(when(s))}</b>${all.length ? all.slice(0, 8).map(([p, v]) => `<span>${label(p)}: <b>${v}</b></span>`).join("") + (all.length > 8 ? `<span class="muted">and ${all.length - 8} more</span>` : "") : '<span class="muted">Nobody</span>'}`;
+      tip.hidden = false;
+      const r = chart.getBoundingClientRect();
+      tip.style.left = `${Math.min(Math.max(4, e.clientX - r.left - tip.offsetWidth / 2), r.width - tip.offsetWidth - 4)}px`;
+    };
+    plot.addEventListener("pointermove", show);
+    plot.addEventListener("pointerdown", show);
+    chart.addEventListener("pointerleave", () => { tip.hidden = true; plot.querySelectorAll("g.on").forEach((x) => x.classList.remove("on")); });
   };
   readingView();
   (async () => {

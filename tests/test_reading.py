@@ -37,3 +37,30 @@ def test_the_page_reports_itself_and_only_admins_see_it(client, anon):
     rows = client.get("/api/reading", params={"days": 7}).json()["pages"]
     p = next(x for x in rows if x["page"] == page)
     assert p["views"] == 1 and p["title"] == "Read me please"           # the post's own title, not what the page said
+
+
+def test_timeline_by_the_hour():
+    import time
+    from app import db, reading
+    reading._ensure()
+    db.x("DELETE FROM reading_hours WHERE page LIKE '/guides/rdt-%'")
+    now = time.time()
+    two_ago = now - 2 * 3600
+    reading.note("/guides/rdt-a", "A", "view", "t1", None, "5.5.5.5", now=two_ago)
+    reading.note("/guides/rdt-a", "A", "view", "t2", None, "5.5.5.5", now=two_ago + 60)   # the same hour
+    reading.note("/guides/rdt-b", "B", "view", "t3", None, "5.5.5.6", now=now)
+    reading.note("/guides/rdt-b", "B", "read", "t3", None, "5.5.5.6", now=now)            # only views go on the timeline
+    t = reading.timeline(1, now)
+    assert t["slot_secs"] == 3600
+    def at(ts):
+        return next(s for s in t["slots"] if s["t"] <= ts < s["t"] + 3600)["pages"]
+    if time.localtime(two_ago).tm_yday == time.localtime(now).tm_yday:              # (just after midnight: before "today")
+        assert at(two_ago).get("/guides/rdt-a") == 2
+    assert at(now).get("/guides/rdt-b") == 1
+    week = reading.timeline(7, now)
+    assert week["slot_secs"] == 6 * 3600 and sum(s["pages"].get("/guides/rdt-b", 0) for s in week["slots"]) == 1
+    year = reading.timeline(365, now)
+    assert year["slot_secs"] == 7 * 86400 and len(year["slots"]) >= 52
+    reading.prune(now + 40 * 86400)                                                    # the hours go after a month
+    assert not db.q("SELECT 1 FROM reading_hours WHERE page LIKE '/guides/rdt-%'")
+    db.x("DELETE FROM reading WHERE page LIKE '/guides/rdt-%'")

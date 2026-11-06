@@ -1151,6 +1151,26 @@ def main() -> int:
             else:
                 check(pg, "website-builtin-guides")
                 pg.click('[data-builtin="join"] [data-builtin-on]'); pg.wait_for_timeout(800)
+            # What people read: a timeline of the pages visitors opened, by the hour today
+            pg.goto(f"{base}/app#/manage/servers"); pg.reload(); pg.wait_for_timeout(1500)
+            if pg.locator("#reading [data-rddays]").count():
+                pg.click('#reading [data-rddays="1"]'); pg.wait_for_timeout(900)
+                if not pg.locator("#reading .rd-chart svg rect[fill]").count():
+                    problems.append("what people read: no bars on today's timeline")
+                else:
+                    pg.locator("#reading .rd-chart").scroll_into_view_if_needed()
+                    bar = pg.locator("#reading .rd-chart g:has(rect[fill])").last.bounding_box()
+                    pg.mouse.move(bar["x"] + bar["width"] / 2, bar["y"] + bar["height"] - 3); pg.wait_for_timeout(300)
+                    if pg.locator("#reading .tr-tip").is_hidden() or ":" not in (pg.locator("#reading .tr-tip").text_content() or ""):
+                        problems.append("what people read: no pages in the timeline's tip")
+                    check(pg, "reading-timeline")
+                pg.locator("#reading .rd-table tbody tr").first.click(); pg.wait_for_timeout(900)
+                if not pg.locator("#reading [data-rdall]").count():
+                    problems.append("what people read: picking a page didn't show just that one")
+                else:
+                    pg.click("#reading [data-rdall]"); pg.wait_for_timeout(700)
+            else:
+                problems.append("what people read: not on Manage → Solstone")
             # Manage: six group tabs on one row, the group's pages under it
             pg.goto(f"{base}/app#/manage/whitelist"); pg.wait_for_timeout(1200)
             if pg.locator("#manage-nav a[data-g]").count() != 6 or "Players" not in (pg.locator("#manage-nav a[aria-current]").text_content() or ""):

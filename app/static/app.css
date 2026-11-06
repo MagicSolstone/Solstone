@@ -2632,3 +2632,7 @@ body.ui-hidden .manage-sub { display: none; }
 .ts-codes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 12px; margin: 8px 0; font-size: 1.05rem; }
 .ts-codes code { text-align: center; padding: 6px; background: rgba(255,255,255,.06); border-radius: 6px; }
 .rc-all { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
+.rd-keys { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .85rem; margin: 6px 0 4px; }
+.rd-keys a { color: inherit; }
+.rd-table tbody tr { cursor: pointer; }
+.rd-table tbody tr.on td { background: rgba(255, 255, 255, .06); }

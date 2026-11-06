@@ -18,6 +18,8 @@ import time
 from . import db
 
 KEEP_DAYS = 730
+HOURS_DAYS = 31                        # the hour-by-hour timeline goes back this far (a year: by week, from the days)
+SLOT = {1: 3600, 7: 6 * 3600, 30: 86400, 365: 7 * 86400}   # the timeline's bars: an hour, 6 hours, a day, a week
 READ_SECS = 15                         # (the page decides "read": reached the end, and open this long)
 _PAGE = re.compile(r"^/(?:|help|events|post/[a-z0-9-]{1,80}|guides/[a-z0-9_-]{1,40})$")
 _BOT = re.compile(r"bot|spider|crawl|slurp|preview|fetch", re.I)
@@ -30,6 +32,9 @@ def _ensure() -> None:
          "people INTEGER NOT NULL DEFAULT 0, reads INTEGER NOT NULL DEFAULT 0, secs REAL NOT NULL DEFAULT 0, timed INTEGER NOT NULL DEFAULT 0, "
          "PRIMARY KEY (day, page, who))")
     db.x("CREATE TABLE IF NOT EXISTS reading_titles (page TEXT PRIMARY KEY, title TEXT NOT NULL)")
+    # views of each page, hour by hour, for the timeline (kept HOURS_DAYS; older days are still in `reading`)
+    db.x("CREATE TABLE IF NOT EXISTS reading_hours (hour REAL NOT NULL, page TEXT NOT NULL, views INTEGER NOT NULL DEFAULT 0, "
+         "PRIMARY KEY (hour, page))")
 
 
 def page_ok(page: str) -> bool:
@@ -82,6 +87,9 @@ def note(page: str, title: str, event: str, view_id: str, user, ip: str, secs: f
          "ON CONFLICT(day, page, who) DO UPDATE SET views=views+excluded.views, people=people+excluded.people, "
          "reads=reads+excluded.reads, secs=secs+excluded.secs, timed=timed+excluded.timed",
          (day, page, who, add["views"], add["people"], add["reads"], add["secs"], add["timed"]))
+    if event == "view":
+        db.x("INSERT INTO reading_hours (hour, page, views) VALUES (?,?,1) ON CONFLICT(hour, page) DO UPDATE SET views=views+1",
+             (now - now % 3600, page))
     if event == "view" and title:
         db.x("INSERT INTO reading_titles (page, title) VALUES (?, ?) ON CONFLICT(page) DO UPDATE SET title=excluded.title",
              (page, " ".join(str(title).split())[:120]))
@@ -92,6 +100,7 @@ def prune(now: float | None = None) -> None:
     _ensure()
     cut = time.strftime("%Y-%m-%d", time.localtime((now or time.time()) - KEEP_DAYS * 86400))
     db.x("DELETE FROM reading WHERE day < ?", (cut,))
+    db.x("DELETE FROM reading_hours WHERE hour < ?", ((now or time.time()) - HOURS_DAYS * 86400,))
 
 
 def report(days: int = 30, now: float | None = None) -> dict:
@@ -121,4 +130,29 @@ def report(days: int = 30, now: float | None = None) -> dict:
     out.sort(key=lambda x: (-x["views"], x["title"]))
     daily = db.q("SELECT day, SUM(views) v FROM reading WHERE day >= ? GROUP BY day ORDER BY day", (since,))
     return {"days": days, "pages": out, "daily": [{"day": r["day"], "views": r["v"]} for r in daily],
-            "read_secs": READ_SECS}
+            "read_secs": READ_SECS, **timeline(days, now)}
+
+
+def timeline(days: int, now: float | None = None) -> dict:
+    """Views of each page over time, in bars (SLOT): from the start of the first day shown, up to now. Within a month,
+    from the hours kept; over a year, from the days."""
+    now = now or time.time()
+    slot = SLOT.get(days) or (3600 if days <= 1 else 6 * 3600 if days <= 7 else 86400 if days <= 31 else 7 * 86400)
+    lt = time.localtime(now - (days - 1) * 86400)
+    start = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1))
+    n = max(1, int((now - start) // slot) + 1)
+    slots = [{"t": start + i * slot, "pages": {}} for i in range(n)]
+
+    def put(ts: float, page: str, views: int) -> None:
+        i = int((ts - start) // slot)
+        if 0 <= i < n:
+            slots[i]["pages"][page] = slots[i]["pages"].get(page, 0) + views
+    if days <= HOURS_DAYS:
+        for r in db.q("SELECT hour, page, views FROM reading_hours WHERE hour >= ?", (start,)):
+            put(r["hour"], r["page"], r["views"])
+    else:
+        for r in db.q("SELECT day, page, SUM(views) v FROM reading WHERE day >= ? GROUP BY day, page",
+                      (time.strftime("%Y-%m-%d", time.localtime(start)),)):
+            d = time.strptime(r["day"], "%Y-%m-%d")
+            put(time.mktime((d.tm_year, d.tm_mon, d.tm_mday, 12, 0, 0, 0, 0, -1)), r["page"], r["v"])
+    return {"slots": slots, "slot_secs": slot}
