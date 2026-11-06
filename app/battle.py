@@ -152,10 +152,10 @@ async def ring(srv, r: dict, particle: str = "minecraft:end_rod") -> None:
 
 
 async def tidy_ground(srv, r: dict, monster_drops: bool = False) -> None:
-    """Each second of a fight: the kit's things thrown down go at once (so they can't be picked up after). In the mob
-    arena, every few seconds, what the monsters dropped in the arena goes too: it would only pile up, and anything
-    picked up in a game is left behind at the end anyway."""
-    await kits.sweep(srv)
+    """Each second of a fight: the kit's things that were dropped go straight back to the player (kits.hand_back_dropped),
+    so nothing's lost by a slip and nothing's left to pick up after. In the mob arena, every few seconds, what the
+    monsters dropped in the arena goes: it would only pile up, and anything picked up in a game stays behind anyway."""
+    await kits.hand_back_dropped(srv, 16)
     if monster_drops and (int(r.get("ticks", 0)) % 5 == 0 or r.get("wrap_at") is not None):
         c = r["zone"]
         await _rcon(srv, f"execute in {r['dim']} run kill @e[type=minecraft:item,x={c['x']},y={c['y']},z={c['z']},distance=..{c['r'] + 12}]")

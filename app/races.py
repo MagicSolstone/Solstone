@@ -455,6 +455,8 @@ async def _track(srv, r: dict) -> None:
             dist = math.hypot(dx, dz)
         nxt = f"Next: {_label(r, st['next'])} · {int(dist)} m {_direction(dx, dz)}{_height_hint(r, tgt, dy, dist)} · {_fmt(r['ends_at'] - now)} left"
         await _rcon(srv, f"title {n} actionbar {component([(nxt, 'yellow')])}")
+    from . import kits
+    await kits.hand_back_dropped(srv, 48)              # an elytra, rockets or a boat dropped mid-race: straight back
     # checkpoints everyone has passed leave the locator bar, so the nearest dot is the next one
     todo = {st["next"] for st in r["racers"].values() if not st["finished"] and not st.get("out")}
     lowest = min(todo, default=last + 1)

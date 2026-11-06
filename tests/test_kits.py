@@ -408,12 +408,13 @@ def test_a_games_things_never_stay_with_anyone_after(game):
     game.slots.setdefault("Steve", {}); game.slots.setdefault("Alex", {})              # (by name, for the pretend server)
     game.said.clear()
     asyncio.run(kits.no_stray_kit(game, ["Alex", "Steve"]))
-    assert any(c.startswith("kill @e[type=minecraft:item,nbt=") and "solkit:1b" in c for c in game.said)
+    assert not any(c.startswith("kill @e[type=minecraft:item,nbt=") and "solkit:1b" in c for c in game.said)   # a game's on: hands back, not this
     assert f"clear Steve {kits.KIT_MATCH}" in game.said and not any(c.startswith("clear Alex") for c in game.said)
     asyncio.run(kits.give_back(game, U1))
     game.said.clear()
     asyncio.run(kits.no_stray_kit(game, ["Alex"]))
     assert f"clear Alex {kits.KIT_MATCH}" in game.said                                  # home now: not kept by them
+    assert any(c.startswith("kill @e[type=minecraft:item,nbt=") and "solkit:1b" in c for c in game.said)      # and none lying about
 
 
 def test_the_arena_floor_doesnt_fill_up_with_monster_drops():
@@ -426,11 +427,11 @@ def test_the_arena_floor_doesnt_fill_up_with_monster_drops():
             return ""
     r = {"dim": "minecraft:overworld", "zone": {"x": 10, "y": 64, "z": -5, "r": 15}, "ticks": 5}
     asyncio.run(battle.tidy_ground(Srv(), r, monster_drops=True))
-    assert any("solkit:1b" in c for c in said)
+    assert any("solkit:1b" in c and "run tp @s @p[distance=..16" in c for c in said)      # dropped: back to the player
     assert any("kill @e[type=minecraft:item,x=10,y=64,z=-5,distance=..27]" in c for c in said)
     said.clear()
     asyncio.run(battle.tidy_ground(Srv(), {**r, "ticks": 6}, monster_drops=False))
-    assert len(said) == len(kits.GAME_TAGS) and not any("distance=" in c for c in said)   # King of the Hill: just games' things
+    assert len(said) == 3 * len(kits.GAME_TAGS) and not any("x=10" in c for c in said)  # King of the Hill: just games' things
     assert {t for t in kits.GAME_TAGS if any(f"{t}:1b" in c for c in said)} == set(kits.GAME_TAGS)
 
 
@@ -441,10 +442,23 @@ def test_every_games_things_not_just_the_kit(game, monkeypatch):
     monkeypatch.setattr(challenges, "rods_out", lambda sid: False)
     game.said.clear()
     asyncio.run(kits.no_stray_kit(game, ["Steve"]))
-    for tag in ("solkit", "solmatch", "solspleef", "solrod"):
+    for tag in ("solkit", "solmatch", "solspleef", "solrod"):                         # (no game on: swept)
         assert any(c.startswith("kill @e[type=minecraft:item") and f"{tag}:1b" in c for c in game.said), tag
     assert "clear Steve *[minecraft:custom_data={solmatch:1b}]" in game.said
     monkeypatch.setattr(challenges, "rods_out", lambda sid: True)                       # a fishing contest is on
     game.said.clear()
     asyncio.run(kits.no_stray_kit(game, ["Steve"]))
     assert not any("solrod" in c for c in game.said)
+
+
+def test_something_dropped_mid_game_goes_straight_back():
+    said = []
+
+    class Srv:
+        async def rcon(self, cmd, wait=None):
+            said.append(cmd)
+            return ""
+    asyncio.run(kits.hand_back_dropped(Srv(), 48))
+    kit = [c for c in said if "solkit:1b" in c]
+    assert "PickupDelay:0s" in kit[0] and "run tp @s @p[distance=..48,gamemode=!spectator]" in kit[1]
+    assert "unless entity @p[distance=..48" in kit[2] and kit[2].endswith("run kill @s")           # nobody near: gone

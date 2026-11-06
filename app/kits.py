@@ -493,8 +493,25 @@ def send_home(srv, kept: dict[str, str], game_id: str, secs: int = HOME_SECS, af
 GAME_TAGS = (KIT_TAG, "solmatch", "solspleef")
 
 
+def _dropped(tag: str) -> str:
+    """Every item lying about with this game's mark."""
+    return f'@e[type=minecraft:item,nbt={{Item:{{components:{{"minecraft:custom_data":{{{tag}:1b}}}}}}}}]'
+
+
 def _ground(tag: str) -> str:
-    return f'kill @e[type=minecraft:item,nbt={{Item:{{components:{{"minecraft:custom_data":{{{tag}:1b}}}}}}}}]'
+    return f"kill {_dropped(tag)}"
+
+
+async def hand_back_dropped(srv, reach: int = 16) -> None:
+    """During a game, each second: a game's thing dropped (by accident, or on purpose) goes straight back to whoever's
+    nearest, normally whoever dropped it, so a slip of the Q key doesn't cost a sword mid-fight or an elytra mid-race.
+    It can't be left lying about to pick up later; with nobody near (thrown off a cliff, say) it's simply gone."""
+    near = f"@p[distance=..{reach},gamemode=!spectator]"
+    for tag in GAME_TAGS:
+        sel = _dropped(tag)
+        await _rcon(srv, f"execute as {sel} at @s if entity {near} run data merge entity @s {{PickupDelay:0s}}")
+        await _rcon(srv, f"execute as {sel} at @s run tp @s {near}")
+        await _rcon(srv, f"execute as {sel} at @s unless entity {near} run kill @s")
 
 
 async def sweep(srv) -> None:
@@ -544,11 +561,12 @@ async def tidy(srv, online: list[str]) -> None:
 async def no_stray_kit(srv, online: list[str]) -> None:
     """Every poll: a game's things never stay with anyone after it. Lying on the ground: gone. In the hands of
     someone who isn't in a game (dropped in the game, then picked up after walking out, say): taken back."""
-    await sweep(srv)
+    playing = {s["name"].lower() for s in waiting(srv.id) if not s.get("restored")}
+    if not playing:                                    # (during a game, what's dropped goes back to its player instead)
+        await sweep(srv)
     from . import challenges
     if not challenges.rods_out(srv.id):                # a fishing contest's rods: not while one's on (they're fishing with them)
         await _rcon(srv, _ground("solrod"))
-    playing = {s["name"].lower() for s in waiting(srv.id) if not s.get("restored")}
     for n in online:
         if n.lower() not in playing:
             for tag in GAME_TAGS:

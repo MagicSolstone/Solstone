@@ -1059,6 +1059,9 @@ async def _tick(servers: list) -> None:
             try:
                 await {"hideseek": _hs_tick, "treasure": _th_tick, "archery": _ar_tick, "spleef": spleef.tick,
                        "koth": koth.tick, "arena": arena.tick}[r["game"]](srv, r)
+                if r["game"] in ("hideseek", "treasure", "archery", "spleef") and r.get("state") == "running":
+                    from . import kits
+                    await kits.hand_back_dropped(srv, 16)        # a match bow, shovel or compass dropped: straight back
                 if r["game"] in ("spleef", "arena"):
                     pass                             # rounds or waves, not a clock: no countdown bar
                 elif r["state"] in ACTIVE:
