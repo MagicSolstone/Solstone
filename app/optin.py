@@ -263,6 +263,11 @@ async def join(srv, name: str, now: float | None = None) -> str:
 async def leave(srv, name: str, now: float | None = None) -> str:
     """/trigger leave: out of the soonest one they're in that hasn't started (or else the contest that's on)."""
     now, cfg = now or time.time(), config()
+    from . import kits
+    if kits.has_things_kept(srv.id, name) and kits.playing_now(srv.id, name):
+        kits.ask_out(srv.id, name)                     # in a game, a race or the arena right now: out of it, and home
+        await _tell(srv, name, "&7Leaving the game: your things are on the way back.", None)
+        return "game"
     st = _state()
     low = name.lower()
     mine = [x for x in _open(events(srv.id), now, cfg) if low in joined(x["key"], st)]

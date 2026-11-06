@@ -601,7 +601,8 @@ async def _th_tick(srv, r: dict) -> None:
     if hint and r.get("compass", True) and not r.get("compass_given"):
         r["compass_given"] = True                         # once: everyone playing gets one (taken back when they're home)
         for n in online:
-            await _rcon(srv, f"give {n} {_treasure_compass(srv, r)} 1")
+            from . import kits
+            await kits.hand_out(srv, n, [], [(_treasure_compass(srv, r), 1)])     # given, then checked
             await _say(srv, [("★ ", "gold"), ("Hint! ", "yellow"), ("Here's a treasure compass: it points straight at the chest.", None)], who=n)
     bands = _bands(r["area"]["r"])
     near = {}
@@ -752,9 +753,10 @@ async def _ar_start(srv, r: dict) -> None:
     if r["give_bow"]:
         # a match bow with Infinity and one arrow: endless shots, nothing to pick up, and both
         # (tagged) are taken back at the end without touching anyone's own bows and arrows
-        for n in (names if r.get("optin") else ["@a"]):
-            await _rcon(srv, f"give {n} {_match_item(srv, 'bow')}")
-            await _rcon(srv, f"give {n} {_match_item(srv, 'arrow')}")
+        from . import kits
+        bow, arrow = (_match_item(srv, w).rsplit(" ", 1)[0] for w in ("bow", "arrow"))
+        for n in names:                                  # (those playing: their own things are in the vault)
+            await kits.hand_out(srv, n, [], [(bow, 1), (arrow, 1)])       # given, then checked
     log_ = await _rcon(srv, "data get storage solstone:games log")
     from .fishpack import parse_game_log
     seen = parse_game_log(log_)
@@ -1062,6 +1064,12 @@ async def _tick(servers: list) -> None:
                 if r["game"] in ("hideseek", "treasure", "archery", "spleef") and r.get("state") == "running":
                     from . import kits
                     await kits.hand_back_dropped(srv, 16)        # a match bow, shovel or compass dropped: straight back
+                    for n, u in list((r.get("kept") or {}).items()):
+                        if kits.wants_out(srv.id, n):            # /trigger leave: out, and home with their things
+                            del r["kept"][n]
+                            await kits.give_back(srv, u, move=True)
+                            await _say(srv, [("★ ", "gold"), (n, "aqua"), (" left the game. Their things are on the way back.", "yellow")])
+                            changed = True
                 if r["game"] in ("spleef", "arena"):
                     pass                             # rounds or waves, not a clock: no countdown bar
                 elif r["state"] in ACTIVE:

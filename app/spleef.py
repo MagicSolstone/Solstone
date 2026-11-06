@@ -215,7 +215,8 @@ async def _go(srv, r: dict) -> None:
             await _rcon(srv, f"gamemode survival {n}")
             await _rcon(srv, f"clear {n} {SHOVEL_MATCH}")
             name = '"Spleef Shovel"' if _new_text(srv) else "'\"Spleef Shovel\"'"
-            await _rcon(srv, f"give {n} {SHOVEL}[minecraft:custom_data={{solspleef:1b}},minecraft:unbreakable={{}},minecraft:item_name={name}]")
+            from . import kits
+            await kits.hand_out(srv, n, [], [(f"{SHOVEL}[minecraft:custom_data={{solspleef:1b}},minecraft:unbreakable={{}},minecraft:item_name={name}]", 1)])
     r["state"], r["round_started"] = "running", time.time()
     r["phase_ends"] = time.time() + r["shrink_after"] if r["shrink"] else None
     await _say(srv, [("★ ", "gold"), ("Dig!", "yellow!")], "DIG!", "")

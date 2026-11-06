@@ -126,11 +126,11 @@ def test_new_text_format_and_validation(race):
     asyncio.run(races.tick([srv]))
     assert any("text:{text:" in cmd for cmd in srv.cmds if "text_display" in cmd)   # 1.21.5+/26.x: SNBT text
     # held still until GO (movement and jumping), let go at GO
-    assert "attribute Tyler minecraft:movement_speed modifier add solstone:freeze -1 add_multiplied_total" in srv.cmds
-    assert "attribute Gimli_Jr minecraft:jump_strength modifier add solstone:freeze -1 add_multiplied_total" in srv.cmds
+    assert "ride Tyler mount @e[type=minecraft:armor_stand,tag=solseat_tyler,limit=1]" in srv.cmds      # held still at the start
+    assert "ride Gimli_Jr mount @e[type=minecraft:armor_stand,tag=solseat_gimli_jr,limit=1]" in srv.cmds
     _shift(races, go_at=-11)
     asyncio.run(races.tick([srv]))
-    assert "attribute Tyler minecraft:movement_speed modifier remove solstone:freeze" in srv.cmds
+    assert "ride Tyler dismount" in srv.cmds and "kill @e[type=minecraft:armor_stand,tag=solseat_tyler]" in srv.cmds
     rid = races.runs_for(srv.id)[0]["id"]
     assert asyncio.run(races.cancel(srv, rid)) and not srv.entities
     with pytest.raises(ValueError):

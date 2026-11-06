@@ -314,9 +314,8 @@ async def _wings(srv, r: dict, names: list[str]) -> list[str]:
     for n in racing if r.get("vehicle") == "elytra" else []:
         u = ids[n]
         elytra, rockets = kits.kit_item("minecraft:elytra"), kits.kit_item("minecraft:firework_rocket")
-        await _rcon(srv, f"item replace entity {u} armor.chest with {elytra}")
-        if r.get("rockets"):
-            await _rcon(srv, f"give {u} {rockets} {r['rockets']}")
+        # put on and given, then checked: anything that didn't arrive is put right (and why goes in the log)
+        await kits.hand_out(srv, u, [("armor.chest", elytra)], [(rockets, r["rockets"])] if r.get("rockets") else [])
         if r.get("safe_flying"):
             await _rcon(srv, f"effect give {u} minecraft:resistance {r['minutes'] * 60 + 60} 3 true")
     return racing
@@ -333,6 +332,9 @@ async def _crashes(srv, r: dict) -> None:
         st = r["racers"].get(n)
         if not st or st.get("finished") is not None:
             continue
+        if not st.get("out") and kits.wants_out(srv.id, n):      # /trigger leave
+            st["out"] = True
+            await _say(srv, r, [("★ ", "gold"), (n, "aqua"), (" left the race. Their things are on the way back.", "yellow")])
         if not st.get("out"):
             m = re.search(r"has (\d+) \[", await _rcon(srv, f"scoreboard players get {u} {DEATHS}"))
             if not m or int(m.group(1)) < 1:
@@ -369,7 +371,7 @@ async def _go(srv, r: dict) -> None:
         from . import kits
         boat = kits.kit_item("minecraft:oak_boat")
         for n in names:
-            await _rcon(srv, f"give {n} {boat} 1")
+            await kits.hand_out(srv, n, [], [(boat, 1)])        # given, then checked
     r["state"], r["started_at"] = "running", time.time()
     r["ends_at"] = r["started_at"] + r["minutes"] * 60
     r["racers"] = {n: {"next": 1, "splits": [], "finished": None} for n in names}

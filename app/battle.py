@@ -171,6 +171,12 @@ async def left_and_back(srv, r: dict, where: dict) -> None:
         return                                         # the game didn't answer: nothing to go on this time
     online = {x.lower() for x in (await S.online_players(srv))[0]}
     for n, p in r["players"].items():
+        if not p.get("out") and kits.wants_out(getattr(srv, "id", ""), n):   # /trigger leave: out, and home with their things
+            p["out"] = p["returned"] = True
+            await kits.give_back(srv, p["uuid"], move=True)
+            from .games import _say
+            await _say(srv, [("★ ", "gold"), (n, "aqua"), (" left the game. Their things are on the way back.", "yellow")])
+            continue
         here = n.lower() in where or n.lower() in online
         if here:
             p.pop("missing", None)

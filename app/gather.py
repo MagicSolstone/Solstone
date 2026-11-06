@@ -5,8 +5,9 @@
 - send(): notes where everyone is (spot, dimension), then moves them to the event's spot,
   spread out around it on solid ground, facing the middle.
 - line_up(): the same, but in a row across a direction (race starts).
-- freeze()/unfreeze(): nobody can move or jump (race starts), with a safety net: anything
-  still frozen after its time is let go, by Solstone and when a frozen player next joins.
+- freeze()/unfreeze(): nobody can move or jump (race starts): each sits on an invisible stand (slowing them right
+  down instead narrowed their view, Java's speed "zoom"), put back on each second if they hop off, with a safety
+  net: anyone still held after its time is let go, by Solstone and when they next join.
 - come_home(): after an event, a countdown, then everyone goes back where they were. Anyone
   offline then goes back when they next join.
 
@@ -150,29 +151,43 @@ def _attrs(srv) -> tuple[str, str] | None:
     return "minecraft:movement_speed", "minecraft:jump_strength"
 
 
+def _seat(n: str) -> str:
+    return "solseat_" + re.sub(r"[^a-z0-9_.+-]", "_", n.lower())
+
+
+SEAT = "{Invisible:1b,Invulnerable:1b,NoGravity:1b,Small:1b,Silent:1b,NoBasePlate:1b,Tags:[\"solseat\",\"%s\"]}"
+
+
+async def _sit(srv, n: str) -> None:
+    await _rcon(srv, f"ride {n} mount @e[type=minecraft:armor_stand,tag={_seat(n)},limit=1]")
+
+
+async def _let_go(srv, n: str) -> None:
+    await _rcon(srv, f"ride {n} dismount")
+    await _rcon(srv, f"kill @e[type=minecraft:armor_stand,tag={_seat(n)}]")
+    for a in _attrs(srv) or ():                              # (held the old way, by an older Solstone)
+        await _rcon(srv, f"attribute {n} {a} modifier remove {FREEZE_ID}")
+
+
 async def freeze(srv, names: list[str], seconds: float) -> None:
-    attrs = _attrs(srv)
-    if not attrs:
-        return
     d = _load()
     for n in names:
-        for a in attrs:
-            await _rcon(srv, f"attribute {n} {a} modifier add {FREEZE_ID} -1 add_multiplied_total")
+        await _rcon(srv, f"kill @e[type=minecraft:armor_stand,tag={_seat(n)}]")
+        await _rcon(srv, f"execute at {n} run summon minecraft:armor_stand ~ ~ ~ {SEAT % _seat(n)}")
+        await _sit(srv, n)
         d["frozen"] = [f for f in d["frozen"] if not (f["server"] == srv.id and f["n"] == n)]
         d["frozen"].append({"server": srv.id, "n": n, "until": time.time() + seconds + 5})
     _save(d)
 
 
 async def unfreeze(srv, names: list[str] | None = None) -> None:
-    attrs = _attrs(srv)
     d = _load()
     mine = [f for f in d["frozen"] if f["server"] == srv.id and (names is None or f["n"] in names)]
     online = set((await S.online_players(srv))[0])
     for f in mine:
         if f["n"] not in online:
             continue                                         # let go when they next join
-        for a in attrs or ():
-            await _rcon(srv, f"attribute {f['n']} {a} modifier remove {FREEZE_ID}")
+        await _let_go(srv, f["n"])
         d["frozen"].remove(f)
     _save(d)
 
@@ -220,15 +235,16 @@ async def tick(servers: list) -> None:
                 d["owed"].setdefault(srv.id, {})[n] = b
         d["returns"].remove(r)
         changed = True
-    for f in list(d["frozen"]):                              # still frozen past its time (Solstone was away?)
+    for f in list(d["frozen"]):
         srv = by_id.get(f["server"])
-        if srv and now >= f["until"]:
+        if srv and now >= f["until"]:                        # still held past its time (Solstone was away?)
             online = set((await S.online_players(srv))[0])
             if f["n"] in online:
-                for a in _attrs(srv) or ():
-                    await _rcon(srv, f"attribute {f['n']} {a} modifier remove {FREEZE_ID}")
+                await _let_go(srv, f["n"])
                 d["frozen"].remove(f)
                 changed = True
+        elif srv:
+            await _sit(srv, f["n"])                          # hopped off (sneaking): back on (no one's waiting meanwhile)
     if changed:
         _save(d)
 
@@ -243,8 +259,7 @@ async def on_join(srv, player: str) -> None:
         await _rcon(srv, f"tellraw {player} {component([('★ ', 'gold'), ('An event ended while you were away, so you are back where you were.', 'yellow')])}")
         changed = True
     for f in [f for f in d["frozen"] if f["server"] == srv.id and f["n"] == player and time.time() >= f["until"]]:
-        for a in _attrs(srv) or ():
-            await _rcon(srv, f"attribute {player} {a} modifier remove {FREEZE_ID}")
+        await _let_go(srv, player)
         d["frozen"].remove(f)
         changed = True
     if changed:

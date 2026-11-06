@@ -474,3 +474,45 @@ def test_dying_in_a_fight_brings_you_back_in_it_and_your_bed_is_yours_again_afte
     game.said.clear()
     assert asyncio.run(kits.give_back(game, U1))
     assert f"execute in minecraft:overworld run spawnpoint {U1} 120 70 -40" in game.said             # their own bed again
+
+
+def test_trigger_leave_in_the_middle_of_a_game(game, monkeypatch):
+    """/trigger leave while playing: asked once, the game takes them out and sends them home with their things."""
+    from app import optin
+    asyncio.run(kits.stash(game, {"Alex": U1}, "g-leave"))
+    monkeypatch.setattr(kits, "_in_live_game", lambda s: True)
+    told = []
+
+    async def tell(srv, name, text, e, st=None):
+        told.append(text)
+    monkeypatch.setattr(optin, "_tell", tell)
+    assert asyncio.run(optin.leave(game, "Alex")) == "game" and "on the way back" in told[0]
+    assert kits.wants_out("kit-test", "alex") and not kits.wants_out("kit-test", "alex")     # used up once taken
+    kits.ask_out("kit-test", "Alex")
+    kits._quitting[("kit-test", "alex")] -= kits.QUIT_SECS + 1                               # nobody acted on it in time
+    assert not kits.wants_out("kit-test", "Alex")
+
+
+def test_the_mob_arena_lets_someone_leave(monkeypatch):
+    from app import battle
+    said, gave = [], []
+
+    class Srv:
+        id = "leave-srv"
+
+        async def rcon(self, cmd, wait=None):
+            said.append(cmd)
+            return ""
+
+    async def online(srv):
+        return ["Alex", "Steve"], "rcon"
+
+    async def give_back(srv, uuid, move=True):
+        gave.append((uuid, move))
+        return True
+    monkeypatch.setattr(battle.S, "online_players", online)
+    monkeypatch.setattr(kits, "give_back", give_back)
+    r = {"players": {"Alex": {"uuid": "u-a"}, "Steve": {"uuid": "u-s"}}}
+    kits.ask_out("leave-srv", "Alex")
+    asyncio.run(battle.left_and_back(Srv(), r, {"alex": 1, "steve": 1}))
+    assert r["players"]["Alex"]["out"] and gave == [("u-a", True)] and not r["players"]["Steve"].get("out")

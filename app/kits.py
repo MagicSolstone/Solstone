@@ -573,6 +573,27 @@ async def _home(srv, kept: dict[str, str], game_id: str, secs: int, after) -> No
         _heading_home.pop(game_id, None)
 
 
+# /trigger leave in the middle of a game: asked here, done by the game itself on its next tick (it owns its state).
+_quitting: dict[tuple[str, str], float] = {}
+QUIT_SECS = 30                     # an ask nobody acted on (the game had just ended) is forgotten after this
+
+
+def ask_out(sid: str, player: str) -> None:
+    _quitting[(sid, player.lower())] = time.time()
+
+
+def wants_out(sid: str, player: str) -> bool:
+    """Did they ask to leave the game they're in? (Once: asking is used up.)"""
+    t = _quitting.pop((sid, player.lower()), None)
+    return t is not None and time.time() - t < QUIT_SECS
+
+
+def playing_now(sid: str, player: str) -> bool:
+    """In a game that's still on (not on the way home after one)."""
+    return any(s["name"].lower() == player.lower() and not s.get("restored") and _in_live_game(s) and s.get("game") not in _heading_home
+               for s in waiting(sid))
+
+
 def has_things_kept(sid: str, player: str) -> bool:
     """In a game right now (their own things in the vault): nothing should be handed to them till they're home."""
     return any(s["name"].lower() == player.lower() and not s.get("restored") for s in waiting(sid))
@@ -663,6 +684,35 @@ def _kit_ids(kit: dict, worn: list[tuple[str, str]]) -> list[str]:
     if kit.get("food"):
         ids.append("minecraft:cooked_beef")
     return ids + [item.split("[", 1)[0] for _slot, item in worn]
+
+
+async def hand_out(srv, uuid: str, worn: list[tuple[str, str]], given: list[tuple[str, int]]) -> None:
+    """A game's things, checked like a kit: put on (worn) or given, then looked at, and anything missing put right
+    (a race's elytra and rockets, say). What the game said goes in the log."""
+    replies = {}
+    for slot, item in worn:
+        replies[slot] = await _rcon(srv, f"item replace entity {uuid} {slot} with {item}")
+    for item, n in given:
+        replies[item.split("[", 1)[0]] = await _rcon(srv, f"give {uuid} {item} {n}")
+    have = await _player_items(srv, uuid)
+    if have is None:
+        return
+    missing = [it.split("[", 1)[0] for _s, it in worn] + [it.split("[", 1)[0] for it, _n in given]
+    missing = [i for i in missing if not have[0].get(i)]
+    if not missing:
+        return
+    log.warning("%s's things for the game arrived without %s (the game said: %s)", uuid, ", ".join(missing),
+                "; ".join(f"{k}: {v[:120]}" for k, v in replies.items()) or "nothing")
+    for slot, item in worn:
+        if item.split("[", 1)[0] in missing:
+            await _rcon(srv, f"item replace entity {uuid} {slot} with {item}")
+    have = await _player_items(srv, uuid) or have
+    for _slot, item in worn:
+        if not have[0].get(item.split("[", 1)[0]):
+            await _rcon(srv, f"give {uuid} {item} 1")      # still not on: in their inventory, to put on themselves
+    for item, n in given:
+        if not have[0].get(item.split("[", 1)[0]):
+            await _rcon(srv, f"give {uuid} {item} {n}")
 
 
 async def _check_kit(srv, uuid: str, kit: dict, worn: list[tuple[str, str]], replies: dict) -> None:

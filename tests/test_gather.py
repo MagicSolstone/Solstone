@@ -85,10 +85,17 @@ def test_there_and_back_again(g):
 def test_nobody_stays_frozen(g):
     gather, srv = g
     asyncio.run(gather.freeze(srv, ["Tyler"], 10))
-    assert "attribute Tyler minecraft:movement_speed modifier add solstone:freeze -1 add_multiplied_total" in srv.cmds
+    # held on an invisible seat (slowing them to a stop narrowed Java's view: the speed "zoom")
+    assert any("summon minecraft:armor_stand" in c and "solseat_tyler" in c for c in srv.cmds)
+    assert "ride Tyler mount @e[type=minecraft:armor_stand,tag=solseat_tyler,limit=1]" in srv.cmds
+    assert not any("movement_speed modifier add" in c for c in srv.cmds)
+    srv.cmds.clear()
+    asyncio.run(gather.tick([srv]))                                                    # hopped off? back on
+    assert "ride Tyler mount @e[type=minecraft:armor_stand,tag=solseat_tyler,limit=1]" in srv.cmds
     d = gather._load(); d["frozen"][0]["until"] = time.time() - 1; gather._save(d)   # GO never came (Solstone away)
     asyncio.run(gather.tick([srv]))
-    assert "attribute Tyler minecraft:jump_strength modifier remove solstone:freeze" in srv.cmds and not gather._load()["frozen"]
+    assert "ride Tyler dismount" in srv.cmds and "kill @e[type=minecraft:armor_stand,tag=solseat_tyler]" in srv.cmds
+    assert not gather._load()["frozen"]
 
 
 def test_line_up_across_the_way(g):
