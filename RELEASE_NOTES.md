@@ -1,3 +1,8 @@
+# Solstone 1.15.37
+
+- **Fixed: the home page's little graphs could be hours old.** To be quick, the home page showed the last saved status straight away and fetched a fresh one in the background, but when nobody had looked in a while, that saved copy was hours old, and its graphs with it (the numbers beside them were fresh). Now a saved status more than a minute old isn't shown without trying for a fresh one first (a few seconds at most). The home page also refreshes its status as soon as you come back to the tab, or come back to Home from another page.
+- **New: a timeline in What people read.** Like Website traffic, there's now a bar chart of which pages people opened, coloured by page (the five most viewed, the rest as "Other pages"). Pick **Today** for a bar each hour, **7 days** for every 6 hours, **30 days** for each day, or **A year** for each week. Point at (or tap) a bar to see every page opened then, with how many times. Tap a page in the list to see just that page on the chart; **Show every page** goes back. Hour-by-hour counts are kept for a month; the daily counts are still kept for two years.
+
 # Solstone 1.15.36
 
 - **Dying in the mob arena or King of the Hill keeps you there.** You used to respawn at your bed at home for a moment, then get moved back to watch from above the arena: a jarring blink. Now everyone's respawn point is in the game while it's on, so dying brings you straight back there. Your own bed (or respawn anchor) is put back when you're home with your things.
