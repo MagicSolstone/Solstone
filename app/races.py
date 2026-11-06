@@ -72,7 +72,7 @@ def clean_course(body: dict, server: str) -> dict:
         if not isinstance(p, dict):
             continue
         pt = {"x": round(_num(p.get("x"), -3e7, 3e7, 0), 1), "y": round(_num(p.get("y"), -64, 320, 64), 1),
-              "z": round(_num(p.get("z"), -3e7, 3e7, 0), 1), "radius": round(_num(p.get("radius"), 2, 16, 4), 1),
+              "z": round(_num(p.get("z"), -3e7, 3e7, 0), 1), "radius": round(_num(p.get("radius"), 2, MAX_RADIUS, 4), 1),
               "name": clean_text(str(p.get("name") or ""), 32) if str(p.get("name") or "").strip() else ""}
         # its own height: it counts from `low` to `high` blocks above the point (say 60 to 100, for an elytra race
         # through the sky). Not set: near the ground on foot or by boat, up to 40 above by elytra.
@@ -174,6 +174,7 @@ async def _rcon(srv, cmd: str) -> str:
         return ""
 
 
+MAX_RADIUS = 40                    # how close counts, at most (wide ones are easier to fly through by elytra)
 COLUMN_W = 3                       # how wide a checkpoint's glowing column is (blocks)
 EDGE_POSTS = 8                     # thin posts marking the edge of the circle that counts
 

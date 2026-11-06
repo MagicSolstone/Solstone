@@ -799,10 +799,12 @@ async function viewRaces(sid) {
           <div class="rc-side">
             <div class="btn-row rc-here"><select class="input sm" id="rc-player" aria-label="Player">${online().map((n) => `<option>${esc(n)}</option>`).join("") || "<option value=''>Nobody online</option>"}</select>
               <button class="btn sm" type="button" id="rc-addhere" ${online().length ? "" : "disabled"}>＋ Add where they're standing</button></div>
+            ${pts.length > 1 ? `<div class="rc-all muted small">Every point: reach within <input class="input sm num-in" type="number" id="rc-all-r" min="2" max="40" value="${pts[pts.length - 1].radius || 4}" aria-label="Radius for every point"> blocks
+              <button type="button" class="btn sm" id="rc-all-go">Set for all</button> <span>(by elytra, 10 to 20 is easier to fly through)</span></div>` : ""}
             <ol class="rc-points">${pts.map((p, i) => `<li class="${selected === i ? "sel" : ""}" data-i="${i}">
                 <span class="rc-badge ${i === 0 ? "s" : i === pts.length - 1 && pts.length > 1 ? "f" : ""}">${i === 0 ? "S" : i === pts.length - 1 && pts.length > 1 ? "F" : i}</span>
                 <div class="rc-pt"><input class="input sm" data-name value="${esc(p.name || "")}" placeholder="${pointName(pts, i)}" maxlength="32" aria-label="Name for point ${i + 1}">
-                  <span class="muted small">${Math.round(p.x)}, ${Math.round(p.y)}, ${Math.round(p.z)} · reach within <input class="input sm num-in" type="number" data-radius min="2" max="16" value="${p.radius || 4}" aria-label="Radius"> blocks</span>
+                  <span class="muted small">${Math.round(p.x)}, ${Math.round(p.y)}, ${Math.round(p.z)} · reach within <input class="input sm num-in" type="number" data-radius min="2" max="40" value="${p.radius || 4}" aria-label="Radius"> blocks</span>
                   <span class="muted small rc-band">counts from <input class="input sm num-in" type="number" data-low min="-64" max="380" value="${p.low ?? ""}" placeholder="auto" aria-label="Lowest, blocks above the point">
                     to <input class="input sm num-in" type="number" data-high min="-62" max="384" value="${p.high ?? ""}" placeholder="auto" aria-label="Highest, blocks above the point"> blocks above it</span></div>
                 <span class="rc-acts"><button type="button" class="icon-btn" data-up ${i === 0 ? "disabled" : ""} aria-label="Move up">▲</button><button type="button" class="icon-btn" data-down ${i === pts.length - 1 ? "disabled" : ""} aria-label="Move down">▼</button><button type="button" class="icon-btn" data-rm aria-label="Remove">✕</button></span></li>`).join("")}</ol>
@@ -844,9 +846,16 @@ async function viewRaces(sid) {
     const addPoint = (p) => {
       sync();
       const at = selected != null && selected < editing.points.length - 1 ? selected + 1 : editing.points.length;
-      editing.points.splice(at, 0, { x: p.x, y: p.y, z: p.z, radius: 4, name: "" });
+      const near = editing.points[at - 1] || editing.points[at];        // the same size as its neighbour
+      editing.points.splice(at, 0, { x: p.x, y: p.y, z: p.z, radius: near?.radius || 4, name: "" });
       selected = at; renderEditor();
     };
+    $("#rc-all-go")?.addEventListener("click", () => {
+      sync();
+      const r = Math.max(2, Math.min(40, +$("#rc-all-r").value || 4));
+      editing.points.forEach((p) => { p.radius = r; });
+      renderEditor(); showToast(`Every point: within ${r} blocks`, 1800);
+    });
     $("#rc-addhere").addEventListener("click", async () => {
       try { addPoint(await api(`${base}/spot?player=${encodeURIComponent($("#rc-player").value)}`)); } catch (e) { showError(esc(e.message), 4000); }
     });

@@ -150,3 +150,10 @@ def test_race_api(client, viewer, sid):
     assert client.delete(f"/api/servers/{sid}/races/courses/{c['id']}").json() == {"ok": True}
     from app import settings_store
     settings_store.save_section("races", {})
+
+
+def test_a_checkpoint_can_be_wide_for_flying_through():
+    from app import races
+    c = races.clean_course({"name": "Sky", "points": [{"x": 0, "y": 64, "z": 0, "radius": 30}, {"x": 50, "y": 64, "z": 0, "radius": 99},
+                                                      {"x": 90, "y": 64, "z": 0, "radius": 1}]}, "s1")
+    assert [p["radius"] for p in c["points"]] == [30, races.MAX_RADIUS, 2]
