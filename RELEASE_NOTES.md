@@ -1,3 +1,9 @@
+# Solstone 1.15.39
+
+- **Fixed: the Stats chart showed no bars on phones.** A style for the Storage list's little bars (hidden on narrow screens) had the same name as the chart's bars, so on a phone only the running-total line showed. The chart's bars have their own name now.
+- **Deaths are noticed more reliably.** A line in the server's log counts as a death only when it starts with a player's name, and the names came from the server's own files, which can miss someone (no name saved for them yet, or a Bedrock player). Everyone who's ever played on the server is checked now too.
+- **Fixed: deaths missing from the Stats page.** The Stats page counted deaths only from the server's log, which can miss some (the leaderboards, which read each player's own stats file, had them right). Deaths now come from the players' stats files too, so the Stats page counts every one from now on. The activity feed shows them as "respawned 2×" alongside what else they did.
+
 # Solstone 1.15.38
 
 - **Fixed: a whole-machine restart showed as a green day in the uptime popup.** When Unraid restarts, Solstone is off too, so its checks have a gap, and a gap was always called "Not watched" and never counted against the server. Now, if the game server started again during that gap (its log says so), or Solstone came back to find it still starting, it's counted as down: one outage from Solstone's last look until the server was back, and that day's bar turns yellow or red. A gap where only Solstone was off (an update) while the server kept going is still "Not watched", as before.
