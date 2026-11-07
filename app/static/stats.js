@@ -102,7 +102,7 @@ function stChartHtml(buckets, k) {
     marks = vals.map((v, i) => {
       const h = Math.max(0, (v / top) * ih), r = Math.min(4, bw / 2, h);
       const bx = x0 + step * i + (step - bw) / 2, by = T + ih - h;
-      return v > 0 ? `<path class="st-bar" data-b="${i}" d="M${bx},${T + ih} V${by + r} Q${bx},${by} ${bx + r},${by} H${bx + bw - r} Q${bx + bw},${by} ${bx + bw},${by + r} V${T + ih} Z"/>` : "";
+      return v > 0 ? `<path class="st-col" data-b="${i}" d="M${bx},${T + ih} V${by + r} Q${bx},${by} ${bx + r},${by} H${bx + bw - r} Q${bx + bw},${by} ${bx + bw},${by + r} V${T + ih} Z"/>` : "";
     }).join("");
   }
   const total = how === "max" ? Math.max(...buckets.map((b) => b.v), 0) : buckets.reduce((t, b) => t + b.v, 0);
@@ -194,7 +194,7 @@ async function viewStats(sid) {
         tipEl.style.left = `${Math.min(Math.max(8, x - tipEl.offsetWidth / 2), r.width - tipEl.offsetWidth - 8)}px`;
         box.querySelectorAll(".st-hover").forEach((x2) => x2.classList.remove("st-hover"));
         t.classList.add("st-hover");
-        if (t.dataset.i != null) box.querySelector(`.st-bar[data-b="${t.dataset.i}"]`)?.classList.add("st-hover");
+        if (t.dataset.i != null) box.querySelector(`.st-col[data-b="${t.dataset.i}"]`)?.classList.add("st-hover");
       };
       box.addEventListener("pointermove", show);
       box.addEventListener("pointerdown", show);

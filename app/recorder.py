@@ -506,6 +506,9 @@ class Recorder:
 
         known = {p["name"].lower(): u for u, p in S.known_players(srv).items()}
         names = set(known)
+        # everyone who's ever played here too: a death line is only a death when it starts with a player's name, and
+        # the files above can miss some (no name saved for them yet, or a Bedrock player's Floodgate name)
+        names |= {r["p"] for r in db.q("SELECT DISTINCT lower(player) AS p FROM sessions WHERE server_id=?", (srv.id,)) if r["p"]}
         zone = db.tz()
         now = datetime.now(zone)
         text = chunk.decode("utf-8", errors="replace")

@@ -2441,8 +2441,8 @@ body.ui-hidden .manage-sub { display: none; }
 .st-chart svg { width: 100%; height: 240px; display: block; overflow: visible; }
 .st-grid { stroke: rgba(255, 255, 255, .08); stroke-width: 1; }
 .st-axis { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.st-bar { fill: #6aa9ff; }
-.st-bar.st-hover { fill: #9cc6ff; }
+.st-col { fill: #6aa9ff; }                          /* (not .st-bar: Storage's bars, hidden on phones) */
+.st-col.st-hover { fill: #9cc6ff; }
 .st-line { fill: none; stroke: #6aa9ff; stroke-width: 2; stroke-linejoin: round; }
 .st-dot { fill: #6aa9ff; stroke: var(--panel, #1b2133); stroke-width: 2; }
 .st-hit { fill: transparent; cursor: crosshair; }
