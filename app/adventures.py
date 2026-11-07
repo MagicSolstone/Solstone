@@ -164,6 +164,9 @@ def progress_line(before: dict, after: dict) -> str | None:
     taken = (ca.get("minecraft:damage_taken", 0) - cb.get("minecraft:damage_taken", 0)) / 20   # tenths of a heart -> hearts
     if taken >= 5:
         parts.append(f"took {taken:.0f} ❤ of damage")
+    died = gained("minecraft:deaths")                  # from the stats file: counted even when the log's line isn't
+    if died > 0:
+        parts.append(f"respawned {died}×")
     eaten = ca.get("minecraft:eat_cake_slice", 0) - cb.get("minecraft:eat_cake_slice", 0)
     if eaten > 0:
         parts.append(f"ate {eaten} slice{'s' if eaten > 1 else ''} of cake")
@@ -304,7 +307,7 @@ _TALLY = [(re.compile(r"defeated (.+?)(?: and (\d+) more kinds)?$"), "mobs"), (r
           (re.compile(r"^harvested (\d+) crops$"), "crops"), (re.compile(r"^placed (\d+) blocks?$"), "placed"),
           (re.compile(r"^opened (\d+) chests?$"), "chests"), (re.compile(r"^traded with villagers (\d+)×$"), "trades"),
           (re.compile(r"^bred (\d+) animals$"), "bred"), (re.compile(r"^took (\d+) ❤ of damage$"), "damage"),
-          (re.compile(r"^travelled ([\d.]+) (km|blocks)$"), "travelled")]
+          (re.compile(r"^travelled ([\d.]+) (km|blocks)$"), "travelled"), (re.compile(r"^respawned (\d+)×$"), "respawns")]
 # kept as lines of their own in the summary: the moments worth seeing
 NOTABLE = {"join", "leave", "death", "advancement", "challenge", "race", "bigfish", "game"}
 

@@ -57,7 +57,7 @@ def compute(sid: str, days: list[date]) -> dict[str, dict]:
         day = _day_of(e["ts"]).isoformat()
         if e["type"] == "progress":
             for k, n in adventures.tally(e["message"]).items():
-                if k in KEYS:
+                if k in KEYS or k == "respawns":
                     add(day, k, n)
         else:
             add(day, _COUNTED[e["type"]], 1)
@@ -82,6 +82,10 @@ def compute(sid: str, days: list[date]) -> dict[str, dict]:
         if day in out:
             out[day]["peak"] = max(out[day].get("peak", 0), r["players"])
     for v in out.values():
+        # deaths: the log's death lines, or the players' own stats files (which never miss one), whichever saw more
+        if v.get("respawns", 0) > v.get("deaths", 0):
+            v["deaths"] = v["respawns"]
+        v.pop("respawns", None)
         for k in ("play_hours", "travelled"):
             if k in v:
                 v[k] = round(v[k], 2)
