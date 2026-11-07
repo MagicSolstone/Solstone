@@ -363,13 +363,17 @@ def main() -> int:
                 route.fulfill(json={"days": days, "heat": heat, "keys": []})
             pg.route(f"**/api/servers/{sid}/stats/history*", safely(stats_days))
             pg.goto(f"{base}/app#/s/{sid}/stats"); pg.reload(); pg.wait_for_timeout(1500)
-            if pg.locator(".st-tile").count() != 8 or pg.locator(".st-chart .st-bar").count() < 60 or pg.locator(".st-cell").count() != 168:
+            if pg.locator(".st-tile").count() != 8 or pg.locator(".st-chart .st-col").count() < 60 or pg.locator(".st-cell").count() != 168:
                 problems.append("stats: no totals, chart or 'when people play' grid")
             check(pg, "stats")
             if os.environ.get("SMOKE_SHOTS"):
                 pg.screenshot(path=os.path.join(os.environ["SMOKE_SHOTS"], "stats-full.png"), full_page=True)
+            pg.set_viewport_size({"width": 390, "height": 844}); pg.wait_for_timeout(300)     # a phone: the bars still show
+            if not (pg.locator(".st-chart .st-col").first.bounding_box() or {}).get("width"):
+                problems.append("stats: the chart's bars are hidden on a phone")
+            pg.set_viewport_size({"width": 1280, "height": 860}); pg.wait_for_timeout(300)
             pg.click('[data-group="week"]'); pg.wait_for_timeout(300)
-            weeks = pg.locator(".st-chart .st-bar").count()
+            weeks = pg.locator(".st-chart .st-col").count()
             pg.click('.st-tile[data-key="travelled"]'); pg.wait_for_timeout(300)
             pg.check("#st-running"); pg.wait_for_timeout(300)
             if not 10 <= weeks <= 16 or not pg.locator(".st-chart .st-line").count() or "Distance travelled" not in (pg.locator(".st-chart-head").text_content() or ""):
