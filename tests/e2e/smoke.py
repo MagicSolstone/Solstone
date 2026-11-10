@@ -474,6 +474,15 @@ def main() -> int:
                 pg.click("#conn-form [type=submit]"); pg.wait_for_timeout(800)
                 if conn.get("type") != "panel" or conn.get("key") != "ptlc_test" or conn.get("url") != "https://panel.example.com":
                     problems.append(f"connections: adding a panel didn't send its details ({sorted(conn)})")
+                # ServerPrism: just its token (its address is always the same)
+                pg.click("#conn-manage [data-add-conn]"); pg.wait_for_timeout(400)
+                pg.click('#conn-form [data-kind="serverprism"]'); pg.wait_for_timeout(300)
+                if pg.locator("#conn-form [name=url]").count() or not pg.locator("#conn-form [name=key]").count():
+                    problems.append("connections: ServerPrism should ask for just its token")
+                pg.fill("#conn-form [name=key]", "sp_test"); conn.clear()
+                pg.click("#conn-form [type=submit]"); pg.wait_for_timeout(800)
+                if conn.get("type") != "serverprism" or conn.get("key") != "sp_test":
+                    problems.append(f"connections: adding ServerPrism didn't send its token ({sorted(conn)})")
             pg.unroute("**/api/manage/connections/test"); pg.unroute("**/api/manage/connections")
             pg.goto(f"{base}/app#/s/{sid}"); pg.wait_for_timeout(1200)
             if pg.locator("#btn-settings").count():

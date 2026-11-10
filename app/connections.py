@@ -6,6 +6,8 @@ Two kinds, set up in Solstone itself (not in the container's settings):
   are read from the servers folder Solstone can see.
 - **A host's panel** (panel): Pterodactyl or Pelican, which most game hosts run. Its API key can see the servers on
   that account; a server somewhere else (remote.py) is linked to one of them for the same things.
+- **ServerPrism** (serverprism): ServerPrism's own API (https://serverprism.com/api), the same things through its
+  token. Its commands don't send back the game's reply and are limited to 20 a minute, so RCON still does the game.
 
 There can be more than one of each. Older Solstones took Crafty from the container's CRAFTY_URL and CRAFTY_TOKEN:
 those are brought in once, the first time this version starts, as a Crafty connection (so nothing needs setting up
@@ -28,7 +30,9 @@ log = logging.getLogger("solstone.connections")
 SECTION = "connections"                 # {cid: {...}}
 IMPORTED = "connections_env_imported"   # the container's Crafty settings were brought in (once: removing it sticks)
 SECRETS = ("token", "password", "key")
-TYPES = {"crafty": "Crafty 4", "panel": "Pterodactyl or Pelican"}
+TYPES = {"crafty": "Crafty 4", "panel": "Pterodactyl or Pelican", "serverprism": "ServerPrism"}
+HOSTS = ("panel", "serverprism")       # the kinds a server somewhere else can be on (start, stop, CPU, memory)
+SERVERPRISM = "https://serverprism.com"
 _lock = threading.Lock()
 
 
@@ -78,6 +82,8 @@ def clean(body: dict, old: dict | None = None) -> dict:
     if kind not in TYPES:
         raise ValueError("Pick what kind it is: Crafty 4, or Pterodactyl or Pelican")
     url = str(body.get("url") if body.get("url") is not None else old.get("url") or "").strip().rstrip("/")
+    if kind == "serverprism":
+        url = SERVERPRISM                              # (one place: its API is always there)
     if not re.fullmatch(r"https?://[^\s/]+(/\S*)?", url):
         raise ValueError("Its address starts with https:// (or http://), like https://192.168.1.10:8443")
     cfg = {"type": kind, "name": " ".join(str(body.get("name") or old.get("name") or TYPES[kind]).split())[:40],
@@ -92,8 +98,11 @@ def clean(body: dict, old: dict | None = None) -> dict:
         cfg["key"] = ""
     else:
         if not cfg["key"]:
-            raise ValueError("The panel needs an API key (in the panel: Account → API Credentials → Create)")
+            raise ValueError("ServerPrism needs an API token (Account → API Credentials → Create, with servers:read and servers:control)"
+                             if kind == "serverprism" else "The panel needs an API key (in the panel: Account → API Credentials → Create)")
         cfg["token"] = cfg["password"] = ""
+        if kind == "serverprism":
+            cfg["verify_ssl"] = True
     return cfg
 
 
@@ -172,7 +181,7 @@ async def test(cfg: dict) -> dict:
             return {"ok": False, "error": _crafty_why(c.last_error or "")}
         return {"ok": True, "servers": [{"id": str(s.get("server_id")), "name": s.get("server_name") or str(s.get("server_id"))} for s in listed]}
     try:
-        return {"ok": True, "servers": await panel_servers(cfg)}
+        return {"ok": True, "servers": await (serverprism_servers(cfg) if cfg["type"] == "serverprism" else panel_servers(cfg))}
     except Exception as e:
         from .remote import _panel_why
         return {"ok": False, "error": _panel_why(e)}
@@ -186,6 +195,25 @@ def _crafty_why(err: str) -> str:
     if "SSL" in err or "certificate" in err.lower():
         return "Crafty's certificate wasn't trusted: untick Check its certificate (Crafty makes its own)"
     return err or "Crafty didn't answer"
+
+
+async def serverprism_servers(cfg: dict) -> list[dict]:
+    """The servers a ServerPrism token's account has: {id, name, node} (id: the numeric service id)."""
+    out, page = [], 1
+    async with httpx.AsyncClient(timeout=10) as client:
+        while page <= 10:
+            r = await client.get(f"{SERVERPRISM}/api/v1/client/servers", params={"page": page, "per_page": 100},
+                                 headers={"Authorization": f"Bearer {cfg.get('key', '')}", "Accept": "application/json"})
+            r.raise_for_status()
+            body = r.json()
+            for s in body.get("data") or []:
+                game = s.get("game") or {}
+                out.append({"id": str(s.get("id") or ""), "name": s.get("name") or "",
+                            "node": " ".join(x for x in (game.get("runtime") or "", game.get("version") or "") if x)})
+            if page >= int((body.get("meta") or {}).get("last_page") or 1):
+                break
+            page += 1
+    return out
 
 
 async def panel_servers(cfg: dict) -> list[dict]:

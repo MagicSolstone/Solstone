@@ -269,3 +269,53 @@ def test_a_panel_saved_with_a_server_becomes_a_connection(monkeypatch, tmp_path)
     c = connections.get(cfg["r-1"]["conn"])
     assert c["type"] == "panel" and c["url"] == "https://panel.example.com" and c["key"] == "ptlc_k"
     assert len(connections.of_type("panel")) == 1 and remote.panel("r-2")._url("/x").endswith("/servers/bbbb2222/x")
+
+
+def test_serverprism(monkeypatch, tmp_path):
+    """ServerPrism's own API (as its docs at serverprism.com/api describe it): its servers listed by service id; how
+    one's doing in the shape Crafty's stats have; power and backups sent; its limits and refusals explained."""
+    from app import connections
+    monkeypatch.setattr(settings_store, "_PATH", tmp_path / "settings.json")
+    sent = []
+
+    def answer(req: httpx.Request):
+        assert req.headers["authorization"] == "Bearer sp_token" and req.url.host == "serverprism.com"
+        sent.append((req.method, req.url.path, req.content.decode()))
+        if req.url.path == "/api/v1/client/servers":
+            return httpx.Response(200, json={"data": [{"id": 1234, "name": "Family", "game": {"runtime": "paper", "version": "1.21.4"}}],
+                                             "meta": {"total": 1, "last_page": 1}})
+        if req.url.path == "/api/v1/client/servers/1234":
+            return httpx.Response(200, json={"data": {"id": 1234, "name": "Family", "address": "fam.example.com", "game": {"version": "1.21.4"},
+                                             "limits": {"memory_mb": 4096}, "resources": {"current_state": "running", "memory_bytes": 2147483648,
+                                             "cpu_absolute": 18.5, "disk_bytes": 7300000000, "uptime_ms": 3600000}}})
+        if req.url.path.endswith("/backups"):
+            return httpx.Response(202, json={"data": {"status": "in_progress"}})
+        return httpx.Response(200, json={"data": {"sent": True}})
+    real = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(answer), **{k: v for k, v in kw.items() if k != "verify"}))
+    cfg = connections.clean({"type": "serverprism", "key": "sp_token", "url": "https://elsewhere.example.com"})
+    assert cfg["url"] == "https://serverprism.com" and cfg["verify_ssl"]                 # (its API is always there)
+    assert asyncio.run(connections.test(cfg)) == {"ok": True, "servers": [{"id": "1234", "name": "Family", "node": "paper 1.21.4"}]}
+    conn = connections.save(None, {"type": "serverprism", "key": "sp_token"})
+    sid = remote.save(None, {"name": "Family", "host": "sftp.example.com", "user": "u", "password": "p", "conn": conn, "panel_id": "1234"})
+    remote._panels.clear()
+    p = remote.panel(sid)
+    assert isinstance(p, remote.PrismPanel)
+    st = asyncio.run(p.stats())
+    assert st["running"] and st["cpu"] == 18.5 and st["mem"] == "2.0GB" and st["mem_percent"] == 50.0 and st["version"] == "1.21.4"
+    asyncio.run(p.power("restart_server"))
+    asyncio.run(p.power("backup_server"))
+    asyncio.run(p.command("say hi"))
+    assert ("POST", "/api/v1/client/servers/1234/power", '{"signal":"restart"}') in sent
+    assert ("POST", "/api/v1/client/servers/1234/backups", '{"name":"Solstone"}') in sent
+    assert ("POST", "/api/v1/client/servers/1234/command", '{"command":"say hi"}') in sent
+    asyncio.run(p.stats())                                                               # (a restart: asked afresh)
+    n = len(sent)
+    asyncio.run(p.stats())
+    assert len(sent) == n                                                                 # then at most every 10 s (its limits)
+
+    def refuse(req):
+        return httpx.Response(403, json={"message": "Token does not include the required scope."})
+    p._client = real(transport=httpx.MockTransport(refuse))
+    p._stats = None
+    assert asyncio.run(p.stats()) is None and "scope" in p.error

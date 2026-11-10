@@ -106,7 +106,7 @@ Solstone doesn't have to run on the same machine as the server. In **Manage → 
 
 1. **Its files (SFTP):** the address, port, username and password from your host's panel (usually under *SFTP details*), and the folder with `server.properties` in it (usually `/`). Press **Test the connection**: Solstone connects, finds the server and says whether RCON is on.
 2. **RCON:** read from the server's own `server.properties`. Your host has to let that port through (often an extra port, an *allocation*, that you then set as `rcon.port`).
-3. **The host's panel (optional):** for hosts on **Pterodactyl** or **Pelican** (most game hosts), add the panel once under **Connections** (its address and a client API key from *Account → API Credentials*), then pick it and the server from the list. That gives Solstone start, stop, restart and backups, whether it's running, and CPU and memory, as Crafty does at home.
+3. **The host's panel (optional):** for hosts on **Pterodactyl** or **Pelican** (most game hosts), or **ServerPrism** (its own API: a token with `servers:read` and `servers:control`), add the panel once under **Connections** (its address and a client API key from *Account → API Credentials*), then pick it and the server from the list. That gives Solstone start, stop, restart and backups, whether it's running, and CPU and memory, as Crafty does at home.
 
 How it works: Solstone keeps a **mirror** of just the files it reads, in `/data/remote/<id>/`, and every page reads that as it would a server's own folder.
 

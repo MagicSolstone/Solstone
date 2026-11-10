@@ -1167,7 +1167,7 @@ async function openServerSetup(sid, then) {
   const [cur, rc] = await Promise.all([sid ? api(`/api/servers/${encodeURIComponent(sid)}/settings`).catch(() => ({})) : {},
     remote && sid ? api(`/api/manage/remote/${encodeURIComponent(sid)}`).catch(() => null) : null]);
   const c = rc || { port: 22, path: "/", files_secs: 30 };
-  const panels = conns.filter((x) => x.type === "panel");
+  const panels = conns.filter((x) => x.type === "panel" || x.type === "serverprism");
   const saved = (set) => (set ? "Saved. Type a new one to replace it." : "");
   let tested = null;
   const title = sid ? (cur.display_name || row.found_as) : "Add a server somewhere else";
@@ -1189,11 +1189,11 @@ async function openServerSetup(sid, then) {
         ${row?.files?.error ? `<p class="notice small">Its files aren't updating: ${esc(row.files.error)}</p>` : row?.files?.synced ? `<p class="muted small">Files last updated ${esc(fmtAgo(row.files.synced))}.</p>` : ""}</div>`;
   const runner = !remote ? (row.crafty ? `<p>🧰 <b>${esc(row.crafty_name || "Crafty")}</b> starts and stops it, and says how it's doing. <span class="muted small">(Under <b>Connections</b> on this page.)</span></p>`
       : `<p class="muted">Nothing: Solstone found it as a folder, so it can't start or stop it. Add Crafty under <b>Connections</b> if Crafty runs it.</p>`)
-    : panels.length ? `<p class="muted small">For a host on Pterodactyl or Pelican: which of your panel connections it's on, then which server it is there.</p>
+    : panels.length ? `<p class="muted small">Which of your host connections it's on (Pterodactyl, Pelican or ServerPrism), then which server it is there.</p>
       <div class="remote-grid">
         <label class="wide">Panel<select class="input" name="conn"><option value="">None</option>${panels.map((p) => `<option value="${esc(p.id)}" ${c.conn === p.id ? "selected" : ""}>${esc(p.name)} (${esc(p.url.replace(/^https?:\/\//, ""))})</option>`).join("")}</select></label>
         <label class="wide">Server there<select class="input" name="panel_id">${c.panel_id ? `<option value="${esc(c.panel_id)}">${esc(c.panel_id)}</option>` : `<option value="">Pick the panel first</option>`}</select></label>
-      </div>` : `<p class="muted small">Optional, for hosts on <b>Pterodactyl</b> or <b>Pelican</b> (most game hosts): add the panel under <b>Connections</b> on this page first (once for every server there), then pick it here.</p>`;
+      </div>` : `<p class="muted small">Optional, for hosts on <b>Pterodactyl</b>, <b>Pelican</b> or <b>ServerPrism</b>: add it under <b>Connections</b> on this page first (once for every server there), then pick it here.</p>`;
   const html = `<h2>⚙ ${esc(title)}</h2>
     <form id="settings-form" class="remote-form" autocomplete="off">
       <h3 class="set-h">1. General</h3>
@@ -1300,14 +1300,14 @@ async function manageConnections() {
   if (!list) { box.innerHTML = `<p class="notice">Couldn't load the connections just now.</p>`; return; }
   const chip = (cls, text, title = "") => `<span class="srv-chip ${cls}" ${title ? `title="${esc(title)}"` : ""}>${text}</span>`;
   box.innerHTML = (list.length ? list.map((x) => `<div class="panel srv-row" data-cid="${esc(x.id)}">
-      <div class="srv-main"><b>${x.type === "crafty" ? "🧰" : "🛰️"} ${esc(x.name)}</b> <span class="muted small">${esc(x.type_name)} · ${esc(x.url)}</span>
+      <div class="srv-main"><b>${{ crafty: "🧰", serverprism: "🔷" }[x.type] || "🛰️"} ${esc(x.name)}</b> <span class="muted small">${esc(x.type_name)} · ${esc(x.url)}</span>
         <div class="srv-chips">${x.error || x.unreachable ? chip("warn", "Not answering", x.error || "") : chip("on", "Answering")}
           ${chip("", x.servers.length ? `${x.servers.length} server${x.servers.length === 1 ? "" : "s"}` : "No servers yet", x.servers.join(", "))}
           ${x.from_env ? chip("new", "From the container's settings", "Brought in from CRAFTY_URL and CRAFTY_TOKEN once. It's set here now: you can remove those from the container") : ""}</div></div>
       <div class="btn-row"><button class="btn sm" type="button" data-edit-conn>Edit</button></div></div>`).join("")
     : `<p class="muted">None yet. Crafty, if you use it, goes here; so does a game host's panel.</p>`)
     + `<div class="btn-row"><button class="btn" type="button" data-add-conn>＋ Add a connection</button>
-      <span class="muted small">Crafty 4 on this machine, or a game host's Pterodactyl or Pelican panel.</span></div>`;
+      <span class="muted small">Crafty 4 on this machine, a game host's Pterodactyl or Pelican panel, or ServerPrism.</span></div>`;
   box.querySelector("[data-add-conn]").addEventListener("click", () => openConnection(null));
   box.querySelectorAll("[data-cid]").forEach((row) => row.querySelector("[data-edit-conn]").addEventListener("click", () => openConnection(list.find((x) => x.id === row.dataset.cid))));
 }
@@ -1316,15 +1316,16 @@ function openConnection(cur) {
   let kind = cur?.type || "crafty";
   const html = () => `<h2>${cur ? `${esc(cur.name)}` : "Add a connection"}</h2>
     <form id="conn-form" class="remote-form" autocomplete="off">
-      ${cur ? "" : `<div class="seg" role="group" aria-label="What kind">${[["crafty", "🧰 Crafty 4"], ["panel", "🛰️ Pterodactyl or Pelican"]].map(([v, l]) => `<button type="button" data-kind="${v}" aria-pressed="${kind === v}">${l}</button>`).join("")}</div>`}
-      ${kind === "crafty" ? `<p class="muted small">Crafty Controller on this machine (or one Solstone can reach). Solstone lists its servers and reads their files from the servers folder it can see. In Crafty: click your name → <b>API Keys</b> → add one with access to the servers, and copy the token.</p>`
+      ${cur ? "" : `<div class="seg" role="group" aria-label="What kind">${[["crafty", "🧰 Crafty 4"], ["panel", "🛰️ Pterodactyl or Pelican"], ["serverprism", "🔷 ServerPrism"]].map(([v, l]) => `<button type="button" data-kind="${v}" aria-pressed="${kind === v}">${l}</button>`).join("")}</div>`}
+      ${kind === "serverprism" ? `<p class="muted small">ServerPrism's own API. At <b>serverprism.com → Account → API Credentials</b>, create a token with <b>servers:read</b> and <b>servers:control</b> (and <b>backups:create</b> for Back up), and copy it: it's only shown once. One connection covers every server on your account. It gives Solstone whether each is running, CPU and memory, start, stop and restart, and backups. RCON still does the game (its commands send back the game's answer).</p>`
+        : kind === "crafty" ? `<p class="muted small">Crafty Controller on this machine (or one Solstone can reach). Solstone lists its servers and reads their files from the servers folder it can see. In Crafty: click your name → <b>API Keys</b> → add one with access to the servers, and copy the token.</p>`
         : `<p class="muted small">A game host's panel (most run Pterodactyl or Pelican; it says so at the bottom of the panel's pages). In the panel: <b>Account → API Credentials → Create</b>, and copy the key. One connection covers every server on that account; add each server under <b>Your servers</b> (its files come over SFTP).</p>`}
       <div class="remote-grid">
         <label class="wide">Name<input class="input" name="name" maxlength="40" value="${esc(cur?.name || (kind === "crafty" ? "Crafty" : "Host's panel"))}"></label>
-        <label class="wide">Address<input class="input" name="url" required value="${esc(cur?.url || "")}" placeholder="${kind === "crafty" ? "https://192.168.1.10:8443" : "https://panel.examplehost.com"}" autocapitalize="off" spellcheck="false"></label>
+        ${kind === "serverprism" ? "" : `<label class="wide">Address<input class="input" name="url" required value="${esc(cur?.url || "")}" placeholder="${kind === "crafty" ? "https://192.168.1.10:8443" : "https://panel.examplehost.com"}" autocapitalize="off" spellcheck="false"></label>`}
         ${kind === "crafty" ? `<label class="wide">API token <small class="muted">${cur?.token_set ? "Saved. Type a new one to replace it." : ""}</small><input class="input" type="password" name="token" autocomplete="off"></label>`
-          : `<label class="wide">API key <small class="muted">${cur?.key_set ? "Saved. Type a new one to replace it." : ""}</small><input class="input" type="password" name="key" autocomplete="off" placeholder="ptlc_…"></label>`}
-        <label class="check wide"><input type="checkbox" name="verify_ssl" ${(cur ? cur.verify_ssl : kind === "panel") ? "checked" : ""}> Check its certificate <small class="muted">${kind === "crafty" ? "leave off for Crafty: it makes its own" : "leave on for a host's panel"}</small></label>
+          : `<label class="wide">API ${kind === "serverprism" ? "token" : "key"} <small class="muted">${cur?.key_set ? "Saved. Type a new one to replace it." : ""}</small><input class="input" type="password" name="key" autocomplete="off" placeholder="${kind === "serverprism" ? "" : "ptlc_…"}"></label>`}
+        ${kind === "serverprism" ? "" : `<label class="check wide"><input type="checkbox" name="verify_ssl" ${(cur ? cur.verify_ssl : kind === "panel") ? "checked" : ""}> Check its certificate <small class="muted">${kind === "crafty" ? "leave off for Crafty: it makes its own" : "leave on for a host's panel"}</small></label>`}
       </div>
       <div class="btn-row"><button class="btn" type="button" data-test-conn>🔌 Test it</button></div>
       <div class="remote-result" id="conn-result"></div>

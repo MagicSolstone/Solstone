@@ -106,7 +106,7 @@ def clean(body: dict, old: dict | None = None) -> dict:
         raise ValueError("A name, the SFTP address and the username are needed")
     if cfg["conn"]:
         from . import connections
-        if (connections.get(cfg["conn"]) or {}).get("type") != "panel":
+        if (connections.get(cfg["conn"]) or {}).get("type") not in connections.HOSTS:
             raise ValueError("Pick one of your panel connections (or none)")
     for k in SECRETS:
         v = body.get(k)
@@ -509,6 +509,16 @@ class Panel:
 def _panel_why(e: Exception) -> str:
     if isinstance(e, httpx.HTTPStatusError):
         c = e.response.status_code
+        try:
+            said = (e.response.json() or {}).get("message") or ""
+        except ValueError:
+            said = ""
+        if c == 403 and "serverprism.com" in str(e.request.url):
+            return "That ServerPrism token is missing a scope it needs (servers:read; servers:control to start and stop)"
+        if c == 409 and said:
+            return f"The host said: {said}"
+        if c == 429:
+            return "Too many requests to the host for a moment (its limit): it'll be asked again shortly"
         return {401: "The panel didn't accept the API key", 403: "That API key can't see this server",
                 404: "The panel has no server with that ID (it's the short one in the server's address, like 1a2b3c4d)"}.get(c, f"The panel said {c}")
     if isinstance(e, httpx.RequestError):
@@ -522,8 +532,68 @@ _panels: dict[str, Panel] = {}
 def panel(sid: str) -> Panel | None:
     from . import connections
     c = get(sid)
-    if not c or not c.get("conn") or not c.get("panel_id") or (connections.get(c["conn"]) or {}).get("type") != "panel":
+    kind = (connections.get(c.get("conn")) or {}).get("type") if c else None
+    if not c or not c.get("panel_id") or kind not in connections.HOSTS:
         return None
-    if sid not in _panels:
-        _panels[sid] = Panel(sid)
+    cls = PrismPanel if kind == "serverprism" else Panel
+    if not isinstance(_panels.get(sid), cls):
+        _panels[sid] = cls(sid)
     return _panels[sid]
+
+
+class PrismPanel(Panel):
+    """ServerPrism's own API (https://serverprism.com/api/v1/client): the same as a Pterodactyl panel to the rest of
+    Solstone. Its limits: 60 reads and 20 commands a minute per token, so it's asked about the server at most every
+    10 seconds, and the game itself (anything that needs the game's reply) stays with RCON."""
+    STATS_SECS = 10
+
+    def _url(self, tail: str) -> str:
+        from .connections import SERVERPRISM
+        return f"{SERVERPRISM}/api/v1/client/servers/{self.cfg['panel_id']}{tail}"
+
+    async def stats(self) -> dict | None:
+        if self._stats and time.monotonic() - self._stats[0] < self.STATS_SECS:
+            return self._stats[1]
+        try:
+            r = await self._client.get(self._url(""), headers=self._headers())
+            r.raise_for_status()
+            a = r.json().get("data") or {}
+        except Exception as e:
+            self.error = _panel_why(e)
+            return self._stats[1] if self._stats else None
+        self.error = ""
+        res = a.get("resources")
+        if not res:                                   # (the node was briefly unreachable: what it said last)
+            return self._stats[1] if self._stats else None
+        state = res.get("current_state") or ""
+        mem = int(res.get("memory_bytes") or 0)
+        limit = int((a.get("limits") or {}).get("memory_mb") or 0) * 1024 * 1024
+        up = int(res.get("uptime_ms") or 0)
+        game = a.get("game") or {}
+        out = {"running": state == "running", "state": state, "cpu": round(float(res.get("cpu_absolute") or 0), 1),
+               "mem": f"{mem / 1024 ** 3:.1f}GB" if mem >= 1024 ** 3 else f"{mem / 1024 ** 2:.0f}MB",
+               "mem_percent": round(mem * 100 / limit, 1) if limit else None,
+               "world_size": f"{int(res.get('disk_bytes') or 0) / 1024 ** 3:.1f}GB",
+               "started": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - up / 1000)) if up and state == "running" else None,
+               "crashed": False, "version": game.get("version") or None, "address": a.get("address") or ""}
+        self._stats = (time.monotonic(), out)
+        return out
+
+    async def power(self, action: str) -> None:
+        if action == "backup_server":
+            r = await self._client.post(self._url("/backups"), headers=self._headers(), json={"name": "Solstone"})
+            r.raise_for_status()
+            return
+        signal = {"start_server": "start", "stop_server": "stop", "restart_server": "restart", "kill_server": "kill"}.get(action, action)
+        r = await self._client.post(self._url("/power"), headers=self._headers(), json={"signal": signal})
+        r.raise_for_status()
+        self._stats = None
+
+    async def test(self) -> dict:
+        self._stats = None
+        st = await self.stats()
+        if self._cfg is not None:
+            await self._client.aclose()
+        if st is None:
+            return {"ok": False, "error": self.error or "ServerPrism didn't say how the server is doing"}
+        return {"ok": True, "name": self.cfg.get("name") or "", "state": st.get("state", ""), "node": st.get("address", "")}

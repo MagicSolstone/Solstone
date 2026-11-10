@@ -2296,7 +2296,8 @@ async def test_remote(request: Request):
         raise HTTPException(400, str(e)) from e
     out = {"files": await remote.test(cfg)}
     if cfg.get("conn") and cfg.get("panel_id"):
-        out["panel"] = await remote.Panel("_test", cfg).test()
+        kind = (connections.get(cfg["conn"]) or {}).get("type")
+        out["panel"] = await (remote.PrismPanel if kind == "serverprism" else remote.Panel)("_test", cfg).test()
     return out
 
 
