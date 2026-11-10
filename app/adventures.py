@@ -204,6 +204,42 @@ def lately(server_id: str, name: str) -> str | None:
     return hit[1] if hit and time.time() - hit[0] < DOING_FOR else None
 
 
+_advs: dict[tuple[str, str], int] = {}       # (server, player) -> advancements done, at the last save looked at
+TALLY_DAYS = 45                              # (the Stats page works out its last couple of days again from these)
+
+
+def _tally_ensure() -> None:
+    db.x("CREATE TABLE IF NOT EXISTS stat_tally (server_id TEXT NOT NULL, ts REAL NOT NULL, player TEXT, "
+         "travelled REAL NOT NULL DEFAULT 0, advancements INTEGER NOT NULL DEFAULT 0, deaths INTEGER NOT NULL DEFAULT 0)")
+    db.x("CREATE INDEX IF NOT EXISTS stat_tally_by_time ON stat_tally(server_id, ts)")
+
+
+def _advancements_done(srv, uuid: str) -> int | None:
+    try:
+        adv = S.player_advancements(srv, uuid)
+    except Exception:
+        return None
+    return sum(1 for k, a in adv.items() if a["done"] and "/recipes/" not in k and ":recipes/" not in k)
+
+
+def record_save(srv, name: str, uuid: str, prev: dict, st: dict) -> None:
+    """Exactly what a save added, for the Stats page: every block travelled (the feed only mentions trips of 500 or
+    more), every advancement (from the player's own file: the log's line isn't always there to read) and every death.
+    Kept apart from the feed, which it would only clutter."""
+    cb, ca = prev.get("minecraft:custom") or {}, st.get("minecraft:custom") or {}
+    travelled = max(0.0, sum(ca.get(k, 0) - cb.get(k, 0) for k in _TRAVEL) / 100)
+    deaths = max(0, ca.get("minecraft:deaths", 0) - cb.get("minecraft:deaths", 0))
+    now_adv, key = _advancements_done(srv, uuid), (srv.id, name.lower())
+    before = _advs.get(key)
+    if now_adv is not None:
+        _advs[key] = now_adv
+    advs = max(0, now_adv - before) if now_adv is not None and before is not None else 0
+    if travelled or advs or deaths:
+        _tally_ensure()
+        db.x("INSERT INTO stat_tally(server_id, ts, player, travelled, advancements, deaths) VALUES (?,?,?,?,?,?)",
+             (srv.id, time.time(), name, round(travelled, 1), advs, deaths))
+
+
 def progress(srv, online: dict[str, str | None]) -> int:
     """Feed lines from statistics that changed since the last save (the game writes them every few minutes)."""
     n = 0
@@ -215,8 +251,14 @@ def progress(srv, online: dict[str, str | None]) -> int:
             continue
         prev = _stats.get((srv.id, name))
         _stats[(srv.id, name)] = st
-        if prev is None or prev == st:
+        if prev is None:                                  # (first look since Solstone started: what's done so far)
+            done = _advancements_done(srv, uuid)
+            if done is not None:
+                _advs[(srv.id, name.lower())] = done
             continue
+        if prev == st:
+            continue
+        record_save(srv, name, uuid, prev, st)
         label = doing(prev, st)
         if label:
             _doing[(srv.id, name.lower())] = (time.time(), label)
@@ -228,6 +270,8 @@ def progress(srv, online: dict[str, str | None]) -> int:
 
 
 def prune() -> None:
+    _tally_ensure()
+    db.x("DELETE FROM stat_tally WHERE ts < ?", (time.time() - TALLY_DAYS * 86400,))
     cutoff = time.time() - POSITIONS_DAYS * 86400
     db.x("DELETE FROM adventures_hidden WHERE end_ts < ?", (cutoff,))
     db.x("DELETE FROM events WHERE type='progress' AND ts < ? AND NOT EXISTS (SELECT 1 FROM adventures a "

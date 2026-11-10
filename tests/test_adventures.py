@@ -123,3 +123,37 @@ def test_the_feed_summed_up_every_ten_minutes():
     assert s[0]["players"]["Alex"] == {"mobs": 6, "mined": 40, "logs": 12, "damage": 6}
     assert s[0]["players"]["Sam"] == {"fish": 1, "chat": 1}
     assert [e["type"] for e in s[0]["moments"]] == ["join"] and s[1]["moments"][0]["type"] == "death"
+
+
+def test_every_block_advancement_and_death_reaches_the_stats_page(monkeypatch):
+    """The feed only mentions trips of 500 blocks or more, and the log's advancement line wasn't being seen: the Stats
+    page had no distance for short trips and no advancements at all. Each save's exact gains go to it now."""
+    import time
+    from datetime import date
+
+    from app import adventures, db, serverstats
+    from app import servers as S
+
+    class Srv:
+        id = "tally-test"
+    stats = {"minecraft:custom": {"minecraft:walk_one_cm": 0, "minecraft:deaths": 0}}
+    advs = {"minecraft:story/root": {"done": True}, "minecraft:recipes/misc/stick": {"done": True}}
+    monkeypatch.setattr(S, "player_stats", lambda srv, uuid: {k: dict(v) for k, v in stats.items()})
+    monkeypatch.setattr(S, "player_advancements", lambda srv, uuid: {k: dict(v) for k, v in advs.items()})
+    adventures._tally_ensure()
+    db.x("DELETE FROM stat_tally WHERE server_id=?", (Srv.id,))
+    db.x("DELETE FROM events WHERE server_id=?", (Srv.id,))
+    adventures._stats.pop((Srv.id, "Ann"), None)
+    adventures.progress(Srv(), {"Ann": "u-1"})                       # first look: what's done so far isn't counted
+    stats["minecraft:custom"]["minecraft:walk_one_cm"] = 12000        # 120 blocks: too few for the feed to mention
+    stats["minecraft:custom"]["minecraft:deaths"] = 1
+    advs["minecraft:story/mine_stone"] = {"done": True}
+    advs["minecraft:recipes/misc/torch"] = {"done": True}             # (a recipe: not an advancement)
+    advs["minecraft:adventure/root"] = {"done": True}
+    adventures.progress(Srv(), {"Ann": "u-1"})
+    today = date.fromtimestamp(time.time())
+    day = serverstats.compute(Srv.id, [today])[today.isoformat()]
+    assert day["travelled"] == 120 and day["advancements"] == 2 and day["deaths"] == 1
+    assert not db.q("SELECT 1 FROM events WHERE server_id=? AND type='tally'", (Srv.id,))       # nothing new in any feed
+    db.x("DELETE FROM stat_tally WHERE server_id=?", (Srv.id,))
+    db.x("DELETE FROM events WHERE server_id=?", (Srv.id,))

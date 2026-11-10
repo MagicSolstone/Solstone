@@ -81,6 +81,21 @@ def compute(sid: str, days: list[date]) -> dict[str, dict]:
         day = _day_of(r["ts"]).isoformat()
         if day in out:
             out[day]["peak"] = max(out[day].get("peak", 0), r["players"])
+    # what each save added (adventures.record_save): every block travelled, every advancement and death, from the players'
+    # own files. The feed's lines and the log can miss some, so each day takes whichever saw more.
+    from .adventures import _tally_ensure
+    _tally_ensure()
+    seen_t: dict[str, dict[str, float]] = {}
+    for r in db.q("SELECT ts, travelled, advancements, deaths FROM stat_tally WHERE server_id=? AND ts>=? AND ts<?", (sid, lo, hi)):
+        t = seen_t.setdefault(_day_of(r["ts"]).isoformat(), {"travelled": 0.0, "advancements": 0, "deaths": 0})
+        t["travelled"] += r["travelled"]
+        t["advancements"] += r["advancements"]
+        t["deaths"] += r["deaths"]
+    for day, t in seen_t.items():
+        if day in out:
+            for k, n in t.items():
+                if n > out[day].get(k, 0):
+                    out[day][k] = n
     for v in out.values():
         # deaths: the log's death lines, or the players' own stats files (which never miss one), whichever saw more
         if v.get("respawns", 0) > v.get("deaths", 0):
