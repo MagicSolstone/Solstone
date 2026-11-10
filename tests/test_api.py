@@ -113,15 +113,14 @@ def test_texture_path_is_sanitised(client, sid):
 
 def test_settings_require_admin(client, viewer, sid):
     url = f"/api/servers/{sid}/settings"
-    assert viewer.put(url, json={"map_url": "http://map:8100"}).status_code == 403
-    r = client.put(url, json={"map_url": "http://map:8100", "rcon_password": "secret", "bogus": 1})
+    assert viewer.put(url, json={"display_name": "Mine"}).status_code == 403
+    r = client.put(url, json={"display_name": "Ours", "rcon_password": "secret", "bogus": 1, "map_url": "http://map:8100"})
     assert r.status_code == 200
     body = r.json()
-    assert body["map_url"] == "http://map:8100"
+    assert body["display_name"] == "Ours"
     assert "rcon_password" not in body and body["rcon_password_set"] is True
-    assert "bogus" not in body
-    assert client.get(f"/api/servers/{sid}").json()["map_url"] == "http://map:8100"
-    client.put(url, json={"map_url": "", "rcon_password": ""})
+    assert "bogus" not in body and "map_url" not in body                  # (the web map setting is gone)
+    client.put(url, json={"display_name": "", "rcon_password": ""})
 
 
 def test_pages_home_app_and_not_found(client, anon):

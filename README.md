@@ -13,7 +13,7 @@ A family-friendly web dashboard for Minecraft Java servers run by **Crafty Contr
   - Health, hunger, XP, position, bed, last death and status effects.
   - Every tracked statistic (general, items, mobs) and advancement progress.
 - **Live data:** for online players this comes from RCON (refreshes every few seconds). Offline players are read from their last save.
-- **World:** day and time, weather, seed, spawn, where everyone is, chunks explored per dimension, game rules, data packs, plus an embedded BlueMap or squaremap.
+- **World:** day and time, weather, seed, spawn, where everyone is, chunks explored per dimension, game rules, data packs, and a top-down map drawn from the world's own files (no map mod needed).
 - **Activity:** time played per player per day, and a timeline of play sessions. Players who were on at the same time share one block, so their chat reads as a conversation, along with deaths and advancements.
 - **Performance:** TPS, tick time, CPU, memory, players online and uptime, graphed over 6 hours to 30 days.
 - **Notifications** to ntfy or Discord when someone joins, leaves, dies or earns an advancement, a server stops, or backups are overdue. Also included: daily screen-time limits per player, a weekly digest, and quiet hours.
@@ -97,8 +97,8 @@ Then connect Crafty: **Manage → Solstone → Server setup → Connections → 
 
 For start, stop, restart and backup buttons, the Crafty API key needs command permission on the servers. A full-access key already has it.
 
-### 5. Optional: a live map
-Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web map on port 8100. Then in Solstone open **Manage → Solstone → Server setup**, press **⚙ Settings** on the server and paste the map address (e.g. `http://192.168.150.10:8100`). It appears on the World tab.
+### 5. The map
+Solstone draws its own top-down map on each server's World tab from the region files, with everyone's spot on it: nothing to install. If you'd like a 3D map too, run BlueMap (or squaremap) on its own and give players its address yourself; Solstone doesn't show or proxy it.
 
 ## A server somewhere else (a game host, a rented server)
 

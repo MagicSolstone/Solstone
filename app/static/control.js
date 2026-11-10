@@ -1137,7 +1137,7 @@ async function manageServers() {
           ${x.java ? chip(x.rcon && !x.rcon_error ? "on" : "warn", x.rcon ? (x.rcon_error ? "RCON not answering" : "RCON ✓") : "RCON off", x.rcon_error || "") : chip("", esc(x.game || "Bedrock"))}
           ${x.remote ? chip(x.files?.ok === false ? "warn" : x.files?.ok ? "on" : "", x.files?.ok === false ? "Files: not updating" : `🌐 ${esc(x.where)}`, x.files?.error || (x.files?.synced ? `Files updated ${fmtAgo(x.files.synced)}` : "Somewhere else, over SFTP"))
             + (x.panel ? chip(x.panel_error ? "warn" : "on", x.panel_error ? "Panel: not answering" : "Panel ✓", x.panel_error || "Start, stop, CPU and memory through the host's panel") : "")
-            : chip("", x.crafty ? "Crafty" : "Folder", x.crafty ? "Started and stopped through Crafty" : `The ${x.folder} folder`)}${x.version ? chip("", esc(x.version)) : ""}${x.map ? chip("", "🗺 Map") : ""}</div></div>
+            : chip("", x.crafty ? "Crafty" : "Folder", x.crafty ? "Started and stopped through Crafty" : `The ${x.folder} folder`)}${x.version ? chip("", esc(x.version)) : ""}${x.remote && x.map ? chip("", "🗺 Map", "Copies the parts of the world players go to, for the map") : ""}</div></div>
       <div class="btn-row">${x.hidden ? `<button class="btn sm primary" type="button" data-show>Show it</button>` : `<a class="btn sm" href="#/s/${encodeURIComponent(x.id)}">Open</a>`}
         <button class="btn sm" type="button" data-edit>⚙ Settings</button></div></div>`).join("")
     + `<p class="muted small">A server Solstone finds for the first time starts <b>hidden</b>, so nothing new turns up on the website until you show it.</p>
@@ -1202,9 +1202,7 @@ async function openServerSetup(sid, then) {
       <h3 class="set-h">1. General</h3>
       <div class="remote-grid">
         <label class="wide">Name${remote && !sid ? "" : ` <small class="muted">blank: ${esc(row.found_as)}</small>`}<input class="input" name="display_name" maxlength="60" ${remote && !sid ? "required" : ""} value="${esc(remote && !sid ? "" : cur.display_name || "")}" placeholder="${esc(row?.found_as || "Family Survival")}"></label>
-        <label class="wide">Map address <small class="muted">BlueMap, squaremap or Dynmap, shown on the World tab</small><input class="input" name="map_url" value="${esc(cur.map_url || "")}" placeholder="http://192.168.1.10:8100"></label>
       </div>
-      <label class="check"><input type="checkbox" name="map_proxy" ${cur.map_proxy ? "checked" : ""}> Show the map through Solstone <small class="muted">it then opens from anywhere, only for people signed in who may see the map; the map itself stays off the internet</small></label>
       <label class="check"><input type="checkbox" name="private" ${cur.private ? "checked" : ""}> Private <small class="muted">only admins see it: never on the public pages, and signed-in players don't see it</small></label>
       ${sid ? `<label class="check"><input type="checkbox" name="hidden" ${cur.hidden ? "checked" : ""}> Hidden <small class="muted">Solstone leaves it alone: not on the website or any page, no history kept</small></label>` : ""}
       <p class="muted small">How to join it (addresses, a note, the mods) is in Manage → Website → Site details.</p>
@@ -1283,8 +1281,8 @@ async function openServerSetup(sid, then) {
           const r = await post(sid ? `/api/manage/remote/${encodeURIComponent(sid)}` : "/api/manage/remote", remoteBody(form), "PUT");
           id = r.id;
         }
-        const body = { display_name: remote && !sid ? "" : f.get("display_name"), map_url: f.get("map_url"), rcon_host: f.get("rcon_host"),
-          rcon_port: f.get("rcon_port") ? Number(f.get("rcon_port")) : "", private: f.get("private") ? true : "", map_proxy: f.get("map_proxy") ? true : "" };
+        const body = { display_name: remote && !sid ? "" : f.get("display_name"), rcon_host: f.get("rcon_host"),
+          rcon_port: f.get("rcon_port") ? Number(f.get("rcon_port")) : "", private: f.get("private") ? true : "" };
         if (sid) body.hidden = f.get("hidden") ? true : "";
         if (f.get("rcon_password")) body.rcon_password = f.get("rcon_password");
         await post(`/api/servers/${encodeURIComponent(id)}/settings`, body, "PUT");
