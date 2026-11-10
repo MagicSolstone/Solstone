@@ -229,7 +229,7 @@ class Mirror:
         self.known: dict[str, tuple[int, int]] = {}      # remote path -> (size, mtime) of the copy we have
         self.log_at = 0                                  # how much of latest.log we have
         self.log_head = b""
-        self.last = {"log": 0.0, "files": 0.0, "slow": 0.0, "regions": 0.0}
+        self.last: dict[str, float] = {"log": 0.0, "files": 0.0, "slow": 0.0, "regions": 0.0}
         self.regions: list[tuple[str, str, bool]] = []    # (local path, remote path, only if missing) still to look at
         self._dim_base: dict[str, str] = {}              # each dimension's region folder on the server, once found
         self.status = {"ok": None, "error": "", "synced": None, "files": 0, "bytes": 0}
@@ -462,6 +462,20 @@ class Mirror:
         self.status["bytes"] += HEADER + sum(len(d) for _o, d in chunks)
         return True
 
+    async def _extra(self, what: str, job) -> None:
+        """Something nice to have (the map, mods and old logs): a problem with it is noted, and never stops the log and
+        the players' files, which everything else needs. (A lost connection still is a problem for all of it.)"""
+        import asyncssh
+        try:
+            await job
+            self.status.pop(f"error_{what}", None)
+        except (asyncssh.Error, OSError, asyncio.TimeoutError):
+            raise
+        except Exception as e:
+            if self.status.get(f"error_{what}") != str(e):
+                log.warning("server %s: %s: %s: %s", self.sid, what, type(e).__name__, e)
+            self.status[f"error_{what}"] = f"{type(e).__name__}: {e}"
+
     async def tick(self, now: float | None = None) -> None:
         """Called every couple of seconds: does whatever is due."""
         now = now or time.time()
@@ -469,21 +483,21 @@ class Mirror:
             return
         async with self._lock:
             try:
-                if now - self.last["files"] >= int(self.cfg.get("files_secs") or FILES_SECS) or not (self.dir / "server.properties").exists():
+                if now - self.last.get("files", 0.0) >= int(self.cfg.get("files_secs") or FILES_SECS) or not (self.dir / "server.properties").exists():
                     await self.sync_files()
                     self.last["files"] = now
-                if now - self.last["slow"] >= SLOW_SECS:
-                    await self.sync_slow()
+                if now - self.last.get("slow", 0.0) >= SLOW_SECS:
                     self.last["slow"] = now
-                if now - self.last["log"] >= LOG_SECS:
+                    await self._extra("mods and old logs", self.sync_slow())
+                if now - self.last.get("log", 0.0) >= LOG_SECS:
                     await self.follow_log()
                     self.last["log"] = now
                 if self.cfg.get("map", True):
-                    if now - self.last["regions"] >= REGION_SECS:
-                        await self.plan_regions(now)
+                    if now - self.last.get("regions", 0.0) >= REGION_SECS:
                         self.last["regions"] = now
+                        await self._extra("the map", self.plan_regions(now))
                     if self.regions:
-                        await self.sync_regions()
+                        await self._extra("the map", self.sync_regions())
                 self.status.update(ok=True, error="", synced=now, files=len(self.known) + (1 if self.log_at else 0))
             except Exception as e:
                 self.close()                                     # a fresh connection next time

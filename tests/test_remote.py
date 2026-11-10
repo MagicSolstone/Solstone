@@ -405,3 +405,24 @@ def test_a_region_already_copied_fetches_only_its_changed_chunks(far):
     assert copy.read_bytes() == f.read_bytes()
     assert m.status["bytes"] - before == 8192 + 4096                                       # the table and one sector
     db.x("DELETE FROM positions WHERE server_id=?", (sid,))
+
+
+def test_saving_its_settings_never_stops_its_updates(far):
+    """Saving a server's settings reset its timers without the map's, and every update after failed with
+    KeyError: 'regions' (Files: not updating). And a problem with the map never stops the log and players' files."""
+    loop, root, cfg, key = far
+    sid = _added(loop, cfg)
+    m = remote.mirror(sid)
+    m.last = {"log": 0.0, "files": 0.0, "slow": 0.0}                       # what saving its settings used to leave
+    loop.run_until_complete(m.tick(now=1000))
+    assert m.status["ok"], m.status
+
+    async def broken(now):
+        raise KeyError("something in the map")
+    m.plan_regions = broken
+    m.last["regions"] = 0
+    with (root / "logs/latest.log").open("a") as f:
+        f.write("[10:00:05] [Server thread/INFO]: Ann joined the game\n")
+    loop.run_until_complete(m.tick(now=2000))
+    assert m.status["ok"] and "the map" in " ".join(m.status)                  # noted, and everything else carried on
+    assert (remote.mirror_dir(sid) / "logs/latest.log").read_text().endswith("Ann joined the game\n")

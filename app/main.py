@@ -2330,7 +2330,7 @@ async def save_remote(request: Request, sid: str | None = None):
     m = remote.mirror(sid)
     if m:
         m.close()                                     # (new settings: a fresh connection)
-        m.last = {"log": 0.0, "files": 0.0, "slow": 0.0}
+        m.last = dict.fromkeys(m.last, 0.0)          # (every one of its timers: the map's too)
     await S.registry.refresh(force=True)
     auth.audit(user, sid, "remote_server", f"{body.get('name') or sid} at {body.get('host') or ''}")
     return {"id": sid, **remote.public(remote.get(sid))}

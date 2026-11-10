@@ -1187,7 +1187,8 @@ async function openServerSetup(sid, then) {
       <div class="btn-row"><button class="btn" type="button" data-test>🔌 Test the connection</button>
         ${sid && c.host_key ? `<button class="btn sm" type="button" data-forget-key title="Only if your host moved your server to another machine">Forget its identity</button>` : ""}</div>
       <div class="remote-result" id="remote-result">${c.host_key ? `<p class="muted small">Its identity: <code>${esc(c.host_key)}</code> (remembered the first time; Solstone won't connect if it changes)</p>` : ""}
-        ${row?.files?.error ? `<p class="notice small">Its files aren't updating: ${esc(row.files.error)}</p>` : row?.files?.synced ? `<p class="muted small">Files last updated ${esc(fmtAgo(row.files.synced))}.</p>` : ""}</div>`;
+        ${row?.files?.error ? `<p class="notice small">Its files aren't updating: ${esc(row.files.error)}</p>` : row?.files?.synced ? `<p class="muted small">Files last updated ${esc(fmtAgo(row.files.synced))}.</p>` : ""}
+        ${row?.files?.["error_the map"] ? `<p class="notice small">The map isn't updating (everything else is): ${esc(row.files["error_the map"])}</p>` : ""}</div>`;
   const runner = !remote ? (row.crafty ? `<p>🧰 <b>${esc(row.crafty_name || "Crafty")}</b> starts and stops it, and says how it's doing. <span class="muted small">(Under <b>Connections</b> on this page.)</span></p>`
       : `<p class="muted">Nothing: Solstone found it as a folder, so it can't start or stop it. Add Crafty under <b>Connections</b> if Crafty runs it.</p>`)
     : panels.length ? `<p class="muted small">Which of your host connections it's on (Pterodactyl, Pelican or ServerPrism), then which server it is there.</p>
