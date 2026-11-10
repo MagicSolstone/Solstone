@@ -1802,39 +1802,9 @@ async function viewMods(sid) {
 }
 
 // ---------------------------------------------------------------- settings
-// Manage → Server setup: one server's settings (its name, how Solstone reaches it, who sees it). `s`: {id, name}; then: after saving.
+// A server's settings: one window for every server (Manage → Server setup), here or somewhere else (control.js).
 async function openSettings(s, then) {
-  const cur = await api(`/api/servers/${encodeURIComponent(s.id)}/settings`).catch(() => ({}));
-  openModal(`<h2>⚙ ${esc(cur.display_name || s.name)}</h2>
-    <form id="settings-form">
-      <label>Display name<input class="input" name="display_name" value="${esc(cur.display_name || "")}" placeholder="${esc(s.name)}"></label>
-      <label>Map address <small>BlueMap, squaremap or Dynmap web address shown on the World tab</small><input class="input" name="map_url" value="${esc(cur.map_url || "")}" placeholder="http://192.168.1.10:8100"></label>
-      <label class="check"><input type="checkbox" name="map_proxy" ${cur.map_proxy ? "checked" : ""}> Show the map through Solstone <small>It then opens from anywhere, not just at home, and only for people signed in who may see the map (Players only with <i>Players can see the map</i> on). The map itself stays off the internet: use its home-network address above.</small></label>
-      <p class="muted small">How to join this server (its addresses, a note, the mods) is set in Manage → Website → Site details.</p>
-      <h3 class="set-h">How Solstone reaches it</h3>
-      <label>RCON host <small>Commands, who's online, live inventories, games. Leave blank to use ${esc(s.rcon?.host || "the Crafty host")}.</small><input class="input" name="rcon_host" value="${esc(cur.rcon_host || "")}"></label>
-      <label>RCON port <small>Leave blank to use rcon.port from server.properties</small><input class="input" name="rcon_port" inputmode="numeric" value="${esc(cur.rcon_port || "")}"></label>
-      <label>RCON password <small>${cur.rcon_password_set ? "Saved. Type a new one to replace it." : "Leave blank to use rcon.password from server.properties"}</small><input class="input" type="password" name="rcon_password" autocomplete="off"></label>
-      <h3 class="set-h">Who sees it</h3>
-      <label class="check"><input type="checkbox" name="private" ${cur.private ? "checked" : ""}> Private <small>Only admins see it. It never shows on the public pages, and signed-in players don't see it.</small></label>
-      <label class="check"><input type="checkbox" name="hidden" ${cur.hidden ? "checked" : ""}> Hidden <small>Solstone leaves it alone: not on the website, not on any page, no history kept. Nothing about the server itself changes.</small></label>
-      <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Save settings</button></div>
-    </form>`, (m) => {
-    $("#settings-form", m).addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const f = new FormData(e.target);
-      const body = { display_name: f.get("display_name"), map_url: f.get("map_url"), rcon_host: f.get("rcon_host"),
-        rcon_port: f.get("rcon_port") ? Number(f.get("rcon_port")) : "", hidden: f.get("hidden") ? true : "", private: f.get("private") ? true : "",
-        map_proxy: f.get("map_proxy") ? true : "" };
-      if (f.get("rcon_password")) body.rcon_password = f.get("rcon_password");
-      try {
-        await post(`/api/servers/${encodeURIComponent(s.id)}/settings`, body, "PUT");
-        closeModal(); showToast("Settings saved", 2500);
-        await loadServers();
-        if (then) await then(); else route();
-      } catch (err) { showError(`Couldn't save settings: ${esc(err.message)}`, 5000); }
-    });
-  });
+  return openServerSetup(s.id, then);
 }
 
 // ================================================================ router

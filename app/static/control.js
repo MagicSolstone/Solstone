@@ -1127,7 +1127,7 @@ async function manageServers() {
     box.innerHTML = `<p class="muted">No servers found yet. Solstone finds them in Crafty and in its servers folder, or add one that's somewhere else.</p>
       <div class="btn-row"><button class="btn primary" type="button" data-add-remote>🌐 Add a server somewhere else</button></div>`;
   }
-  const wireAdd = () => box.querySelectorAll("[data-add-remote]").forEach((b) => b.addEventListener("click", () => openRemote(null)));
+  const wireAdd = () => box.querySelectorAll("[data-add-remote]").forEach((b) => b.addEventListener("click", () => openServerSetup(null, manageServers)));
   if (!list.length) { wireAdd(); return; }
   const chip = (cls, text, title = "") => `<span class="srv-chip ${cls}" ${title ? `title="${esc(title)}"` : ""}>${text}</span>`;
   box.innerHTML = list.map((x) => `<div class="panel srv-row ${x.hidden ? "is-hidden" : ""}" data-msid="${esc(x.id)}">
@@ -1139,15 +1139,14 @@ async function manageServers() {
             + (x.panel ? chip(x.panel_error ? "warn" : "on", x.panel_error ? "Panel: not answering" : "Panel ✓", x.panel_error || "Start, stop, CPU and memory through the host's panel") : "")
             : chip("", x.crafty ? "Crafty" : "Folder", x.crafty ? "Started and stopped through Crafty" : `The ${x.folder} folder`)}${x.version ? chip("", esc(x.version)) : ""}${x.map ? chip("", "🗺 Map") : ""}</div></div>
       <div class="btn-row">${x.hidden ? `<button class="btn sm primary" type="button" data-show>Show it</button>` : `<a class="btn sm" href="#/s/${encodeURIComponent(x.id)}">Open</a>`}
-        ${x.remote ? `<button class="btn sm" type="button" data-conn>🔌 Connection</button>` : ""}<button class="btn sm" type="button" data-edit>⚙ Settings</button></div></div>`).join("")
+        <button class="btn sm" type="button" data-edit>⚙ Settings</button></div></div>`).join("")
     + `<p class="muted small">A server Solstone finds for the first time starts <b>hidden</b>, so nothing new turns up on the website until you show it.</p>
     <div class="btn-row"><button class="btn" type="button" data-add-remote>🌐 Add a server somewhere else</button>
       <span class="muted small">A game host, a rented server, another computer: Solstone reaches its files over SFTP.</span></div>`;
   wireAdd();
   box.querySelectorAll("[data-msid]").forEach((row) => {
     const x = list.find((y) => y.id === row.dataset.msid);
-    row.querySelector("[data-edit]").addEventListener("click", () => openSettings({ id: x.id, name: x.found_as }, manageServers));
-    row.querySelector("[data-conn]")?.addEventListener("click", () => openRemote(x.id));
+    row.querySelector("[data-edit]").addEventListener("click", () => openServerSetup(x.id, manageServers));
     row.querySelector("[data-show]")?.addEventListener("click", async () => {
       try { await post(`/api/servers/${encodeURIComponent(x.id)}/settings`, { hidden: "" }, "PUT"); showToast(`${esc(x.name)} is shown`, 2500); await loadServers(); manageServers(); }
       catch (e) { showError(esc(e.message), 4000); }
@@ -1155,58 +1154,81 @@ async function manageServers() {
   });
 }
 
-// A server somewhere else: its files over SFTP (and, if the host has one, its panel for start, stop, CPU and memory).
-// sid null: adding one. Step by step: where its files are, then test, then RCON and the panel (both optional).
-async function openRemote(sid) {
-  const cur = sid ? await api(`/api/manage/remote/${encodeURIComponent(sid)}`).catch(() => null) : null;
-  const panels = (await api("/api/manage/connections").catch(() => [])).filter((x) => x.type === "panel");
-  if (sid && !cur) { showError("Couldn't load its settings", 3000); return; }
-  const c = cur || { port: 22, path: "/", files_secs: 30 };
+// One server's settings, the same window for every server (Manage → Server setup → Your servers):
+//   1. General: its name, the web map, who sees it        3. RCON: commands, who's online, games
+//   2. Its files: on this machine, or over SFTP            4. Start, stop and stats: Crafty, a host's panel, or none
+// Here or somewhere else only changes where its files come from (2) and what can run it (4). sid null: adding one
+// somewhere else (its files over SFTP).
+async function openServerSetup(sid, then) {
+  const [rows, conns] = await Promise.all([api("/api/manage/servers").catch(() => []), api("/api/manage/connections").catch(() => [])]);
+  const row = sid ? rows.find((x) => x.id === sid) : null;
+  if (sid && !row) { showError("Couldn't load its settings", 3000); return; }
+  const remote = !sid || row.remote;
+  const [cur, rc] = await Promise.all([sid ? api(`/api/servers/${encodeURIComponent(sid)}/settings`).catch(() => ({})) : {},
+    remote && sid ? api(`/api/manage/remote/${encodeURIComponent(sid)}`).catch(() => null) : null]);
+  const c = rc || { port: 22, path: "/", files_secs: 30 };
+  const panels = conns.filter((x) => x.type === "panel");
+  const saved = (set) => (set ? "Saved. Type a new one to replace it." : "");
   let tested = null;
-  const secretNote = (set) => (set ? "Saved. Type a new one to replace it." : "");
-  const html = () => `<h2>🌐 ${sid ? `How Solstone reaches ${esc(c.name)}` : "Add a server somewhere else"}</h2>
-    <form id="remote-form" class="remote-form" autocomplete="off">
-      <p class="muted small">For a server at a game host, on a rented server or on another computer. Solstone keeps a copy of the few files it reads (the log, players' stats, the world's info) and keeps it up to date over <b>SFTP</b>, which almost every host offers. Everything else in Solstone works as it does for a server here.</p>
-      <label>Name<input class="input" name="name" maxlength="60" required value="${esc(c.name || "")}" placeholder="Family Survival"></label>
-      <h3 class="set-h">1. Its files (SFTP)</h3>
-      <p class="muted small">In your host's panel, look for <b>SFTP details</b> (often under Settings): an address, a port, a username. The password is usually your panel password.</p>
+  const title = sid ? (cur.display_name || row.found_as) : "Add a server somewhere else";
+  const filesHere = row && !remote ? `<p>📁 <b>On this machine</b>: the <code>${esc(row.folder)}</code> folder${row.crafty ? `, found through ${esc(row.crafty_name || "Crafty")}` : ""}.</p>
+      <p class="muted small">Solstone reads its files where they are. (For a server at a game host or on another computer, use <b>Add a server somewhere else</b>.)</p>` : "";
+  const filesThere = `<p class="muted small">🌐 <b>Somewhere else, over SFTP</b>: a game host, a rented server, another computer. Solstone keeps a copy of the few files it reads (the log, players' stats, the world's info) up to date, and reads that. In your host's panel, look for <b>SFTP details</b>: an address, a port and a username (the password is usually your panel password).</p>
       <div class="remote-grid">
         <label class="wide">Address<input class="input" name="host" required value="${esc(c.host || "")}" placeholder="sftp.examplehost.com" autocapitalize="off" spellcheck="false"></label>
         <label>Port<input class="input" name="port" inputmode="numeric" value="${esc(c.port || 22)}" style="width:90px"></label>
         <label class="wide">Username<input class="input" name="user" required value="${esc(c.user || "")}" placeholder="steve.1a2b3c4d" autocapitalize="off" spellcheck="false"></label>
-        <label class="wide">Password <small class="muted">${secretNote(c.password_set)}</small><input class="input" type="password" name="password" autocomplete="new-password" ${c.password_set ? "" : "required"}></label>
+        <label class="wide">Password <small class="muted">${saved(c.password_set)}</small><input class="input" type="password" name="password" autocomplete="new-password" ${c.password_set ? "" : "required"}></label>
         <label class="wide">Folder <small class="muted">where server.properties is; usually just /</small><input class="input" name="path" value="${esc(c.path || "/")}" autocapitalize="off" spellcheck="false"></label>
+        <label class="wide">Look for new stats and player files every <select class="input sm" name="files_secs">${[[15, "15 seconds"], [30, "30 seconds"], [60, "minute"], [120, "2 minutes"], [300, "5 minutes"]].map(([v, l]) => `<option value="${v}" ${+c.files_secs === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+          <small class="muted">The log (who joined, chat, deaths) is followed every few seconds either way, fetching only its new lines.</small></label>
       </div>
       <div class="btn-row"><button class="btn" type="button" data-test>🔌 Test the connection</button>
         ${sid && c.host_key ? `<button class="btn sm" type="button" data-forget-key title="Only if your host moved your server to another machine">Forget its identity</button>` : ""}</div>
-      <div class="remote-result" id="remote-result">${c.host_key ? `<p class="muted small">Its identity: <code>${esc(c.host_key)}</code> (remembered the first time; Solstone won't connect if it changes)</p>` : ""}</div>
-      <h3 class="set-h">2. RCON <small class="muted">commands, who's online, games</small></h3>
-      <p class="muted small">Solstone reads RCON's port and password from the server's own server.properties. Your host has to let that port through: in the panel it's often an extra port (an <i>allocation</i>) you add, then put in server.properties as <code>rcon.port</code>. Only change these if it's different.</p>
-      <div class="remote-grid">
-        <label class="wide">RCON address <small class="muted">blank: the same as SFTP</small><input class="input" name="rcon_host" placeholder="${esc(c.host || "")}"></label>
-        <label>RCON port<input class="input" name="rcon_port" inputmode="numeric" placeholder="auto" style="width:150px"></label>
-      </div>
-      <h3 class="set-h">3. The host's panel <small class="muted">optional: start, stop, CPU and memory</small></h3>
-      ${panels.length ? `<p class="muted small">Which of your panel connections it's on, then which server it is there.</p>
+      <div class="remote-result" id="remote-result">${c.host_key ? `<p class="muted small">Its identity: <code>${esc(c.host_key)}</code> (remembered the first time; Solstone won't connect if it changes)</p>` : ""}
+        ${row?.files?.error ? `<p class="notice small">Its files aren't updating: ${esc(row.files.error)}</p>` : row?.files?.synced ? `<p class="muted small">Files last updated ${esc(fmtAgo(row.files.synced))}.</p>` : ""}</div>`;
+  const runner = !remote ? (row.crafty ? `<p>🧰 <b>${esc(row.crafty_name || "Crafty")}</b> starts and stops it, and says how it's doing. <span class="muted small">(Under <b>Connections</b> on this page.)</span></p>`
+      : `<p class="muted">Nothing: Solstone found it as a folder, so it can't start or stop it. Add Crafty under <b>Connections</b> if Crafty runs it.</p>`)
+    : panels.length ? `<p class="muted small">For a host on Pterodactyl or Pelican: which of your panel connections it's on, then which server it is there.</p>
       <div class="remote-grid">
         <label class="wide">Panel<select class="input" name="conn"><option value="">None</option>${panels.map((p) => `<option value="${esc(p.id)}" ${c.conn === p.id ? "selected" : ""}>${esc(p.name)} (${esc(p.url.replace(/^https?:\/\//, ""))})</option>`).join("")}</select></label>
         <label class="wide">Server there<select class="input" name="panel_id">${c.panel_id ? `<option value="${esc(c.panel_id)}">${esc(c.panel_id)}</option>` : `<option value="">Pick the panel first</option>`}</select></label>
-      </div>` : `<p class="muted small">For hosts on <b>Pterodactyl</b> or <b>Pelican</b> (most game hosts). First add the panel under <b>Connections</b> on this page (once for every server there), then pick it here.</p>`}
-      <h3 class="set-h">4. How often</h3>
-      <label>Look for new stats and player files every <select class="input sm" name="files_secs">${[[15, "15 seconds"], [30, "30 seconds"], [60, "minute"], [120, "2 minutes"], [300, "5 minutes"]].map(([v, l]) => `<option value="${v}" ${+c.files_secs === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
-      <p class="muted small">The log (who joined, chat, deaths) is followed every few seconds either way, fetching only its new lines. Only files that changed are fetched.</p>
-      <div class="actions">${sid ? `<button type="button" class="btn danger" data-remove>Stop looking after it</button>` : ""}<span class="spacer"></span>
+      </div>` : `<p class="muted small">Optional, for hosts on <b>Pterodactyl</b> or <b>Pelican</b> (most game hosts): add the panel under <b>Connections</b> on this page first (once for every server there), then pick it here.</p>`;
+  const html = `<h2>⚙ ${esc(title)}</h2>
+    <form id="settings-form" class="remote-form" autocomplete="off">
+      <h3 class="set-h">1. General</h3>
+      <div class="remote-grid">
+        <label class="wide">Name${remote && !sid ? "" : ` <small class="muted">blank: ${esc(row.found_as)}</small>`}<input class="input" name="display_name" maxlength="60" ${remote && !sid ? "required" : ""} value="${esc(remote && !sid ? "" : cur.display_name || "")}" placeholder="${esc(row?.found_as || "Family Survival")}"></label>
+        <label class="wide">Map address <small class="muted">BlueMap, squaremap or Dynmap, shown on the World tab</small><input class="input" name="map_url" value="${esc(cur.map_url || "")}" placeholder="http://192.168.1.10:8100"></label>
+      </div>
+      <label class="check"><input type="checkbox" name="map_proxy" ${cur.map_proxy ? "checked" : ""}> Show the map through Solstone <small class="muted">it then opens from anywhere, only for people signed in who may see the map; the map itself stays off the internet</small></label>
+      <label class="check"><input type="checkbox" name="private" ${cur.private ? "checked" : ""}> Private <small class="muted">only admins see it: never on the public pages, and signed-in players don't see it</small></label>
+      ${sid ? `<label class="check"><input type="checkbox" name="hidden" ${cur.hidden ? "checked" : ""}> Hidden <small class="muted">Solstone leaves it alone: not on the website or any page, no history kept</small></label>` : ""}
+      <p class="muted small">How to join it (addresses, a note, the mods) is in Manage → Website → Site details.</p>
+      <h3 class="set-h">2. Its files</h3>
+      ${remote ? filesThere : filesHere}
+      <h3 class="set-h">3. RCON <small class="muted">commands, who's online, live inventories, games</small></h3>
+      <p class="muted small">Read from the server's own server.properties (<code>enable-rcon</code>, <code>rcon.port</code>, <code>rcon.password</code>): leave these blank unless it's different.${remote ? " A game host has to let that port through: often an extra port (an <i>allocation</i>) you add in its panel and set as rcon.port." : ""}</p>
+      <div class="remote-grid">
+        <label class="wide">Address <small class="muted">blank: ${remote ? "the same as SFTP" : "this machine's usual one"}</small><input class="input" name="rcon_host" value="${esc(cur.rcon_host || "")}" autocapitalize="off" spellcheck="false"></label>
+        <label>Port<input class="input" name="rcon_port" inputmode="numeric" value="${esc(cur.rcon_port || "")}" placeholder="auto" style="width:110px"></label>
+        <label class="wide">Password <small class="muted">${cur.rcon_password_set ? "Saved. Type a new one to replace it." : "blank: from server.properties"}</small><input class="input" type="password" name="rcon_password" autocomplete="off"></label>
+      </div>
+      ${row?.java === false ? "" : row?.rcon_error ? `<p class="notice small">RCON isn't answering right now: ${esc(row.rcon_error)}</p>` : ""}
+      <h3 class="set-h">4. Start, stop and stats <small class="muted">running or not, CPU and memory</small></h3>
+      ${runner}
+      <div class="actions">${remote && sid ? `<button type="button" class="btn danger" data-remove>Stop looking after it</button>` : ""}<span class="spacer"></span>
         <button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">${sid ? "Save" : "Add it"}</button></div>
     </form>`;
-  const body = (form) => {
-    const f = new FormData(form), out = {};
-    for (const k of ["name", "host", "port", "user", "password", "path", "conn", "panel_id", "files_secs", "rcon_host", "rcon_port"]) out[k] = (f.get(k) || "").trim();
+  const remoteBody = (form) => {
+    const f = new FormData(form), out = { name: (f.get("display_name") || "").trim() || rc?.name || row?.found_as || "" };
+    for (const k of ["host", "port", "user", "password", "path", "conn", "panel_id", "files_secs"]) out[k] = (f.get(k) || "").trim();
     if (sid) out.id = sid;
     return out;
   };
-  openModal(html(), (m) => {
-    const form = $("#remote-form", m), result = $("#remote-result", m);
-    // the panel's servers, to pick from (its API key lists the ones it can see)
+  openModal(html, (m) => {
+    const form = $("#settings-form", m), result = $("#remote-result", m);
+    // a panel's servers, to pick from (its API key lists the ones it can see)
     const loadPanelServers = async () => {
       const sel = form.panel_id, cid = form.conn?.value;
       if (!sel) return;
@@ -1220,11 +1242,11 @@ async function openRemote(sid) {
     };
     form.conn?.addEventListener("change", loadPanelServers);
     if (c.conn) loadPanelServers();
-    m.querySelector("[data-test]").addEventListener("click", async (e) => {
+    m.querySelector("[data-test]")?.addEventListener("click", async (e) => {
       if (!form.host.value || !form.user.value) { showToast("Fill in the address and username first", 3000); return; }
       e.target.disabled = true; result.innerHTML = `<p class="muted"><span class="spin" aria-hidden="true"></span> Connecting…</p>`;
       try {
-        const r = await post("/api/manage/remote/test", body(form));
+        const r = await post("/api/manage/remote/test", remoteBody(form));
         tested = r;
         const f = r.files || {};
         const lines = [f.ok ? `<p class="ok">✓ Connected and found the server${f.motd ? `: <b>${esc(f.motd)}</b>` : ""}.</p>` : `<p class="notice">${esc(f.error || "Couldn't connect")}</p>`];
@@ -1239,21 +1261,32 @@ async function openRemote(sid) {
     });
     m.querySelector("[data-forget-key]")?.addEventListener("click", async () => {
       if (!(await confirmBox("Forget its identity?", "Only if your host moved your server to another machine (they'd tell you). Solstone then learns the new one now.", "Forget and reconnect"))) return;
-      try { const r = await post(`/api/manage/remote/${encodeURIComponent(sid)}/forget-key`, {}); showToast(r.ok ? "Learned its new identity" : esc(r.error || "Couldn't connect"), 4000); closeModal(); openRemote(sid); }
+      try { const r = await post(`/api/manage/remote/${encodeURIComponent(sid)}/forget-key`, {}); showToast(r.ok ? "Learned its new identity" : esc(r.error || "Couldn't connect"), 4000); closeModal(); openServerSetup(sid, then); }
       catch (err) { showError(esc(err.message), 4000); }
     });
     m.querySelector("[data-remove]")?.addEventListener("click", async () => {
-      if (!(await confirmBox(`Stop looking after ${esc(c.name)}?`, "Solstone forgets how to reach it and deletes its copy of the files. Its history in Solstone (activity, stats, leaderboards) stays. Nothing on the server itself changes.", "Stop looking after it"))) return;
-      try { await api(`/api/manage/remote/${encodeURIComponent(sid)}`, { method: "DELETE" }); closeModal(); showToast("Done", 2500); await loadServers(); manageServers(); }
+      if (!(await confirmBox(`Stop looking after ${esc(title)}?`, "Solstone forgets how to reach it and deletes its copy of the files. Its history in Solstone (activity, stats, leaderboards) stays. Nothing on the server itself changes.", "Stop looking after it"))) return;
+      try { await api(`/api/manage/remote/${encodeURIComponent(sid)}`, { method: "DELETE" }); closeModal(); showToast("Done", 2500); await loadServers(); if (then) await then(); }
       catch (err) { showError(esc(err.message), 4000); }
     });
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      if (!sid && !tested?.files?.ok && !(await confirmBox("Add it without a working connection?", "The test didn't find the server yet. You can add it now and fix the details later; Solstone keeps trying.", "Add it anyway"))) return;
+      const f = new FormData(form);
+      if (remote && !sid && !tested?.files?.ok && !(await confirmBox("Add it without a working connection?", "The test didn't find the server yet. You can add it now and fix the details later; Solstone keeps trying.", "Add it anyway"))) return;
       try {
-        const r = await post(sid ? `/api/manage/remote/${encodeURIComponent(sid)}` : "/api/manage/remote", body(form), "PUT");
-        closeModal(); showToast(sid ? "Saved" : `${esc(r.name)} is added. Its files arrive in a few seconds.`, 4000);
-        await loadServers(); manageServers();
+        let id = sid;
+        if (remote) {                                       // where its files are (and its panel), first: a new one gets its id here
+          const r = await post(sid ? `/api/manage/remote/${encodeURIComponent(sid)}` : "/api/manage/remote", remoteBody(form), "PUT");
+          id = r.id;
+        }
+        const body = { display_name: remote && !sid ? "" : f.get("display_name"), map_url: f.get("map_url"), rcon_host: f.get("rcon_host"),
+          rcon_port: f.get("rcon_port") ? Number(f.get("rcon_port")) : "", private: f.get("private") ? true : "", map_proxy: f.get("map_proxy") ? true : "" };
+        if (sid) body.hidden = f.get("hidden") ? true : "";
+        if (f.get("rcon_password")) body.rcon_password = f.get("rcon_password");
+        await post(`/api/servers/${encodeURIComponent(id)}/settings`, body, "PUT");
+        closeModal(); showToast(sid ? "Saved" : `${esc(f.get("display_name"))} is added. Its files arrive in a few seconds.`, 4000);
+        await loadServers();
+        if (then) await then(); else route();
       } catch (err) { showError(esc(err.message), 5000); }
     });
   });

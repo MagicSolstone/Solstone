@@ -427,22 +427,30 @@ def main() -> int:
                     route.continue_(); return
                 added.update(route.request.post_data_json); route.fulfill(json={"id": "r-smoke", "name": added.get("name")})
             pg.route("**/api/manage/remote", put_remote)
+            rsettings = {}
+
+            def put_rsettings(route):
+                rsettings.update(route.request.post_data_json); route.fulfill(json={"ok": True})
+            pg.route("**/api/servers/r-smoke/settings", put_rsettings)
             pg.goto(f"{base}/app#/manage/setup"); pg.wait_for_timeout(1200)
             if not pg.locator("[data-add-remote]").count():
                 problems.append("manage servers: no 'Add a server somewhere else'")
             else:
                 pg.click("[data-add-remote]"); pg.wait_for_timeout(500)
-                pg.fill("#remote-form [name=name]", "Far SMP"); pg.fill("#remote-form [name=host]", "sftp.example.com")
-                pg.fill("#remote-form [name=user]", "steve.1a2b"); pg.fill("#remote-form [name=password]", "pw")
-                pg.click("#remote-form [data-test]"); pg.wait_for_timeout(800)
+                pg.fill("#settings-form [name=display_name]", "Far SMP"); pg.fill("#settings-form [name=host]", "sftp.example.com")
+                pg.fill("#settings-form [name=user]", "steve.1a2b"); pg.fill("#settings-form [name=password]", "pw")
+                pg.fill("#settings-form [name=rcon_port]", "25599")
+                pg.click("#settings-form [data-test]"); pg.wait_for_timeout(800)
                 res = pg.locator("#remote-result").text_content() or ""
                 if "found the server" not in res:
                     problems.append(f"remote: the connection test's result isn't shown ({res[:80]!r})")
                 check(pg, "remote-setup")
-                pg.click("#remote-form [type=submit]"); pg.wait_for_timeout(1000)
-                if added.get("host") != "sftp.example.com" or added.get("password") != "pw":
+                pg.click("#settings-form [type=submit]"); pg.wait_for_timeout(1000)
+                if added.get("host") != "sftp.example.com" or added.get("password") != "pw" or added.get("name") != "Far SMP":
                     problems.append(f"remote: adding it didn't send its details ({sorted(added)})")
-            pg.unroute("**/api/manage/remote/test"); pg.unroute("**/api/manage/remote")
+                if rsettings.get("rcon_port") != 25599:
+                    problems.append(f"remote: its RCON (in the same window) wasn't saved with it ({rsettings})")
+            pg.unroute("**/api/manage/remote/test"); pg.unroute("**/api/manage/remote"); pg.unroute("**/api/servers/r-smoke/settings")
             # connections: a host's panel added (its test and saving stubbed: there's no real panel here)
             pg.route("**/api/manage/connections/test", lambda route: route.fulfill(json={"ok": True, "servers": [{"id": "1a2b3c4d", "name": "Far SMP", "node": "Dallas"}]}))
             conn = {}

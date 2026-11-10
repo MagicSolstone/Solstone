@@ -2184,6 +2184,8 @@ async def manage_servers(request: Request):
                     "hidden": bool(st.get("hidden")), "private": bool(st.get("private")), "new": bool(st.get("new")),
                     "crafty": bool(s.crafty), "folder": s.dir.name, "rcon": bool(s.rcon_conf()), "rcon_error": s.rcon_error or "",
                     "map": bool(st.get("map_url")), "version": s.mc_version or ""})
+        if s.crafty:
+            out[-1]["crafty_name"] = (connections.get(s.crafty.get("_conn")) or {}).get("name", "Crafty")
         if s.remote:                                  # somewhere else: how its files and panel are doing
             m, p = remote.mirror(s.id), s.panel
             out[-1].update(remote=True, files=dict(m.status) if m else {}, panel=bool(p), panel_error=(p.error if p else ""),
