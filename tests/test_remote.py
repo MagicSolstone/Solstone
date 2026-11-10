@@ -319,3 +319,46 @@ def test_serverprism(monkeypatch, tmp_path):
     p._client = real(transport=httpx.MockTransport(refuse))
     p._stats = None
     assert asyncio.run(p.stats()) is None and "scope" in p.error
+
+
+def test_the_map_copies_only_where_players_have_been(far):
+    """The world's region files: just those players have been in (and the eight around where they are now), the
+    Nether from Paper's own folder too, and never the rest of a pregenerated world."""
+    import time
+
+    from app import db
+    loop, root, cfg, key = far
+    reg = root / "world" / "region"
+    reg.mkdir(parents=True)
+    for x, z in ((0, 0), (-1, 0), (1, 1), (9, 9), (40, 40)):
+        (reg / f"r.{x}.{z}.mca").write_bytes(b"R" * 64)
+    neth = root / "world_nether" / "DIM-1" / "region"                                 # (Paper keeps the Nether apart)
+    neth.mkdir(parents=True)
+    (neth / "r.0.0.mca").write_bytes(b"N" * 64)
+    sid = _added(loop, cfg)
+    now = time.time()
+    db.x("DELETE FROM positions WHERE server_id=?", (sid,))
+    db.x("INSERT INTO positions(server_id, ts, player, dim, x, y, z) VALUES (?,?,?,?,?,?,?)", (sid, now - 30, "Ann", "minecraft:overworld", 100, 64, 100))
+    db.x("INSERT INTO positions(server_id, ts, player, dim, x, y, z) VALUES (?,?,?,?,?,?,?)", (sid, now - 86400, "Ann", "minecraft:overworld", 5000, 64, 5000))
+    db.x("INSERT INTO positions(server_id, ts, player, dim, x, y, z) VALUES (?,?,?,?,?,?,?)", (sid, now - 86400, "Ann", "minecraft:the_nether", -3, 64, 10))
+    m = remote.mirror(sid)
+    for i in range(8):
+        loop.run_until_complete(m.tick(now=now + i * 3))
+    d = remote.mirror_dir(sid) / "world"
+    have = sorted(p.name for p in (d / "region").glob("*.mca"))
+    assert have == ["r.-1.0.mca", "r.0.0.mca", "r.1.1.mca", "r.9.9.mca"], have            # around Ann now, and where she was
+    assert (d / "DIM-1" / "region" / "r.-1.0.mca").exists() is False                     # (never generated there)
+    assert not (d / "region" / "r.40.40.mca").exists()                                   # pregenerated, never visited
+    db.x("INSERT INTO positions(server_id, ts, player, dim, x, y, z) VALUES (?,?,?,?,?,?,?)", (sid, now, "Ann", "minecraft:the_nether", 5, 64, 5))
+    m.last["regions"] = 0
+    for i in range(8):                                                                   # (a few each time round)
+        loop.run_until_complete(m.tick(now=now + 30 + i * 3))
+    assert (d / "DIM-1" / "region" / "r.0.0.mca").read_bytes() == b"N" * 64              # Paper's Nether, where the map looks
+    (reg / "r.0.0.mca").write_bytes(b"S" * 80)                                          # built on while she's there
+    import os
+    os.utime(reg / "r.0.0.mca", (now + 100, now + 100))
+    m.last["regions"] = 0
+    for i in range(8):
+        loop.run_until_complete(m.tick(now=now + 60 + i * 3))
+    assert (d / "region" / "r.0.0.mca").read_bytes() == b"S" * 80
+    db.x("DELETE FROM positions WHERE server_id=?", (sid,))

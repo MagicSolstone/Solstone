@@ -46,6 +46,12 @@ TOP_FILES = ("server.properties", "usercache.json", "ops.json", "whitelist.json"
 WORLD_FILES = ("level.dat",)
 WORLD_DIRS = ("stats", "playerdata", "advancements", "players/stats", "players/data", "players/advancements")
 MAX_FILE = 64 * 1024 * 1024         # (a jar bigger than this isn't fetched: its name is enough)
+# The map: only the parts of the world players have been to (a region file is 512 x 512 blocks, about 1-10 MB).
+REGION_SECS = 300                   # where players are now: looked at (and fetched if it changed) this often
+RECENT_SECS = 15 * 60               # "now": a position seen this recently (that region and the eight around it)
+REGIONS_PER_TICK = 3                # fetched a few at a time, so the log never waits behind a big batch
+_DIM_DIRS = {"minecraft:overworld": ("region",), "minecraft:the_nether": ("DIM-1/region", "_nether/DIM-1/region"),
+             "minecraft:the_end": ("DIM1/region", "_the_end/DIM1/region")}     # (Paper keeps the Nether and End apart)
 CONNECT_SECS = 15
 
 
@@ -101,7 +107,8 @@ def clean(body: dict, old: dict | None = None) -> dict:
     cfg = {"name": text("name", 60), "host": text("host", 253).lower(), "port": num("port", 1, 65535, 22), "user": text("user", 120),
            "path": (str(body.get("path") if body.get("path") is not None else old.get("path") or "") or "/").strip()[:300] or "/",
            "conn": text("conn", 40), "panel_id": text("panel_id", 64),
-           "files_secs": num("files_secs", 10, 600, FILES_SECS), "host_key": old.get("host_key", ""), "host_pub": old.get("host_pub", "")}
+           "files_secs": num("files_secs", 10, 600, FILES_SECS), "host_key": old.get("host_key", ""), "host_pub": old.get("host_pub", ""),
+           "map": bool(body["map"]) if "map" in body else old.get("map", True)}      # the map where players have been
     if not cfg["name"] or not cfg["host"] or not cfg["user"]:
         raise ValueError("A name, the SFTP address and the username are needed")
     if cfg["conn"]:
@@ -220,7 +227,9 @@ class Mirror:
         self.known: dict[str, tuple[int, int]] = {}      # remote path -> (size, mtime) of the copy we have
         self.log_at = 0                                  # how much of latest.log we have
         self.log_head = b""
-        self.last = {"log": 0.0, "files": 0.0, "slow": 0.0}
+        self.last = {"log": 0.0, "files": 0.0, "slow": 0.0, "regions": 0.0}
+        self.regions: list[tuple[str, str, bool]] = []    # (local path, remote path, only if missing) still to look at
+        self._dim_base: dict[str, str] = {}              # each dimension's region folder on the server, once found
         self.status = {"ok": None, "error": "", "synced": None, "files": 0, "bytes": 0}
         self._lock = asyncio.Lock()
 
@@ -247,8 +256,9 @@ class Mirror:
             self.conn.close()
         self.conn = self.sftp = None
 
-    async def _fetch(self, rel: str, size: int, mtime: int) -> bool:
-        """Copy one file if it changed. True if it was fetched."""
+    async def _fetch(self, rel: str, size: int, mtime: int, remote_rel: str | None = None) -> bool:
+        """Copy one file if it changed. True if it was fetched. remote_rel: where it is on the server, when that's
+        not where the copy goes (Paper's Nether: world_nether/DIM-1/region, copied to world/DIM-1/region)."""
         if self.known.get(rel) == (size, mtime) and self._local(rel).exists():
             return False
         if size > MAX_FILE:
@@ -257,7 +267,7 @@ class Mirror:
         local = self._local(rel)
         local.parent.mkdir(parents=True, exist_ok=True)
         tmp = local.with_name(local.name + ".part")
-        async with sftp.open(self._remote(rel), "rb") as f:
+        async with sftp.open(self._remote(remote_rel or rel), "rb") as f:
             data = await f.read()
         tmp.write_bytes(data)
         tmp.replace(local)
@@ -340,6 +350,72 @@ class Mirror:
         await self._folder("config", (".json", ".toml", ".yml", ".yaml", ".properties"))
         await self._folder(f"{self._level()}/datapacks", (".zip",))
 
+    def _visited(self, now: float) -> list[tuple[str, int, int, bool]]:
+        """The regions players have been in, from Solstone's own record of where they were (positions): (dimension,
+        region x, region z, recent). Recent ones come with the eight around them (what they can see from there)."""
+        from . import db
+        rows = db.q("SELECT dim, CASE WHEN x < 0 THEN CAST((x - 511) / 512 AS INT) ELSE CAST(x / 512 AS INT) END AS rx, "
+                    "CASE WHEN z < 0 THEN CAST((z - 511) / 512 AS INT) ELSE CAST(z / 512 AS INT) END AS rz, MAX(ts) AS t "
+                    "FROM positions WHERE server_id=? GROUP BY dim, rx, rz", (self.sid,))
+        out: dict[tuple[str, int, int], bool] = {}
+        for r in rows:
+            recent = r["t"] >= now - RECENT_SECS
+            for dx in (-1, 0, 1) if recent else (0,):
+                for dz in (-1, 0, 1) if recent else (0,):
+                    k = (r["dim"], r["rx"] + dx, r["rz"] + dz)
+                    out[k] = out.get(k, False) or recent
+        return sorted(((d, x, z, rec) for (d, x, z), rec in out.items()), key=lambda v: not v[3])   # recent first
+
+    async def _region_base(self, dim: str) -> str | None:
+        """Where a dimension's region files are on the server (and so in the copy: the usual place)."""
+        if dim in self._dim_base:
+            return self._dim_base[dim]
+        level = self._level()
+        if dim in _DIM_DIRS:
+            options = [f"{level}{'/' if not d.startswith('_') else ''}{d}" for d in _DIM_DIRS[dim]]
+        else:
+            ns, _, rest = dim.partition(":")
+            if not ns or not rest or ".." in dim:
+                return None
+            options = [f"{level}/dimensions/{ns}/{rest}/region"]
+        sftp = await self._session()
+        for o in options:
+            try:
+                await sftp.stat(self._remote(o))
+            except Exception:
+                continue
+            self._dim_base[dim] = o
+            return o
+        return None
+
+    async def plan_regions(self, now: float) -> None:
+        """What to look at next for the map: where players are now (fetched again if it changed), and anywhere they've
+        been that the copy doesn't have yet."""
+        self.regions = []
+        level = self._level()
+        for dim, rx, rz, recent in self._visited(now):
+            base = await self._region_base(dim)
+            if not base:
+                continue
+            local = f"{level}/{_DIM_DIRS[dim][0]}" if dim in _DIM_DIRS else base
+            name = f"r.{rx}.{rz}.mca"
+            if not recent and self._local(f"{local}/{name}").exists():
+                continue
+            self.regions.append((f"{local}/{name}", f"{base}/{name}", not recent))
+
+    async def sync_regions(self) -> None:
+        """A few of the planned regions: fetched when new or changed."""
+        sftp = await self._session()
+        for _ in range(min(REGIONS_PER_TICK, len(self.regions))):
+            local, remote_rel, only_missing = self.regions.pop(0)
+            if only_missing and self._local(local).exists():
+                continue
+            try:
+                a = await sftp.stat(self._remote(remote_rel))
+            except Exception:
+                continue                                         # (never generated: nothing to draw there)
+            await self._fetch(local, int(a.size or 0), int(a.mtime or 0), remote_rel)
+
     async def tick(self, now: float | None = None) -> None:
         """Called every couple of seconds: does whatever is due."""
         now = now or time.time()
@@ -356,6 +432,12 @@ class Mirror:
                 if now - self.last["log"] >= LOG_SECS:
                     await self.follow_log()
                     self.last["log"] = now
+                if self.cfg.get("map", True):
+                    if now - self.last["regions"] >= REGION_SECS:
+                        await self.plan_regions(now)
+                        self.last["regions"] = now
+                    if self.regions:
+                        await self.sync_regions()
                 self.status.update(ok=True, error="", synced=now, files=len(self.known) + (1 if self.log_at else 0))
             except Exception as e:
                 self.close()                                     # a fresh connection next time

@@ -1183,6 +1183,7 @@ async function openServerSetup(sid, then) {
         <label class="wide">Look for new stats and player files every <select class="input sm" name="files_secs">${[[15, "15 seconds"], [30, "30 seconds"], [60, "minute"], [120, "2 minutes"], [300, "5 minutes"]].map(([v, l]) => `<option value="${v}" ${+c.files_secs === v ? "selected" : ""}>${l}</option>`).join("")}</select>
           <small class="muted">The log (who joined, chat, deaths) is followed every few seconds either way, fetching only its new lines.</small></label>
       </div>
+      <label class="check"><input type="checkbox" name="map" ${c.map !== false ? "checked" : ""}> Draw the map where players have been <small class="muted">copies just those parts of the world (about 1-10 MB for each 512 × 512 blocks), and again when they change while someone's there; never the whole world</small></label>
       <div class="btn-row"><button class="btn" type="button" data-test>🔌 Test the connection</button>
         ${sid && c.host_key ? `<button class="btn sm" type="button" data-forget-key title="Only if your host moved your server to another machine">Forget its identity</button>` : ""}</div>
       <div class="remote-result" id="remote-result">${c.host_key ? `<p class="muted small">Its identity: <code>${esc(c.host_key)}</code> (remembered the first time; Solstone won't connect if it changes)</p>` : ""}
@@ -1223,6 +1224,7 @@ async function openServerSetup(sid, then) {
   const remoteBody = (form) => {
     const f = new FormData(form), out = { name: (f.get("display_name") || "").trim() || rc?.name || row?.found_as || "" };
     for (const k of ["host", "port", "user", "password", "path", "conn", "panel_id", "files_secs"]) out[k] = (f.get(k) || "").trim();
+    out.map = !!f.get("map");
     if (sid) out.id = sid;
     return out;
   };
