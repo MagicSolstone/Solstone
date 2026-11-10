@@ -1472,6 +1472,14 @@ def _creators_summary() -> list[dict]:
     return [{"name": n, "designs": c, "weight": cw.get(n, 1)} for n, c in sorted(by.items(), key=lambda x: x[0].lower())]
 
 
+@app.get("/api/fireworks/calendar/{eid}/rewarded")
+async def holiday_rewarded(eid: str, request: Request):
+    """Who's had an event's reward, each server and each time round (admins only: it names players)."""
+    auth.require_admin(request)
+    await S.registry.refresh()
+    return {"given": await asyncio.to_thread(holidaygifts.given_to, eid)}
+
+
 @app.post("/api/fireworks/test-join")
 async def test_join_firework(request: Request):
     """What goes off when this player joins (the page plays it in a preview)."""

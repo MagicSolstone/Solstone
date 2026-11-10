@@ -558,6 +558,14 @@ def main() -> int:
                         pie.click(); pg.fill("#gv-n", "3"); pg.click("#gv-go"); pg.wait_for_timeout(400)
                     if not pg.locator(".fws-reward-item").count():
                         problems.append("holidays: a picked reward item isn't shown")
+                    if pg.locator(".fws-cal-edit [data-rewarded]").count():          # who's had it: nobody yet
+                        pg.click(".fws-cal-edit [data-rewarded]"); pg.wait_for_timeout(700)
+                        if "Nobody yet" not in (pg.locator("#modal-root .modal").text_content() or ""):
+                            problems.append("holidays: 'Who's had it' doesn't open its list")
+                        check(pg, "holiday-rewarded")
+                        pg.click("#modal-root [data-close]"); pg.wait_for_timeout(200)
+                    else:
+                        problems.append("holidays: no 'Who's had it' button on an event with a reward")
                     pg.fill('.fws-cal-edit [name="rafter"]', "3")
                     pg.check('.fws-cal-edit [name="rbanner"]')
                     pg.click('.fws-cal-edit [data-seg="bstyle"] [data-v="sunset"]')

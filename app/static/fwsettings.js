@@ -231,7 +231,8 @@ function calEditHtml(e, i) {
     <fieldset class="hol-sec fws-reward"><legend>🎁 Reward <span class="muted small">everyone who plays during it gets this once (each server, each year); no items: no reward</span></legend>
       <div class="fws-reward-items">${(rw.items || []).map((it, k) => `<span class="fws-reward-item">${itemIcon({ id: it.item })}<b>${esc(it.count)} × ${esc(it.name || itemName({ id: it.item }))}</b>
         <button type="button" class="chip-x" data-rm-reward="${k}" aria-label="Remove ${esc(it.name || it.item)}">×</button></span>`).join("")}
-        ${(rw.items || []).length < 9 ? `<button type="button" class="btn sm" data-add-reward>＋ Add an item</button>` : ""}</div>
+        ${(rw.items || []).length < 9 ? `<button type="button" class="btn sm" data-add-reward>＋ Add an item</button>` : ""}
+        ${(rw.items || []).length && e.id ? `<button type="button" class="btn sm" data-rewarded>👥 Who's had it</button>` : ""}</div>
       <div class="hol-rw-opts" ${(rw.items || []).length ? "" : "hidden"}>
         <label class="inl">Given from ${num("rbefore", rw.before || 0, 0, 30)} days before to ${num("rafter", rw.after || 0, 0, 30)} days after
           <span class="muted small">(0 and 0: just ${e.days > 1 ? "its days" : "the day"}; Thursday's Thanksgiving through Sunday: 0 and 3)</span></label>
@@ -266,6 +267,20 @@ function calEditHtml(e, i) {
     <div class="btn-row"><button class="btn primary" type="submit">Save</button><button type="button" class="btn" data-cancel>Cancel</button>
       <button type="button" class="btn" data-preview>Preview</button><button type="button" class="btn danger" data-del>Delete</button></div>
   </form>`;
+}
+// Who's had an event's reward: each time it came round, each server (only when there's more than one), newest first.
+async function holRewarded(e) {
+  openModal(`<h2>🎁 ${esc(e.name)}: who's had the reward</h2><p class="muted"><span class="spin" aria-hidden="true"></span> Looking…</p>`);
+  const d = await api(`/api/fireworks/calendar/${encodeURIComponent(e.id)}/rewarded`).catch(() => null);
+  const many = new Set((d?.given || []).map((g) => g.server)).size > 1;
+  const day = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" });
+  const at = (t) => (t ? new Date(t * 1000).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "");
+  const body = !d ? `<p class="notice">Couldn't look that up just now.</p>` : !d.given.length ? `<p class="muted">Nobody yet. Everyone who plays while it's on gets it once; they'll be listed here as they do.</p>`
+    : d.given.map((g) => `<h3 class="hol-given-h">${esc(day(g.start))}${many ? ` <small class="muted">· ${esc(g.server_name)}</small>` : ""} <small class="muted">· ${g.players.length} player${g.players.length === 1 ? "" : "s"}</small></h3>
+      <ul class="hol-given">${g.players.map((p) => `<li><b>${esc(p.name)}</b>${p.waiting ? ` <span class="hol-wait" title="It's theirs: it arrives by itself when there's room in their inventory">waiting for room</span>` : ""}<small class="muted">${esc(at(p.when))}</small></li>`).join("")}</ul>`).join("");
+  openModal(`<h2>🎁 ${esc(e.name)}: who's had the reward</h2>${body}
+    <p class="muted small">Kept for 60 days after the event. Only admins see this.</p><div class="btn-row"><button class="btn" type="button" data-close>Close</button></div>`,
+    (m) => m.querySelector("[data-close]").addEventListener("click", closeModal));
 }
 // The holiday's one banner at each point: counting down, on the day, and (if its reward runs on) after it.
 function holPhases(e) {
@@ -381,6 +396,7 @@ function wireCalEdit(el, i) {
       fws.data.calendar[i] = draft; fws.moreOpen = !!form.querySelector(".fws-more")?.open; renderCalendar(el);
     } });
   });
+  form.querySelector("[data-rewarded]")?.addEventListener("click", () => holRewarded(draft));
   form.querySelectorAll("[data-rm-reward]").forEach((b) => b.addEventListener("click", () => {
     read();
     draft.reward.items = draft.reward.items.filter((_, k) => k !== +b.dataset.rmReward);

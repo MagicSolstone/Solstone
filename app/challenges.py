@@ -454,7 +454,7 @@ async def _full_note(srv, player: str, g: dict, got: int = 0) -> None:
     n = min(36, slots_needed(g["item"], g["count"]))
     head = (f"Here's part of your reward ({_what(g['item'], got)}): it didn't all fit. {_what(g['item'], g['count'])} more is waiting. " if got
             else f"A reward is waiting for you ({_what(g['item'], g['count'])}), but your inventory is full. ")
-    await _rcon(srv, f"tellraw {player} " + component([("🎁 ", "gold"), (head, "yellow"),
+    await _rcon(srv, f"tellraw {player} " + component([("★ ", "gold"), (head, "yellow"),
                                                         (f"Make room ({n} empty space{'s' if n != 1 else ''}) and it'll arrive by itself.", "white")]))
 
 

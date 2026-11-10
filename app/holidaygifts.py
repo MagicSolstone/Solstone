@@ -15,6 +15,7 @@ from .control import component
 log = logging.getLogger("solstone.holidaygifts")
 
 SECTION = "holiday_rewards"            # {"<holiday id>:<start date>:<server id>": [player names, lowercased]}
+WHEN = "holiday_reward_times"          # {the same key: {name: when it was given (a timestamp)}}: for "Who's had it"
 KEEP_DAYS = 60
 
 
@@ -62,6 +63,9 @@ async def tick(srv, online: list[str]) -> int:
             given[key] = sorted(had)
             changed = True
             settings_store.save_section(SECTION, given)          # first, so a hiccup can't give it twice
+            times = settings_store.load().get(WHEN) or {}
+            times.setdefault(key, {})[name.lower()] = round(datetime.now(db.tz()).timestamp())
+            settings_store.save_section(WHEN, times)
             r = e["reward"]
             try:
                 got = [item for item in r["items"]               # no room: it waits, and they're told (challenges.py)
@@ -74,7 +78,33 @@ async def tick(srv, online: list[str]) -> int:
     if changed:
         cutoff = (datetime.now(db.tz()).date() - timedelta(days=KEEP_DAYS)).isoformat()
         settings_store.save_section(SECTION, {k: v for k, v in given.items() if k.split(":")[1] >= cutoff})
+        times = settings_store.load().get(WHEN) or {}
+        settings_store.save_section(WHEN, {k: v for k, v in times.items() if k.split(":")[1] >= cutoff})
     return n
+
+
+def given_to(event_id: str) -> list[dict]:
+    """Who's had this event's reward (admins only see it): each time round, each server, newest first. `waiting`: it's
+    theirs, but hasn't fitted in their inventory yet (it arrives when there's room)."""
+    from . import servers as S
+    d = settings_store.load()
+    given, times = d.get(SECTION) or {}, d.get(WHEN) or {}
+    e = next((x for x in fwshow.calendar() if x["id"] == event_id), None)
+    why = f"{e['name']} reward" if e else ""
+    held = {(g["server"], g["player"].lower()) for g in challenges._load()["gifts"] if g.get("why") == why}
+    out = []
+    for key, names in given.items():
+        eid, start, sid = key.split(":", 2)
+        if eid != event_id or not names:
+            continue
+        srv = S.registry.get(sid)
+        shown = {p["name"].lower(): p["name"] for p in S.known_players(srv).values() if p.get("name")} if srv else {}
+        when = times.get(key) or {}
+        people = [{"name": shown.get(n, n), "when": when.get(n), "waiting": (sid, n) in held} for n in names]
+        people.sort(key=lambda p: (-(p["when"] or 0), p["name"].lower()))
+        out.append({"start": start, "server": sid, "server_name": srv.display_name if srv else sid, "players": people})
+    out.sort(key=lambda r: (r["start"], r["server_name"]), reverse=True)
+    return out
 
 
 async def say(srv, name: str, e: dict, items: list[dict]) -> None:
@@ -82,11 +112,11 @@ async def say(srv, name: str, e: dict, items: list[dict]) -> None:
     from . import welcome
     msg = e["reward"]["message"]
     if not msg:
-        await srv.rcon(f"tellraw {name} " + component([("🎁 ", "gold"), (f"{e['name']}! A present for being here", "yellow"), (f": {_say(items)}", "white")]))
+        await srv.rcon(f"tellraw {name} " + component([("★ ", "gold"), (f"{e['name']}! A present for being here", "yellow"), (f": {_say(items)}", "white")]))
         return
     for cmd in welcome.commands(name, welcome.fill(msg, name, srv.display_name)):
         await srv.rcon(cmd)
-    await srv.rcon(f"tellraw {name} " + component([("🎁 ", "gold"), (_say(items), "white")]))
+    await srv.rcon(f"tellraw {name} " + component([("★ ", "gold"), (_say(items), "white")]))
 
 
 def tag(e: dict, start: date) -> dict | None:

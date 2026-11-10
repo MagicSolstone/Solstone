@@ -52,7 +52,7 @@ async def announce(p: dict, servers: list[S.Server]) -> None:
 
 async def announce_result(p: dict, servers: list[S.Server]) -> None:
     for srv in _java(servers):
-        await _tell(srv, "@a", [{"text": "🗳 Vote closed: ", "color": "gold", "bold": True},
+        await _tell(srv, "@a", [{"text": "★ Vote closed: ", "color": "gold", "bold": True},
                                 {"text": f"{p['question']}\n"}, {"text": community.result_text(p), "color": "green"}])
 
 
@@ -74,7 +74,7 @@ async def on_chat(srv: S.Server, player: str, text: str) -> None:
     except ValueError as e:
         await _tell(srv, player, [{"text": str(e), "color": "red"}])
         return
-    await _tell(srv, player, [{"text": "🗳 Thanks! ", "color": "gold"}, {"text": f"You voted for {option['text']}. "},
+    await _tell(srv, player, [{"text": "★ Thanks! ", "color": "gold"}, {"text": f"You voted for {option['text']}. "},
                               {"text": "You can change it until the vote closes.", "color": "gray"}])
 
 

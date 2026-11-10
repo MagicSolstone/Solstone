@@ -200,3 +200,28 @@ def test_a_prize_too_big_for_any_inventory_comes_in_parts(monkeypatch):
         assert "give Alex minecraft:cake 28" in srv.said and not challenges._load()["gifts"]
     finally:
         challenges._save(keep)
+
+
+def test_who_has_had_the_reward(monkeypatch):
+    """An admin can see who's had an event's reward, and who's still waiting for room for it."""
+    from app import challenges, holidaygifts, settings_store
+    from app import servers as S
+    e = {"id": "party", "name": "Party"}
+    monkeypatch.setattr(holidaygifts.fwshow, "calendar", lambda: [e])
+    monkeypatch.setattr(S.registry, "get", lambda sid: None)
+    settings_store.save_section(holidaygifts.SECTION, {"party:2026-11-01:srv1": ["ann", "bo"], "other:2026-11-01:srv1": ["cy"]})
+    settings_store.save_section(holidaygifts.WHEN, {"party:2026-11-01:srv1": {"ann": 100, "bo": 200}})
+    d = challenges._load()
+    d["gifts"].append({"server": "srv1", "player": "Ann", "item": "minecraft:stick", "count": 1, "why": "Party reward"})
+    challenges._save(d)
+    try:
+        g = holidaygifts.given_to("party")
+        assert len(g) == 1 and g[0]["start"] == "2026-11-01" and [p["name"] for p in g[0]["players"]] == ["bo", "ann"]
+        assert [p["waiting"] for p in g[0]["players"]] == [False, True]
+        assert holidaygifts.given_to("nothing") == []
+    finally:
+        settings_store.save_section(holidaygifts.SECTION, {})
+        settings_store.save_section(holidaygifts.WHEN, {})
+        d = challenges._load()
+        d["gifts"] = [x for x in d["gifts"] if x.get("why") != "Party reward"]
+        challenges._save(d)
