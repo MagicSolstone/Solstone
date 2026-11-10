@@ -212,3 +212,25 @@ def test_adding_one_from_manage_servers(client, viewer):
     finally:
         assert client.delete(f"/api/manage/remote/{sid}").status_code == 200
     assert not any(x["id"] == sid for x in client.get("/api/manage/servers").json())
+
+
+def test_the_activity_feed_reads_a_server_elsewhere(far):
+    """Its log, mirrored line by line, is read by the recorder like any server's: Ann joining shows up."""
+    from app import db
+    from app import servers as S
+    from app.recorder import Recorder
+    loop, root, cfg, key = far
+    sid = _added(loop, cfg)
+    m = remote.mirror(sid)
+    loop.run_until_complete(m.tick(now=1000))
+    reg = S.Registry()
+    loop.run_until_complete(reg.refresh(force=True))
+    srv = reg.servers[sid]
+    rec = Recorder()
+    rec.tail_server(srv)                                                  # (first look: the log so far)
+    with (root / "logs/latest.log").open("a") as f:
+        f.write("[10:00:05] [Server thread/INFO]: Ann joined the game\n[10:00:09] [Server thread/INFO]: <Ann> hello from far away\n")
+    loop.run_until_complete(m.tick(now=1004))
+    rec.tail_server(srv)
+    said = [e["message"] for e in db.events(sid, ["chat", "join"], None, 10)]
+    assert "hello from far away" in said
