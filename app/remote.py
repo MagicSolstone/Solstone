@@ -233,6 +233,7 @@ class Mirror:
         self.last: dict[str, float] = {"log": 0.0, "files": 0.0, "slow": 0.0, "regions": 0.0}
         self.regions: list[tuple[str, str, bool]] = []    # (local path, remote path, only if missing) still to look at
         self._dim_base: dict[str, str] = {}              # each dimension's region folder on the server, once found
+        self._world_has: list[str] = []                  # the world folder's contents, when a dimension's wasn't found
         self._spots: tuple[tuple, list] = ((), [])       # players' saved spots and spawn (read again when a file changes)
         self.status = {"ok": None, "error": "", "synced": None, "files": 0, "bytes": 0}
         self._lock = asyncio.Lock()
@@ -418,13 +419,11 @@ class Mirror:
         if dim in self._dim_base:
             return self._dim_base[dim]
         level = self._level()
-        if dim in _DIM_DIRS:
-            options = [f"{level}{'/' if not d.startswith('_') else ''}{d}" for d in _DIM_DIRS[dim]]
-        else:
-            ns, _, rest = dim.partition(":")
-            if not ns or not rest or ".." in dim:
-                return None
-            options = [f"{level}/dimensions/{ns}/{rest}/region"]
+        ns, _, rest = dim.partition(":")
+        if not ns or not rest or ".." in dim or "/" in ns:
+            return None
+        options = [f"{level}{'/' if not d.startswith('_') else ''}{d}" for d in _DIM_DIRS.get(dim, ())]
+        options.append(f"{level}/dimensions/{ns}/{rest}/region")          # (26.1 on keeps every dimension here)
         sftp = await self._session()
         for o in options:
             try:
@@ -433,6 +432,11 @@ class Mirror:
                 continue
             self._dim_base[dim] = o
             return o
+        try:                                                             # (what is there, for the settings to show)
+            names = await sftp.listdir(self._remote(level))
+            self._world_has = sorted(str(n) for n in names if str(n) not in (".", ".."))[:30]
+        except Exception:
+            self._world_has = []
         return None
 
     async def plan_regions(self, now: float) -> None:
@@ -447,14 +451,16 @@ class Mirror:
             if not base:
                 missing_dims.add(dim)
                 continue
-            local = f"{level}/{_DIM_DIRS[dim][0]}" if dim in _DIM_DIRS else base
+            # the copy keeps it where the map looks: as on the server, but Paper's separate Nether and End go inside
+            local = base if base.startswith(f"{level}/") else f"{level}/{_DIM_DIRS[dim][0]}"
             name = f"r.{rx}.{rz}.mca"
             if not recent and self._local(f"{local}/{name}").exists():
                 continue
             self.regions.append((f"{local}/{name}", f"{base}/{name}", not recent))
         copied = sum(1 for _ in (self.dir / level).glob("**/r.*.*.mca")) if (self.dir / level).is_dir() else 0
         self.status["map"] = {"visited": len(visited), "now": sum(1 for v in visited if v[3]), "queued": len(self.regions),
-                              "copied": copied, "looked": now, "no_folder": sorted(missing_dims)}
+                              "copied": copied, "looked": now, "no_folder": sorted(missing_dims),
+                              "world_has": self._world_has if missing_dims else []}
 
     async def sync_regions(self) -> None:
         """A few of the planned regions: a new one copied whole; one the copy has, just the chunks saved since."""

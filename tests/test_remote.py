@@ -470,3 +470,27 @@ def test_the_map_starts_from_spawn_and_where_players_last_saved(far):
     m.last["regions"] = 0
     loop.run_until_complete(m.tick(now=time.time()))
     assert m.status["map"]["now"] == 9
+
+
+def test_the_map_finds_regions_where_26_1_keeps_them(far):
+    """Minecraft 26.1 on keeps the Overworld's regions in dimensions/minecraft/overworld/region, not region."""
+    import time
+
+    from app import db
+    loop, root, cfg, key = far
+    reg = root / "world" / "dimensions" / "minecraft" / "overworld" / "region"
+    reg.mkdir(parents=True)
+    (reg / "r.0.0.mca").write_bytes(b"R" * 64)
+    sid = _added(loop, cfg)
+    now = time.time()
+    db.x("DELETE FROM positions WHERE server_id=?", (sid,))
+    db.x("INSERT INTO positions(server_id, ts, player, dim, x, y, z) VALUES (?,?,?,?,?,?,?)", (sid, now, "Ann", "minecraft:overworld", 10, 64, 10))
+    m = remote.mirror(sid)
+    for i in range(6):
+        loop.run_until_complete(m.tick(now=now + i * 3))
+    assert m.status["map"]["no_folder"] == []
+    got = remote.mirror_dir(sid) / "world" / "dimensions" / "minecraft" / "overworld" / "region" / "r.0.0.mca"
+    assert got.read_bytes() == b"R" * 64
+    from app import worldmap
+    assert worldmap.region_dir(remote.mirror_dir(sid) / "world", "minecraft:overworld") == got.parent
+    db.x("DELETE FROM positions WHERE server_id=?", (sid,))
