@@ -1,3 +1,8 @@
+# Solstone 1.20.0
+
+- **New: the map for a server somewhere else.** Solstone's drawn map (the World tab, Adventures, the live map with everyone on it) now works for a server at a host. It copies just the parts of the world players have been in, and the area around wherever someone is right now, fetched again when they change (at most every five minutes, a few at a time so nothing else waits). A world pregenerated far and wide doesn't fill the map: it shows where people have actually been, and grows as they explore. Paper servers' Nether and End (kept in their own folders) are found too. It's on by default; untick **Draw the map where players have been** in the server's ⚙ Settings, part 2, to turn it off.
+- **Fixed: the Stats page missed most travelling, and all advancements.** Distance only counted trips of 500 blocks or more between saves (what the activity feed mentions), and advancements only counted the log's "has made the advancement" line, which wasn't being seen (the leaderboards, which read each player's own files, had both right). Now every save's exact gains are noted for the Stats page from the players' own files: every block travelled, every advancement (not recipes) and every death, and each day takes whichever count is higher. On this server and on one elsewhere. (From the update on: earlier days stay as they were.)
+
 # Solstone 1.19.0
 
 - **Fixed: a server with only RCON (no Crafty, no host's panel) showed nothing on its home page card.** Its uptime, in-game time and weather were left out, because only Crafty or a panel could say it was running. Now RCON answering means it's running (and not answering means it's down), the same way Solstone's own uptime history already counted it.
