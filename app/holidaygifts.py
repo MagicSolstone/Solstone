@@ -54,6 +54,8 @@ async def tick(srv, online: list[str]) -> int:
     given = settings_store.load().get(SECTION) or {}
     n, changed = 0, False
     for e, start in todo:
+        if e.get("servers") and srv.id not in e["servers"]:
+            continue                                              # (on other servers only)
         key = f"{e['id']}:{start.isoformat()}:{srv.id}"
         had = set(given.get(key) or [])
         for name in online:

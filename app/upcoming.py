@@ -109,6 +109,9 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
     for e in fwshow.calendar():
         if not e["enabled"]:
             continue
+        on = [server_names[s] for s in e.get("servers") or [] if s in server_names]
+        if e.get("servers") and not on:
+            continue                                  # just on servers that aren't shown (hidden, private, or not theirs)
         # on now or ahead, or over but its reward still being given (Thanksgiving's weekend)
         starts = sorted(s for s in fwshow._starts(e, today) if (s + timedelta(days=e["days"]) > today
                         or (e["reward"]["items"] and holidaygifts.window(e, s)[1] >= today)) and (s - today).days <= days)
@@ -121,6 +124,8 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
             add(at, "holiday", e["emoji"], e["name"], "Over, but its reward is still being given" if over else e["message"], all_day=True,
                 live=on_now or over, length=e["days"], about="" if over else e["detail"], reward=holidaygifts.tag(e, s), title_fmt=e["name_fmt"],
                 look={"style": e["banner"]["style"], "colors": e["banner"]["colors"]})
+            if on and len(server_names) > 1:          # (with one server there's nothing to tell apart)
+                out[-1]["server"], out[-1]["servers"] = " & ".join(on), on
 
     # announcements counting down to something, or starting later
     for it in cfg["items"]:

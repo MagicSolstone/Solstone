@@ -1110,7 +1110,7 @@ function mountPlayerGlance(el, daysEl, s, data) {
     if (!el.isConnected) return;
     const world = sky?.mode === "game" && sky.server === sid
       ? `<b>${esc(mcClock(sky.time_of_day))}</b><span>${esc(phase(sky.time_of_day))} · ${sky.thundering ? "Thunderstorm" : sky.raining ? "Raining" : "Clear"}</span>` : `<b>—</b><span>The world's time shows while it's running</span>`;
-    const next = (up.items || []).filter((x) => !x.server || x.server === s.name).slice(0, 3);
+    const next = (up.items || []).filter((x) => !x.server || x.server === s.name || (x.servers || []).includes(s.name)).slice(0, 3);
     el.innerHTML = `<div class="glance">
       <div class="glance-card"><small>Server</small><b>${s.running === false ? "Offline" : `${s.online?.length || 0} of ${s.max_players ?? "?"} playing`}</b>
         <span>${esc([s.version && `Minecraft ${s.version}`, s.loader].filter(Boolean).join(" · "))}</span>

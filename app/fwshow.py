@@ -171,6 +171,8 @@ def _clean_entry(e: dict, fallback_id: str | None = None) -> dict | None:
         "detail": str(e.get("detail") or "").replace("\r", "").strip()[:600],
         # everyone who plays during it gets this once (holidaygifts.py)
         "reward": _clean_reward(e.get("reward")),
+        # just these servers (its reward, and it on the Events page with their names); none: every server
+        "servers": [s for s in dict.fromkeys(str(x)[:64] for x in (e.get("servers") or []) if isinstance(x, str) and x.strip())][:20],
         "enabled": e.get("enabled", True) is not False,
     }
 

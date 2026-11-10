@@ -225,3 +225,48 @@ def test_who_has_had_the_reward(monkeypatch):
         d = challenges._load()
         d["gifts"] = [x for x in d["gifts"] if x.get("why") != "Party reward"]
         challenges._save(d)
+
+
+def test_an_event_on_just_one_server(monkeypatch):
+    """With two servers, an event can be on just one: its reward only there, and the Events page says which."""
+    import asyncio
+    from datetime import date
+
+    from app import fwshow, holidaygifts, upcoming
+    e = fwshow._clean_entry({"id": "build", "name": "Build week", "date": {"type": "once", "iso": date.today().isoformat()}, "days": 3,
+                             "servers": ["creative", "creative", ""], "reward": {"items": [{"item": "minecraft:stick", "count": 1}]}})
+    assert e["servers"] == ["creative"]
+    assert fwshow._clean_entry({"name": "x"})["servers"] == []                        # none: every server
+    monkeypatch.setattr(fwshow, "calendar", lambda: [e])
+    gave = []
+
+    async def award(srv, name, item, why, note=""):
+        gave.append((srv.id, name))
+        return True
+
+    async def say(srv, name, ev, items):
+        pass
+    monkeypatch.setattr(holidaygifts.challenges, "award", award)
+    monkeypatch.setattr(holidaygifts, "say", say)
+
+    class Srv:
+        is_java = True
+
+        def __init__(self, sid):
+            self.id = sid
+
+        def rcon_conf(self):
+            return True
+    try:
+        asyncio.run(holidaygifts.tick(Srv("survival"), ["Ann"]))
+        asyncio.run(holidaygifts.tick(Srv("creative"), ["Ann"]))
+        assert gave == [("creative", "Ann")]
+        both = [x for x in upcoming.items({"survival": "Survival", "creative": "Creative"}) if x["kind"] == "holiday"]
+        assert both and both[0]["server"] == "Creative"
+        one = [x for x in upcoming.items({"creative": "Creative"}) if x["kind"] == "holiday"]
+        assert one and not one[0].get("server")                                        # one server: nothing to tell apart
+        assert not [x for x in upcoming.items({"survival": "Survival"}) if x["kind"] == "holiday"]   # not shown where it isn't
+    finally:
+        from app import settings_store
+        settings_store.save_section(holidaygifts.SECTION, {})
+        settings_store.save_section(holidaygifts.WHEN, {})

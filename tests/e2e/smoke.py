@@ -572,6 +572,8 @@ def main() -> int:
                         pie.click(); pg.fill("#gv-n", "3"); pg.click("#gv-go"); pg.wait_for_timeout(400)
                     if not pg.locator(".fws-reward-item").count():
                         problems.append("holidays: a picked reward item isn't shown")
+                    if pg.locator(".fws-cal-edit .hol-servers").count():               # one server: no "Which servers"
+                        problems.append("holidays: 'Which servers' shows with just one server")
                     if pg.locator(".fws-cal-edit [data-rewarded]").count():          # who's had it: nobody yet
                         pg.click(".fws-cal-edit [data-rewarded]"); pg.wait_for_timeout(700)
                         if "Nobody yet" not in (pg.locator("#modal-root .modal").text_content() or ""):

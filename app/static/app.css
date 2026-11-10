@@ -2651,3 +2651,5 @@ body.ui-hidden .manage-sub { display: none; }
 .srv-chip.warn { background: rgba(242, 193, 78, .18); color: #f2c14e; }
 .srv-chip.new { background: rgba(106, 169, 255, .2); color: #8fbcff; }
 .set-h { margin: 14px 0 4px; font-size: .95rem; }
+.hol-servers { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 4px 0 10px; }
+.hol-servers .lbl { font-weight: 600; }

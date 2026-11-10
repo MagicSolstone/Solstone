@@ -159,7 +159,7 @@ function renderCalendar(el) {
   el.innerHTML = `<section class="panel"><p class="muted" style="margin-bottom:12px">On these days the fireworks take on the day's colours and favourite kinds.</p>
     <div class="fws-cal">${cal.map((e, i) => fws.editing === i ? calEditHtml(e, i) : `<div class="fws-cal-row ${e.enabled ? "" : "off"}" data-i="${i}">
       <span class="fws-emoji">${esc(e.emoji)}</span>
-      <div><b>${annFmt(e.name_fmt || e.name)}</b><div class="muted small">${esc(fwsDateText(e))}${e.banner_days ? ` · banner ${e.banner_days} day${e.banner_days === 1 ? "" : "s"} before` : ""}${e.reward?.items?.length ? " · 🎁 reward" : ""}${e.colors_before || e.colors_after ? ` · colours ${e.colors_before} day${e.colors_before === 1 ? "" : "s"} before to ${e.colors_after} after` : ""}</div>
+      <div><b>${annFmt(e.name_fmt || e.name)}</b><div class="muted small">${esc(fwsDateText(e))}${e.banner_days ? ` · banner ${e.banner_days} day${e.banner_days === 1 ? "" : "s"} before` : ""}${e.reward?.items?.length ? " · 🎁 reward" : ""}${(e.servers || []).length && (fws.data.servers || []).length > 1 ? ` · on ${esc(e.servers.map((id) => (fws.data.servers.find((x) => x.id === id) || {}).name || "a hidden server").join(" & "))}` : ""}${e.colors_before || e.colors_after ? ` · colours ${e.colors_before} day${e.colors_before === 1 ? "" : "s"} before to ${e.colors_after} after` : ""}</div>
         ${fwsOverlapNote(e.id)}<div class="fwe-dots">${e.colors.map((c) => `<i style="background:${c}"></i>`).join("")}</div></div>
       <label class="check small"><input type="checkbox" data-en ${e.enabled ? "checked" : ""}> On</label>
       <button type="button" class="btn sm" data-edit>Edit</button></div>`).join("")}</div>
@@ -212,6 +212,10 @@ function calEditHtml(e, i) {
           : d.type === "once" ? `<input class="input sm" type="date" name="iso" value="${esc(d.iso || "")}">` : `<span class="muted small">Worked out each year</span>`}</label>
         <label class="inl">Lasts ${num("days", e.days, 1, 14)} day(s)</label>
       </div>
+      ${(fws.data.servers || []).length > 1 ? `<div class="hol-servers"><span class="lbl">Which servers</span>
+        <label class="check"><input type="checkbox" name="srv_all" ${(e.servers || []).length ? "" : "checked"}> All of them</label>
+        ${fws.data.servers.map((x) => `<label class="check hol-srv" ${(e.servers || []).length ? "" : "hidden"}><input type="checkbox" name="srv" value="${esc(x.id)}" ${(e.servers || []).includes(x.id) ? "checked" : ""}> ${esc(x.name)}</label>`).join("")}
+        <span class="muted small">Its reward is given only there, and the Events page says which.</span></div>` : ""}
       <label class="fws-detail">Description on the Events page <span class="muted small">optional, under its name</span>
         <textarea class="input" name="detail" rows="4" maxlength="600" placeholder="Log in any time this week for a present!">${esc(e.detail || "")}</textarea></label>
     </fieldset>
@@ -322,6 +326,7 @@ function wireCalEdit(el, i) {
     draft.message_fmt = draft.message = f.get("message") ?? draft.message_fmt ?? "";
     if (f.get("banner_days") != null) draft.banner_days = Math.max(0, Math.min(30, +f.get("banner_days") || 0));
     draft.detail = f.get("detail") || "";
+    if (form.querySelector("[name=srv_all]")) draft.servers = f.get("srv_all") ? [] : f.getAll("srv");
     draft.banner = { show: !!f.get("bshow"), style: form.querySelector('[data-seg="bstyle"] [aria-pressed="true"]')?.dataset.v || "party",
       colors: [f.get("bcolor0"), f.get("bcolor1"), ...(f.get("buse3") ? [f.get("bcolor2")] : [])] };
     draft.reward = { items: draft.reward?.items || [], message: f.get("rmessage") || "", note: f.get("rnote") || "", banner: !!f.get("rbanner"),      // items: picked below
@@ -384,6 +389,9 @@ function wireCalEdit(el, i) {
   };
   form.querySelector(".hol-phases").addEventListener("click", (ev) => { const b = ev.target.closest("[data-ph]"); if (b) { phase = b.dataset.ph; holShow(); } });
   form.addEventListener("input", holShow);
+  form.querySelector("[name=srv_all]")?.addEventListener("change", (ev) => {
+    form.querySelectorAll(".hol-srv").forEach((l) => { l.hidden = ev.target.checked; });
+  });
   form.addEventListener("change", holShow);
   holShow();
   // the reward: picked from the server's own items (with their pictures), like a contest's prize
