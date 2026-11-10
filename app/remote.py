@@ -136,7 +136,10 @@ async def _connect(cfg: dict, learn: bool = False):
         raise HostKeyChanged("not learned yet: test the connection in Manage → Servers first")
     conn = await asyncio.wait_for(asyncssh.connect(
         cfg["host"], port=int(cfg.get("port") or 22), username=cfg["user"], password=cfg.get("password") or None,
-        known_hosts=known, client_keys=None, agent_path=None, connect_timeout=CONNECT_SECS), CONNECT_SECS + 5)
+        known_hosts=known, client_keys=None, agent_path=None, connect_timeout=CONNECT_SECS,
+        # Nothing from a home folder: no ~/.ssh config, certificates or keys. (Solstone's container user may not be allowed
+        # into its home folder at all, and looking there then stopped every connection with "Permission denied".)
+        config=[], x509_trusted_certs=None, x509_trusted_cert_paths=[], ignore_encrypted=True), CONNECT_SECS + 5)
     key = conn.get_server_host_key()
     ident = (key.get_fingerprint("sha256"), key.export_public_key("openssh").decode().strip()) if key else ("", "")
     return conn, await conn.start_sftp_client(), ident

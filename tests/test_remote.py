@@ -234,3 +234,21 @@ def test_the_activity_feed_reads_a_server_elsewhere(far):
     rec.tail_server(srv)
     said = [e["message"] for e in db.events(sid, ["chat", "join"], None, 10)]
     assert "hello from far away" in said
+
+
+def test_a_home_folder_it_cant_open_doesnt_stop_it(far, monkeypatch):
+    """Solstone's container user isn't allowed into its home folder. On Python 3.12 looking for ~/.ssh files there
+    raises "Permission denied" (3.13 just says no), and every connection failed that way (a real host: GodLike)."""
+    from pathlib import Path
+    loop, root, cfg, key = far
+    real = Path.is_dir
+
+    def is_dir(self):
+        if ".ssh" in self.parts:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real(self)
+    monkeypatch.setattr(Path, "is_dir", is_dir)
+    real_access = __import__("os").access
+    monkeypatch.setattr("os.access", lambda p, m, **kw: False if ".ssh" in str(p) else real_access(p, m, **kw))
+    res = loop.run_until_complete(remote.test(cfg))
+    assert res["ok"], res
