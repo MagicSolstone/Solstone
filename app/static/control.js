@@ -173,7 +173,7 @@ async function viewControl(sid) {
         </form>
       </section>
     </div>
-    ${info.can_rcon || info.can_crafty ? "" : `<div class="notice">Turn on RCON for this server (⚙ settings) to send commands.</div>`}
+    ${info.can_rcon || info.can_crafty ? "" : `<div class="notice">Turn on RCON for this server (<a href="#/manage/servers">Manage → Servers</a>) to send commands.</div>`}
     <div class="ctl-main">
       <section class="console-wrap"><div class="section-head"><h2>Console</h2><span class="muted small" id="console-state">Connecting…</span></div>
         <div class="console" id="console" role="log" aria-live="off"></div>
@@ -451,7 +451,7 @@ async function viewAdmin(section = "users") {
   curSid = null;
   document.title = `${{ users: "Players", servers: "Servers & history", activity: "Activity log" }[section] || "Manage"} · ${SITE_NAME}`;
   fillServersMenu(state.servers, null);
-  const [users, lp, hiddenSrv, siteCfg, playerCfg, ptCfg] = await Promise.all([api("/api/users"), Promise.resolve(null), api("/api/servers-hidden").catch(() => []), api("/api/posts").then((d) => d.site).catch(() => ({})), api("/api/settings/players").catch(() => ({})), section === "users" ? api("/api/settings/playtime").catch(() => null) : null]);
+  const [users, lp, hiddenSrv, siteCfg, playerCfg, ptCfg] = await Promise.all([api("/api/users"), Promise.resolve(null), Promise.resolve([]), api("/api/posts").then((d) => d.site).catch(() => ({})), api("/api/settings/players").catch(() => ({})), section === "users" ? api("/api/settings/playtime").catch(() => null) : null]);
   const roleOpts = (cur) => ROLE_NAMES.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("");
   const fmtWhen = (ts) => ts ? fmtAgo(ts) : "never";
   const srvName = (id) => state.servers.find((x) => x.id === id)?.name || id;
@@ -473,13 +473,11 @@ async function viewAdmin(section = "users") {
         <label>Level<select class="input" name="role">${roleOpts("trusted")}</select></label>
         <button class="btn primary" type="submit">Add user</button></div></form>
     </section>`;
-  const serversHtml = `${hiddenSrv.length ? `<section class="section" id="hidden-servers"><div class="section-head"><h2>Hidden servers</h2><span class="muted">Hidden from Solstone and the home page. Nothing about the server itself changes.</span></div>
-      <div class="panel hidden-list">${hiddenSrv.map((x) => `<div class="hidden-row" data-hsid="${esc(x.id)}"><b>${esc(x.name)}</b><span class="muted small">${esc(x.game || "")}</span><button class="btn sm" type="button" data-unhide>Show it again</button></div>`).join("")}</div></section>` : ""}
+  const serversHtml = `<section class="section" id="srv-manage"><div class="section-head"><h2>Your servers</h2><span class="muted">Each one's name, how Solstone reaches it, and who sees it</span></div>
+      <div class="srv-list"><p class="muted">Loading…</p></div></section>
     <section class="section"><div class="section-head"><h2>Recap history</h2></div>
       <div class="panel" style="max-width:720px"><p class="muted small">Every day is summarised and kept for good, so “on this day” can look back years. When Solstone first starts it also reads each server's old logs (the <code>logs/*.log.gz</code> files Minecraft keeps) to fill in the days before it was installed. If you've copied older logs in, read them again here.</p>
         <button class="btn" id="ann-backfill" type="button" style="margin-top:8px">Read old logs again</button></div></section>
-    <section class="section"><div class="section-head"><h2>Each server</h2></div>
-      <div class="panel"><p>A server's own settings (its name, Private, the web map, bedtime) are on its page: open it from <b>Servers</b> and press ⚙.</p></div></section>
     <section class="section"><div class="section-head"><h2>🌐 Website traffic</h2><span class="muted">What Solstone answered, who asked, and how quickly</span></div>
       <div class="panel" id="traffic" style="max-width:860px"><p class="muted">Loading…</p></div></section>
     <section class="section"><div class="section-head"><h2>📖 What people read</h2><span class="muted">Each page of the website: how many looked, and read it to the end</span></div>
@@ -497,6 +495,7 @@ async function viewAdmin(section = "users") {
   const activityHtml = `<section class="section"><div class="section-head"><h2>Admin activity</h2><span class="muted">Commands, changes and sign-in failures across all servers</span></div>
       <div class="panel" id="audit-browse"><p class="muted">Loading…</p></div></section>`;
   setView({ users: usersHtml, servers: serversHtml, activity: activityHtml }[section] || usersHtml);
+  if ($("#srv-manage")) manageServers();
   if ($("#audit-browse")) mountAuditBrowser($("#audit-browse"));
 
   const selfBackups = async () => {
@@ -717,16 +716,6 @@ async function viewAdmin(section = "users") {
     try { const r = await post("/api/recap/backfill"); showToast(r.days ? `Filled in ${r.days} days` : "Nothing new in the old logs", 3500); }
     catch (err) { showError(esc(err.message), 5000); }
     e.target.disabled = false; e.target.textContent = "Read old logs again";
-  });
-  $("#hidden-servers")?.addEventListener("click", async (e) => {
-    const b = e.target.closest("[data-unhide]");
-    if (!b) return;
-    const row = b.closest("[data-hsid]");
-    try {
-      await post(`/api/servers/${encodeURIComponent(row.dataset.hsid)}/settings`, { hidden: false }, "PUT");
-      showToast(`${esc(row.querySelector("b").textContent)} is back`, 2500);
-      await loadServers(); viewAdmin(section);
-    } catch (err) { showError(esc(err.message), 5000); }
   });
   $("#add-user")?.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1122,6 +1111,33 @@ function wireForgetPlayer(el) {
         out.innerHTML = `<p class="notice small">Done: ${r.total.toLocaleString()} things about ${esc(r.name)} are gone from Solstone. A backup was made just before.</p>`;
         form.reset();
       } catch (err) { showError(esc(err.message), 5000); }
+    });
+  });
+}
+
+// Manage → Servers: every server Solstone has found, shown or hidden, each with its settings a click away.
+async function manageServers() {
+  const box = $("#srv-manage .srv-list");
+  if (!box) return;
+  const list = await api("/api/manage/servers").catch(() => null);
+  if (!list) { box.innerHTML = `<p class="notice">Couldn't load the servers just now.</p>`; return; }
+  if (!list.length) { box.innerHTML = `<p class="muted">No servers found yet. Solstone finds them in Crafty, and in its servers folder.</p>`; return; }
+  const chip = (cls, text, title = "") => `<span class="srv-chip ${cls}" ${title ? `title="${esc(title)}"` : ""}>${text}</span>`;
+  box.innerHTML = list.map((x) => `<div class="panel srv-row ${x.hidden ? "is-hidden" : ""}" data-msid="${esc(x.id)}">
+      <div class="srv-main"><b>${esc(x.name)}</b>${x.name !== x.found_as ? ` <span class="muted small">(${esc(x.found_as)})</span>` : ""}
+        <div class="srv-chips">${x.new ? chip("new", "New", "Found by itself, so it starts hidden: show it when you're ready") : ""}
+          ${chip(x.hidden ? "off" : "on", x.hidden ? "Hidden" : "Shown")}${x.private ? chip("warn", "Private", "Only admins see it") : ""}
+          ${x.java ? chip(x.rcon && !x.rcon_error ? "on" : "warn", x.rcon ? (x.rcon_error ? "RCON not answering" : "RCON ✓") : "RCON off", x.rcon_error || "") : chip("", esc(x.game || "Bedrock"))}
+          ${chip("", x.crafty ? "Crafty" : "Folder", x.crafty ? "Started and stopped through Crafty" : `The ${x.folder} folder`)}${x.version ? chip("", esc(x.version)) : ""}${x.map ? chip("", "🗺 Map") : ""}</div></div>
+      <div class="btn-row">${x.hidden ? `<button class="btn sm primary" type="button" data-show>Show it</button>` : `<a class="btn sm" href="#/s/${encodeURIComponent(x.id)}">Open</a>`}
+        <button class="btn sm" type="button" data-edit>⚙ Settings</button></div></div>`).join("")
+    + `<p class="muted small">A server Solstone finds for the first time starts <b>hidden</b>, so nothing new turns up on the website until you show it.</p>`;
+  box.querySelectorAll("[data-msid]").forEach((row) => {
+    const x = list.find((y) => y.id === row.dataset.msid);
+    row.querySelector("[data-edit]").addEventListener("click", () => openSettings({ id: x.id, name: x.found_as }, manageServers));
+    row.querySelector("[data-show]")?.addEventListener("click", async () => {
+      try { await post(`/api/servers/${encodeURIComponent(x.id)}/settings`, { hidden: "" }, "PUT"); showToast(`${esc(x.name)} is shown`, 2500); await loadServers(); manageServers(); }
+      catch (e) { showError(esc(e.message), 4000); }
     });
   });
 }

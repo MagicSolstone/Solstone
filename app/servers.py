@@ -307,6 +307,9 @@ class Registry:
                 found = {k: v for k, v in found.items() if {k.lower(), v.name.lower(), v.dir.name.lower()} & set(config.only_servers)}
             self.servers = found
             self._refreshed = time.monotonic()
+            new = settings_store.note_found(list(found))
+            if new:
+                log.info("found %d new server(s), hidden until shown in Manage → Servers: %s", len(new), ", ".join(found[i].name for i in new))
 
     async def get(self, sid: str) -> Server | None:
         await self.refresh()

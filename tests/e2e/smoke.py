@@ -405,6 +405,20 @@ def main() -> int:
             pg.goto(f"{base}/app#/manage/servers"); pg.wait_for_timeout(1200)
             if not pg.locator("#clear-form [name=what]").count():
                 problems.append("manage: no Clear saved history")
+            # every server's settings live here now (no ⚙ on the server's own page)
+            appear(pg, "#srv-manage .srv-row", 1, 8000)
+            if not pg.locator(f'#srv-manage [data-msid="{sid}"] [data-edit]').count():
+                problems.append("manage servers: the server isn't listed with its settings")
+            else:
+                pg.click(f'#srv-manage [data-msid="{sid}"] [data-edit]'); pg.wait_for_timeout(800)
+                if not pg.locator("#settings-form [name=rcon_host]").count() or not pg.locator("#settings-form [name=hidden]").count():
+                    problems.append("manage servers: its settings window has no RCON or Hidden")
+                check(pg, "manage-server-settings")
+                pg.locator("[data-close-modal]").first.click(); pg.wait_for_timeout(300)
+                check(pg, "manage-servers")
+            pg.goto(f"{base}/app#/s/{sid}"); pg.wait_for_timeout(1200)
+            if pg.locator("#btn-settings").count():
+                problems.append("server page: still has its own ⚙ (it's in Manage → Servers now)")
             pg.goto(f"{base}/app#/s/{sid}/mods"); pg.wait_for_timeout(1500)
             appear(pg, "#mod-updates button, #mod-updates .mod-bedrock", 1, 20000)
             if not pg.locator("#mod-updates").count():

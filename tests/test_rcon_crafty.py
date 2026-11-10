@@ -252,3 +252,27 @@ def test_a_map_dimension_name_cant_leave_the_world(tmp_path):
     assert worldmap.region_dir(tmp_path, "minecraft:x") is not None
     for bad in ("minecraft:../../..", "../x:y", "minecraft:x/../../../etc", "a b:c", "", None):
         assert worldmap.region_dir(tmp_path, bad) is None
+
+
+def test_a_server_found_for_the_first_time_starts_hidden(tmp_path, monkeypatch):
+    """Servers already there when this version first runs stay as they were; any found after that start hidden (and
+    marked new) until an admin shows one in Manage → Servers."""
+    from app import settings_store
+    monkeypatch.setattr(settings_store, "_PATH", tmp_path / "settings.json")
+    assert settings_store.note_found(["main", "creative"]) == []                    # the first look: all already seen
+    assert not settings_store.server("main").get("hidden")
+    assert settings_store.note_found(["main", "creative", "test-world"]) == ["test-world"]
+    assert settings_store.server("test-world") == {"hidden": True, "new": True}
+    assert settings_store.note_found(["main", "creative", "test-world"]) == []      # once
+    settings_store.update_server("test-world", {"hidden": "", "new": ""})          # an admin shows it
+    assert settings_store.note_found(["main", "creative", "test-world"]) == [] and not settings_store.server("test-world").get("hidden")
+
+
+def test_manage_servers_lists_hidden_ones_too(client, viewer, sid):
+    assert viewer.get("/api/manage/servers").status_code == 403
+    rows = client.get("/api/manage/servers").json()
+    assert any(r["id"] == sid and not r["hidden"] for r in rows)
+    assert client.put(f"/api/servers/{sid}/settings", json={"hidden": True}).status_code == 200
+    row = next(r for r in client.get("/api/manage/servers").json() if r["id"] == sid)
+    assert row["hidden"] and not row["new"]
+    client.put(f"/api/servers/{sid}/settings", json={"hidden": ""})

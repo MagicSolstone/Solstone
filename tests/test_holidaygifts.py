@@ -208,7 +208,7 @@ def test_who_has_had_the_reward(monkeypatch):
     from app import servers as S
     e = {"id": "party", "name": "Party"}
     monkeypatch.setattr(holidaygifts.fwshow, "calendar", lambda: [e])
-    monkeypatch.setattr(S.registry, "get", lambda sid: None)
+    monkeypatch.setattr(S.registry, "servers", {})
     settings_store.save_section(holidaygifts.SECTION, {"party:2026-11-01:srv1": ["ann", "bo"], "other:2026-11-01:srv1": ["cy"]})
     settings_store.save_section(holidaygifts.WHEN, {"party:2026-11-01:srv1": {"ann": 100, "bo": 200}})
     d = challenges._load()

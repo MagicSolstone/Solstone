@@ -10,7 +10,8 @@ _PATH = config.data_dir / "settings.json"
 _lock = threading.Lock()
 ALLOWED = {"display_name", "map_url", "rcon_host", "rcon_port", "rcon_password", "hidden", "private", "bedtime",
            "join_address", "join_bedrock_address", "join_check", "join_bedrock_port", "join_note", "join_mods", "join_color", "join_xbox",
-           "welcome", "welcome_when", "map_proxy"}   # how to join this server, on the home page
+           "welcome", "welcome_when", "map_proxy",   # how to join this server, on the home page
+           "new"}                                    # found by itself and hidden until an admin shows it (Manage → Servers)
 
 
 def load() -> dict:
@@ -35,6 +36,30 @@ def save_section(name: str, value: dict) -> None:
         data = load()
         data[name] = value
         _write(data)
+
+
+SEEN = "servers_seen"                            # every server id Solstone has found (a new one starts hidden)
+
+
+def note_found(ids: list[str]) -> list[str]:
+    """Servers found on this look: any never seen before is hidden (and marked new) until an admin chooses to show it.
+    The first time this runs (an older Solstone's settings), everything already there counts as seen. Returns the new ones."""
+    with _lock:
+        data = load()
+        seen = data.get(SEEN)
+        if seen is None:
+            data[SEEN] = sorted(set(ids))
+            _write(data)
+            return []
+        new = [i for i in ids if i not in seen]
+        if not new:
+            return []
+        for i in new:
+            cur = data.setdefault("servers", {}).setdefault(i, {})
+            cur["hidden"], cur["new"] = True, True
+        data[SEEN] = sorted(set(seen) | set(new))
+        _write(data)
+        return new
 
 
 def update_server(sid: str, values: dict) -> dict:

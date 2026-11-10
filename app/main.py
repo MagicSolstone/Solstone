@@ -2173,6 +2173,21 @@ async def player_uuids():
     return JSONResponse(out, headers={"Cache-Control": "private, max-age=300"})
 
 
+@app.get("/api/manage/servers")
+async def manage_servers(request: Request):
+    """Admin: every server Solstone has found, shown or hidden, with how it's reached (Manage → Servers)."""
+    auth.require_admin(request)
+    await S.registry.refresh()
+    out = []
+    for s in sorted(S.registry.servers.values(), key=lambda x: (bool(x.settings.get("hidden")), x.display_name.lower())):
+        st = s.settings
+        out.append({"id": s.id, "name": s.display_name, "found_as": s.name, "game": s.game, "java": s.is_java,
+                    "hidden": bool(st.get("hidden")), "private": bool(st.get("private")), "new": bool(st.get("new")),
+                    "crafty": bool(s.crafty), "folder": s.dir.name, "rcon": bool(s.rcon_conf()), "rcon_error": s.rcon_error or "",
+                    "map": bool(st.get("map_url")), "version": s.mc_version or ""})
+    return out
+
+
 @app.get("/api/servers-hidden")
 async def hidden_servers(request: Request):
     """Admin: servers hidden from Solstone, so they can be brought back."""
@@ -2477,6 +2492,8 @@ async def put_settings(sid: str, request: Request):
             raise HTTPException(400, "Bedtime needs times like 21:00") from e
     if "join_mods" in body:
         body["join_mods"] = True if body["join_mods"] else ""
+    if "hidden" in body:                     # shown or hidden by an admin: no longer "new"
+        body["new"] = ""
     if "map_proxy" in body:                  # the web map through Solstone (webmap.py)
         body["map_proxy"] = True if body["map_proxy"] else ""
     if "map_url" in body:

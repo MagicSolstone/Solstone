@@ -2641,3 +2641,13 @@ body.ui-hidden .manage-sub { display: none; }
 .hol-given li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; padding: 6px 10px; border-radius: 8px; background: var(--well); }
 .hol-given li small { margin-left: auto; }
 .hol-wait { font-size: .75rem; padding: 1px 7px; border-radius: 999px; background: rgba(242, 193, 78, .18); color: #f2c14e; }
+.srv-list { display: grid; gap: 8px; max-width: 860px; }
+.srv-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; padding: 12px 14px; }
+.srv-row.is-hidden { opacity: .8; }
+.srv-chips { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 5px; }
+.srv-chip { font-size: .75rem; padding: 1px 8px; border-radius: 999px; background: var(--well); color: var(--muted); }
+.srv-chip.on { background: rgba(95, 208, 138, .16); color: #5fd08a; }
+.srv-chip.off { background: rgba(138, 147, 166, .2); color: #c3c9d6; }
+.srv-chip.warn { background: rgba(242, 193, 78, .18); color: #f2c14e; }
+.srv-chip.new { background: rgba(106, 169, 255, .2); color: #8fbcff; }
+.set-h { margin: 14px 0 4px; font-size: .95rem; }

@@ -1012,7 +1012,7 @@ function serverHeader(s, tab) {
   return `<header class="server-head">
       <div class="big-icon">${s.has_icon ? `<img src="/api/servers/${encodeURIComponent(s.id)}/icon.png" alt="">` : esc((s.name || "?")[0])}</div>
       <div><h1>${esc(s.name)}</h1><div class="motd">${motdHtml(s.motd)}</div><div class="facts">${facts}</div></div>
-      <div class="head-actions">${statePill}${isAdmin() ? '<button class="icon-btn" id="btn-settings" title="Server settings" aria-label="Server settings">⚙</button>' : ""}</div>
+      <div class="head-actions">${statePill}</div>
     </header>
     ${!java ? `<div class="notice">${esc(s.game_label)} server: Solstone shows its status, who's online, play time and performance. Inventories, stats and world details are Minecraft Java only for now.</div>` : ""}
     ${java && !s.folder_found ? `<div class="notice">Solstone can't find this server's files at <code>${esc(s.folder)}</code>. Mount Crafty's servers folder so player data can be read.</div>` : ""}
@@ -1039,7 +1039,6 @@ function wireHeader(s) {
   // phones: the section tabs scroll sideways; keep the one you're on in view
   const cur = document.querySelector(".server-head ~ .tabs a[aria-current], .tabs a[aria-current]");
   if (cur && innerWidth < 900) cur.scrollIntoView({ inline: "center", block: "nearest" });
-  $("#btn-settings")?.addEventListener("click", () => openSettings(s));
 }
 
 // ---------------------------------------------------------------- overview tab
@@ -1803,19 +1802,22 @@ async function viewMods(sid) {
 }
 
 // ---------------------------------------------------------------- settings
-async function openSettings(s) {
+// Manage → Servers: one server's settings (its name, how Solstone reaches it, who sees it). `s`: {id, name}; then: after saving.
+async function openSettings(s, then) {
   const cur = await api(`/api/servers/${encodeURIComponent(s.id)}/settings`).catch(() => ({}));
-  openModal(`<h2>Server settings</h2>
+  openModal(`<h2>⚙ ${esc(cur.display_name || s.name)}</h2>
     <form id="settings-form">
       <label>Display name<input class="input" name="display_name" value="${esc(cur.display_name || "")}" placeholder="${esc(s.name)}"></label>
       <label>Map address <small>BlueMap, squaremap or Dynmap web address shown on the World tab</small><input class="input" name="map_url" value="${esc(cur.map_url || "")}" placeholder="http://192.168.1.10:8100"></label>
       <label class="check"><input type="checkbox" name="map_proxy" ${cur.map_proxy ? "checked" : ""}> Show the map through Solstone <small>It then opens from anywhere, not just at home, and only for people signed in who may see the map (Players only with <i>Players can see the map</i> on). The map itself stays off the internet: use its home-network address above.</small></label>
       <p class="muted small">How to join this server (its addresses, a note, the mods) is set in Manage → Website → Site details.</p>
-      <label>RCON host <small>Used for live inventories. Leave blank to use ${esc(s.rcon?.host || "the Crafty host")}.</small><input class="input" name="rcon_host" value="${esc(cur.rcon_host || "")}"></label>
+      <h3 class="set-h">How Solstone reaches it</h3>
+      <label>RCON host <small>Commands, who's online, live inventories, games. Leave blank to use ${esc(s.rcon?.host || "the Crafty host")}.</small><input class="input" name="rcon_host" value="${esc(cur.rcon_host || "")}"></label>
       <label>RCON port <small>Leave blank to use rcon.port from server.properties</small><input class="input" name="rcon_port" inputmode="numeric" value="${esc(cur.rcon_port || "")}"></label>
       <label>RCON password <small>${cur.rcon_password_set ? "Saved. Type a new one to replace it." : "Leave blank to use rcon.password from server.properties"}</small><input class="input" type="password" name="rcon_password" autocomplete="off"></label>
+      <h3 class="set-h">Who sees it</h3>
       <label class="check"><input type="checkbox" name="private" ${cur.private ? "checked" : ""}> Private <small>Only admins see it. It never shows on the public pages, and signed-in players don't see it.</small></label>
-      <label class="check"><input type="checkbox" name="hidden" ${cur.hidden ? "checked" : ""}> Hide this server from Solstone</label>
+      <label class="check"><input type="checkbox" name="hidden" ${cur.hidden ? "checked" : ""}> Hidden <small>Solstone leaves it alone: not on the website, not on any page, no history kept. Nothing about the server itself changes.</small></label>
       <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">Save settings</button></div>
     </form>`, (m) => {
     $("#settings-form", m).addEventListener("submit", async (e) => {
@@ -1828,7 +1830,8 @@ async function openSettings(s) {
       try {
         await post(`/api/servers/${encodeURIComponent(s.id)}/settings`, body, "PUT");
         closeModal(); showToast("Settings saved", 2500);
-        await loadServers(); route();
+        await loadServers();
+        if (then) await then(); else route();
       } catch (err) { showError(`Couldn't save settings: ${esc(err.message)}`, 5000); }
     });
   });

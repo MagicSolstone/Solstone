@@ -97,7 +97,7 @@ def given_to(event_id: str) -> list[dict]:
         eid, start, sid = key.split(":", 2)
         if eid != event_id or not names:
             continue
-        srv = S.registry.get(sid)
+        srv = S.registry.servers.get(sid)
         shown = {p["name"].lower(): p["name"] for p in S.known_players(srv).values() if p.get("name")} if srv else {}
         when = times.get(key) or {}
         people = [{"name": shown.get(n, n), "when": when.get(n), "waiting": (sid, n) in held} for n in names]
