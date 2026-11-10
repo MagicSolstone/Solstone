@@ -1,3 +1,8 @@
+# Solstone 1.20.2
+
+- **Fixed: a server elsewhere stopped updating ("Files: not updating", KeyError: 'regions') after its settings were saved.** Saving reset its update timers without the map's, so every update after that failed: no new log lines, stats or map. Saving keeps all of them now.
+- **The map (and mods and old logs) can't hold up the rest any more.** A problem with one of those is noted in the server's ⚙ Settings ("The map isn't updating (everything else is): …") while the log and players' files carry on.
+
 # Solstone 1.20.1
 
 - **The map for a server elsewhere keeps up much better, for a fraction of the download.** Where players are, Solstone now looks every minute (was five), and for a part of the world it already has, it fetches only the chunks saved since: each region file starts with a small table of when each of its chunks was last saved, so Solstone reads that (8 KB) and then just what changed (usually a few KB), instead of the whole region (1 to 10 MB). The map is then at most a minute or so behind the game's own saves, which Minecraft does every five minutes (Paper too, by default).
