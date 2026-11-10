@@ -14,7 +14,7 @@ from typing import Any
 
 from . import settings_store
 from .config import config
-from .crafty import crafty, parse_player_list
+from .crafty import parse_player_list
 from .nbtutil import load_dat, norm_player, parse_entity_snbt
 from .rcon import Rcon, RconError
 
@@ -251,23 +251,32 @@ def _crafty_list_file() -> Path:
     return config.data_dir / "crafty-servers.json"
 
 
-def _save_crafty_list(listed: list[dict]) -> None:
-    keep = [{k: v for k, v in s.items() if not k.startswith("_")} for s in listed if isinstance(s, dict)]
+def _crafty_lists() -> dict[str, list]:
+    """Each Crafty's last server list, by connection (an older Solstone kept one list: it's the first Crafty's)."""
     try:
-        f = _crafty_list_file()
-        if f.is_file() and json.loads(f.read_text(encoding="utf-8")) == keep:
-            return
-        f.write_text(json.dumps(keep), encoding="utf-8")
+        data = json.loads(_crafty_list_file().read_text(encoding="utf-8"))
     except (OSError, ValueError):
+        return {}
+    return {"": data} if isinstance(data, list) else data if isinstance(data, dict) else {}
+
+
+def _save_crafty_list(cid: str, listed: list[dict]) -> None:
+    keep = [{k: v for k, v in s.items() if not k.startswith("_")} for s in listed if isinstance(s, dict)]
+    lists = _crafty_lists()
+    old = lists.pop("", None)                    # (the older single list: replaced by this Crafty's own)
+    if lists.get(cid) == keep and old is None:
+        return
+    lists[cid] = keep
+    try:
+        _crafty_list_file().write_text(json.dumps(lists), encoding="utf-8")
+    except OSError:
         pass
 
 
-def _load_crafty_list() -> list[dict]:
-    try:
-        data = json.loads(_crafty_list_file().read_text(encoding="utf-8"))
-        return [s for s in data if isinstance(s, dict)]
-    except (OSError, ValueError):
-        return []
+def _load_crafty_list(cid: str) -> list[dict]:
+    lists = _crafty_lists()
+    data = lists.get(cid) or lists.get("") or []
+    return [s for s in data if isinstance(s, dict)]
 
 
 class Registry:
@@ -292,17 +301,21 @@ class Registry:
             if not force and time.monotonic() - self._refreshed < 20 and self.servers:
                 return
             found: dict[str, Server] = {}
-            if crafty.enabled:
-                listed = await crafty.servers()
+            from . import connections
+            for cid, client in connections.crafties():   # each Crafty connection (Manage → Server setup)
+                if not client.enabled:
+                    continue
+                listed = await client.servers()
                 if listed is None:
                     # Crafty is down (or restarting): keep the servers we knew, so pages, links and ids stay put
                     # and show what's on disk; the saved list covers a Solstone restart while Crafty is down.
-                    listed = [s.crafty for s in self.servers.values() if s.crafty] or _load_crafty_list()
+                    listed = [s.crafty for s in self.servers.values() if s.crafty and s.crafty.get("_conn") == cid] or _load_crafty_list(cid)
                     for s in listed:
                         s["_unreachable"] = True
                 else:
-                    _save_crafty_list(listed)
+                    _save_crafty_list(cid, listed)
                 for s in listed:
+                    s["_conn"] = cid
                     sid = str(s.get("server_id"))
                     crafty_path = str(s.get("path", ""))
                     local = config.servers_dir / Path(crafty_path).name
@@ -327,7 +340,7 @@ class Registry:
                         if old:
                             srv._rcon, srv._rcon_backoff, srv.rcon_error = old._rcon, old._rcon_backoff, old.rcon_error
                         found[sid] = srv
-            # Servers somewhere else (added in Manage → Servers): read from the mirror Solstone keeps of their files
+            # Servers somewhere else (added in Manage → Server setup): read from the mirror Solstone keeps of their files
             from . import remote
             for sid, cfg in remote.all_cfg().items():
                 old = self.servers.get(sid)
@@ -341,7 +354,7 @@ class Registry:
             self._refreshed = time.monotonic()
             new = settings_store.note_found(list(found))
             if new:
-                log.info("found %d new server(s), hidden until shown in Manage → Servers: %s", len(new), ", ".join(found[i].name for i in new))
+                log.info("found %d new server(s), hidden until shown in Manage → Server setup: %s", len(new), ", ".join(found[i].name for i in new))
 
     async def get(self, sid: str) -> Server | None:
         await self.refresh()
@@ -413,7 +426,11 @@ async def _crafty_stats(srv: Server) -> dict | None:
         return await srv.panel.stats()
     if not srv.crafty:
         return None
-    stats = await crafty.stats(srv.id)
+    from . import connections
+    client = connections.for_server(srv)
+    if client is None:
+        return None
+    stats = await client.stats(srv.id)
     if stats is not None:
         # Crafty's ping of the game fails now and then (it then has no MOTD or icon): keep showing the last ones
         keep = _last_seen_stats.setdefault(srv.id, {})

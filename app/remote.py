@@ -1,4 +1,4 @@
-"""Servers somewhere else: a game host, a rented server, another computer (Manage → Servers → Add a server elsewhere).
+"""Servers somewhere else: a game host, a rented server, another computer (Manage → Server setup → Add a server elsewhere).
 
 Solstone reads a server's files all the time: the log (who joined, chat, deaths, catches), each player's stats and
 saved data, the world's level.dat, server.properties, the whitelist, the mods. For a server on the same machine it
@@ -16,7 +16,7 @@ the server were here. Nothing else in Solstone needs to know.
 The host's own panel, when it's Pterodactyl or Pelican (what most game hosts run), does what Crafty does at home: start,
 stop and restart, whether it's running, CPU and memory, and a console line when RCON isn't answering.
 
-SFTP's host key is remembered the first time (and shown in Manage → Servers): if it ever changes, Solstone stops and
+SFTP's host key is remembered the first time (and shown in Manage → Server setup): if it ever changes, Solstone stops and
 says so instead of sending the password to something else.
 """
 from __future__ import annotations
@@ -37,7 +37,7 @@ from .config import config
 log = logging.getLogger("solstone.remote")
 
 SECTION = "remote_servers"          # {sid: {...}}: how each one is reached (its secrets never leave Solstone)
-SECRETS = ("password", "panel_key")
+SECRETS = ("password",)
 LEARNED = ("host_key", "host_pub")      # the SFTP server's identity: only ever set from what a test saw
 LOG_SECS = 3                        # the log: new lines this often
 FILES_SECS = 30                     # stats, player data, level.dat, the files at the top: looked at this often (default)
@@ -51,7 +51,27 @@ CONNECT_SECS = 15
 
 # ------------------------------------------------------------------ the saved settings
 def all_cfg() -> dict[str, dict]:
-    return dict(settings_store.load().get(SECTION) or {})
+    data = dict(settings_store.load().get(SECTION) or {})
+    if any(c.get("panel_url") for c in data.values()):
+        data = _panel_to_connection(data)
+    return data
+
+
+def _panel_to_connection(data: dict) -> dict:
+    """1.17 kept a panel's address and key with each server: they're a connection of their own now (Manage → Server
+    setup → Connections), shared by every server on that panel. Moved over once."""
+    from . import connections
+    for c in data.values():
+        url, key = c.pop("panel_url", ""), c.pop("panel_key", "")
+        if not url or not key or c.get("conn"):
+            continue
+        same = next((cid for cid, x in connections.of_type("panel").items() if x["url"] == url.rstrip("/") and x.get("key") == key), None)
+        try:
+            c["conn"] = same or connections.save(None, {"type": "panel", "name": "Host's panel", "url": url, "key": key})
+        except ValueError:
+            pass
+    settings_store.save_section(SECTION, data)
+    return data
 
 
 def get(sid: str) -> dict | None:
@@ -80,12 +100,14 @@ def clean(body: dict, old: dict | None = None) -> dict:
             return default
     cfg = {"name": text("name", 60), "host": text("host", 253).lower(), "port": num("port", 1, 65535, 22), "user": text("user", 120),
            "path": (str(body.get("path") if body.get("path") is not None else old.get("path") or "") or "/").strip()[:300] or "/",
-           "panel_url": text("panel_url", 300).rstrip("/"), "panel_id": text("panel_id", 64),
+           "conn": text("conn", 40), "panel_id": text("panel_id", 64),
            "files_secs": num("files_secs", 10, 600, FILES_SECS), "host_key": old.get("host_key", ""), "host_pub": old.get("host_pub", "")}
     if not cfg["name"] or not cfg["host"] or not cfg["user"]:
         raise ValueError("A name, the SFTP address and the username are needed")
-    if cfg["panel_url"] and not cfg["panel_url"].startswith(("https://", "http://")):
-        raise ValueError("The panel's address starts with https://")
+    if cfg["conn"]:
+        from . import connections
+        if (connections.get(cfg["conn"]) or {}).get("type") != "panel":
+            raise ValueError("Pick one of your panel connections (or none)")
     for k in SECRETS:
         v = body.get(k)
         cfg[k] = str(v) if v else old.get(k, "")
@@ -133,7 +155,7 @@ async def _connect(cfg: dict, learn: bool = False):
     elif learn:
         known = None                                      # (the admin is looking: what it learns is shown to them)
     else:
-        raise HostKeyChanged("not learned yet: test the connection in Manage → Servers first")
+        raise HostKeyChanged("not learned yet: test the connection in Manage → Server setup first")
     conn = await asyncio.wait_for(asyncssh.connect(
         cfg["host"], port=int(cfg.get("port") or 22), username=cfg["user"], password=cfg.get("password") or None,
         known_hosts=known, client_keys=None, agent_path=None, connect_timeout=CONNECT_SECS,
@@ -150,7 +172,7 @@ def _why(e: Exception) -> str:
     if isinstance(e, asyncssh.PermissionDenied):
         return "The username or password wasn't accepted"
     if isinstance(e, HostKeyChanged) and "not learned" in str(e):
-        return "Not connected yet: open its settings in Manage → Servers and press Test the connection"
+        return "Not connected yet: open its settings in Manage → Server setup and press Test the connection"
     if isinstance(e, asyncssh.HostKeyNotVerifiable) or isinstance(e, HostKeyChanged):
         return ("The server's identity (its SSH host key) has changed since Solstone first connected. If the host moved "
                 "your server, press Forget its identity in its settings; otherwise someone may be in between, so don't")
@@ -162,7 +184,7 @@ def _why(e: Exception) -> str:
 
 
 async def test(cfg: dict) -> dict:
-    """Connect, look in the folder, and learn the host's key (an admin is watching: Manage → Servers)."""
+    """Connect, look in the folder, and learn the host's key (an admin is watching: Manage → Server setup)."""
     try:
         conn, sftp, (fp, pub) = await _connect(cfg, learn=True)
     except Exception as e:
@@ -405,7 +427,8 @@ class Panel:
     def __init__(self, sid: str, cfg: dict | None = None):
         self.sid = sid
         self._cfg = cfg                          # (a test of settings not saved yet)
-        self._client = httpx.AsyncClient(timeout=10)
+        conn = self._conn()
+        self._client = httpx.AsyncClient(timeout=10, verify=bool(conn.get("verify_ssl", True)))
         self._stats: tuple[float, dict] | None = None
         self.error = ""
 
@@ -413,11 +436,16 @@ class Panel:
     def cfg(self) -> dict:
         return self._cfg if self._cfg is not None else (get(self.sid) or {})
 
+    def _conn(self) -> dict:
+        """The panel connection this server is on (its address and API key)."""
+        from . import connections
+        return connections.get(self.cfg.get("conn")) or {}
+
     def _url(self, tail: str) -> str:
-        return f"{self.cfg['panel_url']}/api/client/servers/{self.cfg['panel_id']}{tail}"
+        return f"{self._conn().get('url', '')}/api/client/servers/{self.cfg['panel_id']}{tail}"
 
     def _headers(self) -> dict:
-        return {"Authorization": f"Bearer {self.cfg.get('panel_key', '')}", "Accept": "application/json", "Content-Type": "application/json"}
+        return {"Authorization": f"Bearer {self._conn().get('key', '')}", "Accept": "application/json", "Content-Type": "application/json"}
 
     async def stats(self) -> dict | None:
         """Running or not, CPU and memory: in the shape Crafty's stats have, so the rest of Solstone needn't care."""
@@ -492,8 +520,9 @@ _panels: dict[str, Panel] = {}
 
 
 def panel(sid: str) -> Panel | None:
+    from . import connections
     c = get(sid)
-    if not c or not c.get("panel_url") or not c.get("panel_id") or not c.get("panel_key"):
+    if not c or not c.get("conn") or not c.get("panel_id") or (connections.get(c["conn"]) or {}).get("type") != "panel":
         return None
     if sid not in _panels:
         _panels[sid] = Panel(sid)

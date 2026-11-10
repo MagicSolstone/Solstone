@@ -126,12 +126,15 @@ def test_a_changed_host_key_is_refused(far):
 
 def test_settings_keep_their_secrets(far):
     loop, root, cfg, key = far
-    sid = remote.save(None, {**cfg, "panel_url": "https://panel.example.com/", "panel_id": "1a2b3c4d", "panel_key": "ptlc_x"})
+    from app import connections
+    conn = connections.save(None, {"type": "panel", "url": "https://panel.example.com/", "key": "ptlc_x"})
+    sid = remote.save(None, {**cfg, "conn": conn, "panel_id": "1a2b3c4d"})
     pub = remote.public(remote.get(sid))
-    assert "password" not in pub and "panel_key" not in pub and pub["password_set"] and pub["panel_key_set"]
-    assert pub["panel_url"] == "https://panel.example.com"
-    remote.save(sid, {**cfg, "password": "", "panel_key": ""})                        # blank: the saved ones stay
-    assert remote.get(sid)["password"] == "hunter2" and remote.get(sid)["panel_key"] == "ptlc_x"
+    assert "password" not in pub and pub["password_set"] and pub["conn"] == conn and pub["panel_id"] == "1a2b3c4d"
+    remote.save(sid, {**cfg, "password": ""})                                        # blank: the saved one stays
+    assert remote.get(sid)["password"] == "hunter2"
+    with pytest.raises(ValueError):
+        remote.clean({**cfg, "conn": "no-such-connection"})
     with pytest.raises(ValueError):
         remote.clean({"name": "x", "host": "", "user": "u"})
     assert sid in (settings_store.load().get(settings_store.SEEN) or [])            # added by an admin: not "new"
@@ -152,8 +155,9 @@ def test_the_hosts_panel(monkeypatch, tmp_path):
         if req.url.path.endswith("/1a2b3c4d"):
             return httpx.Response(200, json={"attributes": {"name": "Family", "node": "Dallas 1", "limits": {"memory": 6144}}})
         return httpx.Response(204)
-    sid = remote.save(None, {"name": "Far", "host": "sftp.example.com", "user": "u", "password": "p",
-                             "panel_url": "https://panel.example.com", "panel_id": "1a2b3c4d", "panel_key": "ptlc_key"})
+    from app import connections
+    conn = connections.save(None, {"type": "panel", "url": "https://panel.example.com", "key": "ptlc_key"})
+    sid = remote.save(None, {"name": "Far", "host": "sftp.example.com", "user": "u", "password": "p", "conn": conn, "panel_id": "1a2b3c4d"})
     remote._panels.clear()
     p = remote.panel(sid)
     p._client = httpx.AsyncClient(transport=httpx.MockTransport(answer))
@@ -252,3 +256,16 @@ def test_a_home_folder_it_cant_open_doesnt_stop_it(far, monkeypatch):
     monkeypatch.setattr("os.access", lambda p, m, **kw: False if ".ssh" in str(p) else real_access(p, m, **kw))
     res = loop.run_until_complete(remote.test(cfg))
     assert res["ok"], res
+
+
+def test_a_panel_saved_with_a_server_becomes_a_connection(monkeypatch, tmp_path):
+    """1.17 kept the panel's address and key with each server: moved, once, into one connection they share."""
+    from app import connections
+    monkeypatch.setattr(settings_store, "_PATH", tmp_path / "settings.json")
+    old = {"name": "A", "host": "h", "user": "u", "password": "p", "panel_url": "https://panel.example.com/", "panel_key": "ptlc_k", "panel_id": "aaaa1111"}
+    settings_store.save_section(remote.SECTION, {"r-1": old, "r-2": {**old, "name": "B", "panel_id": "bbbb2222"}})
+    cfg = remote.all_cfg()
+    assert cfg["r-1"]["conn"] and cfg["r-1"]["conn"] == cfg["r-2"]["conn"] and "panel_key" not in cfg["r-1"]
+    c = connections.get(cfg["r-1"]["conn"])
+    assert c["type"] == "panel" and c["url"] == "https://panel.example.com" and c["key"] == "ptlc_k"
+    assert len(connections.of_type("panel")) == 1 and remote.panel("r-2")._url("/x").endswith("/servers/bbbb2222/x")

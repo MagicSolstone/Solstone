@@ -1,4 +1,4 @@
-"""Crafty Controller 4 API v2 client (read-only usage)."""
+"""Crafty Controller 4 API v2 client: one per Crafty connection (connections.py)."""
 from __future__ import annotations
 
 import ast
@@ -10,18 +10,18 @@ from typing import Any
 
 import httpx
 
-from .config import config
-
 log = logging.getLogger("solstone.crafty")
 DOWN_PAUSE = 30.0               # seconds between tries while Crafty can't be reached
 
 
 class CraftyClient:
-    def __init__(self) -> None:
-        self.base = config.crafty_url
-        self._token = config.crafty_token
+    def __init__(self, cfg: dict | None = None) -> None:
+        cfg = cfg or {}
+        self.base = str(cfg.get("url") or "").rstrip("/")
+        self._token = cfg.get("token") or ""
+        self._user, self._password = cfg.get("user") or "", cfg.get("password") or ""
         # a few seconds to connect: Crafty down (or its name not resolving) shouldn't hold pages up
-        self._client = httpx.AsyncClient(verify=config.crafty_verify_ssl, timeout=httpx.Timeout(8.0, connect=3.0))
+        self._client = httpx.AsyncClient(verify=bool(cfg.get("verify_ssl")), timeout=httpx.Timeout(8.0, connect=3.0))
         self._cache: dict[str, tuple[float, Any]] = {}
         self.last_error: str | None = None
         self._down_until = 0.0          # after Crafty can't be reached, don't ask again (and wait) for a little while
@@ -29,12 +29,12 @@ class CraftyClient:
 
     @property
     def enabled(self) -> bool:
-        return bool(self.base and (self._token or (config.crafty_user and config.crafty_password)))
+        return bool(self.base and (self._token or (self._user and self._password)))
 
     async def _login(self) -> None:
         r = await self._client.post(
             f"{self.base}/api/v2/auth/login",
-            json={"username": config.crafty_user, "password": config.crafty_password},
+            json={"username": self._user, "password": self._password},
         )
         r.raise_for_status()
         self._token = r.json()["data"]["token"]
@@ -74,7 +74,7 @@ class CraftyClient:
             r = await self._client.get(
                 f"{self.base}{path}", headers={"Authorization": f"Bearer {self._token}"}
             )
-            if r.status_code in (401, 403) and attempt == 0 and config.crafty_user:
+            if r.status_code in (401, 403) and attempt == 0 and self._user:
                 await self._login()
                 continue
             r.raise_for_status()
@@ -118,7 +118,7 @@ class CraftyClient:
             if content is not None:
                 headers["Content-Type"] = "text/plain"
             r = await self._client.post(f"{self.base}{path}", headers=headers, content=content)
-            if r.status_code in (401, 403) and attempt == 0 and config.crafty_user:
+            if r.status_code in (401, 403) and attempt == 0 and self._user:
                 await self._login()
                 continue
             try:
@@ -161,5 +161,3 @@ def parse_player_list(raw: Any) -> list[str]:
             continue
     return []
 
-
-crafty = CraftyClient()

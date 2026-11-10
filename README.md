@@ -56,7 +56,7 @@ Minecraft only writes `playerdata` on autosave (every 5 minutes) or logout. That
 ## Setup
 
 ### 1. Crafty API token
-In Crafty, open **Settings → Users → your user → API Keys** and create a key. Read access to the servers is enough.
+In Crafty, open **Settings → Users → your user → API Keys** and create a key. Read access to the servers is enough (command permission too, for start, stop and backups). You'll paste it into Solstone after signing in (step 4).
 
 ### 2. Enable RCON on each server (for live data)
 In Crafty's file manager, edit `server.properties`:
@@ -78,9 +78,6 @@ services:
     restart: unless-stopped
     ports: ["8085:8080"]
     environment:
-      CRAFTY_URL: https://192.168.150.10:8443
-      CRAFTY_TOKEN: your-api-token
-      CRAFTY_VERIFY_SSL: "false"
       PUID: "99"
       PGID: "100"
     volumes:
@@ -90,24 +87,26 @@ services:
 
 Open `http://<host>:8085`. If you only have one server, Solstone opens straight to it.
 
-**Unraid:** add a container from `ghcr.io/magicsolstone/solstone:latest` with those two paths and env vars. `PUID`/`PGID` decide who owns `/data`; `99`/`100` is nobody:users.
+**Unraid:** add a container from `ghcr.io/magicsolstone/solstone:latest` with those two paths. `PUID`/`PGID` decide who owns `/data`; `99`/`100` is nobody:users.
 
 ### 4. Sign in
 
 On first start Solstone creates an admin account. If you didn't set `ADMIN_PASSWORD`, the password is in the container log (Unraid: the Solstone icon → Logs) and in `/data/admin_credentials.txt`. Sign in, change it from the account menu, and delete that file. Add family and friends under **Users & activity**.
 
+Then connect Crafty: **Manage → Solstone → Server setup → Connections → Add a connection → Crafty 4**, with Crafty's address (e.g. `https://192.168.150.10:8443`) and the token from step 1, and **Test it**. Its servers appear under **Your servers**. (Without Crafty, Solstone still finds any server folder in `/servers` with a `server.properties`; it just can't start or stop them.)
+
 For start, stop, restart and backup buttons, the Crafty API key needs command permission on the servers. A full-access key already has it.
 
 ### 5. Optional: a live map
-Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web map on port 8100. Then in Solstone open **Manage → Solstone → Servers & history**, press **⚙ Settings** on the server and paste the map address (e.g. `http://192.168.150.10:8100`). It appears on the World tab.
+Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web map on port 8100. Then in Solstone open **Manage → Solstone → Server setup**, press **⚙ Settings** on the server and paste the map address (e.g. `http://192.168.150.10:8100`). It appears on the World tab.
 
 ## A server somewhere else (a game host, a rented server)
 
-Solstone doesn't have to run on the same machine as the server. In **Manage → Solstone → Servers & history**, press **🌐 Add a server somewhere else** and fill in:
+Solstone doesn't have to run on the same machine as the server. In **Manage → Solstone → Server setup**, press **🌐 Add a server somewhere else** and fill in:
 
 1. **Its files (SFTP):** the address, port, username and password from your host's panel (usually under *SFTP details*), and the folder with `server.properties` in it (usually `/`). Press **Test the connection**: Solstone connects, finds the server and says whether RCON is on.
 2. **RCON:** read from the server's own `server.properties`. Your host has to let that port through (often an extra port, an *allocation*, that you then set as `rcon.port`).
-3. **The host's panel (optional):** for hosts on **Pterodactyl** or **Pelican** (most game hosts), a client API key (*Account → API Credentials*) and the server's short ID give Solstone start, stop, restart and backups, whether it's running, and CPU and memory, as Crafty does at home.
+3. **The host's panel (optional):** for hosts on **Pterodactyl** or **Pelican** (most game hosts), add the panel once under **Connections** (its address and a client API key from *Account → API Credentials*), then pick it and the server from the list. That gives Solstone start, stop, restart and backups, whether it's running, and CPU and memory, as Crafty does at home.
 
 How it works: Solstone keeps a **mirror** of just the files it reads, in `/data/remote/<id>/`, and every page reads that as it would a server's own folder.
 
@@ -140,9 +139,7 @@ Not mirrored: the world's region files (Solstone's own drawn world map needs the
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `CRAFTY_URL` | – | Crafty base URL, e.g. `https://host:8443` |
-| `CRAFTY_TOKEN` | – | Crafty API token (or use `CRAFTY_USERNAME` + `CRAFTY_PASSWORD`) |
-| `CRAFTY_VERIFY_SSL` | `false` | Verify Crafty's TLS certificate |
+| `CRAFTY_URL`, `CRAFTY_TOKEN` (or `CRAFTY_USERNAME` + `CRAFTY_PASSWORD`), `CRAFTY_VERIFY_SSL` | – | *Older setups.* Crafty is set up in **Manage → Server setup → Connections** now. If these are set, they're brought in once as a Crafty connection the first time Solstone starts, and can then be removed. |
 | `SERVERS_DIR` | `/servers` | Where Crafty's `servers` folder is mounted |
 | `RCON_HOST` | Crafty host | Host the RCON ports are reachable on |
 | `RCON_TIMEOUT` | `4` | Seconds |
@@ -179,12 +176,12 @@ To give two Minecraft servers their own website, accounts and settings, run two 
     image: ghcr.io/magicsolstone/solstone:latest
     ports: ["8080:8080"]
     volumes: ["/mnt/user/appdata/solstone-family:/data", "/mnt/user/appdata/crafty/servers:/servers:ro"]
-    environment: { ONLY_SERVERS: "Family Realm", CRAFTY_URL: "...", CRAFTY_TOKEN: "..." }
+    environment: { ONLY_SERVERS: "Family Realm" }
   solstone-friends:
     image: ghcr.io/magicsolstone/solstone:latest
     ports: ["8081:8080"]
     volumes: ["/mnt/user/appdata/solstone-friends:/data", "/mnt/user/appdata/crafty/servers:/servers:ro"]
-    environment: { ONLY_SERVERS: "Friends SMP", CRAFTY_URL: "...", CRAFTY_TOKEN: "..." }
+    environment: { ONLY_SERVERS: "Friends SMP" }
 ```
 
 Each Solstone only records, greets, announces and runs events on its own server, so nothing happens twice in the game.
@@ -221,7 +218,7 @@ The first time the workflow publishes, set the package to **Public** under your 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
 ruff check . && pytest -q        # tests build a synthetic world, no game needed
-SERVERS_DIR=/path/to/crafty/servers DATA_DIR=./data CRAFTY_URL=... CRAFTY_TOKEN=... \
+SERVERS_DIR=/path/to/crafty/servers DATA_DIR=./data \
   uvicorn app.main:app --reload --port 8080
 ```
 

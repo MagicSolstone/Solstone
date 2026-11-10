@@ -11,7 +11,7 @@ _lock = threading.Lock()
 ALLOWED = {"display_name", "map_url", "rcon_host", "rcon_port", "rcon_password", "hidden", "private", "bedtime",
            "join_address", "join_bedrock_address", "join_check", "join_bedrock_port", "join_note", "join_mods", "join_color", "join_xbox",
            "welcome", "welcome_when", "map_proxy",   # how to join this server, on the home page
-           "new"}                                    # found by itself and hidden until an admin shows it (Manage → Servers)
+           "new"}                                    # found by itself and hidden until an admin shows it (Manage → Server setup)
 
 
 def load() -> dict:

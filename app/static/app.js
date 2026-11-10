@@ -307,7 +307,7 @@ const MANAGE_GROUPS = [
   ["announce", "📣 Announcements", [["announcements", "Banners"], ["events", "Events"]]],
   ["community", "💬 Community", [["messages", "Messages"], ["votes", "Votes"]]],
   ["playtime", "⏰ Play time", [["playtime", "Play time"]]],
-  ["solstone", "⚙️ Solstone", [["servers", "Servers & history"], ["notifications", "Notifications"], ["activity", "Activity log"]]],
+  ["solstone", "⚙️ Solstone", [["setup", "Server setup"], ["servers", "History & data"], ["notifications", "Notifications"], ["activity", "Activity log"]]],
 ];
 function setManageNav(tab) {
   const nav = $("#manage-nav"), sub = $("#manage-sub");
@@ -1802,7 +1802,7 @@ async function viewMods(sid) {
 }
 
 // ---------------------------------------------------------------- settings
-// Manage → Servers: one server's settings (its name, how Solstone reaches it, who sees it). `s`: {id, name}; then: after saving.
+// Manage → Server setup: one server's settings (its name, how Solstone reaches it, who sees it). `s`: {id, name}; then: after saving.
 async function openSettings(s, then) {
   const cur = await api(`/api/servers/${encodeURIComponent(s.id)}/settings`).catch(() => ({}));
   openModal(`<h2>⚙ ${esc(cur.display_name || s.name)}</h2>

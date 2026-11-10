@@ -405,7 +405,8 @@ def main() -> int:
             pg.goto(f"{base}/app#/manage/servers"); pg.wait_for_timeout(1200)
             if not pg.locator("#clear-form [name=what]").count():
                 problems.append("manage: no Clear saved history")
-            # every server's settings live here now (no ⚙ on the server's own page)
+            # every server's settings live in Server setup now (no ⚙ on the server's own page)
+            pg.goto(f"{base}/app#/manage/setup"); pg.wait_for_timeout(1200)
             appear(pg, "#srv-manage .srv-row", 1, 8000)
             if not pg.locator(f'#srv-manage [data-msid="{sid}"] [data-edit]').count():
                 problems.append("manage servers: the server isn't listed with its settings")
@@ -426,23 +427,46 @@ def main() -> int:
                     route.continue_(); return
                 added.update(route.request.post_data_json); route.fulfill(json={"id": "r-smoke", "name": added.get("name")})
             pg.route("**/api/manage/remote", put_remote)
-            pg.goto(f"{base}/app#/manage/servers"); pg.wait_for_timeout(1200)
+            pg.goto(f"{base}/app#/manage/setup"); pg.wait_for_timeout(1200)
             if not pg.locator("[data-add-remote]").count():
                 problems.append("manage servers: no 'Add a server somewhere else'")
             else:
                 pg.click("[data-add-remote]"); pg.wait_for_timeout(500)
                 pg.fill("#remote-form [name=name]", "Far SMP"); pg.fill("#remote-form [name=host]", "sftp.example.com")
                 pg.fill("#remote-form [name=user]", "steve.1a2b"); pg.fill("#remote-form [name=password]", "pw")
-                pg.fill("#remote-form [name=panel_url]", "https://panel.example.com"); pg.fill("#remote-form [name=panel_id]", "1a2b3c4d")
                 pg.click("#remote-form [data-test]"); pg.wait_for_timeout(800)
                 res = pg.locator("#remote-result").text_content() or ""
-                if "found the server" not in res or "panel answered" not in res:
+                if "found the server" not in res:
                     problems.append(f"remote: the connection test's result isn't shown ({res[:80]!r})")
                 check(pg, "remote-setup")
                 pg.click("#remote-form [type=submit]"); pg.wait_for_timeout(1000)
-                if added.get("host") != "sftp.example.com" or added.get("panel_id") != "1a2b3c4d" or added.get("password") != "pw":
+                if added.get("host") != "sftp.example.com" or added.get("password") != "pw":
                     problems.append(f"remote: adding it didn't send its details ({sorted(added)})")
             pg.unroute("**/api/manage/remote/test"); pg.unroute("**/api/manage/remote")
+            # connections: a host's panel added (its test and saving stubbed: there's no real panel here)
+            pg.route("**/api/manage/connections/test", lambda route: route.fulfill(json={"ok": True, "servers": [{"id": "1a2b3c4d", "name": "Far SMP", "node": "Dallas"}]}))
+            conn = {}
+
+            def put_conn(route):
+                if route.request.method != "PUT":
+                    route.continue_(); return
+                conn.update(route.request.post_data_json); route.fulfill(json={"id": "panel-x", **conn})
+            pg.route("**/api/manage/connections", put_conn)
+            pg.goto(f"{base}/app#/manage/setup"); pg.wait_for_timeout(1200)
+            if not pg.locator("#conn-manage [data-add-conn]").count():
+                problems.append("server setup: no Connections with 'Add a connection'")
+            else:
+                pg.click("#conn-manage [data-add-conn]"); pg.wait_for_timeout(400)
+                pg.click('#conn-form [data-kind="panel"]'); pg.wait_for_timeout(300)
+                pg.fill("#conn-form [name=url]", "https://panel.example.com"); pg.fill("#conn-form [name=key]", "ptlc_test")
+                pg.click("#conn-form [data-test-conn]"); pg.wait_for_timeout(700)
+                if "1 server" not in (pg.locator("#conn-result").text_content() or ""):
+                    problems.append("connections: testing a panel doesn't say what it found")
+                check(pg, "connection-setup")
+                pg.click("#conn-form [type=submit]"); pg.wait_for_timeout(800)
+                if conn.get("type") != "panel" or conn.get("key") != "ptlc_test" or conn.get("url") != "https://panel.example.com":
+                    problems.append(f"connections: adding a panel didn't send its details ({sorted(conn)})")
+            pg.unroute("**/api/manage/connections/test"); pg.unroute("**/api/manage/connections")
             pg.goto(f"{base}/app#/s/{sid}"); pg.wait_for_timeout(1200)
             if pg.locator("#btn-settings").count():
                 problems.append("server page: still has its own ⚙ (it's in Manage → Servers now)")

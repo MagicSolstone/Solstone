@@ -145,12 +145,15 @@ def test_one_dropped_connection_is_retried_not_backed_off():
 
 def test_registry_keeps_crafty_servers_while_crafty_is_down(monkeypatch, tmp_path):
     """Crafty restarting used to empty the server list (pages blank, links broken) until it came back."""
+    from app import connections, settings_store
     from app import servers as S
     from app.config import config
-    from app.crafty import crafty
     monkeypatch.setattr(config, "data_dir", tmp_path)
     monkeypatch.setattr(config, "servers_dir", tmp_path / "none")
-    monkeypatch.setattr(type(crafty), "enabled", property(lambda _s: True))
+    monkeypatch.setattr(settings_store, "_PATH", tmp_path / "settings.json")
+    connections._clients.clear()
+    cid = connections.save(None, {"type": "crafty", "url": "https://crafty.test:8443", "token": "tok"})
+    crafty = connections.crafty_client(cid)
     up = [{"server_id": "abc", "server_name": "Family", "path": "/crafty/servers/abc"}]
     state = {"list": up}
 
@@ -166,6 +169,46 @@ def test_registry_keeps_crafty_servers_while_crafty_is_down(monkeypatch, tmp_pat
     fresh = S.Registry()                                    # and Solstone restarts while it's away
     asyncio.run(fresh.refresh(force=True))
     assert list(fresh.servers) == ["abc"] and fresh.servers["abc"].name == "Family"
+    assert fresh.servers["abc"].crafty["_conn"] == cid and connections.for_server(fresh.servers["abc"]) is crafty
+    connections._clients.clear()
+
+
+def test_the_containers_crafty_settings_are_brought_in_once(monkeypatch, tmp_path):
+    """An older setup had Crafty in the container's settings: it's a connection in Solstone now, made from them once,
+    so nothing needs setting up again. Removed by an admin, it isn't brought back."""
+    from app import connections, settings_store
+    from app.config import config
+    monkeypatch.setattr(settings_store, "_PATH", tmp_path / "settings.json")
+    monkeypatch.setattr(config, "crafty_url", "https://192.168.1.10:8443")
+    monkeypatch.setattr(config, "crafty_token", "secret-token")
+    c = connections.get("crafty")
+    assert c and c["type"] == "crafty" and c["url"] == "https://192.168.1.10:8443" and c["token"] == "secret-token" and c["from_env"]
+    pub = connections.public(c)
+    assert "token" not in pub and pub["token_set"] and pub["type_name"] == "Crafty 4"
+    connections.remove("crafty")
+    assert connections.get("crafty") is None and not connections.all_cfg()               # not brought back
+    with pytest.raises(ValueError):
+        connections.clean({"type": "crafty", "url": "https://x"})                       # no token
+    with pytest.raises(ValueError):
+        connections.clean({"type": "panel", "url": "panel.example.com", "key": "k"})    # not an address
+    cid = connections.save(None, {"type": "panel", "url": "https://panel.example.com/", "key": "ptlc_k"})
+    assert connections.get(cid)["url"] == "https://panel.example.com" and connections.get(cid)["verify_ssl"]
+    connections.save(cid, {"type": "panel", "url": "https://panel.example.com", "key": ""})
+    assert connections.get(cid)["key"] == "ptlc_k"                                        # blank kept it
+
+
+def test_a_panels_servers_are_listed(monkeypatch):
+    """Pterodactyl's client API lists the servers its key can see, a page at a time: picked from, not typed."""
+    from app import connections
+
+    def answer(req: httpx.Request):
+        page = int(req.url.params.get("page", 1))
+        rows = [{"attributes": {"identifier": f"s{page}", "name": f"Server {page}", "node": "Dallas"}}]
+        return httpx.Response(200, json={"data": rows, "meta": {"pagination": {"total_pages": 2}}})
+    real = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(answer), **{k: v for k, v in kw.items() if k != "verify"}))
+    got = asyncio.run(connections.panel_servers({"url": "https://panel.example.com", "key": "k"}))
+    assert [s["id"] for s in got] == ["s1", "s2"] and got[0]["name"] == "Server 1"
 
 
 def test_crafty_false_placeholders_are_unknown():

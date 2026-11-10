@@ -167,7 +167,7 @@ async function viewChallenges(sid) {
       ${fish?.tide ? `<label class="check ch-fair" ${ROD_KINDS.includes(draft.kind) ? "" : "hidden"}><input type="checkbox" name="fair" ${draft.fair ? "checked" : ""}> Fair play: everyone fishes at the same level for the contest (Tide levels are switched off until it ends)</label>` : ""}
       <label class="check"><input type="checkbox" name="say" ${draft.say ? "checked" : ""}> Announce it in the game (countdown alerts, start, winner) and show the scores on everyone's screen</label>
       ${adding ? "" : optinField(draft.optin)}
-      ${d.rcon ? "" : `<p class="notice">This server needs RCON turned on for challenges (<a href="#/manage/servers">Manage → Servers</a>).</p>`}
+      ${d.rcon ? "" : `<p class="notice">This server needs RCON turned on for challenges (<a href="#/manage/setup">Manage → Server setup</a>).</p>`}
       <div class="btn-row"><button class="btn primary" type="submit" ${d.rcon ? "" : "disabled"}>${submitText()}</button></div>
     </form>`;
   const render = () => {
@@ -703,7 +703,7 @@ async function viewRaces(sid) {
     setView(serverHeader(s, "challenges") + playSwitch(sid, "races") + rconEchoNote(d) + `
       ${adding ? egBanner(adding, "a race") + `<p class="muted">${adding.iid ? "Change it below." : "Press <b>Race</b> on the course to race."}</p>` : ""}
       <p class="muted ch-intro">Lay out a course of checkpoints on the map, then race it. In the game each point is a tall glowing column with its name floating above it, and everyone sees which way to go and how far.</p>
-      ${d.rcon ? "" : `<p class="notice">Races need RCON turned on for this server (<a href="#/manage/servers">Manage → Servers</a>).</p>`}
+      ${d.rcon ? "" : `<p class="notice">Races need RCON turned on for this server (<a href="#/manage/setup">Manage → Server setup</a>).</p>`}
       ${live.length ? `<section class="section"><div class="section-head"><h2>Racing now</h2></div><div class="ch-list">${live.map(runCard).join("")}</div></section>` : ""}
       <section class="section"><div class="section-head"><h2>Courses</h2><button class="btn sm primary" type="button" id="rc-new" style="margin-left:auto">＋ New course</button></div>
         ${d.courses.length ? `<div class="ch-list">${d.courses.map(courseCard).join("")}</div>` : `<div class="empty"><p>No courses yet. Make one to start racing.</p></div>`}</section>
@@ -935,7 +935,7 @@ async function viewGames(sid) {
     const live = d.runs.filter((r) => ["countdown", "hiding", "running"].includes(r.state)), soon = d.runs.filter((r) => r.state === "scheduled"), past = d.runs.filter((r) => !["countdown", "hiding", "running", "scheduled"].includes(r.state));
     setView(serverHeader(s, "challenges") + playSwitch(sid, "games") + rconEchoNote(d) + `
       ${adding ? egBanner(adding, "a game") + `<p class="muted">${adding.iid ? "Change it below." : "Press <b>Set up</b> on the game to play."}</p>` : ""}
-      ${d.rcon ? "" : `<p class="notice">Games need RCON turned on for this server (<a href="#/manage/servers">Manage → Servers</a>).</p>`}
+      ${d.rcon ? "" : `<p class="notice">Games need RCON turned on for this server (<a href="#/manage/setup">Manage → Server setup</a>).</p>`}
       ${live.length ? `<section class="section"><div class="section-head"><h2>Playing now</h2></div><div class="ch-list">${live.map(runCard).join("")}</div></section>` : ""}
       ${(d.in_vault || []).length && !live.length ? `<section class="section"><div class="panel gm-vault"><b>🔒 Things kept safe</b>
         <span class="muted small">These players left during a game. Their own things are safe in the vault and come back automatically the next time they're on.</span>

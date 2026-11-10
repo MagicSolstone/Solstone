@@ -18,7 +18,6 @@ from fastapi import HTTPException
 
 from . import mcname
 from . import servers as S
-from .crafty import crafty
 from .rcon import RconError
 
 NAME_RE = mcname.NAME_RE
@@ -112,7 +111,9 @@ async def run(srv: S.Server, command: str, wait: float | None = None) -> dict:
             raise HTTPException(502, f"The host's panel couldn't send the command: {e}") from e
         return {"command": command, "output": "", "via": "panel", "ok": True,
                 "note": "Sent through the host's panel. The reply appears in the console log."}
-    if srv.crafty and crafty.enabled:
+    from . import connections
+    crafty = connections.for_server(srv)
+    if crafty is not None and crafty.enabled:
         try:
             await crafty.stdin(srv.id, command)
         except Exception as e:
@@ -402,8 +403,10 @@ async def power(srv: S.Server, action: str) -> dict:
             from .remote import _panel_why
             raise HTTPException(502, _panel_why(e)) from e
         return {"ok": True}
-    if not (srv.crafty and crafty.enabled):
-        raise HTTPException(409, "Starting and stopping servers needs Crafty connected (CRAFTY_URL and CRAFTY_TOKEN)")
+    from . import connections
+    crafty = connections.for_server(srv)
+    if not (crafty is not None and crafty.enabled):
+        raise HTTPException(409, "Starting and stopping servers needs Crafty or the host's panel connected (Manage → Solstone → Server setup → Connections)")
     try:
         await crafty.action(srv.id, action)
     except Exception as e:

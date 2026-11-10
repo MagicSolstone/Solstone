@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, remote, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap, xboxwatch, serverstats, traffic
+from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, remote, connections, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap, xboxwatch, serverstats, traffic
 from . import reading, twostep
 from . import servers as S
 from . import settings_store
@@ -30,7 +30,6 @@ from .rcon import RconError
 from .recorder import recorder
 from .assets import assets_for, safe_texture_path, store
 from .config import config
-from .crafty import crafty
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
@@ -49,7 +48,7 @@ async def lifespan(_app: FastAPI):
         recorder.start()
     yield
     await recorder.stop()
-    await crafty.close()
+    await connections.close_all()
 
 
 app = FastAPI(title="Solstone", version=VERSION, lifespan=lifespan)
@@ -360,7 +359,7 @@ async def status():
     await S.registry.refresh()
     return {
         "version": VERSION,
-        "crafty": {"configured": crafty.enabled, "url": config.crafty_url or None, "error": crafty.last_error},
+        "crafty": [{"id": cid, "configured": c.enabled, "url": c.base or None, "error": c.last_error} for cid, c in connections.crafties()],
         "servers_dir": str(config.servers_dir),
         "servers_dir_found": config.servers_dir.is_dir(),
         "server_count": len(S.registry.servers),
@@ -2192,6 +2191,87 @@ async def manage_servers(request: Request):
     return out
 
 
+@app.get("/api/manage/connections")
+async def list_connections(request: Request):
+    """Admin: Crafty and the hosts' panels Solstone asks about running servers (Manage → Server setup)."""
+    auth.require_admin(request)
+    await S.registry.refresh()
+    out = []
+    for cid, cfg in connections.all_cfg().items():
+        row = {"id": cid, **connections.public(cfg)}
+        if cfg["type"] == "crafty":
+            c = connections.crafty_client(cid)
+            row["servers"] = [s.display_name for s in S.registry.servers.values() if s.crafty and s.crafty.get("_conn") == cid]
+            row["error"] = (c.last_error or "") if c else ""
+            row["unreachable"] = any(s.crafty and s.crafty.get("_conn") == cid and s.crafty.get("_unreachable") for s in S.registry.servers.values())
+        else:
+            row["servers"] = [S.registry.servers[sid].display_name for sid, r in remote.all_cfg().items()
+                              if r.get("conn") == cid and sid in S.registry.servers]
+            row["error"] = next((p.error for sid, r in remote.all_cfg().items() if r.get("conn") == cid and (p := remote.panel(sid)) and p.error), "")
+        out.append(row)
+    return out
+
+
+@app.post("/api/manage/connections/test")
+async def test_connection(request: Request):
+    """Admin: does it answer, and which servers does it have? Nothing is saved."""
+    auth.require_admin(request)
+    body = await _body(request)
+    old = connections.get(str(body.get("id") or "")) if body.get("id") else None
+    try:
+        cfg = connections.clean(body, old)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return await connections.test(cfg)
+
+
+@app.put("/api/manage/connections")
+@app.put("/api/manage/connections/{cid}")
+async def save_connection(request: Request, cid: str | None = None):
+    user = auth.require_admin(request)
+    body = await _body(request)
+    try:
+        cid = connections.save(cid, body)
+    except KeyError:
+        raise HTTPException(404, "No such connection") from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    await S.registry.refresh(force=True)
+    auth.audit(user, "", "connection", f"{connections.get(cid)['type']} {connections.get(cid)['url']}")
+    return {"id": cid, **connections.public(connections.get(cid))}
+
+
+@app.delete("/api/manage/connections/{cid}")
+async def delete_connection(cid: str, request: Request):
+    """Admin: remove one. Crafty's servers go from the list (their history in Solstone stays); servers elsewhere on a
+    panel keep working over SFTP, just without start, stop, CPU and memory."""
+    user = auth.require_admin(request)
+    if not connections.get(cid):
+        raise HTTPException(404, "No such connection")
+    connections.remove(cid)
+    data = remote.all_cfg()
+    for r in data.values():
+        if r.get("conn") == cid:
+            r["conn"] = ""
+    settings_store.save_section(remote.SECTION, data)
+    await S.registry.refresh(force=True)
+    auth.audit(user, "", "connection:removed", cid)
+    return {"ok": True}
+
+
+@app.get("/api/manage/connections/{cid}/servers")
+async def connection_servers(cid: str, request: Request):
+    """Admin: the servers a panel's API key can see, to pick one for a server elsewhere."""
+    auth.require_admin(request)
+    cfg = connections.get(cid)
+    if not cfg:
+        raise HTTPException(404, "No such connection")
+    res = await connections.test(cfg)
+    if not res.get("ok"):
+        raise HTTPException(502, res.get("error") or "It didn't answer")
+    return res["servers"]
+
+
 @app.get("/api/manage/remote/{sid}")
 async def get_remote(sid: str, request: Request):
     """Admin: how a server elsewhere is reached (its secrets stay in Solstone: just whether each is set)."""
@@ -2213,7 +2293,7 @@ async def test_remote(request: Request):
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     out = {"files": await remote.test(cfg)}
-    if cfg.get("panel_url") and cfg.get("panel_id") and cfg.get("panel_key"):
+    if cfg.get("conn") and cfg.get("panel_id"):
         out["panel"] = await remote.Panel("_test", cfg).test()
     return out
 
@@ -3429,7 +3509,7 @@ async def control_info(sid: str, request: Request):
     online, source = await S.online_players(srv)
     return {
         "can_rcon": srv.rcon_conf() is not None,
-        "can_crafty": bool(srv.crafty and crafty.enabled) or srv.panel is not None,
+        "can_crafty": bool((c := connections.for_server(srv)) and c.enabled) or srv.panel is not None,
         "is_java": srv.is_java,
         "game_rules": rules,
         "online": online,

@@ -173,7 +173,7 @@ async function viewControl(sid) {
         </form>
       </section>
     </div>
-    ${info.can_rcon || info.can_crafty ? "" : `<div class="notice">Turn on RCON for this server (<a href="#/manage/servers">Manage → Servers</a>) to send commands.</div>`}
+    ${info.can_rcon || info.can_crafty ? "" : `<div class="notice">Turn on RCON for this server (<a href="#/manage/setup">Manage → Server setup</a>) to send commands.</div>`}
     <div class="ctl-main">
       <section class="console-wrap"><div class="section-head"><h2>Console</h2><span class="muted small" id="console-state">Connecting…</span></div>
         <div class="console" id="console" role="log" aria-live="off"></div>
@@ -449,7 +449,7 @@ const CLEAR_KINDS = [
 async function viewAdmin(section = "users") {
   if (!isAdmin()) { location.replace("#/"); return; }
   curSid = null;
-  document.title = `${{ users: "Players", servers: "Servers & history", activity: "Activity log" }[section] || "Manage"} · ${SITE_NAME}`;
+  document.title = `${{ users: "Players", setup: "Server setup", servers: "History & data", activity: "Activity log" }[section] || "Manage"} · ${SITE_NAME}`;
   fillServersMenu(state.servers, null);
   const [users, lp, hiddenSrv, siteCfg, playerCfg, ptCfg] = await Promise.all([api("/api/users"), Promise.resolve(null), Promise.resolve([]), api("/api/posts").then((d) => d.site).catch(() => ({})), api("/api/settings/players").catch(() => ({})), section === "users" ? api("/api/settings/playtime").catch(() => null) : null]);
   const roleOpts = (cur) => ROLE_NAMES.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("");
@@ -473,9 +473,11 @@ async function viewAdmin(section = "users") {
         <label>Level<select class="input" name="role">${roleOpts("trusted")}</select></label>
         <button class="btn primary" type="submit">Add user</button></div></form>
     </section>`;
-  const serversHtml = `<section class="section" id="srv-manage"><div class="section-head"><h2>Your servers</h2><span class="muted">Each one's name, how Solstone reaches it, and who sees it</span></div>
+  const setupHtml = `<section class="section" id="srv-manage"><div class="section-head"><h2>Your servers</h2><span class="muted">Each one's name, how Solstone reaches it, and who sees it</span></div>
       <div class="srv-list"><p class="muted">Loading…</p></div></section>
-    <section class="section"><div class="section-head"><h2>Recap history</h2></div>
+    <section class="section" id="conn-manage"><div class="section-head"><h2>Connections</h2><span class="muted">What starts and stops your servers and says how they're doing</span></div>
+      <div class="conn-list"><p class="muted">Loading…</p></div></section>`;
+  const serversHtml = `<section class="section"><div class="section-head"><h2>Recap history</h2></div>
       <div class="panel" style="max-width:720px"><p class="muted small">Every day is summarised and kept for good, so “on this day” can look back years. When Solstone first starts it also reads each server's old logs (the <code>logs/*.log.gz</code> files Minecraft keeps) to fill in the days before it was installed. If you've copied older logs in, read them again here.</p>
         <button class="btn" id="ann-backfill" type="button" style="margin-top:8px">Read old logs again</button></div></section>
     <section class="section"><div class="section-head"><h2>🌐 Website traffic</h2><span class="muted">What Solstone answered, who asked, and how quickly</span></div>
@@ -494,8 +496,8 @@ async function viewAdmin(section = "users") {
         <div class="btn-row"><button class="btn sm" type="button" data-new-world>Tick what a new world needs</button><button class="btn danger" type="submit">Clear</button></div></form></section>`;
   const activityHtml = `<section class="section"><div class="section-head"><h2>Admin activity</h2><span class="muted">Commands, changes and sign-in failures across all servers</span></div>
       <div class="panel" id="audit-browse"><p class="muted">Loading…</p></div></section>`;
-  setView({ users: usersHtml, servers: serversHtml, activity: activityHtml }[section] || usersHtml);
-  if ($("#srv-manage")) manageServers();
+  setView({ users: usersHtml, setup: setupHtml, servers: serversHtml, activity: activityHtml }[section] || usersHtml);
+  if ($("#srv-manage")) { manageServers(); manageConnections(); }
   if ($("#audit-browse")) mountAuditBrowser($("#audit-browse"));
 
   const selfBackups = async () => {
@@ -1115,7 +1117,7 @@ function wireForgetPlayer(el) {
   });
 }
 
-// Manage → Servers: every server Solstone has found, shown or hidden, each with its settings a click away.
+// Manage → Server setup: every server Solstone has found, shown or hidden, each with its settings a click away.
 async function manageServers() {
   const box = $("#srv-manage .srv-list");
   if (!box) return;
@@ -1157,6 +1159,7 @@ async function manageServers() {
 // sid null: adding one. Step by step: where its files are, then test, then RCON and the panel (both optional).
 async function openRemote(sid) {
   const cur = sid ? await api(`/api/manage/remote/${encodeURIComponent(sid)}`).catch(() => null) : null;
+  const panels = (await api("/api/manage/connections").catch(() => [])).filter((x) => x.type === "panel");
   if (sid && !cur) { showError("Couldn't load its settings", 3000); return; }
   const c = cur || { port: 22, path: "/", files_secs: 30 };
   let tested = null;
@@ -1184,12 +1187,11 @@ async function openRemote(sid) {
         <label>RCON port<input class="input" name="rcon_port" inputmode="numeric" placeholder="auto" style="width:150px"></label>
       </div>
       <h3 class="set-h">3. The host's panel <small class="muted">optional: start, stop, CPU and memory</small></h3>
-      <p class="muted small">For hosts that run <b>Pterodactyl</b> or <b>Pelican</b> (most do; the panel's pages say so at the bottom). In the panel: <b>Account → API Credentials → Create</b>, and copy the key. The server's ID is the short code in its address in the panel, like <code>…/server/<b>1a2b3c4d</b></code>.</p>
+      ${panels.length ? `<p class="muted small">Which of your panel connections it's on, then which server it is there.</p>
       <div class="remote-grid">
-        <label class="wide">Panel address<input class="input" name="panel_url" value="${esc(c.panel_url || "")}" placeholder="https://panel.examplehost.com" autocapitalize="off" spellcheck="false"></label>
-        <label>Server ID<input class="input" name="panel_id" value="${esc(c.panel_id || "")}" placeholder="1a2b3c4d" autocapitalize="off" spellcheck="false" style="width:150px"></label>
-        <label class="wide">API key <small class="muted">${secretNote(c.panel_key_set)}</small><input class="input" type="password" name="panel_key" autocomplete="off" placeholder="ptlc_…"></label>
-      </div>
+        <label class="wide">Panel<select class="input" name="conn"><option value="">None</option>${panels.map((p) => `<option value="${esc(p.id)}" ${c.conn === p.id ? "selected" : ""}>${esc(p.name)} (${esc(p.url.replace(/^https?:\/\//, ""))})</option>`).join("")}</select></label>
+        <label class="wide">Server there<select class="input" name="panel_id">${c.panel_id ? `<option value="${esc(c.panel_id)}">${esc(c.panel_id)}</option>` : `<option value="">Pick the panel first</option>`}</select></label>
+      </div>` : `<p class="muted small">For hosts on <b>Pterodactyl</b> or <b>Pelican</b> (most game hosts). First add the panel under <b>Connections</b> on this page (once for every server there), then pick it here.</p>`}
       <h3 class="set-h">4. How often</h3>
       <label>Look for new stats and player files every <select class="input sm" name="files_secs">${[[15, "15 seconds"], [30, "30 seconds"], [60, "minute"], [120, "2 minutes"], [300, "5 minutes"]].map(([v, l]) => `<option value="${v}" ${+c.files_secs === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
       <p class="muted small">The log (who joined, chat, deaths) is followed every few seconds either way, fetching only its new lines. Only files that changed are fetched.</p>
@@ -1198,12 +1200,26 @@ async function openRemote(sid) {
     </form>`;
   const body = (form) => {
     const f = new FormData(form), out = {};
-    for (const k of ["name", "host", "port", "user", "password", "path", "panel_url", "panel_id", "panel_key", "files_secs", "rcon_host", "rcon_port"]) out[k] = (f.get(k) || "").trim();
+    for (const k of ["name", "host", "port", "user", "password", "path", "conn", "panel_id", "files_secs", "rcon_host", "rcon_port"]) out[k] = (f.get(k) || "").trim();
     if (sid) out.id = sid;
     return out;
   };
   openModal(html(), (m) => {
     const form = $("#remote-form", m), result = $("#remote-result", m);
+    // the panel's servers, to pick from (its API key lists the ones it can see)
+    const loadPanelServers = async () => {
+      const sel = form.panel_id, cid = form.conn?.value;
+      if (!sel) return;
+      if (!cid) { sel.innerHTML = `<option value="">Pick the panel first</option>`; return; }
+      sel.innerHTML = `<option value="">Looking…</option>`;
+      try {
+        const list = await api(`/api/manage/connections/${encodeURIComponent(cid)}/servers`);
+        sel.innerHTML = list.length ? list.map((x) => `<option value="${esc(x.id)}" ${c.panel_id === x.id ? "selected" : ""}>${esc(x.name)}${x.node ? ` · ${esc(x.node)}` : ""} (${esc(x.id)})</option>`).join("")
+          : `<option value="">That key can't see any servers</option>`;
+      } catch (err) { sel.innerHTML = `<option value="">${esc(err.message)}</option>`; }
+    };
+    form.conn?.addEventListener("change", loadPanelServers);
+    if (c.conn) loadPanelServers();
     m.querySelector("[data-test]").addEventListener("click", async (e) => {
       if (!form.host.value || !form.user.value) { showToast("Fill in the address and username first", 3000); return; }
       e.target.disabled = true; result.innerHTML = `<p class="muted"><span class="spin" aria-hidden="true"></span> Connecting…</p>`;
@@ -1241,4 +1257,78 @@ async function openRemote(sid) {
       } catch (err) { showError(esc(err.message), 5000); }
     });
   });
+}
+
+// Manage → Server setup → Connections: Crafty, and the hosts' panels (Pterodactyl, Pelican).
+async function manageConnections() {
+  const box = $("#conn-manage .conn-list");
+  if (!box) return;
+  const list = await api("/api/manage/connections").catch(() => null);
+  if (!list) { box.innerHTML = `<p class="notice">Couldn't load the connections just now.</p>`; return; }
+  const chip = (cls, text, title = "") => `<span class="srv-chip ${cls}" ${title ? `title="${esc(title)}"` : ""}>${text}</span>`;
+  box.innerHTML = (list.length ? list.map((x) => `<div class="panel srv-row" data-cid="${esc(x.id)}">
+      <div class="srv-main"><b>${x.type === "crafty" ? "🧰" : "🛰️"} ${esc(x.name)}</b> <span class="muted small">${esc(x.type_name)} · ${esc(x.url)}</span>
+        <div class="srv-chips">${x.error || x.unreachable ? chip("warn", "Not answering", x.error || "") : chip("on", "Answering")}
+          ${chip("", x.servers.length ? `${x.servers.length} server${x.servers.length === 1 ? "" : "s"}` : "No servers yet", x.servers.join(", "))}
+          ${x.from_env ? chip("new", "From the container's settings", "Brought in from CRAFTY_URL and CRAFTY_TOKEN once. It's set here now: you can remove those from the container") : ""}</div></div>
+      <div class="btn-row"><button class="btn sm" type="button" data-edit-conn>Edit</button></div></div>`).join("")
+    : `<p class="muted">None yet. Crafty, if you use it, goes here; so does a game host's panel.</p>`)
+    + `<div class="btn-row"><button class="btn" type="button" data-add-conn>＋ Add a connection</button>
+      <span class="muted small">Crafty 4 on this machine, or a game host's Pterodactyl or Pelican panel.</span></div>`;
+  box.querySelector("[data-add-conn]").addEventListener("click", () => openConnection(null));
+  box.querySelectorAll("[data-cid]").forEach((row) => row.querySelector("[data-edit-conn]").addEventListener("click", () => openConnection(list.find((x) => x.id === row.dataset.cid))));
+}
+
+function openConnection(cur) {
+  let kind = cur?.type || "crafty";
+  const html = () => `<h2>${cur ? `${esc(cur.name)}` : "Add a connection"}</h2>
+    <form id="conn-form" class="remote-form" autocomplete="off">
+      ${cur ? "" : `<div class="seg" role="group" aria-label="What kind">${[["crafty", "🧰 Crafty 4"], ["panel", "🛰️ Pterodactyl or Pelican"]].map(([v, l]) => `<button type="button" data-kind="${v}" aria-pressed="${kind === v}">${l}</button>`).join("")}</div>`}
+      ${kind === "crafty" ? `<p class="muted small">Crafty Controller on this machine (or one Solstone can reach). Solstone lists its servers and reads their files from the servers folder it can see. In Crafty: click your name → <b>API Keys</b> → add one with access to the servers, and copy the token.</p>`
+        : `<p class="muted small">A game host's panel (most run Pterodactyl or Pelican; it says so at the bottom of the panel's pages). In the panel: <b>Account → API Credentials → Create</b>, and copy the key. One connection covers every server on that account; add each server under <b>Your servers</b> (its files come over SFTP).</p>`}
+      <div class="remote-grid">
+        <label class="wide">Name<input class="input" name="name" maxlength="40" value="${esc(cur?.name || (kind === "crafty" ? "Crafty" : "Host's panel"))}"></label>
+        <label class="wide">Address<input class="input" name="url" required value="${esc(cur?.url || "")}" placeholder="${kind === "crafty" ? "https://192.168.1.10:8443" : "https://panel.examplehost.com"}" autocapitalize="off" spellcheck="false"></label>
+        ${kind === "crafty" ? `<label class="wide">API token <small class="muted">${cur?.token_set ? "Saved. Type a new one to replace it." : ""}</small><input class="input" type="password" name="token" autocomplete="off"></label>`
+          : `<label class="wide">API key <small class="muted">${cur?.key_set ? "Saved. Type a new one to replace it." : ""}</small><input class="input" type="password" name="key" autocomplete="off" placeholder="ptlc_…"></label>`}
+        <label class="check wide"><input type="checkbox" name="verify_ssl" ${(cur ? cur.verify_ssl : kind === "panel") ? "checked" : ""}> Check its certificate <small class="muted">${kind === "crafty" ? "leave off for Crafty: it makes its own" : "leave on for a host's panel"}</small></label>
+      </div>
+      <div class="btn-row"><button class="btn" type="button" data-test-conn>🔌 Test it</button></div>
+      <div class="remote-result" id="conn-result"></div>
+      <div class="actions">${cur ? `<button type="button" class="btn danger" data-remove-conn>Remove</button>` : ""}<span class="spacer"></span>
+        <button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">${cur ? "Save" : "Add it"}</button></div>
+    </form>`;
+  const body = (form) => {
+    const f = new FormData(form), out = { type: kind, verify_ssl: !!f.get("verify_ssl") };
+    for (const k of ["name", "url", "token", "key"]) if (f.get(k) !== null) out[k] = (f.get(k) || "").trim();
+    if (cur) out.id = cur.id;
+    return out;
+  };
+  const show = () => openModal(html(), (m) => {
+    const form = $("#conn-form", m), result = $("#conn-result", m);
+    m.querySelectorAll("[data-kind]").forEach((b) => b.addEventListener("click", () => { kind = b.dataset.kind; show(); }));
+    m.querySelector("[data-test-conn]").addEventListener("click", async (e) => {
+      e.target.disabled = true; result.innerHTML = `<p class="muted"><span class="spin" aria-hidden="true"></span> Asking…</p>`;
+      try {
+        const r = await post("/api/manage/connections/test", body(form));
+        result.innerHTML = r.ok ? `<p class="ok">✓ It answered${r.servers.length ? `: ${r.servers.length} server${r.servers.length === 1 ? "" : "s"}` : ", but has no servers yet"}.</p>${r.servers.length ? `<p class="muted small">${r.servers.map((x) => esc(x.name)).join(" · ")}</p>` : ""}`
+          : `<p class="notice">${esc(r.error)}</p>`;
+      } catch (err) { result.innerHTML = `<p class="notice">${esc(err.message)}</p>`; }
+      e.target.disabled = false;
+    });
+    m.querySelector("[data-remove-conn]")?.addEventListener("click", async () => {
+      const what = cur.type === "crafty" ? "Its servers leave the list (their history in Solstone stays, and they come back if you add it again)." : "Servers on it keep working over SFTP, just without start, stop, CPU and memory.";
+      if (!(await confirmBox(`Remove ${esc(cur.name)}?`, what, "Remove it"))) return;
+      try { await api(`/api/manage/connections/${encodeURIComponent(cur.id)}`, { method: "DELETE" }); closeModal(); showToast("Removed", 2500); await loadServers(); manageConnections(); manageServers(); }
+      catch (err) { showError(esc(err.message), 4000); }
+    });
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        await post(cur ? `/api/manage/connections/${encodeURIComponent(cur.id)}` : "/api/manage/connections", body(form), "PUT");
+        closeModal(); showToast(cur ? "Saved" : "Added", 2500); await loadServers(); manageConnections(); manageServers();
+      } catch (err) { showError(esc(err.message), 5000); }
+    });
+  });
+  show();
 }
