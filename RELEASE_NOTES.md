@@ -1,3 +1,11 @@
+# Solstone 1.18.0
+
+- **New: Manage → Solstone → Server setup.** One place to set up your servers: **Your servers** (each one's settings, and adding one somewhere else) and the new **Connections**. What used to be "Servers & history" is now **History & data** (recaps, website traffic, what people read, storage, backups, clearing history).
+- **Connections: Crafty and hosts' panels, set up in Solstone itself.** Crafty no longer has to be set in the container's settings: add it under Connections (its address and API token, with a **Test it** button that shows the servers it found). A game host's **Pterodactyl or Pelican** panel is a connection too, added once for every server on that account. There can be more than one of each.
+  - **Nothing to redo:** if your container has CRAFTY_URL and CRAFTY_TOKEN, they're brought in as a Crafty connection the first time this version starts, marked "From the container's settings". Everything keeps working as it was; you can then remove those settings from the container (or leave them, they do nothing more).
+- **A server somewhere else picks its panel from a list.** In its connection settings, choose the panel connection and then the server from the list it shows, instead of copying an ID and pasting a key into every server. Panels already set up on a server are moved into a connection by themselves.
+- **One settings window for every server**, whether it's on this machine or somewhere else (**⚙ Settings** in Your servers). The same four parts in the same order: **1. General** (name, map, private, hidden), **2. Its files** (on this machine, with its folder; or somewhere else over SFTP, with Test the connection), **3. RCON** (the one place for it now), **4. Start, stop and stats** (Crafty, a host's panel, or none). The separate "🔌 Connection" window for servers elsewhere is gone, and RCON isn't asked in two places any more.
+
 # Solstone 1.17.1
 
 - **Fixed: adding a server somewhere else always said "Couldn't reach it: Permission denied"**, even with the right details (the same login worked in FileZilla). The SFTP connection looked for SSH settings files in a home folder that Solstone isn't allowed to open in its container, and stopped there. It doesn't look there any more (it never needed anything from it).
