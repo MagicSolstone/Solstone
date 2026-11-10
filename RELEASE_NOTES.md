@@ -1,3 +1,12 @@
+# Solstone 1.17.0
+
+- **New: a server somewhere else.** Solstone no longer has to run on the same machine as your server. In **Manage → Solstone → Servers & history**, press **🌐 Add a server somewhere else**: fill in the SFTP details from your host's panel, press **Test the connection**, and add it. It then works like a server at home: the activity feed, chat, leaderboards, stats, player pages, contests, races, games, rewards, the whitelist.
+  - Solstone keeps a copy of just the files it reads and keeps it up to date over SFTP: the log every few seconds (only its new lines), players' stats and the world's info every half a minute (only files that changed), mods and old logs every ten minutes. Pages are as fast as for a server at home.
+  - **The host's panel (optional):** for hosts on Pterodactyl or Pelican (most game hosts), an API key gives Solstone what Crafty gives it at home: start, stop, restart and backups, whether it's running, CPU and memory, and sending a command when RCON isn't answering.
+  - RCON works as before: Solstone reads its port and password from the server's server.properties, at the host's address.
+  - **Safe:** the SFTP server's identity is learned the first time you test it and checked before the password is sent, every time. If it ever changes, Solstone stops and says so. Passwords and API keys never leave Solstone (the page only knows whether one is saved).
+  - Each one shows in **Your servers** with how its files and panel are doing; **🔌 Connection** changes its details, and **Stop looking after it** removes it (its history in Solstone stays).
+
 # Solstone 1.16.0
 
 - **New: see who's had an event's reward.** In Manage → Events, an event with a reward has a **👥 Who's had it** button: everyone who's been given it, when, and for which time round (and which server, if you have more than one). Anyone whose reward is still waiting for room in their inventory is marked. Only admins see it; it's kept for 60 days after the event. (Times are recorded from this version on.)
