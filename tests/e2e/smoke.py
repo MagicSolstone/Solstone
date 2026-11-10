@@ -416,6 +416,33 @@ def main() -> int:
                 check(pg, "manage-server-settings")
                 pg.locator("[data-close-modal]").first.click(); pg.wait_for_timeout(300)
                 check(pg, "manage-servers")
+            # a server somewhere else: the guided form, its test, and adding it (the host is pretend: answers stubbed)
+            pg.route("**/api/manage/remote/test", lambda route: route.fulfill(json={"files": {"ok": True, "motd": "Far SMP", "host_key": "SHA256:abc",
+                     "rcon": True, "rcon_port": "25575", "files": ["server.properties", "world"]}, "panel": {"ok": True, "name": "Far SMP", "state": "running", "node": "Dallas"}}))
+            added = {}
+
+            def put_remote(route):
+                if route.request.method != "PUT":
+                    route.continue_(); return
+                added.update(route.request.post_data_json); route.fulfill(json={"id": "r-smoke", "name": added.get("name")})
+            pg.route("**/api/manage/remote", put_remote)
+            pg.goto(f"{base}/app#/manage/servers"); pg.wait_for_timeout(1200)
+            if not pg.locator("[data-add-remote]").count():
+                problems.append("manage servers: no 'Add a server somewhere else'")
+            else:
+                pg.click("[data-add-remote]"); pg.wait_for_timeout(500)
+                pg.fill("#remote-form [name=name]", "Far SMP"); pg.fill("#remote-form [name=host]", "sftp.example.com")
+                pg.fill("#remote-form [name=user]", "steve.1a2b"); pg.fill("#remote-form [name=password]", "pw")
+                pg.fill("#remote-form [name=panel_url]", "https://panel.example.com"); pg.fill("#remote-form [name=panel_id]", "1a2b3c4d")
+                pg.click("#remote-form [data-test]"); pg.wait_for_timeout(800)
+                res = pg.locator("#remote-result").text_content() or ""
+                if "found the server" not in res or "panel answered" not in res:
+                    problems.append(f"remote: the connection test's result isn't shown ({res[:80]!r})")
+                check(pg, "remote-setup")
+                pg.click("#remote-form [type=submit]"); pg.wait_for_timeout(1000)
+                if added.get("host") != "sftp.example.com" or added.get("panel_id") != "1a2b3c4d" or added.get("password") != "pw":
+                    problems.append(f"remote: adding it didn't send its details ({sorted(added)})")
+            pg.unroute("**/api/manage/remote/test"); pg.unroute("**/api/manage/remote")
             pg.goto(f"{base}/app#/s/{sid}"); pg.wait_for_timeout(1200)
             if pg.locator("#btn-settings").count():
                 problems.append("server page: still has its own ⚙ (it's in Manage → Servers now)")

@@ -39,6 +39,18 @@ async def retire_pack(srv) -> bool:
     if srv.id in _retired:
         return False
     _retired.add(srv.id)
+    if getattr(srv, "remote", False):                 # a server elsewhere: the mirror holds what's in its datapacks
+        from . import remote
+        rel = f"{srv.props.get('level-name', 'world')}/datapacks/{fishpack.PACK_FILE}"
+        if not (srv.dir / rel).is_file():
+            return False
+        if srv.rcon_conf():
+            try:
+                await srv.rcon(f'datapack disable "file/{fishpack.PACK_FILE}"')
+            except RconError:
+                _retired.discard(srv.id)
+                return False
+        return await remote.mirror(srv.id).remove(rel)
     try:
         path = srv.world_dir / "datapacks" / fishpack.PACK_FILE
         if not path.is_file():

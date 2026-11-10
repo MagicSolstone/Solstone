@@ -103,8 +103,15 @@ async def run(srv: S.Server, command: str, wait: float | None = None) -> dict:
             if wait:                          # it may still be happening: don't send it again through Crafty
                 raise HTTPException(504, "The game took too long to answer. It may still be looking the name up: "
                                          "wait a moment, then check the whitelist.") from e
-            if not srv.crafty:
+            if not srv.crafty and srv.panel is None:
                 raise HTTPException(502, f"The game didn't answer: {e}") from e
+    if srv.panel is not None:                     # a server elsewhere: through its host's panel
+        try:
+            await srv.panel.command(command)
+        except Exception as e:
+            raise HTTPException(502, f"The host's panel couldn't send the command: {e}") from e
+        return {"command": command, "output": "", "via": "panel", "ok": True,
+                "note": "Sent through the host's panel. The reply appears in the console log."}
     if srv.crafty and crafty.enabled:
         try:
             await crafty.stdin(srv.id, command)
@@ -362,6 +369,14 @@ async def _bedrock_whitelist(srv: S.Server, name: str, verb: str) -> dict:
         rows = [r for r in rows if str(r.get("name", "")).lower() != name.lower()]
         if len(rows) == before:
             return {"ok": True, "output": f"{name} wasn't on the whitelist"}
+    if srv.remote:                                # a server elsewhere: onto the server itself, over SFTP
+        from . import remote
+        try:
+            await remote.mirror(srv.id).put("whitelist.json", json.dumps(rows, indent=2).encode())
+        except Exception as e:
+            return {"ok": False, "output": f"The server's whitelist.json couldn't be written over SFTP ({remote._why(e)})"}
+        reload = await run(srv, "whitelist reload", wait=10)
+        return {"ok": True, "output": f"{'Added' if verb == 'add' else 'Removed'} {name} {'to' if verb == 'add' else 'from'} the whitelist"}
     tmp = path.with_suffix(".json.tmp")
     try:
         tmp.write_text(json.dumps(rows, indent=2))
@@ -380,6 +395,13 @@ async def _bedrock_whitelist(srv: S.Server, name: str, verb: str) -> dict:
 
 async def power(srv: S.Server, action: str) -> dict:
     check_choice("power", action)
+    if srv.panel is not None:
+        try:
+            await srv.panel.power(action)
+        except Exception as e:
+            from .remote import _panel_why
+            raise HTTPException(502, _panel_why(e)) from e
+        return {"ok": True}
     if not (srv.crafty and crafty.enabled):
         raise HTTPException(409, "Starting and stopping servers needs Crafty connected (CRAFTY_URL and CRAFTY_TOKEN)")
     try:

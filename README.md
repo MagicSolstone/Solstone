@@ -41,6 +41,7 @@ It's read-only. Solstone never writes to your servers, and the servers folder ca
 | Data | Source |
 |---|---|
 | Server list, running state, CPU/RAM, MOTD | Crafty API v2 (`/api/v2/servers`, `/servers/{id}/stats`) |
+| …for a server somewhere else | Its host's panel (Pterodactyl/Pelican client API: `/api/client/servers/{id}/resources`, `/power`, `/command`); its files over SFTP |
 | Stats, advancements | `world/stats/<uuid>.json`, `world/advancements/<uuid>.json` |
 | Inventory, XP, health, position (offline) | `world/playerdata/<uuid>.dat` (NBT) |
 | Inventory, XP, health, position (online) | RCON `data get entity <name>` |
@@ -98,7 +99,29 @@ On first start Solstone creates an admin account. If you didn't set `ADMIN_PASSW
 For start, stop, restart and backup buttons, the Crafty API key needs command permission on the servers. A full-access key already has it.
 
 ### 5. Optional: a live map
-Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web map on port 8100. Then in Solstone open **⚙ Server settings** and paste the map address (e.g. `http://192.168.150.10:8100`). It appears on the World tab.
+Install **BlueMap** (or squaremap) on the Fabric server. BlueMap serves a web map on port 8100. Then in Solstone open **Manage → Solstone → Servers & history**, press **⚙ Settings** on the server and paste the map address (e.g. `http://192.168.150.10:8100`). It appears on the World tab.
+
+## A server somewhere else (a game host, a rented server)
+
+Solstone doesn't have to run on the same machine as the server. In **Manage → Solstone → Servers & history**, press **🌐 Add a server somewhere else** and fill in:
+
+1. **Its files (SFTP):** the address, port, username and password from your host's panel (usually under *SFTP details*), and the folder with `server.properties` in it (usually `/`). Press **Test the connection**: Solstone connects, finds the server and says whether RCON is on.
+2. **RCON:** read from the server's own `server.properties`. Your host has to let that port through (often an extra port, an *allocation*, that you then set as `rcon.port`).
+3. **The host's panel (optional):** for hosts on **Pterodactyl** or **Pelican** (most game hosts), a client API key (*Account → API Credentials*) and the server's short ID give Solstone start, stop, restart and backups, whether it's running, and CPU and memory, as Crafty does at home.
+
+How it works: Solstone keeps a **mirror** of just the files it reads, in `/data/remote/<id>/`, and every page reads that as it would a server's own folder.
+
+| What | How often | How much |
+|---|---|---|
+| `logs/latest.log` | every 3 s | only the new lines (a restarted server's new log from the start) |
+| `server.properties`, `usercache.json`, `whitelist.json`, `ops.json`, the world's `level.dat`, players' `stats`, `playerdata`, `advancements` | every 30 s (15 s to 5 min, your choice) | only files whose size or time changed |
+| `mods/*.jar`, old `logs/*.log.gz`, `config/` | every 10 min | each one once, then only when it changes |
+
+The only file Solstone writes there is `whitelist.json` (a Bedrock player added to the whitelist), sent back the same way.
+
+The SFTP server's identity (its host key) is learned the first time you test, and checked before the password is sent every time after. If it changes, Solstone stops and says so; if your host really moved your server to another machine, press **Forget its identity** in its connection settings.
+
+Not mirrored: the world's region files (Solstone's own drawn world map needs them; use BlueMap's web address instead) and backups (your host keeps those; with a panel, **Back up** starts one).
 
 ## Getting back in
 

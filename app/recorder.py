@@ -107,7 +107,8 @@ class Recorder:
                        asyncio.create_task(self._loop(self.track, adventures.TRACK_INTERVAL)),
                        asyncio.create_task(self._loop(self.warm_skins, 6 * 3600)),
                        asyncio.create_task(self._loop(self.self_backup, 3600)),
-                       asyncio.create_task(self._loop(self.mod_updates, 6 * 3600))]
+                       asyncio.create_task(self._loop(self.mod_updates, 6 * 3600)),
+                       asyncio.create_task(self._loop(self.remote_sync, 2))]
 
     async def mod_updates(self) -> None:
         """New builds of each server's mods on Modrinth (Geyser and Floodgate first): a notification, once per new build."""
@@ -147,6 +148,11 @@ class Recorder:
         for t in self._tasks:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
+
+    async def remote_sync(self) -> None:
+        """Servers somewhere else: their mirror kept up to date (the log every few seconds, the rest when due)."""
+        from . import remote
+        await remote.tick_all()
 
     async def _loop(self, fn, interval: float) -> None:
         while True:
@@ -299,9 +305,9 @@ class Recorder:
 
     async def poll_server(self, srv: S.Server) -> None:
         now = time.time()
-        stats = await S._crafty_stats(srv) if srv.crafty else None
+        stats = await S._crafty_stats(srv) if srv.managed else None
         names, source = await S.online_players(srv)
-        if srv.crafty:
+        if srv.managed:
             running = bool(stats and stats.get("running"))
         else:
             running = source == "rcon"  # without Crafty, a working RCON is the best "it's up" signal

@@ -41,6 +41,14 @@ def save_section(name: str, value: dict) -> None:
 SEEN = "servers_seen"                            # every server id Solstone has found (a new one starts hidden)
 
 
+def mark_seen(sid: str) -> None:
+    """A server an admin added themselves: it's known (never "new", never hidden for being new)."""
+    with _lock:
+        data = load()
+        data[SEEN] = sorted(set(data.get(SEEN) or []) | {sid})
+        _write(data)
+
+
 def note_found(ids: list[str]) -> list[str]:
     """Servers found on this look: any never seen before is hidden (and marked new) until an admin chooses to show it.
     The first time this runs (an older Solstone's settings), everything already there counts as seen. Returns the new ones."""

@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap, xboxwatch, serverstats, traffic
+from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, remote, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap, xboxwatch, serverstats, traffic
 from . import reading, twostep
 from . import servers as S
 from . import settings_store
@@ -2185,7 +2185,106 @@ async def manage_servers(request: Request):
                     "hidden": bool(st.get("hidden")), "private": bool(st.get("private")), "new": bool(st.get("new")),
                     "crafty": bool(s.crafty), "folder": s.dir.name, "rcon": bool(s.rcon_conf()), "rcon_error": s.rcon_error or "",
                     "map": bool(st.get("map_url")), "version": s.mc_version or ""})
+        if s.remote:                                  # somewhere else: how its files and panel are doing
+            m, p = remote.mirror(s.id), s.panel
+            out[-1].update(remote=True, files=dict(m.status) if m else {}, panel=bool(p), panel_error=(p.error if p else ""),
+                           where=(remote.get(s.id) or {}).get("host", ""))
     return out
+
+
+@app.get("/api/manage/remote/{sid}")
+async def get_remote(sid: str, request: Request):
+    """Admin: how a server elsewhere is reached (its secrets stay in Solstone: just whether each is set)."""
+    auth.require_admin(request)
+    cfg = remote.get(sid)
+    if not cfg:
+        raise HTTPException(404, "No such server")
+    return remote.public(cfg)
+
+
+@app.post("/api/manage/remote/test")
+async def test_remote(request: Request):
+    """Admin, setting one up: try the SFTP login and the folder, and the panel if one's given. Nothing is saved."""
+    auth.require_admin(request)
+    body = await _body(request)
+    old = remote.get(str(body.get("id") or "")) if body.get("id") else None
+    try:
+        cfg = remote.clean(body, old)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    out = {"files": await remote.test(cfg)}
+    if cfg.get("panel_url") and cfg.get("panel_id") and cfg.get("panel_key"):
+        out["panel"] = await remote.Panel("_test", cfg).test()
+    return out
+
+
+@app.put("/api/manage/remote")
+@app.put("/api/manage/remote/{sid}")
+async def save_remote(request: Request, sid: str | None = None):
+    """Admin: add a server elsewhere, or change how it's reached."""
+    user = auth.require_admin(request)
+    body = await _body(request)
+    if sid and not remote.get(sid):
+        raise HTTPException(404, "No such server")
+    try:
+        sid = remote.save(sid, body)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    data = remote.all_cfg()
+    if not data[sid].get("host_pub"):                 # its identity: learned now, the admin having just tested it
+        res = await remote.test(data[sid])
+        if res.get("host_pub"):
+            data[sid]["host_key"], data[sid]["host_pub"] = res["host_key"], res["host_pub"]
+            settings_store.save_section(remote.SECTION, data)
+    if body.get("rcon_password") or body.get("rcon_port"):
+        upd = {k: body[k] for k in ("rcon_password", "rcon_port", "rcon_host") if body.get(k)}
+        if upd.get("rcon_port"):
+            try:
+                upd["rcon_port"] = max(1, min(65535, int(upd["rcon_port"])))
+            except (TypeError, ValueError):
+                raise HTTPException(400, "The RCON port is a number") from None
+        settings_store.update_server(sid, upd)
+    m = remote.mirror(sid)
+    if m:
+        m.close()                                     # (new settings: a fresh connection)
+        m.last = {"log": 0.0, "files": 0.0, "slow": 0.0}
+    await S.registry.refresh(force=True)
+    auth.audit(user, sid, "remote_server", f"{body.get('name') or sid} at {body.get('host') or ''}")
+    return {"id": sid, **remote.public(remote.get(sid))}
+
+
+@app.post("/api/manage/remote/{sid}/forget-key")
+async def remote_forget_key(sid: str, request: Request):
+    """Admin: the host moved the server to another machine, so its SFTP identity changed: learn the new one."""
+    user = auth.require_admin(request)
+    data = remote.all_cfg()
+    if sid not in data:
+        raise HTTPException(404, "No such server")
+    data[sid]["host_key"] = data[sid]["host_pub"] = ""
+    settings_store.save_section(remote.SECTION, data)
+    res = await remote.test(data[sid])
+    if res.get("host_pub"):
+        data[sid]["host_key"], data[sid]["host_pub"] = res["host_key"], res["host_pub"]
+        settings_store.save_section(remote.SECTION, data)
+    auth.audit(user, sid, "remote_server:new_key", res.get("host_key", ""))
+    return res
+
+
+@app.delete("/api/manage/remote/{sid}")
+async def delete_remote(sid: str, request: Request):
+    """Admin: stop looking after a server elsewhere (its history in Solstone stays; the mirror's files go)."""
+    import shutil
+    user = auth.require_admin(request)
+    if not remote.get(sid):
+        raise HTTPException(404, "No such server")
+    m = remote.mirror(sid)
+    if m:
+        m.close()
+    remote.forget(sid)
+    shutil.rmtree(remote.mirror_dir(sid), ignore_errors=True)
+    await S.registry.refresh(force=True)
+    auth.audit(user, sid, "remote_server:removed", sid)
+    return {"ok": True}
 
 
 @app.get("/api/servers-hidden")
@@ -3330,7 +3429,7 @@ async def control_info(sid: str, request: Request):
     online, source = await S.online_players(srv)
     return {
         "can_rcon": srv.rcon_conf() is not None,
-        "can_crafty": bool(srv.crafty and crafty.enabled),
+        "can_crafty": bool(srv.crafty and crafty.enabled) or srv.panel is not None,
         "is_java": srv.is_java,
         "game_rules": rules,
         "online": online,
@@ -3826,7 +3925,7 @@ async def get_chat(sid: str, request: Request, after: int = 0):
             row.update(to=to, message=text)
         out.append(row)
     names, _src = await S.online_players(srv) if srv.is_java else ([], "")
-    return {"items": out, "online": names, "can_send": bool(srv.rcon_conf() or srv.crafty)}
+    return {"items": out, "online": names, "can_send": bool(srv.rcon_conf() or srv.managed)}
 
 
 @app.post("/api/servers/{sid}/chat")

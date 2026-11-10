@@ -10,3 +10,4 @@ numpy==2.5.4
 tzdata==2026.5
 mutagen==1.48.1
 lz4==4.4.5
+asyncssh==2.21.1          # servers somewhere else: their files over SFTP (remote.py)

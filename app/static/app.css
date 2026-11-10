@@ -2653,3 +2653,9 @@ body.ui-hidden .manage-sub { display: none; }
 .set-h { margin: 14px 0 4px; font-size: .95rem; }
 .hol-servers { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 4px 0 10px; }
 .hol-servers .lbl { font-weight: 600; }
+.remote-form .remote-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 8px 12px; }
+.remote-form .remote-grid .wide { grid-column: span 2; }
+@media (max-width: 520px) { .remote-form .remote-grid .wide { grid-column: auto; } }
+.remote-result { margin: 8px 0; }
+.remote-result .ok { color: #5fd08a; margin: 4px 0; }
+.remote-form .actions .spacer { flex: 1; }

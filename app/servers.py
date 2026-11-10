@@ -82,15 +82,21 @@ class MtimeCache:
 _cache = MtimeCache()
 
 
+def parse_properties(text: str) -> dict[str, str]:
+    props: dict[str, str] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        props[k.strip()] = v.strip().replace("\\:", ":").replace("\\=", "=")
+    return props
+
+
 def read_properties(path: Path) -> dict[str, str]:
     props: dict[str, str] = {}
     try:
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            props[k.strip()] = v.strip().replace("\\:", ":").replace("\\=", "=")
+        props = parse_properties(path.read_text(encoding="utf-8", errors="replace"))
     except OSError:
         pass
     return props
@@ -126,6 +132,20 @@ class Server:
     _rcon: Rcon | None = field(default=None, repr=False)
     _rcon_backoff: float = 0.0
     rcon_error: str | None = None
+    remote: bool = False                 # somewhere else: its files are a mirror kept over SFTP (remote.py)
+
+    @property
+    def panel(self):
+        """The host's panel (Pterodactyl, Pelican), for a server somewhere else that has one: start/stop, CPU, memory."""
+        if not self.remote:
+            return None
+        from . import remote
+        return remote.panel(self.id)
+
+    @property
+    def managed(self) -> bool:
+        """Something can say whether it's running, start it and stop it: Crafty, or the host's panel."""
+        return bool(self.crafty) or self.panel is not None
 
     @property
     def props(self) -> dict[str, str]:
@@ -185,8 +205,12 @@ class Server:
         if not enabled or not password:
             return None
         port = int(s.get("rcon_port") or p.get("rcon.port", 25575) or 25575)
-        host = s.get("rcon_host") or config.default_rcon_host
+        host = s.get("rcon_host") or (self._remote_host() if self.remote else config.default_rcon_host)
         return host, port, password
+
+    def _remote_host(self) -> str:
+        from . import remote
+        return (remote.get(self.id) or {}).get("host") or config.default_rcon_host
 
     async def rcon(self, cmd: str, wait: float | None = None) -> str | None:
         """wait: a longer time for the game to answer (whitelist and op look the name up with Mojang or Xbox first).
@@ -303,6 +327,14 @@ class Registry:
                         if old:
                             srv._rcon, srv._rcon_backoff, srv.rcon_error = old._rcon, old._rcon_backoff, old.rcon_error
                         found[sid] = srv
+            # Servers somewhere else (added in Manage → Servers): read from the mirror Solstone keeps of their files
+            from . import remote
+            for sid, cfg in remote.all_cfg().items():
+                old = self.servers.get(sid)
+                srv = Server(id=sid, name=cfg.get("name") or sid, dir=remote.mirror_dir(sid), remote=True)
+                if old:
+                    srv._rcon, srv._rcon_backoff, srv.rcon_error = old._rcon, old._rcon_backoff, old.rcon_error
+                found[sid] = srv
             if config.only_servers:     # this Solstone looks after just these (another one may have the rest)
                 found = {k: v for k, v in found.items() if {k.lower(), v.name.lower(), v.dir.name.lower()} & set(config.only_servers)}
             self.servers = found
@@ -357,7 +389,7 @@ _online_inflight: dict[str, asyncio.Task] = {}
 
 async def _online_players(srv: Server) -> tuple[list[str], str]:
     stats = await _crafty_stats(srv)
-    if srv.crafty and stats is not None and not stats.get("running"):
+    if srv.managed and stats is not None and not stats.get("running"):
         return [], "stopped"
     try:
         out = await srv.rcon("list")
@@ -376,6 +408,9 @@ _last_seen_stats: dict[str, dict] = {}       # server id -> the last MOTD, icon 
 
 
 async def _crafty_stats(srv: Server) -> dict | None:
+    """Running or not, CPU, memory: from Crafty, or the host's panel for a server elsewhere."""
+    if srv.panel is not None:
+        return await srv.panel.stats()
     if not srv.crafty:
         return None
     stats = await crafty.stats(srv.id)
@@ -401,13 +436,15 @@ async def server_summary(srv: Server) -> dict:
     lvl = srv.level()
     online, source = await online_players(srv)
     # None = unknown (no Crafty, or Crafty can't be reached right now)
-    running = bool(stats.get("running")) if srv.crafty and stats else None
+    running = bool(stats.get("running")) if srv.managed and stats else None
     rcon = srv.rcon_conf()
     return {
         "id": srv.id,
         "name": srv.display_name,
         "type": srv.type,
         "managed_by_crafty": srv.crafty is not None,
+        "managed_by_panel": srv.panel is not None,
+        "remote": srv.remote,
         "crafty_unreachable": bool(srv.crafty and srv.crafty.get("_unreachable")),
         "folder_found": srv.dir.is_dir(),
         "folder": str(srv.dir),
