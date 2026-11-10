@@ -1,3 +1,7 @@
+# Solstone 1.20.3
+
+- **The map for a server elsewhere says what it's doing.** In its ⚙ Settings, under 2. Its files: how many areas players have been in (and how many around where someone is now), how many are copied, how many are waiting, when it last looked, and whether a world folder couldn't be found on the server.
+
 # Solstone 1.20.2
 
 - **Fixed: a server elsewhere stopped updating ("Files: not updating", KeyError: 'regions') after its settings were saved.** Saving reset its update timers without the map's, so every update after that failed: no new log lines, stats or map. Saving keeps all of them now.
