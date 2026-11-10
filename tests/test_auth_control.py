@@ -434,3 +434,15 @@ def test_an_add_that_cant_be_confirmed_never_tells_them_theyre_in(client, sid, r
     finally:
         site.settings_store.save_section("join_requests", [])
         site.settings_store.save_section("join_let_in", [])
+
+
+def test_a_server_with_just_rcon_shows_as_running(client, sid, rcon):
+    """No Crafty and no host's panel (a server at a host with only SFTP and RCON): RCON answering means it's up, so the
+    home page's card shows its uptime, in-game time and weather instead of nothing."""
+    from app import servers as S
+    S._online_cache.pop(sid, None)
+    s = client.get(f"/api/servers/{sid}").json()
+    assert s["managed_by_crafty"] is False and s["running"] is True and "Tyler" in s["online"]
+    site = client.get("/api/public/site").json()
+    card = next(x for x in site["servers"] if x["id"] == sid)
+    assert card["running"] is True and card["world"] is not None

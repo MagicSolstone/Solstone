@@ -455,6 +455,10 @@ async def server_summary(srv: Server) -> dict:
     # None = unknown (no Crafty, or Crafty can't be reached right now)
     running = bool(stats.get("running")) if srv.managed and stats else None
     rcon = srv.rcon_conf()
+    if running is None and rcon and not srv.managed:
+        # Nothing runs it that can say (no Crafty, no host's panel): RCON answering means it's up, and not answering
+        # means it's down. Solstone's uptime checks go by the same (recorder.poll_server), so the card and its history agree.
+        running = source == "rcon"
     return {
         "id": srv.id,
         "name": srv.display_name,

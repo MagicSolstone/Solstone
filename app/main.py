@@ -1499,7 +1499,7 @@ async def _sky_server(sid: str | None) -> S.Server | None:
     if srv:
         return srv
     # Auto: a running server with people on it, else any running one, else the first.
-    running = [x for x in visible if (x.crafty or {}).get("_stats", {}).get("running")]
+    running = [x for x in visible if (x.crafty or {}).get("_stats", {}).get("running") or S._online_cache.get(x.id, (0, ([], "")))[1][1] == "rcon"]
     return next((x for x in running if (x.crafty or {}).get("_stats", {}).get("online")), None) or (running or visible or [None])[0]
 
 
