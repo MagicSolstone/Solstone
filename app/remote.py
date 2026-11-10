@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import posixpath
 import secrets
 import stat as stat_mod
@@ -232,6 +233,7 @@ class Mirror:
         self.last: dict[str, float] = {"log": 0.0, "files": 0.0, "slow": 0.0, "regions": 0.0}
         self.regions: list[tuple[str, str, bool]] = []    # (local path, remote path, only if missing) still to look at
         self._dim_base: dict[str, str] = {}              # each dimension's region folder on the server, once found
+        self._spots: tuple[tuple, list] = ((), [])       # players' saved spots and spawn (read again when a file changes)
         self.status = {"ok": None, "error": "", "synced": None, "files": 0, "bytes": 0}
         self._lock = asyncio.Lock()
 
@@ -360,13 +362,56 @@ class Mirror:
                     "CASE WHEN z < 0 THEN CAST((z - 511) / 512 AS INT) ELSE CAST(z / 512 AS INT) END AS rz, MAX(ts) AS t "
                     "FROM positions WHERE server_id=? GROUP BY dim, rx, rz", (self.sid,))
         out: dict[tuple[str, int, int], bool] = {}
+
+        def add(dim: str, rx: int, rz: int, recent: bool, around: bool) -> None:
+            for dx in (-1, 0, 1) if around else (0,):
+                for dz in (-1, 0, 1) if around else (0,):
+                    k = (dim, rx + dx, rz + dz)
+                    out[k] = out.get(k, False) or recent
+
         for r in rows:
             recent = r["t"] >= now - RECENT_SECS
-            for dx in (-1, 0, 1) if recent else (0,):
-                for dz in (-1, 0, 1) if recent else (0,):
-                    k = (r["dim"], r["rx"] + dx, r["rz"] + dz)
-                    out[k] = out.get(k, False) or recent
+            add(r["dim"], r["rx"], r["rz"], recent, recent)
+        # Also where the game itself last saved everyone (their player files, copied anyway) and the world's spawn: so
+        # the map has something before Solstone has seen anyone on (it only sees players while RCON answers), and a
+        # player file saved lately (the game saves them every few minutes while they're on) counts as "now".
+        for dim, x, z, saved in self._saved_spots():
+            add(dim, math.floor(x) >> 9, math.floor(z) >> 9, saved >= now - RECENT_SECS, True)
         return sorted(((d, x, z, rec) for (d, x, z), rec in out.items()), key=lambda v: not v[3])   # recent first
+
+    def _saved_spots(self) -> list[tuple[str, float, float, float]]:
+        """(dimension, x, z, when saved): each player's spot in their player file, and the world's spawn (level.dat)."""
+        from .nbtutil import load_dat
+        world = self.dir / self._level()
+        files = [world / "level.dat"]
+        for d in ("playerdata", "players/data"):
+            if (world / d).is_dir():
+                files += sorted((world / d).glob("*.dat"))
+        sig = tuple((f.name, f.stat().st_mtime) for f in files if f.is_file())
+        if self._spots[0] == sig:
+            return self._spots[1]
+        spots = []
+        for f in files:
+            try:
+                nbt = load_dat(f)
+                saved = f.stat().st_mtime
+            except Exception:
+                continue
+            nbt = nbt.get("Data", nbt)
+            if f.name == "level.dat":
+                sp = nbt.get("spawn")
+                if isinstance(sp, dict) and isinstance(sp.get("pos"), list) and len(sp["pos"]) == 3:   # 1.21.5+
+                    spots.append((str(sp.get("dimension") or "minecraft:overworld"), sp["pos"][0], sp["pos"][2], 0.0))
+                elif "SpawnX" in nbt and "SpawnZ" in nbt:
+                    spots.append(("minecraft:overworld", nbt["SpawnX"], nbt["SpawnZ"], 0.0))
+                continue
+            pos, dim = nbt.get("Pos"), nbt.get("Dimension")
+            if isinstance(dim, int):                                     # (before 1.16)
+                dim = {-1: "minecraft:the_nether", 1: "minecraft:the_end"}.get(dim, "minecraft:overworld")
+            if isinstance(pos, list) and len(pos) == 3 and all(isinstance(v, (int, float)) for v in pos):
+                spots.append((str(dim or "minecraft:overworld"), float(pos[0]), float(pos[2]), saved))
+        self._spots = (sig, spots)
+        return spots
 
     async def _region_base(self, dim: str) -> str | None:
         """Where a dimension's region files are on the server (and so in the copy: the usual place)."""

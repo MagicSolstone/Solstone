@@ -120,7 +120,7 @@ The only file Solstone writes there is `whitelist.json` (a Bedrock player added 
 
 The SFTP server's identity (its host key) is learned the first time you test, and checked before the password is sent every time after. If it changes, Solstone stops and says so; if your host really moved your server to another machine, press **Forget its identity** in its connection settings.
 
-| the world's region files (for the map) | every 5 min, a few at a time | only those players have been in (and the eight around where someone is now), fetched again when they change; never the whole world. Off with **Draw the map where players have been** |
+| the world's region files (for the map) | every 5 min, a few at a time | only around the spawn and where players are or were (Solstone's own record, and each player's spot in their player file, so it starts before anyone has been seen on), fetched again when they change; never the whole world. Off with **Draw the map where players have been** |
 
 Not mirrored: the rest of the world (so the map shows where players have been, not a pregenerated world they haven't seen) and backups (your host keeps those; with a panel, **Back up** starts one).
 

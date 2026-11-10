@@ -426,3 +426,47 @@ def test_saving_its_settings_never_stops_its_updates(far):
     loop.run_until_complete(m.tick(now=2000))
     assert m.status["ok"] and "the map" in " ".join(m.status)                  # noted, and everything else carried on
     assert (remote.mirror_dir(sid) / "logs/latest.log").read_text().endswith("Ann joined the game\n")
+
+
+def test_the_map_starts_from_spawn_and_where_players_last_saved(far):
+    """Nobody seen on yet (RCON tracks people only while they're on): the map still copies around the world's spawn and
+    each player's spot from their player file, and a player file saved just now counts as someone being there."""
+    import gzip
+    import io
+    import os
+    import time
+
+    import nbtlib
+
+    from app import db
+    loop, root, cfg, key = far
+
+    def dat(path, data):
+        buf = io.BytesIO()
+        nbtlib.File(data).write(buf)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(gzip.compress(buf.getvalue()))
+
+    dat(root / "world" / "level.dat", {"Data": nbtlib.Compound({"SpawnX": nbtlib.Int(0), "SpawnY": nbtlib.Int(64), "SpawnZ": nbtlib.Int(0)})})
+    dat(root / "world" / "playerdata" / "aaaa.dat", {"Pos": nbtlib.List[nbtlib.Double]([2600.5, 70.0, -1100.0]),
+                                                     "Dimension": nbtlib.String("minecraft:overworld")})
+    reg = root / "world" / "region"
+    reg.mkdir(parents=True, exist_ok=True)
+    for x, z in ((0, 0), (-1, -1), (5, -3), (30, 30)):
+        (reg / f"r.{x}.{z}.mca").write_bytes(b"R" * 64)
+    sid = _added(loop, cfg)
+    db.x("DELETE FROM positions WHERE server_id=?", (sid,))
+    old = time.time() - 86400
+    os.utime(root / "world" / "playerdata" / "aaaa.dat", (old, old))
+    m = remote.mirror(sid)
+    now = time.time()
+    for i in range(12):
+        loop.run_until_complete(m.tick(now=now + i * 3))
+    have = sorted(p.name for p in (remote.mirror_dir(sid) / "world" / "region").glob("*.mca"))
+    assert have == ["r.-1.-1.mca", "r.0.0.mca", "r.5.-3.mca"], have                    # spawn and around, her spot
+    assert m.status["map"]["visited"] == 18 and m.status["map"]["now"] == 0
+    (remote.mirror_dir(sid) / "world" / "playerdata" / "aaaa.dat").touch()             # she's on, saved just now
+    m._spots = ((), [])
+    m.last["regions"] = 0
+    loop.run_until_complete(m.tick(now=time.time()))
+    assert m.status["map"]["now"] == 9
