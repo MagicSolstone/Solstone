@@ -103,7 +103,7 @@ class Recorder:
                        asyncio.create_task(self._loop(self.traffic_flush, 60)),
                        asyncio.create_task(self._loop(self.recaps, 3600)),
                        asyncio.create_task(self._loop(self.race_tick, 1)),
-                       asyncio.create_task(self._loop(self.fish_poll, 3)),
+                       asyncio.create_task(self._loop(self.fish_poll, 300)),
                        asyncio.create_task(self._loop(self.track, adventures.TRACK_INTERVAL)),
                        asyncio.create_task(self._loop(self.warm_skins, 6 * 3600)),
                        asyncio.create_task(self._loop(self.self_backup, 3600)),
@@ -195,9 +195,11 @@ class Recorder:
                 await adventures.track(srv, names)
 
     async def fish_poll(self) -> None:
-        """Catches from the Solstone Fishing pack (only where it's loaded and someone's on)."""
+        """Solstone's old data pack (taken out in 1.16): switched off and removed from each world, once."""
         await S.registry.refresh()
-        await fishing.poll([s for s in S.registry.servers.values() if not s.settings.get("hidden")])
+        for s in S.registry.servers.values():
+            if s.is_java and s.id not in fishing._retired:
+                await fishing.retire_pack(s)
 
     async def recaps(self) -> None:
         """Summarise finished days, and once per server read its old logs for the days before Solstone."""
@@ -353,7 +355,6 @@ class Recorder:
         if self._running_state.get(srv.id) is not None:
             for n in joined:
                 await challenges.on_join(srv, n)        # prizes won while away
-                await games.on_join(srv, n)             # back from a game that ended while they were away
                 await kits.on_join(srv, n)              # their own things, kept safe during a game they left
                 await gather.on_join(srv, n)            # back from an event they were taken to
                 welcome.on_join(srv, n)                 # the server's welcome message, if it has one

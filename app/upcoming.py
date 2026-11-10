@@ -66,7 +66,7 @@ def items(server_names: dict[str, str], days: int = DAYS, now: datetime | None =
     for r in games._load()["runs"]:
         if r["server"] not in server_names or r.get("group"):
             continue
-        name, emoji = games.KINDS.get(r["game"], ("Game", "🎲"))
+        name, emoji = games.LABELS.get(r["game"], ("Game", "🎲"))
         link = f"#/s/{r['server']}/challenges/games"
         if r["state"] in games.ACTIVE:
             add(r.get("started") or r["start"], "game", emoji, r["name"] or name, "On now", server=r["server"], link=link, live=True)
@@ -181,7 +181,7 @@ def past(server_names: dict[str, str], days: int | None = None, now: float | Non
     for r in games._load()["runs"]:
         if r["state"] != "done":
             continue
-        _label, emoji = games.KINDS[r["game"]][0], games.KINDS[r["game"]][1]
+        label, emoji = games.LABELS.get(r["game"], ("Game", "🎲"))     # (games since taken out stay in Lately)
         n = len(r.get("players") or {})
         if r["game"] == "arena":
             waves, survived = len(r.get("waves") or []), r.get("survived", 0)
@@ -190,7 +190,7 @@ def past(server_names: dict[str, str], days: int | None = None, now: float | Non
             how += f" · {n} player{'s' if n != 1 else ''}"
         else:
             how = f"{n} player{'s' if n != 1 else ''}"
-        add(r.get("ended"), emoji, r.get("name") or games.KINDS[r["game"]][0], how, r["server"])
+        add(r.get("ended"), emoji, r.get("name") or label, how, r["server"])
     out.sort(key=lambda x: -x["at"])
     return out[:40]
 

@@ -649,61 +649,26 @@ def main() -> int:
             check(pg, "race-course-drag")
             pg.click("#rc-cancel"); pg.wait_for_timeout(400)
             pg.request.delete(f"{base}/api/servers/{sid}/races/courses/{course['id']}", headers=H)
-            # setting up King of the Hill and the mob arena (no game here: the page is told RCON is on)
+            # games: just hide and seek and the treasure hunt (archery, spleef, King of the Hill and the arena are gone)
             def games_on(route):
                 if route.request.method != "GET":
                     route.continue_(); return
-                d = json.loads(route.fetch().text()); d["rcon"] = True; d["pack"] = 99; route.fulfill(json=d)
+                d = json.loads(route.fetch().text()); d["rcon"] = True; route.fulfill(json=d)
             pg.route(f"**/api/servers/{sid}/games", safely(games_on))
             pg.goto(f"{base}/app#/s/{sid}/challenges/games"); pg.reload(); pg.wait_for_timeout(1500)
-            pg.click('[data-setup="koth"]'); pg.wait_for_timeout(800)
+            offered = sorted(b.get_attribute("data-setup") for b in pg.locator("[data-setup]").all())
+            if offered != ["hideseek", "treasure"]:
+                problems.append(f"games: should offer just hide and seek and the treasure hunt, not {offered}")
+            pg.click('[data-setup="treasure"]'); pg.wait_for_timeout(800)
             box = pg.locator("#gm-map canvas").first.bounding_box() if pg.locator("#gm-map canvas").count() else None
             if not box:
-                problems.append("games: King of the Hill's setup has no map")
+                problems.append("games: the treasure hunt's setup has no map")
             else:
-                pg.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2); pg.wait_for_timeout(700)
-                pg.click('[data-pickwhat="spawns"]'); pg.wait_for_timeout(300)
-                box = pg.locator("#gm-map canvas").first.bounding_box()
-                for dx in (-60, 60):
-                    pg.mouse.click(box["x"] + box["width"] / 2 + dx, box["y"] + box["height"] / 2); pg.wait_for_timeout(700)
-                if pg.locator(".gm-spots .chip").count() != 2 or not pg.locator(".gm-kit [name=kit_sword]").count():
-                    problems.append("games: King of the Hill's spawn spots or kit didn't show")
-                check(pg, "games-koth-setup")
-                pg.click("#gm-form button[type=submit]"); pg.wait_for_timeout(1200)
-                if not pg.locator('.ch-card:has-text("King of the Hill") [data-stop]').count():
-                    problems.append("games: King of the Hill didn't get set up")
-            pg.click('[data-setup="arena"]'); pg.wait_for_timeout(800)
-            pg.select_option("#gm-form [name=level]", "hard"); pg.wait_for_timeout(400)
-            if pg.locator(".gm-preset li").count() != 10 or not pg.locator("#gm-form [name=respawn_secs][type=number]").count() and pg.locator("#gm-form [name=coop]").input_value() == "0":
-                problems.append("games: the mob arena's ready-made waves aren't a row each")
-            pg.locator(".gm-preset").scroll_into_view_if_needed(); check(pg, "games-arena-preset")
-            pg.click("#gm-form [data-edit-preset]"); pg.wait_for_timeout(400)
-            if pg.locator(".gm-wave").count() != 10:
-                problems.append("games: 'Change these' didn't start my own waves from the ready-made ones")
-            pg.select_option("#gm-form [name=level]", "custom"); pg.wait_for_timeout(400)
-            pg.evaluate("document.querySelector('#modal-root .modal').scrollTop = 600"); pg.wait_for_timeout(100)
-            pg.select_option("#gm-form [data-addmob='0']", "creeper"); pg.wait_for_timeout(400)
-            if pg.evaluate("document.querySelector('#modal-root .modal').scrollTop") < 300:
-                problems.append("games: adding a monster to a wave jumped the setup window back to the top")
-            if "Creeper" not in (pg.locator(".gm-waves").text_content() or ""):
-                problems.append("games: adding a monster to a mob arena wave didn't show")
-            check(pg, "games-arena-setup")
+                pg.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2); pg.wait_for_timeout(800)
+                if "Middle at" not in (pg.locator("#gm-chosen").text_content() or ""):
+                    problems.append("games: clicking the map doesn't set the treasure hunt's area")
+                check(pg, "games-treasure-setup")
             pg.keyboard.press("Escape"); pg.locator("[data-close-modal]").first.click() if pg.locator(".modal [data-close-modal]").count() else None
-            # the same setup as part of an event night: clicking the map sets the arena and the monster spots
-            pg.goto(f"{base}/app#/s/{sid}/challenges"); pg.wait_for_timeout(800)
-            pg.evaluate(f"egAdd = {{ sid: '{sid}', gid: 'smoke-night', title: 'Smoke night', type: 'game' }}")
-            pg.goto(f"{base}/app#/s/{sid}/challenges/games"); pg.wait_for_timeout(1500)
-            pg.click('[data-setup="arena"]'); pg.wait_for_timeout(800)
-            box = pg.locator("#gm-map canvas").first.bounding_box()
-            pg.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2); pg.wait_for_timeout(800)
-            chosen = pg.locator("#gm-chosen").text_content() if pg.locator("#gm-chosen").count() else ""
-            if "Arena at" not in (chosen or ""):
-                problems.append(f"games: in an event night, clicking the map doesn't set the mob arena ({chosen!r})")
-            check(pg, "games-arena-event")
-            pg.keyboard.press("Escape"); pg.locator("[data-close-modal]").first.click() if pg.locator(".modal [data-close-modal]").count() else None
-            for r in pg.request.get(f"{base}/api/servers/{sid}/games", headers=H).json()["runs"]:
-                if r["game"] in ("koth", "arena"):
-                    pg.request.delete(f"{base}/api/servers/{sid}/games/{r['id']}", headers=H)
             pg.unroute(f"**/api/servers/{sid}/games")
             # fireworks settings: just The show and Join fireworks (no shows, no game events)
             pg.goto(f"{base}/app#/fireworks/settings"); pg.wait_for_timeout(1200)

@@ -43,11 +43,10 @@ class Srv:
 
 @pytest.fixture()
 def patched(monkeypatch, tmp_path):
-    from app import fishing, selfcheck, worldmap
+    from app import selfcheck, worldmap
     from app import servers as S
     monkeypatch.setattr(S, "world_info", lambda srv, dims=False: {"spawn": {"x": 0, "y": 64, "z": 0}})
     monkeypatch.setattr(S, "known_players", lambda srv: {})
-    monkeypatch.setattr(fishing, "files", lambda srv: [])
 
     monkeypatch.setattr(worldmap, "check", lambda *a: {"checked": [{"picture": "drawn"}], "regions": 4})
     return selfcheck
@@ -63,7 +62,7 @@ def test_healthy_server_all_green_and_tidied(patched):
     out = _run(patched, srv)
     bad = [r for r in out["rows"] if r["ok"] is False]
     assert not bad, bad
-    assert len(out["rows"]) >= 25
+    assert len(out["rows"]) >= 20
     assert "kill @e[tag=solstone_check]" in srv.cmds and any("forceload remove" in c for c in srv.cmds)
     assert "scoreboard objectives remove solcheck" in srv.cmds and "bossbar remove solstone:check" in srv.cmds and "team remove solcheck" in srv.cmds
     assert not any(c.startswith(("give @a ", "give Tyler", "tellraw @a ")) for c in srv.cmds)      # nothing reaches real players

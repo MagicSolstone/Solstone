@@ -1,52 +1,8 @@
 """The Solstone Fishing pack: what it contains, reading catches back, and fishing contests."""
 import asyncio
-import io
-import json
 import re
-import zipfile
 
 import pytest
-
-
-def test_pack_contents():
-    """Fishing stays vanilla: no loot tables at all, just noticing catches and giving them a weight."""
-    from app import fishpack
-    z = zipfile.ZipFile(io.BytesIO(fishpack.build_zip()))
-    names = set(z.namelist())
-    assert {"pack.mcmeta", "data/minecraft/tags/function/load.json", "data/solfish/advancement/hooked.json",
-            "data/solfish/function/record.mcfunction", "data/solfish/function/size.mcfunction", "data/solfish/tags/item/fish.json"} <= names
-    assert not [n for n in names if "/loot_table/" in n and "solfish" in n or "gameplay/fishing" in n]     # vanilla fish, vanilla odds
-    meta = json.loads(z.read("pack.mcmeta"))["pack"]
-    assert meta["min_format"] == 48 and meta["max_format"] >= 101 and meta["supported_formats"]["min_inclusive"] == 48   # 1.21 .. 26.x
-    assert json.loads(z.read("data/solfish/tags/item/fish.json"))["values"] == ["minecraft:cod", "minecraft:salmon", "minecraft:tropical_fish", "minecraft:pufferfish"]
-    adv = json.loads(z.read("data/solfish/advancement/hooked.json"))
-    assert adv["criteria"]["hooked"]["trigger"] == "minecraft:fishing_rod_hooked" and adv["rewards"]["function"] == "solfish:hooked"
-    assert "matches 5.. run return 0" in z.read("data/solfish/function/check_item.mcfunction").decode()   # old (dropped) fish never count
-    rec = z.read("data/solfish/function/record.mcfunction").decode()
-    assert "contents minecraft:salmon run function solfish:size {lo:20,hi:200}" in rec and "set_name" not in rec
-    assert "random value $(lo)..$(hi)" in z.read("data/solfish/function/size.mcfunction").decode()
-    assert "tellraw" not in "".join(z.read(n).decode() for n in names if n.startswith("data/solfish/"))       # nothing said in the game
-    g = {x["key"]: x for x in fishpack.guide()}
-    assert set(g) == {"cod", "salmon", "tropical_fish", "pufferfish"} and g["salmon"]["max_lb"] == 20 and g["cod"]["min_points"] == 2
-    assert fishpack.qualities() == []
-    # the games' tick keeps itself going, not on the shared #minecraft:tick list (which other packs can break)
-    assert "data/minecraft/tags/function/tick.json" not in names
-    assert z.read("data/solgames/function/tick.mcfunction").decode().strip().endswith("schedule function solgames:tick 1t replace")
-    assert "schedule function solgames:tick 1t replace" in z.read("data/solgames/function/load.mcfunction").decode()
-
-
-def test_parse_catches():
-    from app import fishpack
-    reply = ('Storage solstone:fish has the following contents: [{s: "trout", n: "Rainbow Trout", q: 3, ql: "Prime", w: 47, lb: "4.7", p: 42, '
-             'u: [I; 110787060, 1156138790, -1514210135, 238594805], i: 7, t: 123L}]')
-    c = fishpack.parse_catches(reply)[0]
-    assert c["name"] == "Rainbow Trout" and c["weight"] == 4.7 and c["points"] == 42 and c["i"] == 7 and c["quality_name"] == "Prime"
-    assert c["uuid"] == "069a79f4-44e9-4726-a5be-fca90e38aaf5"                # Notch: a known UUID / int array pair
-    assert fishpack.parse_catches("Found no elements matching catches") == []
-    plain = fishpack.parse_catches('Storage solstone:fish has the following contents: [{s: "minecraft:tropical_fish", w: 7, p: 1, '
-                                   'u: [I; 1, 2, 3, 4], i: 3, t: 5L}]')[0]
-    assert plain["basic"] and plain["species"] == "tropical_fish" and plain["name"] == "Tropical Fish" and plain["lb"] == "0.7"
-    assert plain["quality"] == 1 and plain["points"] == 1
 
 
 class FakeServer:
@@ -88,7 +44,7 @@ def pond(monkeypatch):
     settings_store.save_section("challenges", {})
     srv = FakeServer()
     srv.settings = {"fishing_journal": True}            # these tests are about the journal (off by default: see below)
-    fishing._state.pop(srv.id, None)
+    fishing._retired.discard(srv.id)
 
     async def online(_s):
         return ["Tyler", "Gimli_Jr"], "rcon"
@@ -101,57 +57,8 @@ def pond(monkeypatch):
 def test_fishing_api(client, viewer, sid):
     assert viewer.get(f"/api/servers/{sid}/fishing").status_code == 403
     d = client.get(f"/api/servers/{sid}/fishing").json()
-    assert len(d["guide"]) == 4 and d["status"]["current"] >= 1 and "writable" in d["status"]
-    r = client.get("/api/fishing/solstone-pack.zip")
-    assert r.status_code == 200 and r.headers["content-type"] == "application/zip" and r.content[:2] == b"PK"
-    assert viewer.get("/api/fishing/solstone-pack.zip").status_code == 403
-
-
-def test_datapack_folder_listing_finds_copies(tmp_path):
-    import io
-    import zipfile
-    from types import SimpleNamespace
-
-    from app import fishing, fishpack
-    dp = tmp_path / "datapacks"
-    dp.mkdir()
-    (dp / "solstone-pack.zip").write_bytes(fishpack.build_zip())
-    old = io.BytesIO()
-    with zipfile.ZipFile(old, "w") as z:                               # an old copy, re-zipped inside a folder
-        z.writestr("solstone-pack/pack.mcmeta", "{}")
-        z.writestr("solstone-pack/data/solfish/function/load.mcfunction", "data modify storage solstone:fish pack set value {version:2}\n")
-    (dp / "solstone-pack (1).zip").write_bytes(old.getvalue())
-    (dp / "other").mkdir()
-    rows = {r["name"]: r for r in fishing.files(SimpleNamespace(world_dir=tmp_path))}
-    assert rows["solstone-pack.zip"]["version"] == fishpack.VERSION and not rows["solstone-pack.zip"]["nested"]
-    assert rows["solstone-pack (1).zip"]["version"] == 2 and rows["solstone-pack (1).zip"]["nested"]
-    assert rows["other"]["version"] is None
-
-
-def test_reading_a_barrel_slot():
-    from app import fishing
-    got = ('0, 319, 0 has the following block data: [{Slot: 0b, components: {"minecraft:custom_data": {solfish: {s: "bluegill", n: "Bluegill", '
-           'q: 0, ql: "Poor", w: 3, lb: "0.27", p: 2}}, "minecraft:item_name": {color: "gray", italic: 0b, text: "Poor Bluegill"}}, count: 1, id: "minecraft:cod"}]')
-    r = fishing._read_item(got)
-    assert r["item"] == "minecraft:cod" and r["named"] == "Poor Bluegill" and r["pack_fish"]["name"] == "Bluegill"
-    plain = fishing._read_item('0, 319, 0 has the following block data: [{Slot: 0b, count: 1, id: "minecraft:cod"}]')
-    assert plain["item"] == "minecraft:cod" and plain["pack_fish"] is None and plain["named"] is None
-    assert fishing._read_item("0, 319, 0 has the following block data: []")["item"] is None
-
-
-def test_new_loot_format_detected():
-    """26.3 renamed loot table fields; the pack itself has no fishing loot tables any more, but still knows."""
-    from app import fishpack
-    assert fishpack.new_loot_format("26.3") and fishpack.new_loot_format("26.4") and not fishpack.new_loot_format("26.1")
-    assert not fishpack.new_loot_format("1.21.11") and fishpack.new_loot_format(None, 5023) and not fishpack.new_loot_format(None, 4440)
-
-
-def test_catch_position_read_back():
-    from app import fishpack
-    reply = ('Storage solstone:fish has the following contents: [{s: "trout", n: "Rainbow Trout", q: 3, ql: "Trophy", w: 47, lb: "4.7", p: 42, '
-             'u: [I; 1, 2, 3, 4], i: 9, t: 100L, pos: [12.5d, 62.1d, -40.25d]}]')
-    assert fishpack.parse_catches(reply)[0]["pos"] == [12.5, 62.1, -40.25]
-    assert "e.pos set from entity @s Pos" in fishpack.FUNCTIONS["record"]
+    assert len(d["guide"]) == 4 and "status" not in d                    # (no data pack any more: nothing to report on)
+    assert client.get("/api/fishing/solstone-pack.zip").status_code in (404, 405)
 
 
 def test_journal_and_backfill_from_old_feed():
@@ -168,45 +75,30 @@ def test_journal_and_backfill_from_old_feed():
     assert len(fishing.journal(sid)["recent"]) == 3                     # not filled twice
 
 
-def test_pack_started_by_solstone_when_the_load_list_didnt_run(monkeypatch):
-    """Another pack's broken entry in #minecraft:load can stop the game running ours: Solstone starts it itself."""
-    import asyncio
+def test_fishing_left_alone_without_tide(pond):
+    """Without the Tide mod fishing stays plain vanilla: no journal, no Fishing tab (and no data pack to track it)."""
+    fishing, _challenges, srv = pond
+    assert fishing.journal_on(srv) is False and fishing.available(srv) is None
 
-    from app import fishing
-    started = {"on": False}
+
+def test_the_old_data_pack_is_switched_off_and_removed(tmp_path):
+    """Solstone's own pack was taken out in 1.16: a copy still in a world is disabled in the game and its file removed,
+    once; a world without one is left alone."""
+    from types import SimpleNamespace
+
+    from app import fishing, fishpack
     said = []
 
-    class Srv:
-        id = "pk-srv"
-
-        def rcon_conf(self):
-            return {"port": 1}
-
-    async def rcon(_srv, cmd):
+    async def rcon(cmd):
         said.append(cmd)
-        if cmd.startswith("function solfish:load"):
-            started["on"] = True
-            return "Running function solfish:load"
-        if cmd.startswith("data get storage solstone:fish pack"):
-            return "Storage solstone:fish has the following contents: {version: 13}" if started["on"] else "Found no elements matching pack"
         return ""
-    monkeypatch.setattr(fishing, "_rcon", rcon)
-    fishing._state.pop("pk-srv", None)
-    st = asyncio.run(fishing.check(Srv(), force=True))
-    assert st["version"] == 13 and st["started_by_solstone"] and "function solgames:load" in said
-    said.clear()
-    asyncio.run(fishing.check(Srv(), force=True))
-    assert not any(c.startswith("function") for c in said)                   # running: nothing to start
-
-
-def test_fishing_left_alone_without_tide(pond):
-    """Pack 14 on: the pack doesn't track fishing, and Solstone doesn't read catches from it; fishing stays vanilla."""
-    from app import fishpack
-    fishing, _challenges, srv = pond
-    files = fishpack.pack_files(fishing=False)
-    assert not any("solfish/advancement" in f or "solfish/tags/item" in f for f in files)
-    srv.catches = [("minecraft:cod", None, 1, "", 50, 6)]
-    said = list(srv.said)
-    asyncio.run(fishing.poll([srv]))
-    assert srv.said == said
-    assert fishing.journal_on(srv) is False and fishing.available(srv) is None
+    (tmp_path / "datapacks").mkdir()
+    pack = tmp_path / "datapacks" / fishpack.PACK_FILE
+    pack.write_bytes(b"PK")
+    other = tmp_path / "datapacks" / "someone-elses.zip"
+    other.write_bytes(b"PK")
+    srv = SimpleNamespace(id="retire-test", display_name="T", world_dir=tmp_path, rcon=rcon, rcon_conf=lambda: True)
+    fishing._retired.discard(srv.id)
+    assert asyncio.run(fishing.retire_pack(srv)) is True
+    assert said == ['datapack disable "file/solstone-pack.zip"'] and not pack.exists() and other.exists()
+    assert asyncio.run(fishing.retire_pack(srv)) is False and len(said) == 1          # once

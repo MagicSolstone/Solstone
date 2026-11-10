@@ -200,15 +200,6 @@ def test_plain_fishing_contest_still_uses_the_game_stat_with_tide(lake):
     assert "fishinglevel fair Tyler true" in srv.cmds                                    # fair play applies to every fishing contest
 
 
-def test_pack_without_fishing_for_tide_servers():
-    from app import fishpack
-    full, games = fishpack.pack_files(True), fishpack.pack_files(True, fishing=False)
-    assert "data/solfish/advancement/hooked.json" in full and not any("gameplay/fishing" in p for p in full)   # fishing stays vanilla
-    assert not any("loot_table" in p or p.endswith("hooked.json") or p.endswith("scan.mcfunction") for p in games)
-    assert "data/solfish/function/load.mcfunction" in games                          # still says which version is in
-    assert "data/solgames/advancement/hit_15.json" in games and "archery" in games["pack.mcmeta"]
-
-
 def test_fishing_tab_only_with_tide(client, sid, tmp_path):
     from app import fishing
     s = client.get(f"/api/servers/{sid}").json()

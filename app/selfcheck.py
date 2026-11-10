@@ -14,7 +14,7 @@ import asyncio
 import re
 import time
 
-from . import fishpack, gather
+from . import gather
 from . import servers as S
 from .control import _ERROR_HINTS
 from .rcon import RconError
@@ -75,7 +75,6 @@ async def run(srv, near: list[tuple[float, float]], assets) -> dict:
     t0 = time.time()
     c = Run(srv)
     v = _ver(srv)
-    new_text = v >= (1, 21, 5) or v[0] >= 26
 
     # ------------------------------------------------------------ connection
     out = await _rc(srv, "list")
@@ -97,7 +96,7 @@ async def run(srv, near: list[tuple[float, float]], assets) -> dict:
         await c.cmd("On screen", "Scoreboards", [
             'scoreboard objectives add solcheck dummy "Check"', "scoreboard players set #check solcheck 5",
             'scoreboard objectives modify solcheck displayname "Solstone check"', "scoreboard players get #check solcheck"],
-            "contest sidebars, fishing points, spleef safety net", expect="has 5")
+            "contest sidebars, fishing points", expect="has 5")
         await _rc(srv, "scoreboard objectives remove solcheck")
         crit = ["minecraft.custom:minecraft.fish_caught", "minecraft.custom:minecraft.mob_kills", "minecraft.killed:minecraft.creeper",
                 "minecraft.used:minecraft.bow", "minecraft.used:minecraft.crossbow"]
@@ -106,11 +105,11 @@ async def run(srv, near: list[tuple[float, float]], assets) -> dict:
             r = await _rc(srv, f"scoreboard objectives add solcheck{i} {cr}")
             await _rc(srv, f"scoreboard objectives remove solcheck{i}")
             if _bad(r):
-                c.add("On screen", "Statistics the contests count", False, f"{cr}\n→ {r}", "fishing, monster and creeper contests, archery")
+                c.add("On screen", "Statistics the contests count", False, f"{cr}\n→ {r}", "fishing, monster and creeper contests")
                 ok = False
                 break
         if ok:
-            c.add("On screen", "Statistics the contests count", True, f"{len(crit)} statistics", "fishing, monster and creeper contests, archery")
+            c.add("On screen", "Statistics the contests count", True, f"{len(crit)} statistics", "fishing, monster and creeper contests")
         await c.cmd("On screen", "Boss bar countdown", [
             'bossbar add solstone:check "Check"', "bossbar set solstone:check max 100", "bossbar set solstone:check value 50",
             "bossbar set solstone:check color green", 'bossbar set solstone:check name "Check"', "bossbar get solstone:check value"],
@@ -121,7 +120,7 @@ async def run(srv, near: list[tuple[float, float]], assets) -> dict:
             f"title {NOBODY} times 0 20 5", f"title {NOBODY} title {comp}", f"title {NOBODY} subtitle {comp}",
             f"title {NOBODY} actionbar {comp}", f"tellraw {NOBODY} {comp}"], "every announcement")
         await c.cmd("On screen", "Sounds", [f"execute as {NOBODY} at @s run playsound minecraft:block.note_block.bell master @s ~ ~ ~ 1 1",
-                                            f"playsound minecraft:entity.player.levelup master {NOBODY} ~ ~ ~ 1 1"], "countdowns, big archery shots")
+                                            f"playsound minecraft:entity.player.levelup master {NOBODY} ~ ~ ~ 1 1"], "countdowns")
         await c.cmd("On screen", "Particles", [f"{ow} particle minecraft:end_rod {x} {y} {z} 1 1 1 0.01 5 force {NOBODY}",
                                                f"{ow} particle minecraft:flame {x} {y} {z} 1 0.1 1 0.01 5 force {NOBODY}",
                                                f"{ow} particle {_races_dust(srv)} {x} {y} {z} 1 1 1 0 5 force {NOBODY}",
@@ -156,7 +155,7 @@ async def run(srv, near: list[tuple[float, float]], assets) -> dict:
             c.add("In the world", "Holding players still", None, "needs Minecraft 1.21 or newer: racers are lined up but not held", "race starts")
         await _rc(srv, f"{ow} summon minecraft:marker {x} {y} {z} {{Tags:[\"{TAG}\",\"{TAG}_m\"]}}")
         await c.cmd("In the world", "Teleporting (and facing a spot)", [
-            f"{ow} tp @e[tag={TAG}_m,limit=1] {x + 0.5} {y} {z + 0.5} facing {x} {y} {z + 5}"], "gathering everyone, race line-up, spleef, hide and seek")
+            f"{ow} tp @e[tag={TAG}_m,limit=1] {x + 0.5} {y} {z + 0.5} facing {x} {y} {z + 5}"], "gathering everyone, race line-up, hide and seek")
         hm = []
         for heightmap in ("motion_blocking_no_leaves", "ocean_floor", "motion_blocking"):
             r = await _rc(srv, f"execute in minecraft:overworld positioned {sp['x']} 320 {sp['z']} positioned over {heightmap} run summon minecraft:marker ~ ~ ~ {{Tags:[\"{TAG}\",\"{TAG}_h\"]}}")
@@ -164,36 +163,33 @@ async def run(srv, near: list[tuple[float, float]], assets) -> dict:
             await _rc(srv, f"kill @e[tag={TAG}_h]")
             hm.append((heightmap, r, got))
         bad = next(((h, r) for h, r, g in hm if _bad(r) or "[" not in g), None)
-        c.add("In the world", "Finding the ground", bad is None, f"{bad[0]} → {bad[1]}" if bad else "3 height maps", "treasure chests, hot zones, spleef height, gathering")
+        c.add("In the world", "Finding the ground", bad is None, f"{bad[0]} → {bad[1]}" if bad else "3 height maps", "treasure chests, hot zones, gathering")
         await c.cmd("In the world", "Building and removing blocks", [
             f"{ow} fill {x} {y} {z} {x + 1} {y} {z} minecraft:snow_block replace air",
             f"{ow} fill {x} {y} {z} {x + 1} {y} {z} minecraft:air replace minecraft:snow_block",
-            f"{ow} setblock {x} {y} {z} minecraft:barrier", f"{ow} setblock {x} {y} {z} minecraft:air"], "spleef arena, archery target")
+            f"{ow} setblock {x} {y} {z} minecraft:barrier", f"{ow} setblock {x} {y} {z} minecraft:air"], "race markers, the vault")
         await c.cmd("In the world", "Treasure chest (with items, under water)", [
             f'{ow} setblock {x} {y} {z} minecraft:chest[waterlogged=true]{{Items:[{{Slot:0b,id:"minecraft:diamond",count:3}}]}}',
             f"{ow} data get block {x} {y} {z} Items"], "treasure hunt", expect="diamond")
         await _rc(srv, f"{ow} setblock {x} {y} {z} minecraft:air")
         await c.cmd("In the world", "Checking blocks", [f"execute in minecraft:overworld if block {x} {y} {z} minecraft:air"],
-                    "treasure placement, water checks, archery target", expect="passed")
+                    "treasure placement, water checks", expect="passed")
 
         # -------------------------------------------------------- items, players
-        name = '"Spleef Shovel"' if new_text else "'\"Spleef Shovel\"'"
         await c.cmd("Items and players", "Giving prizes and special items", [
             f"give {NOBODY} minecraft:diamond 1",
-            f"give {NOBODY} minecraft:diamond_shovel[minecraft:custom_data={{solspleef:1b}},minecraft:unbreakable={{}},minecraft:item_name={name}]",
             f"give {NOBODY} {_rod(srv)}",
             f'give {NOBODY} minecraft:compass[minecraft:lodestone_tracker={{target:{{dimension:"minecraft:overworld",pos:[I;{x},{y},{z}]}},tracked:false}}] 1'],
-            "prizes, spleef shovels, contest rods, the treasure compass")
+            "prizes, contest rods, the treasure compass")
         await c.cmd("Items and players", "Taking special items back", [
-            f"clear {NOBODY} minecraft:diamond_shovel[minecraft:custom_data={{solspleef:1b}}]",
-            f"clear {NOBODY} minecraft:fishing_rod[minecraft:custom_data={{solrod:1b}}]", f"clear {NOBODY} minecraft:snowball"],
-            "spleef, contest rods")
+            f"clear {NOBODY} minecraft:fishing_rod[minecraft:custom_data={{solrod:1b}}]"],
+            "contest rods")
         await c.cmd("Items and players", "Effects and game modes", [
             f"effect give {NOBODY} minecraft:resistance 10 4 true", f"effect give {NOBODY} minecraft:blindness 5 0 true",
-            f"effect clear {NOBODY} minecraft:resistance", f"gamemode adventure {NOBODY}"], "spleef, hide and seek")
+            f"effect clear {NOBODY} minecraft:resistance", f"gamemode adventure {NOBODY}"], "races, hide and seek")
         await c.cmd("Items and players", "Teams", [
             "team add solcheck", "team modify solcheck color red", "team modify solcheck nametagVisibility never",
-            "team modify solcheck friendlyFire false"], "hide and seek, team spleef")
+            "team modify solcheck friendlyFire false"], "hide and seek")
         await _rc(srv, "team remove solcheck")
         await c.cmd("Items and players", "Reading a player's position", [f"data get entity @e[tag={TAG}_m,limit=1] Pos"],
                     "races, games, gathering", expect="[")
@@ -201,26 +197,6 @@ async def run(srv, near: list[tuple[float, float]], assets) -> dict:
         await _rc(srv, f"kill @e[tag={TAG}]")
         await _rc(srv, f"{ow} setblock {x} {y} {z} minecraft:air")
         await _rc(srv, f"{ow} forceload remove {x} {z}")
-
-    # ------------------------------------------------------------ the data pack
-    fish_v = re.search(r"version:\s*(\d+)", await _rc(srv, "data get storage solstone:fish pack"))
-    game_v = re.search(r"version:\s*(\d+)", await _rc(srv, "data get storage solstone:games pack"))
-    if not fish_v and not game_v:
-        c.add("Data pack", "Solstone data pack loaded", None, "not in this world (fishing, archery and spleef need it)", "fishing, archery, spleef")
-    else:
-        pv = int((fish_v or game_v).group(1))
-        c.add("Data pack", "Solstone data pack loaded", pv >= fishpack.VERSION, f"version {pv} (newest is {fishpack.VERSION})",
-              "fishing, archery, spleef", "" if pv >= fishpack.VERSION else "Download the pack again from the Contests page, replace it, restart.")
-        from . import tide
-        if tide.installed(srv):                       # the Tide build of the pack has no fishing half
-            await c.cmd("Data pack", "Archery triggers", [f"advancement revoke {NOBODY} only solgames:hit_15"], "archery hits")
-        else:
-            await c.cmd("Data pack", "Fishing and archery triggers", [
-                f"advancement revoke {NOBODY} only solfish:hooked", f"advancement revoke {NOBODY} only solgames:hit_15"], "fish catches, archery hits")
-        if "found no elements" in (await _rc(srv, "data get storage solstone:games spleef")).lower():
-            await c.cmd("Data pack", "Spleef safety net", ["function solgames:spleef_back"], "spleef (cleans up if Solstone stops)")
-        else:
-            c.add("Data pack", "Spleef safety net", None, "a spleef game is on: not tested now", "spleef")
 
     # ------------------------------------------------------------ files Solstone reads
     try:

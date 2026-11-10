@@ -74,7 +74,7 @@ async function viewChallenges(sid) {
   const s = await serverFrame(sid, "challenges");
   const base = `/api/servers/${encodeURIComponent(sid)}/challenges`;
   let [d, fish] = await Promise.all([api(base), api(`/api/servers/${encodeURIComponent(sid)}/fishing`).catch(() => null)]);
-  const fishOn = () => !!fish?.status?.version || !!fish?.tide;        // the fishing pack, or the Tide mod
+  const fishOn = () => !!fish?.tide;                   // fishing contests: with the Tide fishing mod
   const draft = { kind: "fish", name: "", when: "now", at: "", minutes: 10, prize: null, second: null, say: true, lure: 0, fair: true, hot: false, hot_bonus: 2, hot_on: 60, hot_off: 30, hot_far: 40, g: { on: false, spot: null, r: 4 }, repeat: "", optin: true, editing: null, rounds: 1, rgap: 2 };
   // adding a contest to an event (or changing one in it): the same form, without its own time
   const adding = egAdd?.type === "contest" && egAdd.sid === sid ? egAdd : null;
@@ -133,8 +133,8 @@ async function viewChallenges(sid) {
       <div class="section-head"><h3>${adding ? (adding.iid ? "Change the contest" : "The contest") : draft.editing ? `Change ${esc(editingOf()?.name || "the contest")}` : "New challenge"}</h3>${draft.editing && !adding ? `<button class="btn sm" type="button" data-stop-edit>Stop changing it</button>` : ""}</div>
       <div class="ch-kinds" role="radiogroup" aria-label="What counts">${d.kinds.filter((k) => !k.retired).map((k) => {
         const off = k.pack && !fishOn();
-        const what = k.key === "fish_points" ? "most points (needs the fishing pack or Tide)" : k.key === "fish_heaviest" ? "heaviest fish (needs the fishing pack or Tide)" : `most ${k.unit}`;
-        return `<label class="ch-kind ${draft.kind === k.key ? "on" : ""} ${off ? "off" : ""}" ${off ? 'title="Add the Solstone Fishing pack to the world first (below)"' : ""}><input type="radio" name="kind" value="${k.key}" ${draft.kind === k.key ? "checked" : ""} ${off ? "disabled" : ""}><span>${k.emoji}</span><b>${esc(k.label)}</b><small>${esc(off ? what : what.replace(" (needs the fishing pack or Tide)", ""))}</small></label>`;
+        const what = k.key === "fish_points" ? "most points (needs the Tide mod)" : k.key === "fish_heaviest" ? "heaviest fish (needs the Tide mod)" : `most ${k.unit}`;
+        return `<label class="ch-kind ${draft.kind === k.key ? "on" : ""} ${off ? "off" : ""}" ${off ? 'title="Fishing contests need the Tide fishing mod on this server"' : ""}><input type="radio" name="kind" value="${k.key}" ${draft.kind === k.key ? "checked" : ""} ${off ? "disabled" : ""}><span>${k.emoji}</span><b>${esc(k.label)}</b><small>${esc(off ? what : what.replace(" (needs the fishing pack or Tide)", ""))}</small></label>`;
       }).join("")}</div>
       <div class="ch-grid">
         <label>Name <input class="input" name="name" maxlength="40" placeholder="${esc(kind(draft.kind).label)}" value="${esc(draft.name)}"></label>
@@ -179,64 +179,11 @@ async function viewChallenges(sid) {
       ${soon.length ? `<section class="section"><div class="section-head"><h2>Coming up</h2></div><div class="ch-list">${soon.map(card).join("")}</div></section>` : ""}
       ${d.gifts.length ? `<section class="section"><div class="section-head"><h2>Prizes waiting</h2><span class="muted">Given the next time they join</span></div><div class="panel">${d.gifts.map((g) => `<div class="ch-gift">${faceHtml({ name: g.player }, 22)}<b>${esc(g.player)}</b> ${itemIcon({ id: g.item })} ${g.count} × ${esc(itemName({ id: g.item }))} <span class="muted small">for: ${esc(g.why)}</span></div>`).join("")}</div></section>` : ""}
       ${past.length ? `<section class="section"><div class="section-head"><h2>Finished</h2></div><div class="ch-list">${past.map(card).join("")}</div></section>` : ""}
-      ${fishHtml()}`);
+`);
     wireHeader(s);
     wire();
-    wireFish();
   };
   const reload = async () => { d = await api(base); render(); };
-  // --- the fishing pack: is it in the world, how to add it, and the guide to what's out there
-  const fishHtml = () => {
-    if (!fish) return "";
-    const st = fish.status, on = !!st.version, old = on && st.version < st.current;
-    const steps = st.writable
-      ? `<button class="btn primary" type="button" data-fish="install">Install it in the world</button>`
-      : `<ol class="fish-steps"><li><a class="btn sm" href="/api/fishing/${esc(st.file)}?server=${encodeURIComponent(sid)}" download>⬇ Download ${esc(st.file)}</a></li>
-          <li>Put the file (still zipped) in this world's <code>datapacks</code> folder: <code>${esc(st.folder.replace(/^\/servers\//, "…/crafty-4/servers/"))}</code></li>
-          <li><button class="btn sm primary" type="button" data-fish="reload">Load it</button> <span class="muted small">(runs /reload in the game and checks)</span></li></ol>`;
-    const download = `<a class="link-btn" href="/api/fishing/${esc(st.file)}?server=${encodeURIComponent(sid)}" download>Download it again</a>`;
-    // The pack is just for archery and spleef: fishing stays vanilla (or the Tide mod's own, with Tide)
-    return `<section class="section" id="fish-sec"><div class="section-head"><h2>🎯 Solstone data pack</h2><span class="muted">${on ? `In the world${old ? " (an update is ready)" : " ✓"}` : "Not in this world yet"}</span></div>
-      <div class="panel fish-panel">
-        <p>The archery and spleef games need this pack in the world: it notes where each arrow was shot from and how close it hit, and builds the spleef arena. ${fish.tide ? "Fishing on this server is tracked through the Tide mod: see the Fishing tab." : "Fishing stays plain vanilla: the pack leaves it alone."}</p>
-        ${old && st.version < 14 ? `<p class="muted small">This update takes the old fishing part out of the pack.</p>` : ""}
-        ${!fish.rcon ? `<p class="notice">Needs RCON turned on for this server.</p>` : on && !old ? `<p class="muted small">Loaded (version ${st.version}). <button class="link-btn" type="button" data-fish="reload">Reload</button> · ${download}</p>` : steps}
-        <div id="fish-diag"></div>
-        ${filesHtml(st)}
-        ${old && !st.writable ? `<p class="muted small">Replace the old file with the new download, then load it.</p>` : ""}
-        ${st.error ? `<p class="notice small">${esc(st.error)}</p>` : ""}
-      </div></section>`;
-  };
-  // What's really in the world's datapacks folder: a second (older) copy, or a zip with an extra
-  // folder inside it, is the usual reason the game runs an old version.
-  const filesHtml = (st) => {
-    const fl = st.files || [];
-    const ours = fl.filter((f) => f.version != null);
-    const warn = [];
-    if (ours.length > 1) warn.push(`There are <b>${ours.length} copies</b> of the Solstone pack in the folder. The game may use the old one: delete all but <code>${esc(st.file)}</code>, then restart the server.`);
-    if (ours.some((f) => f.nested)) warn.push("A copy has an extra folder inside the zip, so the game can't read it properly. Use the download as it is, without unzipping and re-zipping it.");
-    if (ours.length === 1 && ours[0].version === st.current && st.version && st.version !== st.current) warn.push(`The file is version ${st.current} but the game is still running version ${st.version}. Restart the server (a reload doesn't pick up a replaced file).`);
-    if (ours.some((f) => f.loot_format && st.loot_format && f.loot_format !== st.loot_format)) warn.push(`The pack in the folder is written for ${ours.find((f) => f.loot_format !== st.loot_format).loot_format === "26.3" ? "Minecraft 26.3 and newer" : "Minecraft before 26.3"}, but this server is ${esc(st.mc_version || "?")}. Download it again from here: the download is made for this server.`);
-    if (!ours.length && fl.length) warn.push(`No Solstone pack in this folder. Is it the right world? The game reads <code>${esc(st.folder)}</code>.`);
-    if (!fl.length) return warn.length ? `<p class="notice small">${warn.join("<br>")}</p>` : "";
-    const fmt = (f) => `<li><code>${esc(f.name)}</code>${f.folder ? " (folder)" : ""} ${f.version != null ? `<b>Solstone v${f.version}</b>` : `<span class="muted">other pack</span>`}${f.modified ? ` <span class="muted small">${esc(fmtAgo(f.modified))}</span>` : ""}${f.error ? ` <span class="notice small">${esc(f.error)}</span>` : ""}</li>`;
-    return `${warn.length ? `<p class="notice small">${warn.join("<br>")}</p>` : ""}<details class="fish-files" ${warn.length ? "open" : ""}><summary>In the world's datapacks folder (${fl.length})</summary><ul>${fl.map(fmt).join("")}</ul></details>`;
-  };
-  const diag = (html) => { const el = $("#fish-diag"); if (el) el.innerHTML = html; };
-  const wireFish = () => $$("[data-fish]").forEach((b) => b.addEventListener("click", async () => {
-    b.disabled = true;
-    try {
-      const r = await post(`/api/servers/${encodeURIComponent(sid)}/fishing/${b.dataset.fish}`, {});
-      showToast(r.version ? `The Solstone pack is loaded (version ${r.version})` : r.listed === false ? "The game didn't load it. Is the file in the world's datapacks folder?" : "Reloaded, but the pack didn't start. See below.", 5000);
-      fish = await api(`/api/servers/${encodeURIComponent(sid)}/fishing`); render();
-      const notes = [];
-      if (r.started_by_solstone) notes.push(`<div class="notice small">The pack is loaded, but the game's start-up list didn't run it (usually another mod or pack's entry in that list is broken). Solstone started it itself, and does again after every restart, so everything works.</div>`);
-      if (!r.version && r.load_reply) notes.push(`<div class="notice small"><b>What the game said when Solstone tried to start it:</b><pre class="mc-out">${esc(r.load_reply)}</pre></div>`);
-      if (r.problems?.length) notes.push(`<div class="notice small"><b>Problems the game reported with this pack:</b><pre class="mc-out">${esc(r.problems.join("\n"))}</pre></div>`);
-      if (r.packs) notes.push(`<details class="fish-files" ${r.version ? "" : "open"}><summary>What the game says it has</summary><pre class="mc-out">${esc(r.packs)}</pre></details>`);
-      diag(notes.join(""));
-    } catch (e) { showError(esc(e.message), 5000); b.disabled = false; }
-  }));
   const wire = () => {
     const form = $("#ch-form");
     const sync = () => { const f = new FormData(form); draft.kind = f.get("kind"); draft.name = f.get("name"); draft.minutes = +f.get("minutes"); draft.when = f.get("when"); draft.at = f.get("at"); draft.say = !!f.get("say"); draft.repeat = f.get("repeat") || ""; draft.lure = +(f.get("lure") || 0); draft.fair = !!f.get("fair"); draft.optin = !!f.get("optin");
@@ -356,7 +303,7 @@ function numIn(name, value, min, max, unit, opts = {}) {
 }
 const gatherBody = (g) => (g.on && g.spot ? { x: g.spot.x, y: g.spot.y, z: g.spot.z, r: g.r } : null);
 
-// How long each hot zone stays open, and the wait before the next (archery and the fishing tournament).
+// How long each hot zone stays open, and the wait before the next (the fishing tournament).
 function hotTimes(f) {
   return `<label>Open for ${numIn("hot_on", f.hot_on, 15, 300, "seconds")}</label>
     <label>Next one after ${numIn("hot_off", f.hot_off, 5, 600, "seconds")}</label>`;
@@ -953,12 +900,9 @@ async function viewRaces(sid) {
 const GAME_INFO = {
   hideseek: ["🙈", "Hide and seek", "One seeker, everyone else hides inside an area. Optional no-digging, Marco Polo in chat, and found hiders can join the seekers."],
   treasure: ["💰", "Treasure hunt", "A chest of prizes hidden somewhere in an area. Everyone's hotbar says how warm they are. First to take the treasure wins."],
-  archery: ["🎯", "Archery", "Longest bullseye, most points, or HORSE: make the setter's shot from the same spot or take a letter. Needs the Solstone data pack."],
-  spleef: ["❄️", "Spleef", "A snow arena high in the sky, a shovel each: dig the floor out from under everyone else. Last one standing wins the round. Teams, layers, a shrinking floor. Needs the Solstone data pack."],
-  koth: ["👑", "King of the Hill", "Hold the hill to score, with a kit (sword, bow, armour). Teams, or everyone for themselves. Everyone's own things are kept safe and given back exactly afterwards."],
-  arena: ["⚔️", "Mob arena", "Waves of monsters, harder each time, in an arena you set. Fight together or for the most defeated. Everyone's own things are kept safe and given back exactly afterwards."],
 };
-const FIGHTS = new Set(["koth", "arena"]);
+// games taken out in 1.16 (archery, spleef, King of the Hill, the mob arena): only for ones already played, in Finished
+const GAME_GONE = { archery: "🎯", spleef: "❄️", koth: "👑", arena: "⚔️" };
 
 async function viewGames(sid) {
   if (!isAdmin()) { location.replace(`#/s/${encodeURIComponent(sid)}`); return; }
@@ -972,23 +916,10 @@ async function viewGames(sid) {
   const online = () => state.servers.find((x) => x.id === sid)?.online || [];
   const runCard = (r) => {
     const live = ["countdown", "hiding", "running"].includes(r.state);
-    const [emoji] = GAME_INFO[r.game];
+    const emoji = GAME_INFO[r.game]?.[0] || GAME_GONE[r.game] || "🎲";
     let body = "";
     if (r.game === "hideseek" && Object.keys(r.players || {}).length) {
       body = `<ul class="gm-players">${Object.entries(r.players).map(([n, p]) => `<li>${faceHtml({ name: n }, 20)}<b>${esc(n)}</b><span class="gm-role ${p.role}">${{ seeker: "seeker", hider: "hiding", found: "found" }[p.role]}${p.found_by ? ` (by ${esc(p.found_by)})` : ""}</span></li>`).join("")}</ul>`;
-    } else if (r.game === "archery" && Object.keys(r.players || {}).length) {
-      const rows = Object.entries(r.players).sort((a, b) => (r.mode === "horse" ? a[1].letters.length - b[1].letters.length : r.mode === "points" ? b[1].points - a[1].points : b[1].best - a[1].best));
-      body = `<ol class="ch-scores">${rows.map(([n, p], i) => `<li><span class="rank">${i + 1}</span>${faceHtml({ name: n }, 22)}<b>${esc(n)}${r.turn === n && live ? " 🎯" : ""}</b><span class="val">${r.mode === "horse" ? esc(p.letters || "–") : r.mode === "points" ? `${p.points} pts` : p.best ? `${p.best} m` : "–"}</span></li>`).join("")}</ol>`;
-    } else if (r.game === "spleef" && Object.keys(r.players || {}).length) {
-      const rows = Object.entries(r.players).sort((a, b) => b[1].wins - a[1].wins || a[0].localeCompare(b[0]));
-      body = `${r.teams ? `<p class="muted small">Red ${r.team_wins?.red || 0} · Blue ${r.team_wins?.blue || 0}</p>` : ""}<ol class="ch-scores">${rows.map(([n, p], i) => `<li><span class="rank">${i + 1}</span>${faceHtml({ name: n }, 22)}<b>${esc(n)}${r.teams ? ` <span class="gm-team ${esc(p.team || "")}">${esc(p.team || "")}</span>` : ""}</b><span class="val">${live ? (p.alive ? "standing" : "out") : ""}${r.teams ? "" : ` · ${p.wins} won`}</span></li>`).join("")}</ol>`;
-    } else if (FIGHTS.has(r.game) && Object.keys(r.players || {}).length) {
-      const team = r.teams && Object.keys(r.teams).length;
-      const rows = Object.entries(r.players).sort((a, b) => (r.game === "arena" ? (b[1].kills || 0) - (a[1].kills || 0) : b[1].score - a[1].score));
-      body = `${team ? `<p class="muted small">${Object.entries(r.teams).map(([t, v]) => `<span class="gm-team ${esc(t)}">${esc(t)}</span> ${v}`).join(" · ")}</p>` : ""}
-        ${r.game === "arena" ? `<p class="muted small">Wave ${r.wave || 0} of ${(r.waves || []).length}</p>` : ""}
-        <ol class="ch-scores">${rows.map(([n, p], i) => `<li><span class="rank">${i + 1}</span>${faceHtml({ name: n }, 22)}<b>${esc(n)}${p.team ? ` <span class="gm-team ${esc(p.team)}">${esc(p.team)}</span>` : ""}</b>
-          <span class="val">${r.game === "arena" ? `${p.kills || 0} defeated` : team ? "" : `${p.score} pts`}${p.out ? " · left" : p.back_at ? " · down" : ""}</span></li>`).join("")}</ol>`;
     } else if (r.game === "treasure" && r.items) {
       body = `<div class="ch-prize">${r.items.map((it) => `${itemIcon({ id: it.item })}<span>${it.count} × ${esc(it.name || itemName({ id: it.item }))}</span>`).join(" ")}</div>`;
     }
@@ -1002,20 +933,17 @@ async function viewGames(sid) {
   };
   const render = () => {
     const live = d.runs.filter((r) => ["countdown", "hiding", "running"].includes(r.state)), soon = d.runs.filter((r) => r.state === "scheduled"), past = d.runs.filter((r) => !["countdown", "hiding", "running", "scheduled"].includes(r.state));
-    const packOk = (d.pack || 0) >= d.pack_needed, spleefOk = (d.pack || 0) >= (d.pack_needed_spleef || 10);
-    const needsPack = (k) => (k === "archery" && !packOk) || (k === "spleef" && !spleefOk);
     setView(serverHeader(s, "challenges") + playSwitch(sid, "games") + rconEchoNote(d) + `
       ${adding ? egBanner(adding, "a game") + `<p class="muted">${adding.iid ? "Change it below." : "Press <b>Set up</b> on the game to play."}</p>` : ""}
       ${d.rcon ? "" : `<p class="notice">Games need RCON turned on for this server (⚙ settings).</p>`}
       ${live.length ? `<section class="section"><div class="section-head"><h2>Playing now</h2></div><div class="ch-list">${live.map(runCard).join("")}</div></section>` : ""}
-      ${(d.in_vault || []).length && !live.some((r) => FIGHTS.has(r.game)) ? `<section class="section"><div class="panel gm-vault"><b>🔒 Things kept safe</b>
+      ${(d.in_vault || []).length && !live.length ? `<section class="section"><div class="panel gm-vault"><b>🔒 Things kept safe</b>
         <span class="muted small">These players left during a game. Their own things are safe in the vault and come back automatically the next time they're on.</span>
         <div class="btn-row">${d.in_vault.map((n) => `<button type="button" class="btn sm" data-giveback="${esc(n)}">Give ${esc(n)}'s things back now</button><button type="button" class="btn sm danger" data-discard="${esc(n)}">Throw away ${esc(n)}'s</button>`).join("")}</div>
         <p class="muted small">Throw away only if they already have all their things (what's kept is then just spare copies, as after the duplicating bug fixed in 1.15.16). While anything's kept for someone, they sit out games that keep things safe.</p></div></section>` : ""}
       <section class="section"><div class="ch-list">${Object.entries(GAME_INFO).map(([k, [e, t, about]]) => `<div class="ch-card panel gm-pick">
         <div class="ch-head"><span class="ch-emoji">${e}</span><div><h3>${esc(t)}</h3></div></div><p class="muted">${esc(about)}</p>
-        ${needsPack(k) ? `<p class="notice small">Add the Solstone data pack to the world first (on the <a href="#/s/${encodeURIComponent(sid)}/challenges">Contests</a> page${d.pack ? ": it needs the newer version" : ""}).</p>` : ""}
-        <div class="btn-row"><button class="btn primary" type="button" data-setup="${k}" ${!d.rcon || needsPack(k) ? "disabled" : ""}>Set up</button></div></div>`).join("")}</div></section>
+        <div class="btn-row"><button class="btn primary" type="button" data-setup="${k}" ${!d.rcon ? "disabled" : ""}>Set up</button></div></div>`).join("")}</div></section>
       ${soon.length ? `<section class="section"><div class="section-head"><h2>Coming up</h2></div><div class="ch-list">${soon.map(runCard).join("")}</div></section>` : ""}
       ${past.length ? `<section class="section"><div class="section-head"><h2>Finished</h2></div><div class="ch-list">${past.map(runCard).join("")}</div></section>` : ""}`);
     wireHeader(s);
@@ -1034,7 +962,7 @@ async function viewGames(sid) {
     $$("[data-gid]").forEach((el) => el.querySelector("[data-stop]")?.addEventListener("click", async () => {
       const r = d.runs.find((x) => x.id === el.dataset.gid);
       const active = ["scheduled", "countdown", "hiding", "running"].includes(r.state);
-      if (active && !(await confirmBox(`Stop ${r.name}?`, "Everything is put back (game modes, the chest or target) and nobody gets a prize.", "Stop it"))) return;
+      if (active && !(await confirmBox(`Stop ${r.name}?`, "Everything is put back (game modes, the chest) and nobody gets a prize.", "Stop it"))) return;
       await api(`${base}/${encodeURIComponent(r.id)}`, { method: "DELETE" }).catch((e) => showError(esc(e.message), 4000)); await reload();
     }));
     tickLeft();
@@ -1044,81 +972,25 @@ async function viewGames(sid) {
 
   // --- setting a game up
   const openSetup = (game) => {
-    const f = { game, when: "now", at: "", center: null, radius: game === "treasure" ? 150 : 40, spot: null, target: null, place_target: false,
-      hide_secs: 60, minutes: game === "treasure" ? 15 : game === "archery" ? 10 : 6, seeker: "", no_dig: true, marco: true, infect: true,
-      mode: "bullseye", word: "HORSE", give_bow: true, hint_after: 5, items: [], prize: null, hot: false, hot_bonus: 2, hot_far: 40, hot_on: 45, hot_off: 20,
-      underwater: false, compass: true, edge: true, g: { on: false, spot: null, r: 4 }, layers: 1, best_of: 3, teams: false, snowballs: false, shrink: true, shrink_after: 60,
-      seconds: 120, rounds: 1, peaceful: true, optin: true,
-      // King of the Hill and the mob arena
-      spawns: [], mob_spots: [], pick: "center", team_count: 2, respawn_secs: 5, level: "normal", coop: true, waves: [{ zombie: 3 }, { zombie: 4, skeleton: 2 }],
-      kit: { sword: "iron", armour: "iron", bow: true, arrows: 16, shield: false, food: true } };
+    const f = { game, when: "now", at: "", center: null, radius: game === "treasure" ? 150 : 40, spot: null,
+      hide_secs: 60, minutes: game === "treasure" ? 15 : 6, seeker: "", no_dig: true, marco: true, infect: true,
+      hint_after: 5, items: [], prize: null, underwater: false, compass: true, edge: true, g: { on: false, spot: null, r: 4 },
+      rounds: 1, peaceful: true, optin: true };
     if (adding?.body?.game === game) {                   // changing an event's game: its own settings
       const b = adding.body;
       Object.assign(f, b, { prize: b.prizes?.[0] || null, items: b.items || [], g: b.gather ? { on: true, spot: b.gather, r: b.gather.r || 4 } : { on: false, spot: null, r: 4 } });
     }
-    if (game === "spleef") f.radius = 10;
-    if (game === "koth") { f.radius = 5; f.minutes = 8; }
-    if (game === "arena") f.radius = 15;
     const at = (() => { const t = new Date(Date.now() + 15 * 60e3); t.setSeconds(0, 0); return new Date(t.getTime() - t.getTimezoneOffset() * 60e3).toISOString().slice(0, 16); })();
     f.at = at;
     let map = null;
     const pickBtn = (p, empty) => (p ? `${itemIcon({ id: p.item })}<span>${p.count} × ${esc(p.name)}</span>` : `<span class="muted">${empty}</span>`);
-    const spotList = (list, key, label) => `<div class="gm-spots"><span class="lbl">${label}</span>${list.length ? list.map((p, i) => `<span class="chip">${i + 1}: ${Math.round(p.x)}, ${Math.round(p.z)} <button type="button" class="chip-x" data-rmspot="${key}:${i}" aria-label="Remove">×</button></span>`).join("") : '<span class="muted small">None yet</span>'}</div>`;
-    const fightWhere = () => `<div class="gm-where"><span class="lbl">Where</span>
-        <div class="seg gm-pick-what" role="group" aria-label="Clicking the map sets">${[["center", game === "koth" ? "👑 The hill" : "⚔️ The arena"], ["spawns", game === "koth" ? (f.team_count ? "🚩 Team spawns" : "🚩 Spawn spots") : "🚩 Player spawn"], ...(game === "arena" ? [["mob_spots", "💀 Monster spots"]] : [])]
-          .filter(([k]) => !(game === "arena" && k === "spawns")).map(([k, l]) => `<button type="button" data-pickwhat="${k}" aria-pressed="${f.pick === k}">${l}</button>`).join("")}</div>
-        <p class="muted small">Click the map to set ${f.pick === "center" ? (game === "koth" ? "the hill" : "the middle of the arena") : f.pick === "spawns" ? `a spawn spot${f.team_count ? " (one per team, in team order: red, blue, green, yellow)" : " (players come in at one at random)"}` : "a spot monsters come out of (each picks one at random)"}. Up to 8 spots.</p>
-        <div class="btn-row"><select class="input sm" id="gm-player">${online().map((n) => `<option>${esc(n)}</option>`).join("") || "<option value=''>Nobody online</option>"}</select>
-          <button class="btn sm" type="button" id="gm-here">Use where they're standing</button></div>
-        <label>Size: <input type="range" name="radius" min="${game === "koth" ? 2 : 6}" max="${game === "koth" ? 30 : 60}" step="1" value="${f.radius}"> <b id="gm-r">${f.radius}</b> blocks from the middle</label>
-        <p class="gm-chosen" id="gm-chosen">${f.center ? `${game === "koth" ? "Hill" : "Arena"} at ${Math.round(f.center.x)}, ${Math.round(f.center.z)}` : `No ${game === "koth" ? "hill" : "arena"} yet`}</p>
-        ${game === "koth" ? spotList(f.spawns, "spawns", "Spawn spots") : spotList(f.mob_spots, "mob_spots", "Monster spots")}
-        ${game === "arena" ? '<p class="muted small">Players come in at the middle of the arena, and are kept inside it. So are the monsters.</p>' : ""}</div>`;
-    const where = () => (FIGHTS.has(game) ? fightWhere() : game === "archery"
-      ? `<div class="gm-where"><span class="lbl">Target</span>
-          <div class="btn-row"><select class="input sm" id="gm-player">${online().map((n) => `<option>${esc(n)}</option>`).join("") || "<option value=''>Nobody online</option>"}</select>
-            <button class="btn sm" type="button" id="gm-under">Use the target block they're standing on</button></div>
-          <p class="muted small">Or click the map to have Solstone put a target there (removed afterwards).</p>
-          <p class="gm-chosen" id="gm-chosen">${f.target ? `${f.place_target ? "New target at" : "🎯 Target block at"} ${Math.round(f.target.x)}, ${Math.round(f.target.y)}, ${Math.round(f.target.z)}` : "No target yet"}</p></div>`
-      : `<div class="gm-where"><span class="lbl">Play area</span>
+    const where = () => `<div class="gm-where"><span class="lbl">Play area</span>
           <div class="btn-row"><select class="input sm" id="gm-player">${online().map((n) => `<option>${esc(n)}</option>`).join("") || "<option value=''>Nobody online</option>"}</select>
             <button class="btn sm" type="button" id="gm-here">Centre it where they're standing</button></div>
           <p class="muted small">Or click the map${game === "treasure" ? ". Shift-click to choose the exact treasure spot (otherwise it's random)" : ""}.</p>
-          ${game === "spleef" ? `<p class="muted small">The arena is built high in the sky above this spot (well clear of anything there) and taken down afterwards.</p>` : ""}
-          <label>Size: <input type="range" name="radius" min="${game === "treasure" ? 30 : game === "spleef" ? 6 : 10}" max="${game === "treasure" ? 500 : game === "spleef" ? 20 : 150}" step="${game === "spleef" ? 1 : 5}" value="${f.radius}"> <b id="gm-r">${f.radius}${game === "spleef" ? ` (${f.radius * 2 + 1} × ${f.radius * 2 + 1})` : ""}</b> blocks from the middle</label>
-          <p class="gm-chosen" id="gm-chosen">${f.center ? `Middle at ${Math.round(f.center.x)}, ${Math.round(f.center.z)}${f.spot ? ` · treasure at ${Math.round(f.spot.x)}, ${Math.round(f.spot.z)}` : ""}` : "No area yet"}</p></div>`);
-    const kitHtml = () => `<fieldset class="gm-kit gm-wide"><legend>The kit <small class="muted">Everyone's own things are kept safe in a sealed vault first, and given back exactly afterwards (even if they leave mid-game)</small></legend>
-        <label>Sword <select class="input sm" name="kit_sword">${(d.kit_tiers?.sword || ["wooden", "stone", "iron", "diamond", "netherite"]).map((t) => `<option value="${t}" ${f.kit.sword === t ? "selected" : ""}>${humanize(t)}</option>`).join("")}</select></label>
-        <label>Armour <select class="input sm" name="kit_armour">${(d.kit_tiers?.armour || ["leather", "chainmail", "iron", "diamond", "netherite", "none"]).map((t) => `<option value="${t}" ${f.kit.armour === t ? "selected" : ""}>${t === "none" ? "None" : humanize(t)}</option>`).join("")}</select></label>
-        <label class="check"><input type="checkbox" name="kit_bow" ${f.kit.bow ? "checked" : ""}> Bow${f.kit.infinite ? "" : ` and ${numIn("kit_arrows", f.kit.arrows, 1, 256, "arrows", { label: "Arrows" })}`}</label>
-        <label class="check"><input type="checkbox" name="kit_infinite" ${f.kit.infinite ? "checked" : ""}> ♾️ Arrows never run out <span class="muted small">(an Infinity bow and one arrow, like the archery games)</span></label>
-        <label class="check"><input type="checkbox" name="kit_shield" ${f.kit.shield ? "checked" : ""}> Shield</label>
-        <label class="check"><input type="checkbox" name="kit_food" ${f.kit.food ? "checked" : ""}> Food</label></fieldset>`;
-    const mobName = (m) => (d.mobs || {})[m] || (d.specials || {})[m] || humanize(m);
-    const wavesHtml = () => `<div class="gm-waves gm-wide">${f.waves.map((w, i) => `<div class="gm-wave"><b>Wave ${i + 1}</b>
-        ${Object.entries(w).map(([m, n]) => `<span class="chip">${esc(mobName(m))} × <input class="input sm num-in" type="number" min="1" max="100" value="${n}" data-wave="${i}" data-mob="${esc(m)}" aria-label="How many"><button type="button" class="chip-x" data-rmmob="${i}:${esc(m)}" aria-label="Remove">×</button></span>`).join("")}
-        <select class="input sm" data-addmob="${i}"><option value="">＋ Add a monster…</option><optgroup label="Monsters">${Object.entries(d.mobs || {}).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</optgroup>
-          ${Object.keys(d.specials || {}).length ? `<optgroup label="Specials: dressed up, babies, riders">${Object.entries(d.specials).map(([k, l]) => `<option value="${k}">✨ ${esc(l)}</option>`).join("")}</optgroup>` : ""}</select>
-        <button type="button" class="icon-btn" data-rmwave="${i}" aria-label="Remove wave ${i + 1}">✕</button></div>`).join("")}
-        ${f.waves.length < 20 ? '<button type="button" class="btn sm" data-addwave>＋ Add a wave</button>' : ""}</div>`;
-    // a difficulty's waves, one row each, easy to read; "Change these" starts your own waves from them
-    const presetHtml = (lvl) => `<ol class="gm-preset">${((d.presets || {})[lvl] || []).map((w, i) => `<li><b>Wave ${i + 1}</b>${Object.entries(w).map(([m, n]) => `<span class="chip">${n} × ${esc(mobName(m))}</span>`).join("")}</li>`).join("")}</ol>
-      <button type="button" class="btn sm" data-edit-preset>✏️ Change these</button>`;
-    const fightOptions = () => (game === "koth" ? `
-        <label>Teams <select class="input" name="team_count">${[[0, "Everyone for themselves"], [2, "2 teams"], [3, "3 teams"], [4, "4 teams"]].map(([v, l]) => `<option value="${v}" ${f.team_count === v ? "selected" : ""}>${l}</option>`).join("")}</select>
-          <small class="muted">${f.team_count ? "Picked at random. The team with the most players on the hill scores a point a second; a tie scores nothing." : "Whoever's on the hill alone scores a point a second."}</small></label>
-        <label>Time ${numIn("minutes", f.minutes, 1, 60, "minutes")}</label>`
-      : `<label>How <select class="input" name="coop"><option value="1" ${f.coop ? "selected" : ""}>Together: survive the waves as a team</option><option value="0" ${f.coop ? "" : "selected"}>Everyone for themselves: most monsters defeated wins</option></select>
-          <small class="muted">${f.coop ? "Someone who falls watches until the wave is cleared, then comes back. Everyone down: it's over." : "Falling means a few seconds watching, then back in."}</small></label>
-        <label>Waves <select class="input" name="level">${[["easy", "Easy (5 waves)"], ["normal", "Normal (7 waves)"], ["hard", "Hard (10 waves)"], ["custom", "My own waves"]].map(([v, l]) => `<option value="${v}" ${f.level === v ? "selected" : ""}>${l}</option>`).join("")}</select>
-</label>
-        ${f.level !== "custom" ? `<div class="gm-wide">${presetHtml(f.level)}</div>` : ""}
-        ${f.level === "custom" ? wavesHtml() : ""}
-        <label class="check gm-wide"><input type="checkbox" name="night" ${f.night !== false ? "checked" : ""}> 🌙 Make it night while it runs <span class="muted small">(spiders only fight in the dark; the time of day goes back afterwards, for the whole server)</span></label>`) + `
-        ${f.coop && game === "arena" ? "" : `<label>Back in after ${numIn("respawn_secs", f.respawn_secs, 1, 60, "seconds")}</label>`}
-        <label class="check"><input type="checkbox" name="no_dig" ${f.no_dig ? "checked" : ""}> No digging or building (Adventure mode during the game)</label>
-        ${kitHtml()}`;
-    const options = () => FIGHTS.has(game) ? fightOptions() : game === "hideseek" ? `
+          <label>Size: <input type="range" name="radius" min="${game === "treasure" ? 30 : 10}" max="${game === "treasure" ? 500 : 150}" step="5" value="${f.radius}"> <b id="gm-r">${f.radius}</b> blocks from the middle</label>
+          <p class="gm-chosen" id="gm-chosen">${f.center ? `Middle at ${Math.round(f.center.x)}, ${Math.round(f.center.z)}${f.spot ? ` · treasure at ${Math.round(f.spot.x)}, ${Math.round(f.spot.z)}` : ""}` : "No area yet"}</p></div>`;
+    const options = () => (game === "hideseek" ? `
         <label>Seeker <select class="input" name="seeker"><option value="">Random</option>${online().map((n) => `<option ${f.seeker === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
         <label>Hiding time ${numIn("hide_secs", f.hide_secs, 15, 300, "seconds")}</label>
         <label>Seeking time ${numIn("minutes", f.minutes, 1, 30, "minutes")}</label>
@@ -1128,15 +1000,7 @@ async function viewGames(sid) {
         <label>Rounds <select class="input" name="rounds">${[[1, "One round"], [3, "Best of 3"], [5, "Best of 5"]].map(([v, l]) => `<option value="${v}" ${f.rounds === v ? "selected" : ""}>${l}</option>`).join("")}</select>
           <small class="muted">Several rounds: a new seeker each round (everyone gets a turn before anyone seeks twice). A find scores 1 for the seeker, staying hidden scores 2; most points wins.</small></label>
         <label class="check"><input type="checkbox" name="peaceful" ${f.peaceful ? "checked" : ""}> No monsters during the game (Peaceful, then back to the server's difficulty): good for playing at night</label>`
-      : game === "spleef" ? `
-        <label>Floors <select class="input" name="layers">${[1, 2, 3].map((v) => `<option value="${v}" ${f.layers === v ? "selected" : ""}>${v === 1 ? "1 floor" : `${v} floors, ${5} blocks apart`}</option>`).join("")}</select></label>
-        <label>Rounds <select class="input" name="best_of">${[1, 3, 5].map((v) => `<option value="${v}" ${f.best_of === v ? "selected" : ""}>${v === 1 ? "One round" : `Best of ${v}`}</option>`).join("")}</select></label>
-        <label class="check"><input type="checkbox" name="teams" ${f.teams ? "checked" : ""}> Teams: red against blue, picked at random</label>
-        <label class="check"><input type="checkbox" name="snowballs" ${f.snowballs ? "checked" : ""}> Snowballs: broken snow drops snowballs to throw (they don't knock players back much; off keeps inventories clean)</label>
-        <label class="check"><input type="checkbox" name="shrink" ${f.shrink ? "checked" : ""}> Shrinking floor: the edges start falling away after
-          ${numIn("shrink_after", f.shrink_after, 20, 300, "seconds")}</label>
-        <p class="muted small gm-wide">Everyone online plays. Falling out lands you in a pool of water; nobody takes damage. When it's over everyone goes back to exactly where they were, and anyone offline is sent back when they next join.</p>`
-      : game === "treasure" ? `
+      : `
         <label>Time limit ${numIn("minutes", f.minutes, 3, 60, "minutes")}</label>
         <label>Show the direction after ${numIn("hint_after", f.hint_after >= 60 ? "" : f.hint_after, 0, 59, "minutes", { placeholder: "never", optional: true })}
           <small class="muted">0: straight away · blank: never</small></label>
@@ -1145,25 +1009,14 @@ async function viewGames(sid) {
         <label class="check gm-wide"><input type="checkbox" name="edge" ${f.edge !== false ? "checked" : ""}> Show the area: sparkles along its edge and a column of them in the middle</label>
         <label class="check gm-wide"><input type="checkbox" name="underwater" ${f.underwater ? "checked" : ""}> It can be underwater, on the bottom of a lake or the sea (otherwise always on dry ground, never in a tree)</label>
         <div class="gm-items"><span class="lbl">In the chest</span>${f.items.map((it, i) => `<span class="chip">${itemIcon({ id: it.item })} ${it.count} × ${esc(it.name)} <button type="button" class="chip-x" data-rmitem="${i}" aria-label="Remove">×</button></span>`).join("")}
-          <button type="button" class="btn sm" id="gm-additem">＋ Add treasure</button></div>`
-      : `
-        <label>Game <select class="input" name="mode"><option value="bullseye" ${f.mode === "bullseye" ? "selected" : ""}>Longest bullseye</option><option value="points" ${f.mode === "points" ? "selected" : ""}>Most points (aim × distance from 15 blocks; repeat hits from one spot count half)</option><option value="horse" ${f.mode === "horse" ? "selected" : ""}>HORSE (match the shot or take a letter)</option></select></label>
-        ${f.mode === "points" ? `<label class="check gm-wide"><input type="checkbox" name="hot" ${f.hot ? "checked" : ""}> Hot zones: a fiery spot opens somewhere around the target for a while; hits shot from inside it score extra</label>
-          ${f.hot ? `<div class="gm-row"><label>Hot zone bonus <select class="input" name="hot_bonus">${[1.5, 2, 3].map((v) => `<option value="${v}" ${f.hot_bonus === v ? "selected" : ""}>×${v}</option>`).join("")}</select></label>
-          ${hotTimes(f)}
-          <label>Opens up to <select class="input" name="hot_far">${[25, 30, 40, 60].map((v) => `<option value="${v}" ${f.hot_far === v ? "selected" : ""}>${v} blocks away</option>`).join("")}</select></label></div>` : ""}` : ""}
-        ${f.mode === "points" ? `<p class="muted small gm-wide">Aim: an edge hit counts ×0.2, the middle rings about ×1, a dead-centre bullseye ×3. Distance: nothing under 15 blocks, ×1 at 15, ×2 at 25, ×4 at 35, ×14 at 65. Each further hit from within 3 blocks of an earlier one counts half, so moving around pays. Bullseyes from 30, 45 and 60+ blocks get Great, Amazing and Legendary in chat.</p>` : ""}
-        ${f.mode === "horse" ? `<label>Word <input class="input" name="word" maxlength="10" value="${esc(f.word)}"></label>` : ""}
-        ${f.mode === "horse" ? `<label>Time limit ${numIn("minutes", f.minutes, 2, 60, "minutes")}</label>`
-          : `<label>Time limit ${numIn("seconds", f.seconds, 30, 600, "seconds")}</label>`}
-        <label class="check"><input type="checkbox" name="give_bow" ${f.give_bow ? "checked" : ""}> Give everyone a Match Bow (Infinity, one arrow; both taken back at the end, nobody's own bows or arrows touched)</label>`;
+          <button type="button" class="btn sm" id="gm-additem">＋ Add treasure</button></div>`);
     const body = () => `<h2>${GAME_INFO[game][0]} ${esc(GAME_INFO[game][1])}</h2>
       <form id="gm-form" class="gm-form">
         <div class="gm-map" id="gm-map"></div>
         ${where()}
         <div class="gm-opts">${options()}</div>
-        ${game === "archery" || game === "treasure" ? gatherHtml(f.g, online()) : ""}
-        <p class="muted small gm-safe">🔒 Everyone's own things are kept safe in a sealed vault when it starts, and they play with just ${({ koth: "the kit", arena: "the kit", archery: "the Match Bow", spleef: "a shovel", treasure: "what they find (the treasure's the finder's prize at the end)", hideseek: "nothing: just themselves" })[game] || "the game's things"}. When it's over: a short countdown, then everyone's back where they were, in the game mode they were in, with exactly their own things. Anything picked up in the game stays behind; prizes arrive once they're home.</p>
+        ${game === "treasure" ? gatherHtml(f.g, online()) : ""}
+        <p class="muted small gm-safe">🔒 Everyone's own things are kept safe in a sealed vault when it starts, and they play with just ${game === "treasure" ? "what they find (the treasure's the finder's prize at the end)" : "nothing: just themselves"}. When it's over: a short countdown, then everyone's back where they were, in the game mode they were in, with exactly their own things. Anything picked up in the game stays behind; prizes arrive once they're home.</p>
         ${game !== "treasure" ? `<div class="gm-prize"><span class="lbl">Prize for the winner${game === "hideseek" ? "s" : ""}</span><button type="button" class="btn ch-pick" id="gm-prize">${pickBtn(f.prize, "Optional")}</button></div>` : ""}
         ${adding ? `<p class="muted small">Part of <b>${esc(adding.title)}</b>: it starts when its turn comes.</p>` : `<div class="ch-when"><span class="lbl">When</span>
           <label class="check"><input type="radio" name="when" value="now" ${f.when === "now" ? "checked" : ""}> Right now</label>
@@ -1173,50 +1026,33 @@ async function viewGames(sid) {
       </form>`;
     const sync = (m) => {
       const fm = $("#gm-form", m);
-      for (const k of ["seeker", "mode", "word"]) if (fm[k]) f[k] = fm[k].value;
-      for (const k of ["hide_secs", "minutes", "seconds", "rounds", "hint_after", "radius", "hot_bonus", "hot_far", "hot_on", "hot_off", "layers", "best_of", "shrink_after"]) if (fm[k]) f[k] = +fm[k].value;
+      if (fm.seeker) f.seeker = fm.seeker.value;
+      for (const k of ["hide_secs", "minutes", "rounds", "hint_after", "radius"]) if (fm[k]) f[k] = +fm[k].value;
       if (fm.hint_after && fm.hint_after.value === "") f.hint_after = 60;            // blank: never
-      for (const k of ["no_dig", "marco", "infect", "give_bow", "hot", "teams", "snowballs", "shrink", "underwater", "compass", "edge", "peaceful", "optin", "night"]) if (fm[k]) f[k] = fm[k].checked;
-      for (const k of ["team_count", "respawn_secs"]) if (fm[k]) f[k] = +fm[k].value;
-      if (fm.coop) f.coop = fm.coop.value === "1";
-      if (fm.level) f.level = fm.level.value;
-      if (fm.kit_sword) f.kit = { sword: fm.kit_sword.value, armour: fm.kit_armour.value, bow: fm.kit_bow.checked, arrows: fm.kit_arrows ? +fm.kit_arrows.value : f.kit.arrows, infinite: !!fm.kit_infinite?.checked, shield: fm.kit_shield.checked, food: fm.kit_food.checked };
-      fm.querySelectorAll("[data-wave]").forEach((i) => { f.waves[+i.dataset.wave][i.dataset.mob] = Math.max(1, Math.min(100, +i.value || 1)); });
+      for (const k of ["no_dig", "marco", "infect", "underwater", "compass", "edge", "peaceful", "optin"]) if (fm[k]) f[k] = fm[k].checked;
       if (!adding && fm.when && fm.at) { f.when = fm.when.value; f.at = fm.at.value; }   // an event's game has no When (it starts in turn)
     };
     const show = () => openModal(body(), (m) => {
       m.classList.add("gm-modal");
       map = worldMapCanvas($("#gm-map", m), sid, {
-        center: f.center || f.target || d.spawn || { x: 0, z: 0 }, scale: game === "treasure" ? 0.5 : game === "spleef" ? 3 : 1,
+        center: f.center || d.spawn || { x: 0, z: 0 }, scale: game === "treasure" ? 0.5 : 1,
         overlay: (ctx, toScreen, view) => {
           if (f.center) {
             const [x, y] = toScreen(f.center.x, f.center.z);
             ctx.strokeStyle = "#f2c14e"; ctx.lineWidth = 2; ctx.setLineDash([6, 5]); ctx.beginPath();
-            if (game === "spleef") ctx.rect(x - (f.radius + 0.5) * view.scale, y - (f.radius + 0.5) * view.scale, (f.radius * 2 + 1) * view.scale, (f.radius * 2 + 1) * view.scale);
-            else ctx.arc(x, y, f.radius * view.scale, 0, Math.PI * 2);
+            ctx.arc(x, y, f.radius * view.scale, 0, Math.PI * 2);
             ctx.stroke(); ctx.setLineDash([]);
             ctx.fillStyle = "#f2c14e"; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
           }
-          if (f.target && f.mode === "points" && f.hot) {         // where hot zones can open
-            const [x, y] = toScreen(f.target.x, f.target.z);
-            ctx.fillStyle = "rgba(255, 110, 40, .16)"; ctx.beginPath(); ctx.arc(x, y, f.hot_far * view.scale, 0, Math.PI * 2); ctx.arc(x, y, 18 * view.scale, 0, Math.PI * 2, true); ctx.fill();
-          }
-          const TEAM = ["#e0503f", "#4f8be0", "#4cbf5a", "#e6c12f"];
-          f.spawns.forEach((p, i) => { const [x, y] = toScreen(p.x, p.z); ctx.fillStyle = f.team_count && game === "koth" ? TEAM[i % 4] : "#9fd4ff"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#000"; ctx.font = "bold 10px system-ui"; ctx.textAlign = "center"; ctx.fillText(String(i + 1), x, y + 3.5); });
-          f.mob_spots.forEach((p) => { const [x, y] = toScreen(p.x, p.z); ctx.font = "16px system-ui"; ctx.textAlign = "center"; ctx.fillText("💀", x, y + 6); });
-          ctx.textAlign = "start";
-          for (const [p, c] of [[f.spot, "#ffd84a"], [f.target, "#e0503f"]]) {
-            if (!p) continue;
-            const [x, y] = toScreen(p.x, p.z);
-            ctx.fillStyle = c; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          if (f.spot) {                                            // the treasure's own spot (shift-click)
+            const [x, y] = toScreen(f.spot.x, f.spot.z);
+            ctx.fillStyle = "#ffd84a"; ctx.strokeStyle = "#000"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
           }
         },
         onClick: async (x, z) => {
           sync(m);
           const spot = await api(`/api/servers/${encodeURIComponent(sid)}/races/spot?x=${x}&z=${z}`).catch(() => ({ x, y: 64, z }));
-          if (FIGHTS.has(game) && f.pick !== "center") { const list = f[f.pick]; if (list.length < 8) list.push(spot); else showToast("8 spots at most", 2000); }
-          else if (game === "archery") { f.target = spot; f.place_target = true; }
-          else if (game === "treasure" && clickShift && f.center) f.spot = spot;
+          if (game === "treasure" && clickShift && f.center) f.spot = spot;
           else { f.center = spot; f.spot = null; }
           show();
         },
@@ -1224,47 +1060,24 @@ async function viewGames(sid) {
       let clickShift = false;
       $("#gm-map", m).addEventListener("pointerdown", (e) => { clickShift = e.shiftKey; }, true);
       const fm = $("#gm-form", m);
-      fm.radius?.addEventListener("input", () => { f.radius = +fm.radius.value; $("#gm-r", m).textContent = game === "spleef" ? `${f.radius} (${f.radius * 2 + 1} × ${f.radius * 2 + 1})` : f.radius; map.draw(); });
-      for (const k of ["hot", "hot_bonus", "hot_far", "hot_on", "hot_off", "kit_infinite"]) fm[k]?.addEventListener("change", () => { sync(m); show(); });
-      fm.mode?.addEventListener("change", () => { sync(m); if (f.mode === "horse" && f.minutes < 30) f.minutes = 30; show(); });
+      fm.radius?.addEventListener("input", () => { f.radius = +fm.radius.value; $("#gm-r", m).textContent = f.radius; map.draw(); });
       $("#gm-here", m)?.addEventListener("click", async () => {
         sync(m);
         try {
           const spot = await api(`/api/servers/${encodeURIComponent(sid)}/races/spot?player=${encodeURIComponent($("#gm-player", m).value)}`);
-          if (FIGHTS.has(game) && f.pick !== "center") { if (f[f.pick].length < 8) f[f.pick].push(spot); } else { f.center = spot; f.spot = null; }
+          f.center = spot; f.spot = null;
           show();
         } catch (e) { showError(esc(e.message), 4000); }
       });
-      m.querySelectorAll("[data-pickwhat]").forEach((b) => b.addEventListener("click", () => { sync(m); f.pick = b.dataset.pickwhat; show(); }));
-      m.querySelectorAll("[data-rmspot]").forEach((b) => b.addEventListener("click", () => { sync(m); const [k, i] = b.dataset.rmspot.split(":"); f[k].splice(+i, 1); show(); }));
-      for (const k of ["team_count", "coop", "level"]) fm[k]?.addEventListener("change", () => { sync(m); show(); });
-      m.querySelectorAll("[data-addmob]").forEach((sel) => sel.addEventListener("change", () => { if (!sel.value) return; sync(m); f.waves[+sel.dataset.addmob][sel.value] = (f.waves[+sel.dataset.addmob][sel.value] || 0) + 1; show(); }));
-      m.querySelectorAll("[data-rmmob]").forEach((b) => b.addEventListener("click", () => { sync(m); const [i, mob] = b.dataset.rmmob.split(":"); delete f.waves[+i][mob]; show(); }));
-      m.querySelectorAll("[data-rmwave]").forEach((b) => b.addEventListener("click", () => { sync(m); f.waves.splice(+b.dataset.rmwave, 1); show(); }));
-      m.querySelector("[data-edit-preset]")?.addEventListener("click", () => {
-        sync(m); f.waves = ((d.presets || {})[f.level] || []).map((w) => ({ ...w })); f.level = "custom"; show();
-      });
-      m.querySelector("[data-addwave]")?.addEventListener("click", () => { sync(m); f.waves.push({ ...(f.waves[f.waves.length - 1] || { zombie: 3 }) }); show(); });
-      $("#gm-under", m)?.addEventListener("click", async () => {
-        sync(m);
-        try {
-          const t = await api(`${base}/target?player=${encodeURIComponent($("#gm-player", m).value)}`);
-          if (!t.is_target) { showToast("That isn't a target block. Stand right on top of it and try again", 4000); return; }
-          f.target = t; f.place_target = false; show();
-        } catch (e) { showError(esc(e.message), 4000); }
-      });
       const pickItem = (title, then) => { sync(m); openGiveItem(sid, "", { title, pick: (item, count) => { then({ item: item.id, count, name: item.name }); show(); } }); };
-      wireGather(m, sid, f.g, () => { sync(m); show(); }, f.target || f.center || d.spawn);
+      wireGather(m, sid, f.g, () => { sync(m); show(); }, f.center || d.spawn);
       $("#gm-prize", m)?.addEventListener("click", () => pickItem("Prize for the winner", (p) => { f.prize = p; }));
       $("#gm-additem", m)?.addEventListener("click", () => pickItem("Treasure for the chest", (p) => { f.items.push(p); }));
       m.querySelectorAll("[data-rmitem]").forEach((b) => b.addEventListener("click", () => { sync(m); f.items.splice(+b.dataset.rmitem, 1); show(); }));
       fm.addEventListener("submit", async (e) => {
         e.preventDefault(); sync(m);
-        if (game === "archery" ? !f.target : !f.center) { showToast(game === "archery" ? "Choose the target first" : game === "koth" ? "Choose the hill first" : game === "arena" ? "Choose the arena first" : "Choose the play area first", 3000); return; }
+        if (!f.center) { showToast("Choose the play area first", 3000); return; }
         if (game === "treasure" && !f.items.length) { showToast("Put something in the treasure chest", 3000); return; }
-        if (game === "koth" && !f.spawns.length) { showToast("Set at least one spawn spot (Spawn spots, then click the map)", 3500); return; }
-        if (game === "arena" && !f.mob_spots.length) { showToast("Set at least one spot for the monsters (Monster spots, then click the map)", 3500); return; }
-        if (game === "arena" && f.level === "custom" && !f.waves.some((w) => Object.keys(w).length)) { showToast("Add a monster to a wave", 3000); return; }
         if (f.g.on && !f.g.spot) { showToast("Pick the spot to teleport everyone to (or untick teleporting)", 3000); return; }
         const start = f.when === "now" ? Date.now() / 1000 : new Date(f.at).getTime() / 1000;
         try {
@@ -1281,7 +1094,7 @@ async function viewGames(sid) {
   };
 
   render();
-  if (adding?.body?.game) openSetup(adding.body.game);        // changing an event's game: straight to its settings
+  if (GAME_INFO[adding?.body?.game]) openSetup(adding.body.game);        // changing an event's game: straight to its settings
   every(1000, tickLeft);
   every(2000, async () => {
     if ($(".modal")) return;
@@ -1309,7 +1122,7 @@ async function viewCheck(sid) {
     setView(`${serverHeader(s, "check")}
       <section class="section"><div class="section-head"><h2>Compatibility check</h2></div>
         <div class="panel ck-intro"><p>Tries, on this server, every kind of command and file Solstone relies on: scoreboards, boss bars, titles, floating markers, locator-bar dots,
-          holding racers still, teleporting, building blocks, special items, the data pack's fish, archery and spleef, and reading the map and player files.
+          holding racers still, teleporting, building blocks, special items, and reading the map and player files.
           Run it after every Minecraft update, ideally on a copy of the server before updating the real one.</p>
           <p class="muted small">Harmless: messages go to nobody, and the blocks and entities it makes for a moment high above spawn are removed. Takes about ten seconds.</p>
           <div class="btn-row"><button class="btn primary" type="button" id="ck-run" ${busy || !d.rcon ? "disabled" : ""}>${busy ? "Checking…" : "▶ Run the check"}</button>

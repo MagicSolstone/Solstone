@@ -32,7 +32,11 @@ KEEP_DONE = 20
 
 def _load() -> dict:
     d = settings_store.load().get(SECTION) or {}
-    return {"groups": list(d.get("groups") or [])}
+    groups = list(d.get("groups") or [])
+    for g in groups:                                # a game since taken out of Solstone (archery, spleef...): out of the line-up
+        if g.get("state") not in FINISHED and any(i.get("type") == "game" and (i.get("body") or {}).get("game") not in games.KINDS for i in g.get("items") or []):
+            g["items"] = [i for i in g["items"] if not (i.get("type") == "game" and (i.get("body") or {}).get("game") not in games.KINDS)]
+    return {"groups": groups}
 
 
 def _save(d: dict) -> None:
@@ -93,9 +97,7 @@ def length(kind: str, body: dict) -> float:
         return (num("hide_secs", 60) / 60 + num("minutes", 6)) * num("rounds", 1)
     if g == "treasure":
         return num("minutes", 15)
-    if g == "archery":
-        return 10 if body.get("mode") == "horse" else (num("seconds", 0) / 60 or num("minutes", 2))
-    return 10                                         # spleef: rounds, not a clock
+    return 10
 
 
 def title_of(kind: str, it: dict | None, body: dict) -> str:

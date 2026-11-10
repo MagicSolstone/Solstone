@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, arena, fishpack, gamemsg, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap, xboxwatch, serverstats, traffic
+from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, webmap, welcome, worldmap, xboxwatch, serverstats, traffic
 from . import reading, twostep
 from . import servers as S
 from . import settings_store
@@ -3614,25 +3614,10 @@ async def adventures_delete(sid: str, aid: int, request: Request):
 async def get_fishing(sid: str, request: Request):
     auth.require_admin(request)
     srv = await _server(sid)
-    if srv.is_java and srv.rcon_conf():
-        try:
-            await fishing.check(srv, force=not (fishing._state.get(srv.id) or {}).get("version"))
-        except Exception as e:
-            log.debug("fishing check failed: %s", e)
     evs = db.events(srv.id, ["fish", "bigfish"], None, 40)
-    return {"status": fishing.status(srv), "rcon": bool(srv.rcon_conf()), "guide": fishpack.guide(), "qualities": fishpack.qualities(),
+    return {"rcon": bool(srv.rcon_conf()), "guide": fishpack.guide(), "qualities": fishpack.qualities(),
             "tide": await asyncio.to_thread(tide.installed, srv),
             "recent": [{"ts": e["ts"], "player": e["player"], "message": e["message"]} for e in evs]}
-
-
-@app.get("/api/fishing/" + fishpack.PACK_FILE)
-async def fishing_pack(request: Request, server: str = ""):
-    auth.require_admin(request)
-    srv = await S.registry.get(server) if server else None
-    new = fishing.new_format(srv) if srv else request.query_params.get("format") == "26.3"
-    # just the archery and games: fishing stays vanilla (or Tide's own, with the mod)
-    return Response(fishpack.build_zip(new, fishing=False), media_type="application/zip",
-                    headers={"Content-Disposition": f'attachment; filename="{fishpack.PACK_FILE}"', "Cache-Control": "no-store"})
 
 
 @app.post("/api/servers/{sid}/fishing/reset")
@@ -3668,39 +3653,14 @@ async def fishing_reset(sid: str, request: Request):
     return {"ok": True, "reply": reply, "catches_removed": removed}
 
 
-@app.post("/api/servers/{sid}/fishing/{action}")
-async def fishing_action(sid: str, action: str, request: Request):
-    user = auth.require_admin(request)
-    srv = await _server(sid)
-    if action not in ("install", "reload"):
-        raise HTTPException(404)
-    if not srv.rcon_conf():
-        raise HTTPException(409, "Turn on RCON for this server first")
-    try:
-        st = await (fishing.install(srv) if action == "install" else fishing.reload(srv))
-    except RuntimeError as e:
-        raise HTTPException(502, f"The server didn't answer: {e}") from e
-    auth.audit(user, srv.id, f"fishing:{action}", f"pack version {st.get('version')}")
-    return {**fishing.status(srv), "listed": st.get("listed"), "reload_reply": st.get("reload_reply", ""), "problems": st.get("problems", []),
-            "started_by_solstone": st.get("started_by_solstone", False), "load_reply": st.get("load_reply", "")}
-
-
-# ---- games: hide and seek, treasure hunt, archery
+# ---- games: hide and seek and the treasure hunt
 @app.get("/api/servers/{sid}/games")
 async def get_games(sid: str, request: Request):
     auth.require_admin(request)
     srv = await _server(sid)
-    pack = None
-    if srv.is_java and srv.rcon_conf():
-        try:
-            pack = (await fishing.check(srv, force=not (fishing._state.get(srv.id) or {}).get("version"))).get("version")
-        except Exception:
-            pack = None
     w = await asyncio.to_thread(S.world_info, srv, False) if srv.is_java else {}
-    return {"runs": eventgroups.tag(optin.annotate("game", games.runs_for(srv.id))), "rcon": bool(srv.rcon_conf()), "pack": pack, "pack_needed": 2, "pack_needed_spleef": 10,
+    return {"runs": eventgroups.tag(optin.annotate("game", games.runs_for(srv.id))), "rcon": bool(srv.rcon_conf()),
             "spawn": w.get("spawn"), "now": time.time(), "rcon_echo": _rcon_echo(srv),
-            "mobs": arena.MOBS, "specials": arena.specials_for(srv), "presets": {lvl: arena.preset(lvl) for lvl in ("easy", "normal", "hard")},     # the mob arena's
-            "kit_tiers": {"sword": list(kits.TIERS), "armour": [*kits.ARMOUR, "none"]},
             "in_vault": [s["name"] for s in kits.waiting(srv.id)]}                  # players whose things are kept safe
 
 
@@ -3751,16 +3711,6 @@ async def stop_game(sid: str, rid: str, request: Request):
     if not await games.cancel(srv, rid):
         raise HTTPException(404, "Game not found")
     return {"ok": True}
-
-
-@app.get("/api/servers/{sid}/games/target")
-async def game_target(sid: str, request: Request, player: str):
-    auth.require_admin(request)
-    srv = await _server(sid)
-    try:
-        return await games.target_under(srv, player)
-    except ValueError as e:
-        raise HTTPException(409, str(e)) from e
 
 
 # ---- races: courses of waypoints, run with markers in the game

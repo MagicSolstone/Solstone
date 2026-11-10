@@ -304,8 +304,8 @@ async def _begin_countdown(srv, r: dict) -> None:
 async def _wings(srv, r: dict, names: list[str]) -> list[str]:
     """Everyone's own things into the vault (any race); for an elytra race, an elytra and rockets each. Returns who's
     racing (a boat race's boats come at GO)."""
-    from . import battle, kits
-    await battle.rules_on(srv, r)
+    from . import kits
+    await kits.rules_on(srv, r)
     r["uuids"] = await kits.keep_safe(srv, names, r["id"])
     racing, ids = list(r["uuids"]), r["uuids"]
     await _rcon(srv, f"scoreboard objectives add {DEATHS} deathCount")
@@ -348,7 +348,7 @@ async def _crashes(srv, r: dict) -> None:
 async def _gear_back(srv, r: dict, secs: int | None = None) -> None:
     """After the race: everyone home (where they were before it) with exactly their own things, after a moment; boats,
     elytras and anything picked up left behind. Prizes wait until they're home (challenges.award)."""
-    from . import battle, kits
+    from . import kits
     if r.get("vehicle") == "boat":
         await _rcon(srv, f"clear @a #minecraft:boats[minecraft:custom_data={{{kits.KIT_TAG}:1b}}]")
     if r.get("uuids") and not r.get("sent_home"):
@@ -358,7 +358,7 @@ async def _gear_back(srv, r: dict, secs: int | None = None) -> None:
             await _rcon(srv, f"effect clear {u} minecraft:resistance")
         home = {n: u for n, u in r["uuids"].items() if not (r.get("racers") or {}).get(n, {}).get("home")}
         kits.send_home(srv, home, r["id"], kits.HOME_SECS if secs is None else secs)
-    await battle.rules_off(srv, r)
+    await kits.rules_off(srv, r)
 
 
 async def _go(srv, r: dict) -> None:

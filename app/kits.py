@@ -1,4 +1,4 @@
-"""Event kits, with everyone's own things kept safe (King of the Hill, the mob arena, elytra races).
+"""Everyone's own things kept safe while a game or a race is on (hide and seek, the treasure hunt, races).
 
 Before a game hands out its gear, each player's whole inventory (36 slots, armour and off-hand) is copied, exactly,
 enchantments, names and all, into two barrels of their own in a vault sealed in bedrock at the bottom of the world
@@ -371,22 +371,6 @@ async def _restore(srv, d: dict, s: dict, v: dict, move: bool) -> bool:
     return True
 
 
-async def move_spawn(srv, uuid: str, name: str, spot: dict, dim: str) -> None:
-    """For a fight: dying brings them back in the game, not home to their bed first (and then back: a blink). Their own
-    respawn point is written down with their things, and put back when they're home (_put_spawn_back)."""
-    async with _lock:
-        d = _load()
-        s = d["stash"].get(f"{srv.id}:{uuid}")
-        if not s or s.get("restored"):
-            return                                       # (their things aren't in the vault: nothing to put it back with)
-        if not s.get("spawn_moved"):
-            live = await S.live_player(srv, name)
-            s["respawn"] = (live or {}).get("respawn")   # None: they hadn't one of their own (the world's spawn)
-            s["spawn_moved"] = True
-            _save(d)
-    await _rcon(srv, f"execute in {dim} run spawnpoint {uuid} {int(spot['x'])} {int(spot['y'])} {int(spot['z'])}")
-
-
 async def _put_spawn_back(srv, s: dict) -> None:
     r = s.get("respawn")
     if not r:
@@ -483,13 +467,40 @@ _tasks: set = set()
 HOME_SECS = 8
 
 
+def uuids_of(srv, names: list[str]) -> dict[str, str]:
+    known = {p["name"].lower(): u for u, p in S.known_players(srv).items()}
+    return {n: known[n.lower()] for n in names if n.lower() in known}
+
+
+RULES_ON = {"keep_inventory": True, "immediate_respawn": True}
+
+
+async def rules_on(srv, r: dict, extra: dict | None = None) -> None:
+    """Switch on the rules a race needs (a crash costs nothing), remembering what they were."""
+    from . import control
+    want = {**RULES_ON, **(extra or {})}
+    now = {x["key"]: x["value"] for x in await control.game_rules(srv)}
+    r["rules_before"] = {k: now[k] for k in want if k in now}
+    for k, v in want.items():
+        if k in now and now[k] != v:
+            await control.set_rule(srv, k, v)
+
+
+async def rules_off(srv, r: dict) -> None:
+    from . import control
+    for k, v in (r.pop("rules_before", None) or {}).items():
+        try:
+            await control.set_rule(srv, k, v)
+        except Exception:
+            pass
+
+
 async def keep_safe(srv, names: list[str], game_id: str) -> dict[str, str]:
     """The start of any game: everyone's own things, where they are and their game mode, kept safe; they're cleared,
     ready for the game's kit. Returns {name: uuid} of who's in. Anyone whose things couldn't be kept safe watches,
     untouched, and is told why."""
-    from . import battle
     from .games import _say
-    ids = battle.uuids_of(srv, names)
+    ids = uuids_of(srv, names)
     before = {x["name"].lower() for x in waiting(srv.id)}
     try:
         playing = await stash(srv, ids, game_id)
@@ -516,8 +527,9 @@ def send_home(srv, kept: dict[str, str], game_id: str, secs: int = HOME_SECS, af
     return task
 
 
-# Every mark a game puts on what it hands out: kits (arena, King of the Hill, races' elytra, rockets and boats, the
-# treasure compass), archery's match bow and arrow, spleef's shovel. Only ever on a game's things, never anyone's own.
+# Every mark a game puts on what it hands out (a race's elytra, rockets and boats, the treasure compass). Only ever on
+# a game's things, never anyone's own. The last two were archery's and spleef's, taken out in 1.16: still swept up, so
+# nothing of theirs is left lying about in a world that had them.
 GAME_TAGS = (KIT_TAG, "solmatch", "solspleef")
 
 
@@ -628,64 +640,6 @@ def kit_item(item: str) -> str:
     return f"{item}[minecraft:custom_data={{{KIT_TAG}:1b}},minecraft:unbreakable={{}}]"
 
 
-TIERS = ("wooden", "stone", "iron", "diamond", "netherite")
-ARMOUR = {"leather": "leather", "chainmail": "chainmail", "iron": "iron", "diamond": "diamond", "netherite": "netherite"}
-
-
-MAX_ARROWS = 256                     # four stacks
-
-
-def clean_kit(body: dict) -> dict:
-    k = body if isinstance(body, dict) else {}
-    sword = k.get("sword") if k.get("sword") in TIERS else "iron"
-    armour = k.get("armour") if k.get("armour") in (*ARMOUR, "none") else "iron"
-    try:
-        arrows = max(0, min(MAX_ARROWS, int(k.get("arrows", 16))))
-    except (TypeError, ValueError):
-        arrows = 16
-    # infinite: an Infinity bow and one arrow, like the archery games' Match Bow (it never runs out)
-    return {"sword": sword, "armour": armour, "bow": bool(k.get("bow", True)), "arrows": arrows, "infinite": bool(k.get("infinite")),
-            "shield": bool(k.get("shield", False)), "food": bool(k.get("food", True))}
-
-
-async def give_kit(srv, uuid: str, kit: dict) -> None:
-    """Hand out a kit to someone whose things are safe in the vault (their hands are empty)."""
-    sword = kit_item(f"minecraft:{kit['sword']}_sword")
-    await _rcon(srv, f"give {uuid} {sword} 1")
-    if kit.get("bow") and kit.get("infinite"):           # never runs out: Infinity, and the one arrow it needs
-        from .races import _new_text
-        ench = '{"minecraft:infinity":1}' if _new_text(srv) else '{levels:{"minecraft:infinity":1}}'
-        await _rcon(srv, f"give {uuid} {kit_item('minecraft:bow')[:-1]},minecraft:enchantments={ench}] 1")
-        await _rcon(srv, f"give {uuid} {kit_item('minecraft:arrow')} 1")
-    elif kit.get("bow"):
-        await _rcon(srv, f"give {uuid} {kit_item('minecraft:bow')} 1")
-        if kit.get("arrows"):
-            await _rcon(srv, f"give {uuid} {kit_item('minecraft:arrow')} {kit['arrows']}")
-    if kit.get("food"):
-        await _rcon(srv, f"give {uuid} {kit_item('minecraft:cooked_beef')} 16")
-    worn: list[tuple[str, str]] = []                   # (slot, item) put straight on, checked below
-    if kit.get("shield"):
-        worn.append(("weapon.offhand", kit_item("minecraft:shield")))
-    if kit.get("armour") and kit["armour"] != "none":
-        m = ARMOUR[kit["armour"]]
-        for slot, piece in (("armor.head", "helmet"), ("armor.chest", "chestplate"), ("armor.legs", "leggings"), ("armor.feet", "boots")):
-            worn.append((slot, kit_item(f"minecraft:{m}_{piece}")))
-    replies = {}
-    for slot, item in worn:
-        replies[slot] = await _rcon(srv, f"item replace entity {uuid} {slot} with {item}")
-    await _check_kit(srv, uuid, kit, worn, replies)
-
-
-def _kit_ids(kit: dict, worn: list[tuple[str, str]]) -> list[str]:
-    """Every item a kit should have handed over, by id."""
-    ids = [f"minecraft:{kit['sword']}_sword"]
-    if kit.get("bow"):
-        ids += ["minecraft:bow"] + (["minecraft:arrow"] if kit.get("infinite") or kit.get("arrows") else [])
-    if kit.get("food"):
-        ids.append("minecraft:cooked_beef")
-    return ids + [item.split("[", 1)[0] for _slot, item in worn]
-
-
 async def hand_out(srv, uuid: str, worn: list[tuple[str, str]], given: list[tuple[str, int]]) -> None:
     """A game's things, checked like a kit: put on (worn) or given, then looked at, and anything missing put right
     (a race's elytra and rockets, say). What the game said goes in the log."""
@@ -713,29 +667,3 @@ async def hand_out(srv, uuid: str, worn: list[tuple[str, str]], given: list[tupl
     for item, n in given:
         if not have[0].get(item.split("[", 1)[0]):
             await _rcon(srv, f"give {uuid} {item} {n}")
-
-
-async def _check_kit(srv, uuid: str, kit: dict, worn: list[tuple[str, str]], replies: dict) -> None:
-    """Did it all arrive? Armour or the shield that didn't go on is put on again, and if it still won't, it goes in
-    their inventory (they can wear it from there); anything else missing is given again. What the game said goes in
-    the log, so a version that turns something away shows up."""
-    have = await _player_items(srv, uuid)
-    if have is None:
-        return                                          # couldn't look: (they left, say) nothing more to do
-    missing = [i for i in _kit_ids(kit, worn) if not have[0].get(i)]
-    if not missing:
-        return
-    log.warning("the kit for %s arrived without %s (the game said: %s)", uuid, ", ".join(missing),
-                "; ".join(f"{k}: {v[:120]}" for k, v in replies.items()) or "nothing")
-    for slot, item in worn:
-        if item.split("[", 1)[0] in missing:
-            await _rcon(srv, f"item replace entity {uuid} {slot} with {item}")
-    have = await _player_items(srv, uuid) or have
-    for _slot, item in worn:
-        if not have[0].get(item.split("[", 1)[0]):
-            await _rcon(srv, f"give {uuid} {item} 1")      # still not on: in their inventory, to put on themselves
-    for i in missing:
-        if i in [it.split("[", 1)[0] for _s, it in worn] or have[0].get(i):
-            continue
-        n = {"minecraft:arrow": 1 if kit.get("infinite") else kit.get("arrows", 16), "minecraft:cooked_beef": 16}.get(i, 1)
-        await _rcon(srv, f"give {uuid} {kit_item(i)} {n}")

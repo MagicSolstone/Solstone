@@ -1,6 +1,5 @@
 """Hide and seek, treasure hunt and archery (incl. HORSE) against a pretend server."""
 import asyncio
-import math
 import re
 import time
 
@@ -161,63 +160,6 @@ def test_treasure_hunt(game):
     assert r["finder"] == "Gimli_Jr"                    # the chest's things are their prize, once they're home
 
 
-def test_archery_points(game):
-    games, srv = game
-    games.create(srv.id, {"game": "archery", "mode": "points", "target": {"x": 0, "y": 65, "z": 0}, "place_target": True, "minutes": 5})
-    asyncio.run(games.tick([srv]))
-    assert srv.blocks[(0, 65, 0)] == "target"
-    assert any("bow[" in c and '"minecraft:infinity":1' in c and "solmatch:1b" in c for c in srv.cmds)        # a Match Bow, not 64 arrows
-    srv.add_log("shot", "Tyler", (0.5, 65.0, 20.5)); srv.add_log("hit", "Tyler", (0.5, 65, 20.5), 15)      # dead centre from 20 blocks
-    srv.add_log("shot", "Gimli_Jr", (0.5, 65.0, 10.5)); srv.add_log("hit", "Gimli_Jr", (0.5, 65, 10.5), 15)  # too close: nothing
-    asyncio.run(games.tick([srv]))
-    r = _run(games)
-    assert r["players"]["Tyler"]["points"] == 39 and r["players"]["Gimli_Jr"]["points"] == 0     # 10 x3 aim x1.3 distance
-    assert any("too close" in c for c in srv.said)
-    srv.add_log("shot", "Tyler", (1.5, 65.0, 21.0)); srv.add_log("hit", "Tyler", (1.5, 65, 21.0), 15)      # again from the same spot: half
-    asyncio.run(games.tick([srv]))
-    assert _run(games)["players"]["Tyler"]["points"] == 39 + round(10 * 3 * games._multiplier(math.dist((1.5, 65.0, 21.0), (0.5, 65.5, 0.5))) * 0.5)
-    assert any("same spot" in c for c in srv.said)
-    srv.add_log("shot", "MomCrafts", (5.0, 65.0, 5.0))                                                 # a miss: no hit follows
-    asyncio.run(games.tick([srv]))
-    d = games._load(); d["runs"][0]["pending"]["MomCrafts"][0]["at"] -= 10; games._save(d)
-    asyncio.run(games.tick([srv]))
-    assert _run(games)["players"]["MomCrafts"]["shots"] == 1 and _run(games)["players"]["MomCrafts"]["hits"] == 0
-    _set(games, phase_ends=time.time() - 1)
-    asyncio.run(games.tick([srv]))
-    r = _run(games)
-    assert r["state"] == "done" and r["result"].startswith("Tyler won Archery: most points") and srv.blocks[(0, 65, 0)] == "air"
-    assert "clear @a minecraft:bow[minecraft:custom_data={solmatch:1b}]" in srv.cmds and "clear @a minecraft:arrow[minecraft:custom_data={solmatch:1b}]" in srv.cmds
-
-
-def test_archery_horse(game):
-    games, srv = game
-    srv.online = ["Tyler", "Gimli_Jr"]
-    games.create(srv.id, {"game": "archery", "mode": "horse", "word": "PIG", "target": {"x": 0, "y": 65, "z": 0}, "give_bow": False})
-    asyncio.run(games.tick([srv]))
-    r = _run(games)
-    assert r["turn"] == "Gimli_Jr" and r["order"] == ["Gimli_Jr", "Tyler"]
-    srv.add_log("shot", "Gimli_Jr", (10.5, 65.0, 0.5)); srv.add_log("hit", "Gimli_Jr", None, 9)
-    asyncio.run(games.tick([srv]))
-    r = _run(games)
-    assert r["spot"]["x"] == 10.5 and r["turn"] == "Tyler"
-    srv.add_log("shot", "Tyler", (0.5, 65.0, 20.5)); srv.add_log("hit", "Tyler", None, 15)              # not from the spot: doesn't count
-    asyncio.run(games.tick([srv]))
-    assert _run(games)["turn"] == "Tyler" and _run(games)["players"]["Tyler"]["letters"] == ""
-    for _ in range(3):                                                                                   # Tyler misses from the spot 3 times
-        srv.add_log("shot", "Tyler", (10.0, 65.0, 1.0))
-        asyncio.run(games.tick([srv]))
-        d = games._load(); [s.update(at=s["at"] - 10) for s in d["runs"][0]["pending"].get("Tyler", [])]; games._save(d)
-        asyncio.run(games.tick([srv]))
-        r = _run(games)
-        if r["state"] == "done":
-            break
-        # Gimli sets again and makes it, Tyler's turn again
-        srv.add_log("shot", "Gimli_Jr", (10.5, 65.0, 0.5)); srv.add_log("hit", "Gimli_Jr", None, 9)
-        asyncio.run(games.tick([srv]))
-    r = _run(games)
-    assert r["players"]["Tyler"]["letters"] == "PIG" and r["state"] == "done" and r["result"] == "Gimli_Jr won Archery: PIG!"
-
-
 def test_games_api(client, viewer, sid):
     assert viewer.get(f"/api/servers/{sid}/games").status_code == 403
     assert client.get(f"/api/servers/{sid}/games").json()["runs"] == []
@@ -227,40 +169,6 @@ def test_games_api(client, viewer, sid):
     assert client.delete(f"/api/servers/{sid}/games/{r.json()['id']}").json() == {"ok": True}
     from app import settings_store
     settings_store.save_section("games", {})
-
-
-def test_archery_hot_zone_and_big_shot_flair(game):
-    games, srv = game
-    games.create(srv.id, {"game": "archery", "mode": "points", "target": {"x": 0, "y": 65, "z": 0}, "minutes": 5, "hot": True, "hot_bonus": 2, "hot_far": 30})
-    asyncio.run(games.tick([srv]))
-    _set(games, started=time.time() - 30)                               # the first zone opens 15 s in
-    asyncio.run(games.tick([srv]))
-    z = _run(games)["hot_zone"]
-    assert z["on"] and 10 <= math.hypot(z["x"] - 0.5, z["z"] - 0.5) <= 31
-    assert any("waypoint modify @e[tag=solhot_" in c and "color red" in c for c in srv.cmds)
-    z = {**z, "x": 30.5, "z": 0.5}                                          # put it 30 blocks out
-    _set(games, hot_zone=z)
-    srv.add_log("shot", "Tyler", (z["x"] + 1, 65.0, z["z"])); srv.add_log("hit", "Tyler", (z["x"], 65, z["z"]), 10)
-    asyncio.run(games.tick([srv]))
-    d = math.dist((z["x"] + 1, 65.0, z["z"]), (0.5, 65.5, 0.5))
-    assert _run(games)["players"]["Tyler"]["points"] == games._ring_points(10, d, 2)
-    assert not any(c.startswith("tellraw @a") and "ring 10" in c for c in srv.cmds)          # an ordinary hit isn't news
-    pop = next(c for c in srv.cmds if c.startswith("title Tyler actionbar") and "ring 10" in c)   # it pops up for the shooter
-    assert "×2" in pop and "♨" in pop
-    assert any(c.startswith("scoreboard players set Tyler solsb_") for c in srv.cmds)            # scores on the sidebar
-    # close it: the marker and sign go, and the next one waits
-    _set(games, hot_zone={**z, "until": time.time() - 1})
-    asyncio.run(games.tick([srv]))
-    assert not _run(games)["hot_zone"]["on"] and any(c.startswith("kill @e[tag=solhot_") for c in srv.cmds)
-
-
-def test_hit_tiers():
-    from app import games
-    assert games._tier(10, 70)[2] == ""                                       # not a bullseye: plain, however far
-    assert [games._tier(15, d)[2].strip() for d in (20, 31, 50, 65)] == ["Bullseye!", "Great shot!", "AMAZING SHOT!", "LEGENDARY SHOT!"]
-    assert [games._multiplier(x) for x in (10, 15, 25, 35, 65)] == [0.0, 1.0, 2.0, 4.0, 14.1]
-    assert games._accuracy(1) == 0.2 and games._accuracy(15) == 3.0 and 0.8 < games._accuracy(8) < 1.0
-
 
 
 def test_hot_zone_surface_tells_water_from_land():
@@ -333,75 +241,6 @@ def spleef_game(game, monkeypatch):
     return games, srv
 
 
-def test_spleef_rounds_teams_and_everyone_goes_back(spleef_game):
-    games, srv = spleef_game
-    srv.pos.update({"Tyler": [10.0, 70.0, 10.0], "Gimli_Jr": [-5.0, 64.0, 3.0], "MomCrafts": [100.0, 80.0, 100.0]})
-    srv.gm["MomCrafts"] = "creative"
-    games.create(srv.id, {"game": "spleef", "center": {"x": 0, "y": 64, "z": 0}, "size": 8, "layers": 2, "best_of": 3, "shrink": True})
-    asyncio.run(games.tick([srv]))
-    r = _run(games)
-    assert r["state"] == "countdown" and r["round"] == 1 and set(r["players"]) == {"Tyler", "Gimli_Jr", "MomCrafts"}
-    assert srv.storage and 'n:"MomCrafts"' in srv.storage and 'g:"creative"' in srv.storage and srv.hb == 2400
-    top = r["top"]
-    assert top >= 64 + 35 and any("snow_block replace air" in f for f in srv.fills) and any("water replace air" in f for f in srv.fills)
-    assert all(srv.pos[n][1] == top + 1 for n in r["players"])                      # everyone up on the arena
-    _set(games, phase_ends=time.time() - 1)
-    asyncio.run(games.tick([srv]))
-    assert _run(games)["state"] == "running" and any("Spleef Shovel" in c for c in srv.cmds)
-    # MomCrafts falls through both floors, then Gimli_Jr: Tyler wins round 1
-    srv.pos["MomCrafts"][1] = top - 5 - 4
-    asyncio.run(games.tick([srv]))
-    assert not _run(games)["players"]["MomCrafts"]["alive"]
-    srv.pos["Gimli_Jr"][1] = top - 12
-    asyncio.run(games.tick([srv]))
-    r = _run(games)
-    assert r["players"]["Tyler"]["wins"] == 1 and r["round"] == 2 and r["state"] == "countdown"
-    # round 2: Gimli_Jr logs off mid-game (out), MomCrafts falls: Tyler wins 2-0, best of 3 over
-    _set(games, phase_ends=time.time() - 1)
-    asyncio.run(games.tick([srv]))
-    srv.online.remove("Gimli_Jr")
-    srv.pos["MomCrafts"][1] = top - 20
-    asyncio.run(games.tick([srv]))
-    r = _run(games)
-    assert r["state"] == "done" and r["result"] == "Tyler won spleef!"
-    assert srv.pos["Tyler"] == [10.0, 70.0, 10.0] and srv.pos["MomCrafts"] == [100.0, 80.0, 100.0] and "gamemode creative MomCrafts" in srv.cmds
-    assert srv.storage is None and srv.hb == 0
-    assert any("air replace minecraft:snow_block" in f for f in srv.fills) and any("air replace minecraft:glass" in f for f in srv.fills)
-    assert set(r["owed"]) == {"Gimli_Jr"}                                            # offline at the end
-    srv.online.append("Gimli_Jr")
-    asyncio.run(games.on_join(srv, "Gimli_Jr"))
-    assert srv.pos["Gimli_Jr"] == [-5.0, 64.0, 3.0] and not _run(games)["owed"]
-
-
-def test_spleef_stops_if_the_pack_safety_net_went_off(spleef_game):
-    games, srv = spleef_game
-    games.create(srv.id, {"game": "spleef", "center": {"x": 0, "y": 64, "z": 0}, "teams": True})
-    asyncio.run(games.tick([srv]))
-    r = _run(games)
-    assert r["name"] == "Team spleef" and {p["team"] for p in r["players"].values()} == {"red", "blue"}
-    srv.storage = None                                                   # Solstone was away; the pack cleaned up
-    asyncio.run(games.tick([srv]))
-    r = _run(games)
-    assert r["state"] == "done" and "taken down" in r["result"]
-
-
-def test_spleef_needs_the_newer_pack(spleef_game):
-    games, srv = spleef_game
-    srv.pack = 9
-    games.create(srv.id, {"game": "spleef", "center": {"x": 0, "y": 64, "z": 0}})
-    asyncio.run(games.tick([srv]))
-    assert _run(games)["state"] == "skipped" and "version 10" in _run(games)["result"] and srv.storage is None
-
-
-def test_pack_has_the_spleef_safety_net():
-    from app import fishpack
-    f = fishpack.pack_files(True)
-    tick = f["data/solgames/function/tick.mcfunction"]
-    assert "#spleef_hb solg_tmp matches 1.." in tick and "function solgames:spleef_failsafe" in tick
-    assert all(line.startswith("$") for line in f["data/solgames/function/spleef_back1.mcfunction"].strip().splitlines())
-    assert "replace minecraft:snow_block" in f["data/solgames/function/spleef_clear.mcfunction"]
-
-
 def test_treasure_avoids_water_unless_allowed(game):
     games, srv = game
     srv.ground[(100, -41)] = "minecraft:water"
@@ -464,22 +303,6 @@ def test_hide_and_seek_best_of_three_and_no_monsters(game):
     assert "difficulty hard" in srv.cmds                                                   # monsters back afterwards
     assert any(c.startswith("scoreboard objectives add solsb_") for c in srv.cmds)
     assert any(c.startswith("scoreboard objectives remove solsb_") for c in srv.cmds)
-
-
-def test_archery_short_rounds_and_hot_zones_away_from_the_target(game):
-    games, _srv = game
-    r = games.create("x", {"game": "archery", "target": {"x": 0, "y": 64, "z": 0}, "mode": "points", "seconds": 30})
-    assert r["minutes"] == 0.5
-    r = games.create("x", {"game": "archery", "target": {"x": 0, "y": 64, "z": 0}, "mode": "points", "seconds": 900, "hot": True, "hot_far": 5})
-    assert r["minutes"] == 10 and r["hot_far"] >= games.HOT_NEAR + 4                       # 10 minutes at most; zones never near the target
-    assert games.HOT_NEAR >= 15 + games.HOT_R
-
-
-def test_spleef_without_snowballs_by_default():
-    from app import spleef
-    s = spleef.settings({}, lambda v, lo, hi, d: d if v is None else max(lo, min(hi, float(v))))
-    assert s["snowballs"] is False
-
 
 
 def test_treasure_hints_fit_the_area_and_where_you_face():
