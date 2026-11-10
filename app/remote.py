@@ -47,9 +47,11 @@ WORLD_FILES = ("level.dat",)
 WORLD_DIRS = ("stats", "playerdata", "advancements", "players/stats", "players/data", "players/advancements")
 MAX_FILE = 64 * 1024 * 1024         # (a jar bigger than this isn't fetched: its name is enough)
 # The map: only the parts of the world players have been to (a region file is 512 x 512 blocks, about 1-10 MB).
-REGION_SECS = 300                   # where players are now: looked at (and fetched if it changed) this often
+REGION_SECS = 60                    # where players are now: looked at this often (just its chunk table: 8 KB)
 RECENT_SECS = 15 * 60               # "now": a position seen this recently (that region and the eight around it)
 REGIONS_PER_TICK = 3                # fetched a few at a time, so the log never waits behind a big batch
+SECTOR = 4096                       # a region file: a table of where each of its 1024 chunks is (4 KB) and when each was
+HEADER = 2 * SECTOR                 # last saved (4 KB), then the chunks, each a whole number of 4 KB sectors
 _DIM_DIRS = {"minecraft:overworld": ("region",), "minecraft:the_nether": ("DIM-1/region", "_nether/DIM-1/region"),
              "minecraft:the_end": ("DIM1/region", "_the_end/DIM1/region")}     # (Paper keeps the Nether and End apart)
 CONNECT_SECS = 15
@@ -404,17 +406,61 @@ class Mirror:
             self.regions.append((f"{local}/{name}", f"{base}/{name}", not recent))
 
     async def sync_regions(self) -> None:
-        """A few of the planned regions: fetched when new or changed."""
+        """A few of the planned regions: a new one copied whole; one the copy has, just the chunks saved since."""
         sftp = await self._session()
         for _ in range(min(REGIONS_PER_TICK, len(self.regions))):
             local, remote_rel, only_missing = self.regions.pop(0)
-            if only_missing and self._local(local).exists():
+            have = self._local(local).exists()
+            if only_missing and have:
                 continue
             try:
                 a = await sftp.stat(self._remote(remote_rel))
             except Exception:
                 continue                                         # (never generated: nothing to draw there)
-            await self._fetch(local, int(a.size or 0), int(a.mtime or 0), remote_rel)
+            size, mtime = int(a.size or 0), int(a.mtime or 0)
+            if self.known.get(local) == (size, mtime) and have:
+                continue
+            if not have or not await self._patch_region(local, remote_rel, size, mtime):
+                await self._fetch(local, size, mtime, remote_rel)
+
+    async def _patch_region(self, local: str, remote_rel: str, size: int, mtime: int) -> bool:
+        """Bring a region the copy already has up to date by fetching only its chunks saved since: their table says
+        when each was saved, and where it is. A few KB instead of the whole file. False: fetch it whole instead."""
+        path = self._local(local)
+        try:
+            mine = path.read_bytes()[:HEADER]
+        except OSError:
+            return False
+        if len(mine) < HEADER or size < HEADER:
+            return False
+        sftp = await self._session()
+        async with sftp.open(self._remote(remote_rel), "rb") as f:
+            theirs = await f.read(HEADER)
+            if len(theirs) < HEADER:
+                return False
+            changed = []
+            for i in range(1024):
+                if theirs[SECTOR + i * 4: SECTOR + i * 4 + 4] != mine[SECTOR + i * 4: SECTOR + i * 4 + 4] or \
+                        theirs[i * 4: i * 4 + 4] != mine[i * 4: i * 4 + 4]:
+                    loc = int.from_bytes(theirs[i * 4: i * 4 + 3], "big")
+                    n = theirs[i * 4 + 3]
+                    if loc and n:
+                        changed.append((loc * SECTOR, n * SECTOR))
+            chunks = []
+            for off, length in changed:
+                await f.seek(off)
+                chunks.append((off, await f.read(length)))
+        with path.open("r+b") as out:                    # the chunks first, then the table that points at them
+            for off, data in chunks:
+                out.seek(off)
+                out.write(data)
+            out.seek(0)
+            out.write(theirs)
+        import os
+        os.utime(path, (mtime, mtime))
+        self.known[local] = (size, mtime)
+        self.status["bytes"] += HEADER + sum(len(d) for _o, d in chunks)
+        return True
 
     async def tick(self, now: float | None = None) -> None:
         """Called every couple of seconds: does whatever is due."""

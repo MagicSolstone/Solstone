@@ -27,7 +27,7 @@ from .config import config
 log = logging.getLogger("solstone.worldmap")
 
 TILE = 512
-REDRAW_AFTER = 300            # seconds: a busy region is redrawn at most this often
+REDRAW_AFTER = 60             # seconds: a busy region is redrawn at most this often (the game itself saves every 5 min)
 _AIR = {"air", "cave_air", "void_air", "light", "barrier", "structure_void"}
 _WATERY = {"water", "bubble_column", "kelp", "kelp_plant", "seagrass", "tall_seagrass"}
 

@@ -362,3 +362,46 @@ def test_the_map_copies_only_where_players_have_been(far):
         loop.run_until_complete(m.tick(now=now + 60 + i * 3))
     assert (d / "region" / "r.0.0.mca").read_bytes() == b"S" * 80
     db.x("DELETE FROM positions WHERE server_id=?", (sid,))
+
+
+def _region(chunks: dict[int, tuple[bytes, int]]) -> bytes:
+    """A region file: its table (where each chunk is, when each was saved), then each chunk in its own 4 KB sectors."""
+    loc, ts, body, sector = bytearray(4096), bytearray(4096), bytearray(), 2
+    for i, (data, stamp) in sorted(chunks.items()):
+        n = -(-len(data) // 4096)
+        loc[i * 4: i * 4 + 4] = sector.to_bytes(3, "big") + bytes([n])
+        ts[i * 4: i * 4 + 4] = stamp.to_bytes(4, "big")
+        body += data.ljust(n * 4096, b"\0")
+        sector += n
+    return bytes(loc + ts + body)
+
+
+def test_a_region_already_copied_fetches_only_its_changed_chunks(far):
+    """Someone building where they are: only the 8 KB table and the chunks saved since are fetched, not the region."""
+    import os
+    import time
+
+    from app import db
+    loop, root, cfg, key = far
+    reg = root / "world" / "region"
+    reg.mkdir(parents=True)
+    f = reg / "r.0.0.mca"
+    f.write_bytes(_region({0: (b"A" * 5000, 100), 1: (b"B" * 3000, 100), 2: (b"C" * 4000, 100)}))
+    sid = _added(loop, cfg)
+    now = time.time()
+    db.x("DELETE FROM positions WHERE server_id=?", (sid,))
+    db.x("INSERT INTO positions(server_id, ts, player, dim, x, y, z) VALUES (?,?,?,?,?,?,?)", (sid, now, "Ann", "minecraft:overworld", 5, 64, 5))
+    m = remote.mirror(sid)
+    for i in range(5):
+        loop.run_until_complete(m.tick(now=now + i * 3))
+    copy = remote.mirror_dir(sid) / "world" / "region" / "r.0.0.mca"
+    assert copy.read_bytes() == f.read_bytes()
+    f.write_bytes(_region({0: (b"A" * 5000, 100), 1: (b"b" * 3000, 200), 2: (b"C" * 4000, 100)}))   # chunk 1 built on
+    os.utime(f, (now + 50, now + 50))
+    before = m.status["bytes"]
+    m.last["regions"] = 0
+    for i in range(5):
+        loop.run_until_complete(m.tick(now=now + 100 + i * 3))
+    assert copy.read_bytes() == f.read_bytes()
+    assert m.status["bytes"] - before == 8192 + 4096                                       # the table and one sector
+    db.x("DELETE FROM positions WHERE server_id=?", (sid,))
