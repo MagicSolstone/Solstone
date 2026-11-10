@@ -395,15 +395,21 @@ class Mirror:
         been that the copy doesn't have yet."""
         self.regions = []
         level = self._level()
-        for dim, rx, rz, recent in self._visited(now):
+        visited = self._visited(now)
+        missing_dims: set[str] = set()
+        for dim, rx, rz, recent in visited:
             base = await self._region_base(dim)
             if not base:
+                missing_dims.add(dim)
                 continue
             local = f"{level}/{_DIM_DIRS[dim][0]}" if dim in _DIM_DIRS else base
             name = f"r.{rx}.{rz}.mca"
             if not recent and self._local(f"{local}/{name}").exists():
                 continue
             self.regions.append((f"{local}/{name}", f"{base}/{name}", not recent))
+        copied = sum(1 for _ in (self.dir / level).glob("**/r.*.*.mca")) if (self.dir / level).is_dir() else 0
+        self.status["map"] = {"visited": len(visited), "now": sum(1 for v in visited if v[3]), "queued": len(self.regions),
+                              "copied": copied, "looked": now, "no_folder": sorted(missing_dims)}
 
     async def sync_regions(self) -> None:
         """A few of the planned regions: a new one copied whole; one the copy has, just the chunks saved since."""
