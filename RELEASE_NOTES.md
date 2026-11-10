@@ -1,3 +1,7 @@
+# Solstone 1.20.5
+
+- **The map for a server elsewhere finds the world on Minecraft 26.1 and later.** Those keep the Overworld's region files in `dimensions/minecraft/overworld/region` instead of `region`, so Solstone found no world folder to copy from and the map stayed blank. If it still can't find one, the 🗺 Map line in ⚙ Settings → 2. Its files now lists what is in the world folder on the server.
+
 # Solstone 1.20.4
 
 - **The map for a server elsewhere starts drawing straight away.** It used to copy only the areas Solstone had seen a player in, and it only sees players while they're on and RCON answers, so a new server's map stayed blank. Now it also copies around the world's spawn and around each player's last saved spot (from their player file, which it copies anyway). A player file the game saved in the last few minutes counts as someone being there now, so the map keeps up even when RCON isn't answering.
