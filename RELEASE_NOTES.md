@@ -1,3 +1,8 @@
+# Solstone 1.20.1
+
+- **The map for a server elsewhere keeps up much better, for a fraction of the download.** Where players are, Solstone now looks every minute (was five), and for a part of the world it already has, it fetches only the chunks saved since: each region file starts with a small table of when each of its chunks was last saved, so Solstone reads that (8 KB) and then just what changed (usually a few KB), instead of the whole region (1 to 10 MB). The map is then at most a minute or so behind the game's own saves, which Minecraft does every five minutes (Paper too, by default).
+- The map redraws a busy part of the world every minute (was every five), for every server.
+
 # Solstone 1.20.0
 
 - **New: the map for a server somewhere else.** Solstone's drawn map (the World tab, Adventures, the live map with everyone on it) now works for a server at a host. It copies just the parts of the world players have been in, and the area around wherever someone is right now, fetched again when they change (at most every five minutes, a few at a time so nothing else waits). A world pregenerated far and wide doesn't fill the map: it shows where people have actually been, and grows as they explore. Paper servers' Nether and End (kept in their own folders) are found too. It's on by default; untick **Draw the map where players have been** in the server's ⚙ Settings, part 2, to turn it off.
