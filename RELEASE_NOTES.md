@@ -1,3 +1,7 @@
+# Solstone 1.20.6
+
+- **BlueMap (and other web maps) are no longer part of Solstone.** The World tab shows Solstone's own map only: drawn from the world's files, for servers here and somewhere else, with no mod to install. The map address and "Show the map through Solstone" are gone from ⚙ Settings, and so is the web-map pass-through. You can still run BlueMap on its own address and send players there. A map address you saved before is simply ignored.
+
 # Solstone 1.20.5
 
 - **The map for a server elsewhere finds the world on Minecraft 26.1 and later.** Those keep the Overworld's region files in `dimensions/minecraft/overworld/region` instead of `region`, so Solstone found no world folder to copy from and the map stayed blank. If it still can't find one, the 🗺 Map line in ⚙ Settings → 2. Its files now lists what is in the world folder on the server.
