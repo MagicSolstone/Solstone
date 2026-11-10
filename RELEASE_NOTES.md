@@ -1,3 +1,7 @@
+# Solstone 1.17.1
+
+- **Fixed: adding a server somewhere else always said "Couldn't reach it: Permission denied"**, even with the right details (the same login worked in FileZilla). The SFTP connection looked for SSH settings files in a home folder that Solstone isn't allowed to open in its container, and stopped there. It doesn't look there any more (it never needed anything from it).
+
 # Solstone 1.17.0
 
 - **New: a server somewhere else.** Solstone no longer has to run on the same machine as your server. In **Manage → Solstone → Servers & history**, press **🌐 Add a server somewhere else**: fill in the SFTP details from your host's panel, press **Test the connection**, and add it. It then works like a server at home: the activity feed, chat, leaderboards, stats, player pages, contests, races, games, rewards, the whitelist.
