@@ -1,3 +1,8 @@
+# Solstone 1.19.0
+
+- **Fixed: a server with only RCON (no Crafty, no host's panel) showed nothing on its home page card.** Its uptime, in-game time and weather were left out, because only Crafty or a panel could say it was running. Now RCON answering means it's running (and not answering means it's down), the same way Solstone's own uptime history already counted it.
+- **New: ServerPrism as a connection.** Under Manage → Server setup → Connections → **Add a connection → ServerPrism**, paste a token from serverprism.com → Account → API Credentials (with **servers:read** and **servers:control**; **backups:create** too for Back up). Then, in your server's ⚙ Settings, part 4, pick it and your server from the list. It gives Solstone what Crafty gives it at home: running or not, CPU and memory against your plan, uptime, start, stop and restart, and backups. RCON still does the game itself: ServerPrism's commands don't send back the game's answer and are limited to 20 a minute, while games and Solstone's live pages send several a second.
+
 # Solstone 1.18.0
 
 - **New: Manage → Solstone → Server setup.** One place to set up your servers: **Your servers** (each one's settings, and adding one somewhere else) and the new **Connections**. What used to be "Servers & history" is now **History & data** (recaps, website traffic, what people read, storage, backups, clearing history).
