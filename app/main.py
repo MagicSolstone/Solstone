@@ -209,7 +209,7 @@ def _own(uuid: str) -> bool:
     return u is None or not u.is_player or S.norm_uuid(uuid) in {S.norm_uuid(x) for x in u.player_uuids}
 
 
-_SUMMARY_FOR_PLAYERS = ("id", "name", "running", "crashed", "started", "cpu", "mem", "mem_percent", "world_size", "version", "motd",
+_SUMMARY_FOR_PLAYERS = ("id", "name", "running", "crashed", "started", "cpu", "cpu_cores", "mem", "mem_percent", "world_size", "version", "motd",
                         "max_players", "online", "has_icon", "loader", "game", "game_label", "perf", "fishing", "error")
 
 
@@ -484,7 +484,7 @@ async def _site_status() -> list:
                         "max": summ["max_players"], "version": summ.get("version"), "has_icon": summ["has_icon"],
                         "started": summ.get("started") if summ["running"] else None, "tps": perf.get("tps"),
                         "up_since": _up_since(srv.id, summ.get("started")) if summ["running"] else None,
-                        "mspt": perf.get("mspt"), "cpu": summ.get("cpu") if summ["running"] else None,
+                        "mspt": perf.get("mspt"), "cpu": summ.get("cpu") if summ["running"] else None, "cpu_cores": summ.get("cpu_cores"),
                         "mem": summ.get("mem") if summ["running"] else None,
                         "mem_percent": summ.get("mem_percent") if summ["running"] else None,
                         "loader": summ.get("loader"), "uptime_7d": _uptime(srv.id, 7), "trend": _trend(srv.id),
@@ -1162,6 +1162,17 @@ async def map_regions(sid: str, request: Request, dim: str = "minecraft:overworl
     srv = await _map_server(request, sid)
     regs = await asyncio.to_thread(worldmap.regions, srv.world_dir, dim)
     return {"dim": dim, "size": worldmap.TILE, "regions": regs, "drawn": await asyncio.to_thread(worldmap.drawn_count, srv.id, dim)}
+
+
+@app.post("/api/servers/{sid}/map/redraw")
+async def map_redraw(sid: str, request: Request):
+    """Admin: forget every picture of this server's map: drawn again from the world's files as they're looked at (and
+    the rest in the background). For pictures left over from another world at the same spot."""
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    n = await asyncio.to_thread(worldmap.clear_tiles, srv.id)
+    auth.audit(user, sid, "map:redraw", f"{n} pictures")
+    return {"cleared": n}
 
 
 @app.get("/api/public/map/{sid}/tile")

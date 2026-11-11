@@ -183,7 +183,16 @@ async function viewAdventure(sid, key) {
     let last = null;
     feed.querySelectorAll(".rp-ev").forEach((b) => { const past = +b.dataset.ts <= st.t; b.classList.toggle("future", !past); if (past) last = b; });
     feed.querySelectorAll(".rp-ev.now").forEach((b) => b.classList.remove("now"));
-    if (last) { last.classList.add("now"); if (st.playing) last.scrollIntoView({ block: "nearest" }); }
+    if (last) {
+      last.classList.add("now");
+      // keep the line being played in view in the list's own box, never by moving the page (on a phone the list sits
+      // under the map, and scrolling the page to it pulled you away from the map), and only when the line changes
+      if (st.playing && last !== st.shownLine && feed.scrollHeight > feed.clientHeight + 4) {
+        const fr = feed.getBoundingClientRect(), br = last.getBoundingClientRect();
+        if (br.top < fr.top || br.bottom > fr.bottom) feed.scrollTop += br.top - fr.top - (fr.height - br.height) / 2;
+      }
+      st.shownLine = last;
+    }
   };
   const setDim = (dim) => {
     st.dim = dim;

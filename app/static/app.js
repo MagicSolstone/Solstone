@@ -980,7 +980,7 @@ function serverHeader(s, tab) {
     s.game && s.game !== "minecraft-java" && `<span><b>${esc(s.game_label)}</b></span>`,
     s.loader && `<span><b>${esc(s.loader)}</b></span>`,
     s.started && s.running && `<span>Up since <b>${esc(new Date(s.started.replace(" ", "T")).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }))}</b></span>`,
-    s.cpu != null && s.running && `<span>CPU <b>${esc(Number(s.cpu).toFixed(1))}%</b></span>`,
+    s.cpu != null && s.running && `<span title="${s.cpu_cores ? `Of everything its plan gives it (${+s.cpu_cores} cores)` : "100% is one whole core"}">CPU <b>${esc(Number(s.cpu).toFixed(1))}%</b>${s.cpu_cores ? ` <small class="muted">of ${+s.cpu_cores} cores</small>` : ""}</span>`,
     s.mem && s.running && `<span>RAM <b>${esc(s.mem)}</b></span>`,
     s.world_size && `<span>World <b>${esc(s.world_size)}</b></span>`,
     s.perf && s.running && `<span>TPS <b>${esc(s.perf.tps.toFixed(1))}</b></span>`,
@@ -1603,7 +1603,7 @@ async function viewWorld(sid) {
         <dt>Total ticks</dt><dd>${fmtDuration(w.game_time)} of world time</dd>
       </dl></div></div>
     <section class="section"><div class="section-head"><h2>Map</h2></div>${map}</section>
-    <section class="section"><div class="section-head"><h2>Explored</h2><span class="muted">Chunks generated in each dimension</span>${isAdmin() ? '<button class="btn sm" id="btn-mapcheck" style="margin-left:auto">🔍 Check the map drawing</button>' : ""}</div>
+    <section class="section"><div class="section-head"><h2>Explored</h2><span class="muted">Chunks generated in each dimension</span>${isAdmin() ? '<span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" id="btn-mapredraw" title="Pictures left over from another world? Draw them all again from the world as it is">🔄 Redraw the map</button><button class="btn sm" id="btn-mapcheck">🔍 Check the map drawing</button></span>' : ""}</div>
       <div class="panel dims">${w.dimensions.map((d) => `<div class="dim-bar"><span class="dim-tag ${dimClass(d.id)}" style="justify-self:start">${esc(dimName(d.id))}</span>
         <div class="bar-bg"><span style="width:${(d.chunks / maxChunks) * 100}%"></span></div><span class="num">${fmtNum(d.chunks)}</span></div>`).join("") || '<p class="muted">No region files found.</p>'}</div>
     </section>
@@ -1613,6 +1613,11 @@ async function viewWorld(sid) {
     ${w.datapacks.enabled.length ? `<section class="section"><div class="section-head"><h2>Data packs</h2></div><div class="chips">${w.datapacks.enabled.map((d) => `<span class="chip">${esc(d.replace(/^file\//, ""))}</span>`).join("")}</div></section>` : ""}`);
   wireHeader(s);
   $("#btn-mapcheck")?.addEventListener("click", () => openMapCheck(sid, w.dimensions.map((d) => d.id)));
+  $("#btn-mapredraw")?.addEventListener("click", async (e) => {
+    if (!sureTwice(e.currentTarget, "Sure? Every picture again")) return;
+    try { const r = await post(`/api/servers/${encodeURIComponent(sid)}/map/redraw`, {}); showToast(`Drawing the map again (${r.cleared} pictures): the part you're looking at first`, 4000); viewWorld(sid); }
+    catch (err) { showError(esc(err.message), 4000); }
+  });
   // Solstone's own map, centred on whoever's around, with everyone's (last) spot
   let ownMap = null;
   // Each player's face (with the hat layer), cut from their skin, drawn where they are.

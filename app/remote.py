@@ -1052,7 +1052,8 @@ class Panel:
         mem = int(res.get("memory_bytes") or 0)
         limit = int((self.cfg.get("_limits") or {}).get("memory") or 0) * 1024 * 1024
         up = int(res.get("uptime") or 0)                      # milliseconds
-        out = {"running": state == "running", "state": state, "cpu": round(float(res.get("cpu_absolute") or 0), 1),
+        cpu, cores = _cpu_share(res.get("cpu_absolute"), (self.cfg.get("_limits") or {}).get("cpu"))
+        out = {"running": state == "running", "state": state, "cpu": cpu, "cpu_cores": cores,
                "mem": f"{mem / 1024 ** 3:.1f}GB" if mem >= 1024 ** 3 else f"{mem / 1024 ** 2:.0f}MB",
                "mem_percent": round(mem * 100 / limit, 1) if limit else None,
                "world_size": f"{int(res.get('disk_bytes') or 0) / 1024 ** 3:.1f}GB",
@@ -1085,13 +1086,26 @@ class Panel:
         limits = a.get("limits") or {}
         data = all_cfg()
         if self._cfg is None and self.sid in data:            # its memory limit: for "how full"
-            data[self.sid]["_limits"] = {"memory": limits.get("memory") or 0}
+            data[self.sid]["_limits"] = {"memory": limits.get("memory") or 0, "cpu": limits.get("cpu") or 0}
             settings_store.save_section(SECTION, data)
         st = await self.stats()
         if self._cfg is not None:
             await self._client.aclose()
         return {"ok": True, "name": a.get("name", ""), "node": a.get("node", ""), "state": (st or {}).get("state", ""),
                 "memory_mb": limits.get("memory") or 0}
+
+
+def _cpu_share(cpu_absolute, limit) -> tuple[float, float | None]:
+    """A host's panel counts CPU per core (100% one core, 200% two...), up to the plan's limit. Shown as a share of the plan
+    instead, so 100% is all of it however many cores it has: (percent, cores). No limit (0): as the panel says, per core."""
+    cpu = float(cpu_absolute or 0)
+    try:
+        limit = float(limit or 0)
+    except (TypeError, ValueError):
+        limit = 0.0
+    if limit > 0:
+        return round(min(cpu * 100 / limit, 100.0), 1), round(limit / 100, 2)
+    return round(cpu, 1), None
 
 
 def _panel_why(e: Exception) -> str:
@@ -1158,7 +1172,10 @@ class PrismPanel(Panel):
         limit = int((a.get("limits") or {}).get("memory_mb") or 0) * 1024 * 1024
         up = int(res.get("uptime_ms") or 0)
         game = a.get("game") or {}
-        out = {"running": state == "running", "state": state, "cpu": round(float(res.get("cpu_absolute") or 0), 1),
+        lim = a.get("limits") or {}
+        cpu, cores = _cpu_share(res.get("cpu_absolute"), lim.get("cpu_percent") or lim.get("cpu")
+                                or (lim.get("cpu_cores") or lim.get("vcpus") or 0) * 100)
+        out = {"running": state == "running", "state": state, "cpu": cpu, "cpu_cores": cores,
                "mem": f"{mem / 1024 ** 3:.1f}GB" if mem >= 1024 ** 3 else f"{mem / 1024 ** 2:.0f}MB",
                "mem_percent": round(mem * 100 / limit, 1) if limit else None,
                "world_size": f"{int(res.get('disk_bytes') or 0) / 1024 ** 3:.1f}GB",

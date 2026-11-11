@@ -473,6 +473,7 @@ async def server_summary(srv: Server) -> dict:
         "crashed": bool(stats.get("crashed")),
         "started": stats.get("started"),
         "cpu": stats.get("cpu"),
+        "cpu_cores": stats.get("cpu_cores"),         # (a host's plan: the CPU is a share of these cores)
         "mem": _fmt_mem(stats.get("mem")),
         "mem_percent": stats.get("mem_percent"),
         "world_size": stats.get("world_size"),

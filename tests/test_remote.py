@@ -153,7 +153,7 @@ def test_the_hosts_panel(monkeypatch, tmp_path):
             return httpx.Response(200, json={"attributes": {"current_state": "running", "resources": {
                 "memory_bytes": 3 * 1024 ** 3, "cpu_absolute": 42.5, "disk_bytes": 5 * 1024 ** 3, "uptime": 3600_000}}})
         if req.url.path.endswith("/1a2b3c4d"):
-            return httpx.Response(200, json={"attributes": {"name": "Family", "node": "Dallas 1", "limits": {"memory": 6144}}})
+            return httpx.Response(200, json={"attributes": {"name": "Family", "node": "Dallas 1", "limits": {"memory": 6144, "cpu": 200}}})
         return httpx.Response(204)
     from app import connections
     conn = connections.save(None, {"type": "panel", "url": "https://panel.example.com", "key": "ptlc_key"})
@@ -165,7 +165,8 @@ def test_the_hosts_panel(monkeypatch, tmp_path):
     assert t["ok"] and t["name"] == "Family" and t["memory_mb"] == 6144
     p._stats = None
     st = asyncio.run(p.stats())
-    assert st["running"] and st["cpu"] == 42.5 and st["mem"] == "3.0GB" and st["mem_percent"] == 50.0
+    assert st["running"] and st["mem"] == "3.0GB" and st["mem_percent"] == 50.0
+    assert st["cpu"] == 21.2 and st["cpu_cores"] == 2.0                  # 42.5% of one core, of a 2-core plan: about a fifth
     asyncio.run(p.power("restart_server"))
     asyncio.run(p.command("say hi"))
     asyncio.run(p.power("backup_server"))
@@ -301,7 +302,7 @@ def test_serverprism(monkeypatch, tmp_path):
                                              "meta": {"total": 1, "last_page": 1}})
         if req.url.path == "/api/v1/client/servers/1234":
             return httpx.Response(200, json={"data": {"id": 1234, "name": "Family", "address": "fam.example.com", "game": {"version": "1.21.4"},
-                                             "limits": {"memory_mb": 4096}, "resources": {"current_state": "running", "memory_bytes": 2147483648,
+                                             "limits": {"memory_mb": 4096, "cpu": 200}, "resources": {"current_state": "running", "memory_bytes": 2147483648,
                                              "cpu_absolute": 18.5, "disk_bytes": 7300000000, "uptime_ms": 3600000}}})
         if req.url.path.endswith("/backups"):
             return httpx.Response(202, json={"data": {"status": "in_progress"}})
@@ -317,7 +318,7 @@ def test_serverprism(monkeypatch, tmp_path):
     p = remote.panel(sid)
     assert isinstance(p, remote.PrismPanel)
     st = asyncio.run(p.stats())
-    assert st["running"] and st["cpu"] == 18.5 and st["mem"] == "2.0GB" and st["mem_percent"] == 50.0 and st["version"] == "1.21.4"
+    assert st["running"] and st["cpu"] == 9.2 and st["cpu_cores"] == 2.0 and st["mem"] == "2.0GB" and st["mem_percent"] == 50.0 and st["version"] == "1.21.4"
     asyncio.run(p.power("restart_server"))
     asyncio.run(p.power("backup_server"))
     asyncio.run(p.command("say hi"))
@@ -756,3 +757,10 @@ def test_check_reaches_a_server_elsewhere(far):
     data = remote.all_cfg(); data[sid]["password"] = "wrong"; settings_store.save_section(remote.SECTION, data)
     lines = {x["name"]: x for x in loop.run_until_complete(servercheck.check(reg.servers[sid]))}
     assert lines["SFTP"]["state"] == "bad" and "wasn't accepted" in lines["SFTP"]["detail"]
+
+
+def test_cpu_is_a_share_of_the_hosts_plan():
+    """A panel's 150% (one and a half cores) of a 2-core plan: 75%; no limit known: as the panel says."""
+    assert remote._cpu_share(150, 200) == (75.0, 2.0)
+    assert remote._cpu_share(230, 200) == (100.0, 2.0)               # (a moment over: never more than all of it)
+    assert remote._cpu_share(42.5, 0) == (42.5, None) and remote._cpu_share(None, "x") == (0.0, None)

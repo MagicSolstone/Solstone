@@ -116,7 +116,7 @@ function statusPanel(site) {
       tps != null ? tile("TPS", tps.toFixed(1), `${smooth}${s.mspt != null ? ` · ${Number(s.mspt).toFixed(0)} ms a tick` : ""}`, sparkline(tr.tps, 0, 20, `TPS over ${hrs}`), "tps") : "",
       s.version ? tile("Minecraft", esc(s.version), s.loader ? s.loader.charAt(0).toUpperCase() + s.loader.slice(1) : "") : "",
       s.up_since ? tile("Up for", esc(sinceText(s.up_since * 1000)), s.uptime_7d != null ? `${Math.round(s.uptime_7d * 1000) / 10}% of the last 7 days` : "", "", "uptime") : "",
-      s.cpu != null ? tile("CPU", `${Math.round(Number(s.cpu))}%`, "", sparkline(tr.cpu, 0, 100, `CPU over ${hrs}`), "cpu") : "",
+      s.cpu != null ? tile("CPU", `${Math.round(Number(s.cpu))}%`, s.cpu_cores ? `of its ${+s.cpu_cores} core${+s.cpu_cores === 1 ? "" : "s"}` : "", sparkline(tr.cpu, 0, 100, `CPU over ${hrs}`), "cpu") : "",
       s.mem ? tile("Memory", esc(s.mem), s.mem_percent != null ? `${Math.round(Number(s.mem_percent))}% of the computer's RAM` : "",
         sparkline(tr.mem_mb, 0, Math.max(0, ...(tr.mem_mb || []).filter((x) => x != null)) * 1.15, `Memory over ${hrs}`), "mem_mb") : "",
     ].join("");
@@ -210,7 +210,7 @@ function stepState(list) {
 const HIST = {
   players: { title: "Players", fmt: (v) => `${Math.round(v)}`, lo: 0, note: "The most playing at once, in each stretch." },
   tps: { title: "TPS", fmt: (v) => v.toFixed(1), lo: 0, hi: 20, note: "20 is perfectly smooth. Below 15 you'd notice lag." },
-  cpu: { title: "CPU", fmt: (v) => `${Math.round(v)}%`, lo: 0, hi: 100, note: "How hard the server's working (100% is one whole core)." },
+  cpu: { title: "CPU", fmt: (v) => `${Math.round(v)}%`, lo: 0, hi: 100, note: "How hard the server's working. At a game host, 100% is everything its plan gives it (all its cores); on a computer of your own, 100% is one whole core." },
   mem_mb: { title: "Memory", fmt: (v) => (v >= 1024 ? `${(v / 1024).toFixed(2)} GB` : `${Math.round(v)} MB`), lo: 0, note: "Java grabs memory and gives it back slowly, so a high flat line is normal." },
   uptime: { title: "Uptime" },
 };

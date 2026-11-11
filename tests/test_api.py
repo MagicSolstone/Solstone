@@ -124,6 +124,12 @@ def test_check_tries_everything_a_server_needs(client, viewer, sid):
     assert r["state"] in ("ok", "warn", "bad")
 
 
+def test_an_admin_redraws_the_whole_map(client, viewer, sid):
+    assert viewer.post(f"/api/servers/{sid}/map/redraw").status_code == 403
+    r = client.post(f"/api/servers/{sid}/map/redraw")
+    assert r.status_code == 200 and r.json()["cleared"] >= 0
+
+
 def test_assets_and_icons(client, sid):
     assert client.get(f"/api/servers/{sid}/assets/status").json()["state"] == "ready"
     lang = client.get(f"/api/servers/{sid}/assets/lang").json()
