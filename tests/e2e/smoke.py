@@ -414,6 +414,16 @@ def main() -> int:
                 check(pg, "manage-server-settings")
                 pg.locator("[data-close-modal]").first.click(); pg.wait_for_timeout(300)
                 check(pg, "manage-servers")
+                # 🩺 Check from the server's row: its window opens on the Check tab and tries everything
+                pg.click(f'#srv-manage [data-msid="{sid}"] [data-check-row]')
+                try:
+                    pg.wait_for_selector(".check-list li", timeout=20000)
+                except Exception:
+                    problems.append("manage servers: 🩺 Check didn't show its results")
+                if pg.locator(".check-list li").count() < 6:
+                    problems.append(f"manage servers: 🩺 Check listed only {pg.locator('.check-list li').count()} things")
+                check(pg, "manage-server-check")
+                pg.locator("[data-close-modal]").first.click(); pg.wait_for_timeout(300)
             # a server somewhere else: the guided form, its test, and adding it (the host is pretend: answers stubbed)
             pg.route("**/api/manage/remote/test", lambda route: route.fulfill(json={"files": {"ok": True, "motd": "Far SMP", "host_key": "SHA256:abc",
                      "rcon": True, "rcon_port": "25575", "files": ["server.properties", "world"]}, "panel": {"ok": True, "name": "Far SMP", "state": "running", "node": "Dallas"}}))

@@ -91,6 +91,39 @@ def test_leaderboard(client, sid):
     assert best["name"] == "Tyler"
 
 
+def test_an_admin_takes_numbers_off_a_players_boards(client, viewer, sid):
+    """Testing a race piled up flying: from zero on the boards (the game's numbers kept), back again, admins only."""
+    rows = client.get(f"/api/servers/{sid}/leaderboard").json()["players"]
+    tyler = next(r for r in rows if r["name"] == "Tyler")
+    url = f"/api/servers/{sid}/leaderboard/adjust/{tyler['uuid']}"
+    assert viewer.get(url).status_code == 403 and viewer.put(url, json={"key": "mob_kills", "to": 0}).status_code == 403
+    mine = {r["key"]: r for r in client.get(url).json()}
+    assert "xp_level" not in mine and mine["mob_kills"]["real"] == tyler["mob_kills"] > 0 and mine["mob_kills"]["minus"] == 0
+    after = {r["key"]: r for r in client.put(url, json={"key": "mob_kills", "to": 0}).json()}
+    assert after["mob_kills"]["shown"] == 0 and after["mob_kills"]["real"] == tyler["mob_kills"]
+    again = next(r for r in client.get(f"/api/servers/{sid}/leaderboard").json()["players"] if r["uuid"] == tyler["uuid"])
+    assert again["mob_kills"] == 0 and again["blocks_mined"] == tyler["blocks_mined"]                 # just that board
+    assert client.put(url, json={"key": "mob_kills", "to": tyler["mob_kills"] + 5}).status_code == 400   # not above the game's
+    assert client.put(url, json={"key": "xp_level", "to": 0}).status_code == 400                         # a value now: not adjustable
+    assert client.put(url, json={"keys": ["mob_kills", "blocks_mined"], "to": 2}).status_code == 200
+    two = next(r for r in client.get(f"/api/servers/{sid}/leaderboard").json()["players"] if r["uuid"] == tyler["uuid"])
+    assert two["mob_kills"] == min(2, tyler["mob_kills"]) and two["blocks_mined"] == min(2, tyler["blocks_mined"])
+    client.put(url, json={"keys": ["mob_kills", "blocks_mined"], "to": None})                            # the game's again
+    back = next(r for r in client.get(f"/api/servers/{sid}/leaderboard").json()["players"] if r["uuid"] == tyler["uuid"])
+    assert back["mob_kills"] == tyler["mob_kills"] and back["blocks_mined"] == tyler["blocks_mined"]
+
+
+def test_check_tries_everything_a_server_needs(client, viewer, sid):
+    """🩺 Check: one line each for its folder, the world, start and stop, RCON, the log, the map and room; admins only."""
+    assert viewer.post(f"/api/manage/servers/{sid}/check").status_code == 403
+    r = client.post(f"/api/manage/servers/{sid}/check").json()
+    lines = {x["name"]: x for x in r["lines"]}
+    assert {"Its folder", "World", "Start and stop", "RCON", "Log", "Map", "Room for Solstone"} <= set(lines)
+    assert lines["Its folder"]["state"] == "ok" and lines["World"]["state"] == "ok"
+    assert all(x["state"] in ("ok", "warn", "bad", "off") and x["detail"] for x in r["lines"])
+    assert r["state"] in ("ok", "warn", "bad")
+
+
 def test_assets_and_icons(client, sid):
     assert client.get(f"/api/servers/{sid}/assets/status").json()["state"] == "ready"
     lang = client.get(f"/api/servers/{sid}/assets/lang").json()

@@ -1159,7 +1159,7 @@ function wireForgetPlayer(el) {
         const r = await post("/api/players/forget", { name: p.name, confirm: p.name, backed_up: true });
         out.innerHTML = `<p class="notice small">Done: ${r.total.toLocaleString()} things about ${esc(r.name)} are gone from Solstone. A backup was made just before.</p>`;
         form.reset();
-      } catch (err) { showError(esc(err.message), 5000); }
+      } catch (err) { show("conn"); showError(esc(err.message), 5000); }
     });
   });
 }
@@ -1186,7 +1186,7 @@ async function manageServers() {
             + (x.panel ? chip(x.panel_error ? "warn" : "on", x.panel_error ? "Panel: not answering" : "Panel ✓", x.panel_error || "Start, stop, CPU and memory through the host's panel") : "")
             : chip("", x.crafty ? "Crafty" : "Folder", x.crafty ? "Started and stopped through Crafty" : `The ${x.folder} folder`)}${x.version ? chip("", esc(x.version)) : ""}${x.remote && x.map ? chip("", "🗺 Map", "Copies the parts of the world players go to, for the map") : ""}${backupChip(x.backup, chip)}</div></div>
       <div class="btn-row">${x.hidden ? `<button class="btn sm primary" type="button" data-show>Show it</button>` : `<a class="btn sm" href="#/s/${encodeURIComponent(x.id)}">Open</a>`}
-        <button class="btn sm" type="button" data-edit>⚙ Settings</button></div></div>`).join("")
+        <button class="btn sm" type="button" data-check-row title="Everything this server needs, tried now">🩺 Check</button><button class="btn sm" type="button" data-edit>⚙ Settings</button></div></div>`).join("")
     + `<p class="muted small">A server Solstone finds for the first time starts <b>hidden</b>, so nothing new turns up on the website until you show it.</p>
     <div class="btn-row"><button class="btn" type="button" data-add-remote>🌐 Add a server somewhere else</button>
       <span class="muted small">A game host, a rented server, another computer: Solstone reaches its files over SFTP.</span></div>`;
@@ -1194,6 +1194,7 @@ async function manageServers() {
   box.querySelectorAll("[data-msid]").forEach((row) => {
     const x = list.find((y) => y.id === row.dataset.msid);
     row.querySelector("[data-edit]").addEventListener("click", () => openServerSetup(x.id, manageServers));
+    row.querySelector("[data-check-row]").addEventListener("click", () => openServerSetup(x.id, manageServers, "check"));
     row.querySelector("[data-show]")?.addEventListener("click", async () => {
       try { await post(`/api/servers/${encodeURIComponent(x.id)}/settings`, { hidden: "" }, "PUT"); showToast(`${esc(x.name)} is shown`, 2500); await loadServers(); manageServers(); }
       catch (e) { showError(esc(e.message), 4000); }
@@ -1240,7 +1241,7 @@ function backupLine(b) {
 //   2. Its files: on this machine, or over SFTP            4. Start, stop and stats: Crafty, a host's panel, or none
 // Here or somewhere else only changes where its files come from (2) and what can run it (4). sid null: adding one
 // somewhere else (its files over SFTP).
-async function openServerSetup(sid, then) {
+async function openServerSetup(sid, then, tab = "") {
   const [rows, conns] = await Promise.all([api("/api/manage/servers").catch(() => []), api("/api/manage/connections").catch(() => [])]);
   const row = sid ? rows.find((x) => x.id === sid) : null;
   if (sid && !row) { showError("Couldn't load its settings", 3000); return; }
@@ -1264,25 +1265,28 @@ async function openServerSetup(sid, then) {
         <label class="wide">Look for new stats and player files every <select class="input sm" name="files_secs">${[[15, "15 seconds"], [30, "30 seconds"], [60, "minute"], [120, "2 minutes"], [300, "5 minutes"]].map(([v, l]) => `<option value="${v}" ${+c.files_secs === v ? "selected" : ""}>${l}</option>`).join("")}</select>
           <small class="muted">The log (who joined, chat, deaths) is followed every few seconds either way, fetching only its new lines.</small></label>
       </div>
-      <label class="check"><input type="checkbox" name="map" ${c.map !== false ? "checked" : ""}> Draw the map where players have been <small class="muted">copies just those parts of the world (about 1-10 MB for each 512 × 512 blocks), and again when they change while someone's there; never the whole world</small></label>
-      <h4 class="set-h">💾 A full copy here <small class="muted">a backup on this machine</small></h4>
-      <label class="check"><input type="checkbox" name="backup" ${c.backup ? "checked" : ""}> Copy the whole server here each night <small class="muted">every file of the server (but logs and what the game downloads again by itself), updated with only what changed. The game's saving is paused for the last moments (save-off, save-all), so the copy is of one moment, not a file caught halfway. Point Kopia (or any backup) at its folder.</small></label>
+      <div class="btn-row"><button class="btn" type="button" data-test>🔌 Test the connection</button>
+        ${sid && c.host_key ? `<button class="btn sm" type="button" data-forget-key title="Only if your host moved your server to another machine">Forget its identity</button>` : ""}</div>
+      <div class="remote-result" id="remote-result">${c.host_key ? `<p class="muted small">Its identity: <code>${esc(c.host_key)}</code> (remembered the first time; Solstone won't connect if it changes)</p>` : ""}
+        ${row?.files?.error ? `<p class="notice small">Its files aren't updating: ${esc(row.files.error)}</p>` : row?.files?.synced ? `<p class="muted small">Files last updated ${esc(fmtAgo(row.files.synced))}.</p>` : ""}
+</div>`;
+  const mapPart = `<p class="muted small">The World tab's top-down map is drawn from the world's region files; for a server elsewhere Solstone copies the parts it needs.</p>
+      <label class="check"><input type="checkbox" name="map" ${c.map !== false ? "checked" : ""}> <span><b>Draw the map where players have been</b><br><small class="muted">copies just those parts of the world (about 1-10 MB for each 512 × 512 blocks), again when they change while someone's there. A full copy, if it's on, brings in the rest.</small></span></label>
+      <div class="map-status">
+        ${row?.files?.["error_the map"] ? `<p class="notice small">The map isn't updating (everything else is): ${esc(row.files["error_the map"])}</p>` : ""}
+        ${row?.files?.map ? `<p class="muted small">🗺 <b>${row.files.map.visited}</b> area${row.files.map.visited === 1 ? "" : "s"} to copy (spawn, and where players are or were: ${row.files.map.now} around someone now) · <b>${row.files.map.copied}</b> copied · ${row.files.map.queued} waiting · looked ${esc(fmtAgo(row.files.map.looked))}${row.files.map.no_folder?.length ? ` · <span class="notice">no world folder found on the server for ${esc(row.files.map.no_folder.join(", "))}${row.files.map.world_has?.length ? ` (its world folder has: ${esc(row.files.map.world_has.join(", "))})` : ""}</span>` : ""}</p>` : ""}</div>`;
+  const copyPart = `<p class="muted small">A backup on this machine: every file of the server (but logs and what the game downloads again by itself), updated each night with only what changed. Point Kopia (or any backup) at its folder.</p>
+      <label class="check"><input type="checkbox" name="backup" ${c.backup ? "checked" : ""}> <span><b>Copy the whole server here each night</b><br><small class="muted">The game's saving is paused for the last moments (save-off, save-all flush, then save-on), so the copy is of one moment, not a file caught halfway.</small></span></label>
       <div class="remote-grid">
         <label>At <input class="input" type="time" name="backup_at" value="${esc(c.backup_at || "04:00")}" style="width:120px"></label>
         <label>No faster than <select class="input sm" name="backup_mbps">${[[0, "as fast as it goes"], [2, "2 MB/s"], [5, "5 MB/s"], [10, "10 MB/s"], [20, "20 MB/s"], [50, "50 MB/s"]].map(([v, l]) => `<option value="${v}" ${(+c.backup_mbps || 0) === v ? "selected" : ""}>${l}</option>`).join("")}</select>
           <small class="muted">leaves the server's connection room for players during a big copy</small></label>
-        <label class="check wide"><input type="checkbox" name="backup_dh" ${c.backup_dh !== false ? "checked" : ""}> With Distant Horizons' data <small class="muted">large, and fetched whole again on nights it changed; it can be rebuilt from the world</small></label>
+        <label class="check wide"><input type="checkbox" name="backup_dh" ${c.backup_dh !== false ? "checked" : ""}> <span><b>With Distant Horizons' data</b><br><small class="muted">large, and fetched whole again on nights it changed; it can be rebuilt from the world</small></span></label>
       </div>
       <div id="backup-status">${sid ? backupLine(row?.backup) : ""}</div>
       ${sid ? `<details class="small" data-backup-history><summary>🕘 History of full copies <span class="muted">(each one: what changed, what was removed)</span></summary><div class="bk-hist muted">Loading…</div></details>
       <details class="small" data-backup-browse><summary>📂 What's in the copy <span class="muted">(each file with when the server last changed it)</span></summary><div class="bk-browse muted">Loading…</div></details>` : ""}
-      <div class="btn-row"><button class="btn" type="button" data-test>🔌 Test the connection</button>
-        ${sid ? `<button class="btn" type="button" data-backup-now ${row?.backup?.running ? "hidden" : ""}>💾 Copy now</button><button class="btn" type="button" data-backup-stop ${row?.backup?.running ? "" : "hidden"}>⏹ Stop the copy</button>` : ""}
-        ${sid && c.host_key ? `<button class="btn sm" type="button" data-forget-key title="Only if your host moved your server to another machine">Forget its identity</button>` : ""}</div>
-      <div class="remote-result" id="remote-result">${c.host_key ? `<p class="muted small">Its identity: <code>${esc(c.host_key)}</code> (remembered the first time; Solstone won't connect if it changes)</p>` : ""}
-        ${row?.files?.error ? `<p class="notice small">Its files aren't updating: ${esc(row.files.error)}</p>` : row?.files?.synced ? `<p class="muted small">Files last updated ${esc(fmtAgo(row.files.synced))}.</p>` : ""}
-        ${row?.files?.["error_the map"] ? `<p class="notice small">The map isn't updating (everything else is): ${esc(row.files["error_the map"])}</p>` : ""}
-        ${row?.files?.map ? `<p class="muted small">🗺 Map: <b>${row.files.map.visited}</b> area${row.files.map.visited === 1 ? "" : "s"} to copy (spawn, and where players are or were: ${row.files.map.now} around someone now) · <b>${row.files.map.copied}</b> copied · ${row.files.map.queued} waiting · looked ${esc(fmtAgo(row.files.map.looked))}${row.files.map.no_folder?.length ? ` · <span class="notice">no world folder found on the server for ${esc(row.files.map.no_folder.join(", "))}${row.files.map.world_has?.length ? ` (its world folder has: ${esc(row.files.map.world_has.join(", "))})` : ""}</span>` : ""}</p>` : ""}</div>`;
+      ${sid ? `<div class="btn-row"><button class="btn" type="button" data-backup-now ${row?.backup?.running ? "hidden" : ""}>💾 Copy now</button><button class="btn" type="button" data-backup-stop ${row?.backup?.running ? "" : "hidden"}>⏹ Stop the copy</button></div>` : ""}`;
   const runner = !remote ? (row.crafty ? `<p>🧰 <b>${esc(row.crafty_name || "Crafty")}</b> starts and stops it, and says how it's doing. <span class="muted small">(Under <b>Connections</b> on this page.)</span></p>`
       : `<p class="muted">Nothing: Solstone found it as a folder, so it can't start or stop it. Add Crafty under <b>Connections</b> if Crafty runs it.</p>`)
     : panels.length ? `<p class="muted small">Which of your host connections it's on (Pterodactyl, Pelican or ServerPrism), then which server it is there.</p>
@@ -1290,18 +1294,21 @@ async function openServerSetup(sid, then) {
         <label class="wide">Panel<select class="input" name="conn"><option value="">None</option>${panels.map((p) => `<option value="${esc(p.id)}" ${c.conn === p.id ? "selected" : ""}>${esc(p.name)} (${esc(p.url.replace(/^https?:\/\//, ""))})</option>`).join("")}</select></label>
         <label class="wide">Server there<select class="input" name="panel_id">${c.panel_id ? `<option value="${esc(c.panel_id)}">${esc(c.panel_id)}</option>` : `<option value="">Pick the panel first</option>`}</select></label>
       </div>` : `<p class="muted small">Optional, for hosts on <b>Pterodactyl</b>, <b>Pelican</b> or <b>ServerPrism</b>: add it under <b>Connections</b> on this page first (once for every server there), then pick it here.</p>`;
+  const tabs = [["conn", "🔌 Connection"], ...(remote ? [["map", "🗺 Map"], ["copy", "💾 Full copy"]] : []), ...(sid ? [["check", "🩺 Check"]] : [])];
   const html = `<h2>⚙ ${esc(title)}</h2>
-    <form id="settings-form" class="remote-form" autocomplete="off">
-      <h3 class="set-h">1. General</h3>
+    ${tabs.length > 1 ? `<div class="seg set-tabs" role="tablist">${tabs.map(([k, l]) => `<button type="button" role="tab" data-settab="${k}" aria-pressed="false">${l}</button>`).join("")}</div>` : ""}
+    <form id="settings-form" class="remote-form" autocomplete="off" novalidate>
+      <div class="set-pane" data-pane="conn">
+      <h3 class="set-h">General</h3>
       <div class="remote-grid">
         <label class="wide">Name${remote && !sid ? "" : ` <small class="muted">blank: ${esc(row.found_as)}</small>`}<input class="input" name="display_name" maxlength="60" ${remote && !sid ? "required" : ""} value="${esc(remote && !sid ? "" : cur.display_name || "")}" placeholder="${esc(row?.found_as || "Family Survival")}"></label>
       </div>
-      <label class="check"><input type="checkbox" name="private" ${cur.private ? "checked" : ""}> Private <small class="muted">only admins see it: never on the public pages, and signed-in players don't see it</small></label>
-      ${sid ? `<label class="check"><input type="checkbox" name="hidden" ${cur.hidden ? "checked" : ""}> Hidden <small class="muted">Solstone leaves it alone: not on the website or any page, no history kept</small></label>` : ""}
+      <label class="check"><input type="checkbox" name="private" ${cur.private ? "checked" : ""}> <span><b>Private</b><br><small class="muted">only admins see it: never on the public pages, and signed-in players don't see it</small></span></label>
+      ${sid ? `<label class="check"><input type="checkbox" name="hidden" ${cur.hidden ? "checked" : ""}> <span><b>Hidden</b><br><small class="muted">Solstone leaves it alone: not on the website or any page, no history kept</small></span></label>` : ""}
       <p class="muted small">How to join it (addresses, a note, the mods) is in Manage → Website → Site details.</p>
-      <h3 class="set-h">2. Its files</h3>
+      <h3 class="set-h">Its files</h3>
       ${remote ? filesThere : filesHere}
-      <h3 class="set-h">3. RCON <small class="muted">commands, who's online, live inventories, games</small></h3>
+      <h3 class="set-h">RCON <small class="muted">commands, who's online, live inventories, games</small></h3>
       <p class="muted small">Read from the server's own server.properties (<code>enable-rcon</code>, <code>rcon.port</code>, <code>rcon.password</code>): leave these blank unless it's different.${remote ? " A game host has to let that port through: often an extra port (an <i>allocation</i>) you add in its panel and set as rcon.port." : ""}</p>
       <div class="remote-grid">
         <label class="wide">Address <small class="muted">blank: ${remote ? "the same as SFTP" : "this machine's usual one"}</small><input class="input" name="rcon_host" value="${esc(cur.rcon_host || "")}" autocapitalize="off" spellcheck="false"></label>
@@ -1309,8 +1316,12 @@ async function openServerSetup(sid, then) {
         <label class="wide">Password <small class="muted">${cur.rcon_password_set ? "Saved. Type a new one to replace it." : "blank: from server.properties"}</small><input class="input" type="password" name="rcon_password" autocomplete="off"></label>
       </div>
       ${row?.java === false ? "" : row?.rcon_error ? `<p class="notice small">RCON isn't answering right now: ${esc(row.rcon_error)}</p>` : ""}
-      <h3 class="set-h">4. Start, stop and stats <small class="muted">running or not, CPU and memory</small></h3>
+      <h3 class="set-h">Start, stop and stats <small class="muted">running or not, CPU and memory</small></h3>
       ${runner}
+      </div>
+      ${remote ? `<div class="set-pane" data-pane="map" hidden>${mapPart}</div><div class="set-pane" data-pane="copy" hidden>${copyPart}</div>` : ""}
+      ${sid ? `<div class="set-pane" data-pane="check" hidden><p class="muted small">Everything this server needs, tried now: its files, the world, start and stop, RCON, the log, the map${remote ? ", the full copy" : ""} and room on this machine. Nothing is changed.</p>
+        <div class="btn-row"><button class="btn primary" type="button" data-check>🩺 Check everything</button></div><div id="check-result"></div></div>` : ""}
       <div class="actions">${remote && sid ? `<button type="button" class="btn danger" data-remove>Stop looking after it</button>` : ""}<span class="spacer"></span>
         <button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">${sid ? "Save" : "Add it"}</button></div>
     </form>`;
@@ -1324,6 +1335,33 @@ async function openServerSetup(sid, then) {
   };
   openModal(html, (m) => {
     const form = $("#settings-form", m), result = $("#remote-result", m);
+    // the tabs: one pane at a time (every field is still in the one form, so Save saves them all)
+    const show = (k) => {
+      if (!m.querySelector(`[data-pane="${k}"]`)) k = "conn";
+      m.querySelectorAll("[data-pane]").forEach((p) => { p.hidden = p.dataset.pane !== k; });
+      m.querySelectorAll("[data-settab]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.settab === k)));
+      try { localStorage.setItem("solstone-settab", k); } catch { /* fine */ }
+    };
+    m.querySelectorAll("[data-settab]").forEach((b) => b.addEventListener("click", () => show(b.dataset.settab)));
+    let first = tab;
+    try { first ||= localStorage.getItem("solstone-settab") || "conn"; } catch { first ||= "conn"; }
+    show(first === "check" && !tab ? "conn" : first);              // (the check runs when asked, not each time it opens)
+    // 🩺 Check: every part tried now, one line each
+    const runCheck = async () => {
+      const box = $("#check-result", m), btn = m.querySelector("[data-check]");
+      if (!box) return;
+      btn.disabled = true; box.innerHTML = `<p class="muted"><span class="spin" aria-hidden="true"></span> Checking…</p>`;
+      try {
+        const r = await post(`/api/manage/servers/${encodeURIComponent(sid)}/check`, {});
+        const icon = { ok: "✓", warn: "⚠", bad: "✗", off: "–" };
+        box.innerHTML = `<p class="check-sum ${r.state}">${r.state === "ok" ? "✓ Everything's working." : r.state === "warn" ? "⚠ Working, with something worth a look." : "✗ Something isn't working."}</p>
+          <ul class="check-list">${r.lines.map((x) => `<li class="${x.state}"><span class="ck-i" aria-hidden="true">${icon[x.state] || "?"}</span><b>${esc(x.name)}</b><span class="ck-d">${esc(x.detail)}</span></li>`).join("")}</ul>
+          <p class="muted small">Checked ${esc(new Date(r.at * 1000).toLocaleTimeString())}.</p>`;
+      } catch (err) { box.innerHTML = `<p class="notice">${esc(err.message)}</p>`; }
+      btn.disabled = false;
+    };
+    m.querySelector("[data-check]")?.addEventListener("click", runCheck);
+    if (tab === "check") runCheck();
     // a panel's servers, to pick from (its API key lists the ones it can see)
     const loadPanelServers = async () => {
       const sel = form.panel_id, cid = form.conn?.value;
@@ -1407,8 +1445,8 @@ async function openServerSetup(sid, then) {
       try { $("#backup-status", m).innerHTML = backupLine(await post(`/api/manage/remote/${encodeURIComponent(sid)}/backup`, {})); follow(); }
       catch (err) { showError(esc(err.message), 4000); }
     });
-    stopBtn?.addEventListener("click", async () => {
-      if (!(await confirmBox("Stop the full copy?", "What it has fetched so far stays, and the next copy carries on from there. If the game's saving was paused, it's turned back on.", "Stop it"))) return;
+    stopBtn?.addEventListener("click", async (e) => {
+      if (!sureTwice(e.currentTarget, "Sure? Click again to stop it")) return;
       try { $("#backup-status", m).innerHTML = backupLine(await post(`/api/manage/remote/${encodeURIComponent(sid)}/backup/stop`, {})); }
       catch (err) { showError(esc(err.message), 4000); }
     });
@@ -1441,7 +1479,7 @@ async function openServerSetup(sid, then) {
         closeModal(); showToast(sid ? "Saved" : `${esc(f.get("display_name"))} is added. Its files arrive in a few seconds.`, 4000);
         await loadServers();
         if (then) await then(); else route();
-      } catch (err) { showError(esc(err.message), 5000); }
+      } catch (err) { show("conn"); showError(esc(err.message), 5000); }
     });
   });
 }

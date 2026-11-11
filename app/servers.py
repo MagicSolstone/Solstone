@@ -1258,6 +1258,42 @@ LEADERBOARD_GROUPS = {
     "Farm and village": ("animals_bred", "traded", "sleep", "cake_eaten"),
 }
 NO_MEDALS = {"deaths"}           # nobody earns a medal for dying the most
+# Adjusted on the leaderboards by an admin (testing a race or a game piles up flying, kills, damage): a number taken
+# off a player's score from then on, kept in Solstone (the game's own statistics aren't touched). Not the boards that are
+# a value now rather than a total.
+NOT_ADJUSTABLE = {"xp_level", "time_since_death", "fishing_level", "heaviest_fish"}
+ADJUST = "board_adjust"          # {server id: {uuid: {board: taken off}}}
+
+
+def board_adjustments(sid: str) -> dict[str, dict[str, int]]:
+    return (settings_store.load().get(ADJUST) or {}).get(sid) or {}
+
+
+def set_board_adjustment(sid: str, uuid: str, key: str, minus: int | None) -> None:
+    data = dict(settings_store.load().get(ADJUST) or {})
+    srv = {u: dict(v) for u, v in (data.get(sid) or {}).items()}
+    mine = srv.setdefault(uuid, {})
+    if minus:
+        mine[key] = int(minus)
+    else:
+        mine.pop(key, None)
+    srv = {u: v for u, v in srv.items() if v}
+    if srv:
+        data[sid] = srv
+    else:
+        data.pop(sid, None)
+    settings_store.save_section(ADJUST, data)
+
+
+def player_board_values(srv: "Server", uuid: str) -> dict[str, int]:
+    """One player's numbers on every board, as the game has them (before any adjustment)."""
+    data, _ = player_file_data(srv, uuid)
+    h = leaderboard_stats(player_stats(srv, uuid))
+    h["xp_level"] = data["xp_level"] if data else 0
+    adv = player_advancements(srv, uuid)
+    h["advancements"] = sum(1 for k, a in adv.items() if a["done"] and "/recipes/" not in k and ":recipes/" not in k)
+    h.update(_tide().leaderboard_values(srv, uuid))
+    return h
 
 
 def leaderboard_stats(stats: dict) -> dict:
@@ -1286,15 +1322,14 @@ def _leaderboard(srv: Server) -> dict:
     # Fishing boards only with the Tide fishing mod: on a vanilla server fishing is just part of the game
     fishing = _tide().installed(srv)
     boards = [b for b in LEADERBOARDS if fishing or b[0] not in LEADERBOARD_GROUPS["Fishing"]]
+    adjust = board_adjustments(srv.id)
     for uuid, p in known_players(srv).items():
         if removed(srv, p):                 # off the whitelist: off the boards (back on, and their scores return)
             continue
-        data, _ = player_file_data(srv, uuid)
-        h = leaderboard_stats(player_stats(srv, uuid))
-        h["xp_level"] = data["xp_level"] if data else 0
-        adv = player_advancements(srv, uuid)
-        h["advancements"] = sum(1 for k, a in adv.items() if a["done"] and "/recipes/" not in k and ":recipes/" not in k)
-        h.update(_tide().leaderboard_values(srv, uuid))
+        h = player_board_values(srv, uuid)
+        for k, minus in (adjust.get(uuid) or {}).items():
+            if k in h and k not in NOT_ADJUSTABLE:
+                h[k] = max(0, h[k] - minus)
         rows.append({"uuid": uuid, "name": p["name"], **{k: h.get(k, 0) for k, _t, _f in boards}})
     group = {k: g for g, keys in LEADERBOARD_GROUPS.items() for k in keys}
     return {"boards": [{"key": k, "title": t, "kind": f, "group": group.get(k, "More"), "medals": k not in NO_MEDALS}

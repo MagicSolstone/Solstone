@@ -23,7 +23,7 @@ const ST_KEYS = [
   ["players", "Players in a day", "👥", (v) => stNum(v), "max"],
   ["peak", "Most on at once", "📈", (v) => stNum(v), "max"],
 ];
-const ST_TILES = ["play_hours", "mobs", "travelled", "mined", "logs", "fish", "deaths", "advancements"];
+const ST_TILES = ["play_hours", "mobs", "travelled", "mined", "logs", "fish", "deaths", "chat"];
 // a fun way to picture a total
 const ST_FUN = {
   travelled: (v) => (v >= 42195 ? `≈ ${stNum(v / 42195, 1)} marathons` : v >= 1000 ? `≈ ${stNum(v / 400, 0)} laps of a running track` : ""),

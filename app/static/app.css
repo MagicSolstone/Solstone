@@ -2667,3 +2667,35 @@ body.ui-hidden .manage-sub { display: none; }
 .bk-files { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: .85rem; display: block; max-height: 320px; overflow: auto; }
 .bk-files th, .bk-files td { text-align: left; padding: 3px 8px 3px 0; vertical-align: top; }
 .bk-files td code { word-break: break-all; }
+/* Leaderboards: an admin adjusting a player's numbers */
+.lb-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
+.ba-list { margin: 10px 0; max-height: 55vh; overflow: auto; }
+.ba-table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.ba-table th { text-align: left; font-weight: 600; color: var(--muted, #9aa4b2); padding: 4px 8px 6px 0; position: sticky; top: 0; background: var(--panel, #1f2633); }
+.ba-table td { padding: 5px 8px 5px 0; border-top: 1px solid rgba(255,255,255,.06); }
+.ba-table td.num { font-variant-numeric: tabular-nums; }
+.ba-table .ba-do { text-align: right; white-space: nowrap; }
+.ba-table .ba-do .btn + .btn { margin-left: 6px; }
+.ba-table tr.ba-adjusted td:first-child::after { content: " ⚖"; opacity: .7; }
+/* one server's settings: four tabs (Connection, Map, Full copy, Check) */
+.set-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 14px; }
+.set-tabs button { flex: 1 1 auto; }
+.set-pane { animation: set-in .15s ease-out; }
+@keyframes set-in { from { opacity: .4; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+.remote-form label.check { display: flex; align-items: flex-start; gap: 10px; margin: 10px 0; line-height: 1.35; }
+.remote-form label.check input[type=checkbox] { margin-top: 3px; flex: none; }
+.remote-form label.check > span { flex: 1; min-width: 0; }
+.remote-form label.check small { display: inline-block; margin-top: 2px; }
+.remote-form .set-h { margin-top: 18px; }
+.remote-form .set-pane > .set-h:first-child { margin-top: 0; }
+.map-status { margin-top: 8px; }
+/* 🩺 Check */
+.check-sum { font-weight: 600; margin: 10px 0 6px; }
+.check-sum.ok { color: var(--ok, #6fcf97); } .check-sum.warn { color: var(--warn, #f2c94c); } .check-sum.bad { color: var(--bad, #eb5757); }
+.check-list { list-style: none; padding: 0; margin: 0; }
+.check-list li { display: grid; grid-template-columns: 22px 150px 1fr; gap: 8px; align-items: baseline; padding: 7px 0; border-top: 1px solid rgba(255,255,255,.06); }
+.check-list .ck-i { font-weight: 700; text-align: center; }
+.check-list li.ok .ck-i { color: var(--ok, #6fcf97); } .check-list li.warn .ck-i { color: var(--warn, #f2c94c); }
+.check-list li.bad .ck-i { color: var(--bad, #eb5757); } .check-list li.off { opacity: .65; }
+.check-list .ck-d { color: var(--muted, #aab4c3); font-size: .9rem; word-break: break-word; }
+@media (max-width: 560px) { .check-list li { grid-template-columns: 22px 1fr; } .check-list .ck-d { grid-column: 2; } }

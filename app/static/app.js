@@ -725,6 +725,7 @@ function openModal(html, onMount) {
   // where it was scrolled to, instead of jumping back to the top
   const old = root.querySelector(".modal"), oldTitle = old?.querySelector("h2")?.textContent;
   const keep = old ? [old.scrollTop, root.querySelector(".modal-backdrop")?.scrollTop || 0] : null;
+  if (!old) closeModal.then = null;                 // (a new window: an earlier one's "then" isn't its)
   root.innerHTML = `<div class="modal-backdrop"><div class="modal" role="dialog" aria-modal="true">${html}</div></div>`;
   root.querySelector(".modal-backdrop").addEventListener("mousedown", (e) => { if (e.target.classList.contains("modal-backdrop")) closeModal(); });
   const modal = root.querySelector(".modal");
@@ -884,7 +885,8 @@ async function openGiveItem(sid, player, opts = {}) {
   });
 }
 
-function closeModal() { $("#modal-root").innerHTML = ""; }
+// closeModal.then: something to do once the window is closed (however it's closed); set by whoever opened it
+function closeModal() { const then = closeModal.then; closeModal.then = null; $("#modal-root").innerHTML = ""; then?.(); }
 function openContainer(item) {
   const isBundle = item.id.includes("bundle");
   const grid = isBundle ? gridHtml(item.contents, Math.max(9, Math.ceil(item.contents.length / 9) * 9), false) : gridHtml(item.contents, 27);
@@ -1486,11 +1488,62 @@ async function viewLeaderboards(sid) {
       <ol class="medal-list">${ranked.slice(0, 5).map(medalRow).join("")}</ol>
       ${ranked.length > 5 ? `<details><summary>Everyone (${ranked.length})</summary><ol class="medal-list" start="6">${ranked.slice(5).map((m, i) => medalRow(m, i + 5)).join("")}</ol></details>` : ""}</section>` : "";
   const jump = groups.length > 1 ? `<nav class="chips board-jump" aria-label="Jump to">${(data.groups || []).filter((g) => groups.some((h) => h.includes(`<h2>${esc(g)}</h2>`))).map((g) => `<a class="chip" href="#" data-jump="lb-${esc(g.replace(/\W+/g, "-").toLowerCase())}">${esc(g)}</a>`).join("")}</nav>` : "";
-  const toggle = `<label class="check lb-empty-toggle"><input type="checkbox" id="lb-empty" ${showEmpty ? "checked" : ""}> Show boards nobody has scored on yet</label>`;
+  const toggle = `<div class="lb-tools"><label class="check lb-empty-toggle"><input type="checkbox" id="lb-empty" ${showEmpty ? "checked" : ""}> Show boards nobody has scored on yet</label>
+    ${isAdmin() && data.players.length ? `<button class="btn sm" type="button" id="lb-adjust" title="Testing a race or a game piled numbers up? Take them off the boards">⚖ Adjust a player's numbers</button>` : ""}</div>`;
   setView(serverHeader(s, "leaderboards") + (groups.length ? `${medalHtml}${jump}${toggle}${groups.join("")}` : `<div class="empty"><h3>No scores yet</h3><p>Leaderboards appear once players have some statistics.</p></div>`));
   wireHeader(s);
+  $("#lb-adjust")?.addEventListener("click", () => openBoardAdjust(sid, data.players, () => viewLeaderboards(sid)));
   $("#lb-empty")?.addEventListener("change", (e) => { try { localStorage.setItem("solstone-lb-empty", e.target.checked ? "1" : "0"); } catch { /* fine */ } viewLeaderboards(sid); });
   $$("[data-jump]").forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); document.getElementById(a.dataset.jump)?.scrollIntoView({ behavior: "smooth" }); }));
+}
+
+// A button that asks "Sure?" on itself before doing something (inside a window, where another window would replace it):
+// true on the second click within a few seconds.
+function sureTwice(btn, ask = "Sure? Click again") {
+  if (btn.dataset.sure) { delete btn.dataset.sure; btn.textContent = btn.dataset.label; btn.classList.remove("danger"); return true; }
+  btn.dataset.label = btn.textContent; btn.dataset.sure = "1"; btn.textContent = ask; btn.classList.add("danger");
+  setTimeout(() => { if (btn.dataset.sure) { delete btn.dataset.sure; btn.textContent = btn.dataset.label; btn.classList.remove("danger"); } }, 5000);
+  return false;
+}
+
+// An admin taking numbers off a player's boards (testing a race piled up flying, say). Only on Solstone's boards: the game's
+// own statistics stay as they are, and "Use the game's" puts its number back.
+function openBoardAdjust(sid, players, done) {
+  const people = [...players].sort((a, b) => a.name.localeCompare(b.name));
+  openModal(`<h2>⚖ Adjust a player's numbers</h2>
+    <p class="muted small">For the leaderboards only: the game's own statistics (and the player's page) stay as they are. A number set here keeps counting up from there as they play. Boards that are a value right now (level, longest alive) aren't here.</p>
+    <label>Player <select class="input" id="ba-who">${people.map((p) => `<option value="${esc(p.uuid)}">${esc(p.name)}</option>`).join("")}</select></label>
+    <div id="ba-list" class="ba-list"><p class="muted">Loading…</p></div>
+    <div class="actions"><button type="button" class="btn" id="ba-zero-all" title="Every board: count from zero from now on">Count every board from zero</button><span class="spacer"></span><button type="button" class="btn primary" data-close-modal>Done</button></div>`, (m) => {
+    const who = $("#ba-who", m), list = $("#ba-list", m);
+    let changed = false;
+    const url = () => `/api/servers/${encodeURIComponent(sid)}/leaderboard/adjust/${encodeURIComponent(who.value)}`;
+    const draw = (rows) => {
+      list.innerHTML = `<table class="ba-table"><tr><th>Board</th><th>The game's</th><th>On the boards</th><th></th></tr>${rows.map((r) => `<tr data-key="${esc(r.key)}" class="${r.minus ? "ba-adjusted" : ""}">
+        <td>${esc(r.title)}</td><td class="num">${esc(fmtStat(r.kind, r.real))}</td><td class="num">${r.minus ? `<b>${esc(fmtStat(r.kind, r.shown))}</b>` : esc(fmtStat(r.kind, r.shown))}</td>
+        <td class="ba-do">${r.real ? `<button type="button" class="btn sm" data-zero>From zero</button>` : ""}${r.minus ? `<button type="button" class="btn sm" data-undo>Use the game's</button>` : ""}</td></tr>`).join("")}</table>`;
+      list.querySelectorAll("tr[data-key]").forEach((tr) => {
+        const send = async (to) => {
+          try { draw(await post(url(), { key: tr.dataset.key, to }, "PUT")); changed = true; } catch (err) { showError(esc(err.message), 4000); }
+        };
+        tr.querySelector("[data-zero]")?.addEventListener("click", () => send(0));
+        tr.querySelector("[data-undo]")?.addEventListener("click", () => send(null));
+      });
+    };
+    const load = async () => { list.innerHTML = `<p class="muted">Loading…</p>`; draw(await api(url()).catch(() => [])); };
+    who.addEventListener("change", load);
+    $("#ba-zero-all", m).addEventListener("click", async (e) => {
+      if (!sureTwice(e.currentTarget, `Sure? Every board of ${who.selectedOptions[0].text} from zero`)) return;
+      try {
+        const rows = await api(url());
+        const keys = rows.filter((r) => r.real).map((r) => r.key);
+        if (keys.length) draw(await post(url(), { keys, to: 0 }, "PUT"));
+        changed = true;
+      } catch (err) { showError(esc(err.message), 4000); }
+    });
+    load();
+    closeModal.then = () => { if (changed) done(); };
+  });
 }
 
 // ---------------------------------------------------------------- world

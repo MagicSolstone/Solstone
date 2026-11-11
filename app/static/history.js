@@ -536,7 +536,7 @@ async function viewNotifications() {
   const c = await api("/api/settings/notifications").catch(() => null);
   if (!c) { setView('<div class="panel"><p>Couldn\'t load the notification settings.</p></div>'); return; }
   const labels = { join: "Someone joins", leave: "Someone leaves", death: "Someone dies", advancement: "Advancements",
-    server: "Server starts, stops or crashes", backup: "Backups are overdue", blocked: "Someone the whitelist turned away (with their exact name, to let them in from Control)",
+    server: "Server starts, stops or crashes", backup: "Backups are overdue, or a full copy of a server elsewhere failed or needs a look", blocked: "Someone the whitelist turned away (with their exact name, to let them in from Control)",
     updates: "New builds of the server's mods (Geyser and Floodgate first: Bedrock players need them up to date)",
     messages: "A player sends a message (Manage → Community → Messages)" };
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];

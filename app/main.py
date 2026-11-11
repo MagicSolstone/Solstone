@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, remote, connections, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, movehistory, welcome, worldmap, xboxwatch, serverstats, traffic
+from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, remote, connections, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, movehistory, servercheck, welcome, worldmap, xboxwatch, serverstats, traffic
 from . import reading, twostep
 from . import servers as S
 from . import settings_store
@@ -2392,6 +2392,17 @@ async def remote_backup_status(sid: str, request: Request):
     return m.backup_status()
 
 
+@app.post("/api/manage/servers/{sid}/check")
+async def check_server(sid: str, request: Request):
+    """Admin: 🩺 Check: everything a server needs, tried now (its files, the world, start and stop, RCON, the log, the
+    map, the full copy, room). Nothing is changed."""
+    auth.require_admin(request)
+    srv = await _server(sid)
+    lines = await servercheck.check(srv)
+    worst = "bad" if any(x["state"] == "bad" for x in lines) else "warn" if any(x["state"] == "warn" for x in lines) else "ok"
+    return {"at": time.time(), "state": worst, "lines": lines}
+
+
 @app.get("/api/manage/history/move")
 async def move_history_preview(request: Request, src: str, dst: str):
     """Admin: what moving one server's history to another would move (Manage → History & data → Move history)."""
@@ -2706,6 +2717,50 @@ async def get_player(sid: str, uuid: str):
 @app.get("/api/servers/{sid}/leaderboard")
 async def get_leaderboard(sid: str):
     return stacks.leaderboard(await S.leaderboard(await _server(sid)))
+
+
+def _board_rows(srv: S.Server, uuid: str) -> list[dict]:
+    raw = S.player_board_values(srv, uuid)
+    minus = S.board_adjustments(srv.id).get(uuid) or {}
+    return [{"key": k, "title": t, "kind": f, "real": raw.get(k, 0), "minus": minus.get(k, 0),
+             "shown": max(0, raw.get(k, 0) - minus.get(k, 0))} for k, t, f in S.LEADERBOARDS if k not in S.NOT_ADJUSTABLE]
+
+
+@app.get("/api/servers/{sid}/leaderboard/adjust/{uuid}")
+async def get_board_adjust(sid: str, uuid: str, request: Request):
+    """Admin: a player's numbers on the boards that can be adjusted: the game's, what's taken off, what shows."""
+    auth.require_admin(request)
+    srv = await _server(sid)
+    return await asyncio.to_thread(_board_rows, srv, uuid)
+
+
+@app.put("/api/servers/{sid}/leaderboard/adjust/{uuid}")
+async def put_board_adjust(sid: str, uuid: str, request: Request):
+    """Admin: what a player's board shows from now on: a number (0: don't count what's happened so far), or null to
+    show the game's own number again. keys: one board or several. The game's statistics aren't touched."""
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    body = await _body(request)
+    keys = body.get("keys") or ([body["key"]] if body.get("key") else [])
+    allowed = {k for k, _t, _f in S.LEADERBOARDS if k not in S.NOT_ADJUSTABLE}
+    if not keys or any(k not in allowed for k in keys):
+        raise HTTPException(400, "Pick a board that can be adjusted")
+    to = body.get("to")
+    raw = await asyncio.to_thread(S.player_board_values, srv, uuid)
+    for k in keys:
+        if to is None:
+            S.set_board_adjustment(sid, uuid, k, None)
+            continue
+        try:
+            n = int(to)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "A whole number") from None
+        if n < 0 or n > raw.get(k, 0):
+            raise HTTPException(400, f"Between 0 and the game's own number ({raw.get(k, 0)})")
+        S.set_board_adjustment(sid, uuid, k, raw.get(k, 0) - n)
+    name = S.known_players(srv).get(uuid, {}).get("name", uuid)
+    auth.audit(user, sid, "leaderboard:adjust", f"{name}: {', '.join(keys)} " + ("back to the game's numbers" if to is None else f"shown as {to}"))
+    return await asyncio.to_thread(_board_rows, srv, uuid)
 
 
 @app.get("/api/traffic")

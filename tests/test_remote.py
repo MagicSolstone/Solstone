@@ -738,3 +738,21 @@ def test_a_copy_cut_off_by_a_restart_says_so(far):
     m._write_mark(started=1000.0, finished=None)
     last = m.backup_status()["last"]
     assert last["ok"] is False and "didn't finish" in last["error"]
+
+
+def test_check_reaches_a_server_elsewhere(far):
+    """🩺 Check on a server elsewhere: logs in over SFTP, sees its files up to date, says the full copy is off."""
+    from app import servercheck
+    from app import servers as S
+    loop, root, cfg, key = far
+    sid = _added(loop, cfg)
+    m = remote.mirror(sid)
+    loop.run_until_complete(m.tick(now=__import__("time").time()))
+    reg = S.Registry()
+    loop.run_until_complete(reg.refresh(force=True))
+    lines = {x["name"]: x for x in loop.run_until_complete(servercheck.check(reg.servers[sid]))}
+    assert lines["SFTP"]["state"] == "ok" and "server.properties" in lines["SFTP"]["detail"]
+    assert lines["Its files here"]["state"] == "ok" and lines["Full copy"]["state"] == "off"
+    data = remote.all_cfg(); data[sid]["password"] = "wrong"; settings_store.save_section(remote.SECTION, data)
+    lines = {x["name"]: x for x in loop.run_until_complete(servercheck.check(reg.servers[sid]))}
+    assert lines["SFTP"]["state"] == "bad" and "wasn't accepted" in lines["SFTP"]["detail"]
