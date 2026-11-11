@@ -1,3 +1,11 @@
+# Solstone 1.21.1
+
+(With everything in 1.21.0, whose build didn't publish: GitHub's build machines couldn't reach Ubuntu's servers that day.)
+
+- **CPU at a game host is a share of its plan.** A host's panel counts CPU per core (200% for two cores), so a server elsewhere showed numbers past 100%. Its CPU is now shown as a share of everything its plan gives it (100% is all of it, however many cores), with "of its 2 cores" under the number. (Earlier history in the graphs is per core.)
+- **Watching an adventure on a phone no longer pulls the page away from the map.** As it played, the timeline scrolled the page itself to its current line; now only the timeline's own box scrolls, and only when the line changes.
+- **🔄 Redraw the map** (World tab, admins): every picture of the map drawn again from the world as it is, nearest first. For pictures left over from another world.
+
 # Solstone 1.21.0
 
 - **Each server's settings, in tabs, and 🩺 Check.** The settings window (Manage → Solstone → Server setup → ⚙ Settings) is split into **🔌 Connection** (name, who sees it, its files, RCON, start and stop), **🗺 Map** and **💾 Full copy** (for a server elsewhere), and **🩺 Check**: one button that tries everything the server needs right now (logging in over SFTP or its folder, the world, start and stop, RCON, the log, the map, the full copy, room on this machine) and lists each with ✓, ⚠ or ✗ and what it saw. Each server's row in Server setup has a **🩺 Check** button too. Tidier checkboxes, too (the name of each, its explanation underneath).
