@@ -591,6 +591,21 @@ def test_the_full_copy_copies_everything_checks_it_and_then_only_what_changed(fa
     assert third["fetched_bytes"] < 4 * 4096 + 2 * 8192 + 10                                # the table and one chunk, not the region
     assert (d / "world/region/r.0.0.mca").read_bytes() == (reg / "r.0.0.mca").read_bytes()
     assert not (d / "mods/tide.jar").exists() and (d / "ops.json").exists()
+    # remembered: each copy, what it fetched (how) and removed, newest first; and in the activity log
+    runs = m.history()
+    assert len(runs) == 3 and runs[0]["fetched"] == 2 and runs[0]["removed_files"] == ["mods/tide.jar"]
+    assert {(c[0], c[3]) for c in runs[0]["changed"]} == {("world/region/r.0.0.mca", "chunks"), ("ops.json", "new")}
+    assert runs[2]["fetched"] == len(runs[2]["changed"]) and runs[1]["changed"] == []
+    from app import db
+    logged = db.q("SELECT detail, result FROM audit WHERE server_id=? AND action='remote_server:full_copy' ORDER BY ts", (sid,))
+    assert len(logged) == 3 and logged[-1]["result"] == "ok" and "2 of" in logged[-1]["detail"] and "1 removed" in logged[-1]["detail"]
+    # what's in the copy, with the server's times
+    top = m.browse("")
+    assert {x["name"] for x in top["dirs"]} >= {"world"} and remote.BACKUP_MARK not in {x["name"] for x in top["files"]}
+    w = m.browse("world/region")
+    assert w["files"][0]["name"] == "r.0.0.mca" and w["files"][0]["changed"] == 2_000_000_000
+    with pytest.raises(ValueError):
+        m.browse("../..")
     # without Distant Horizons' data: it's neither fetched nor removed
     _backup_on(sid, backup_dh=False)
     (root / "world" / "data" / "DistantHorizons.sqlite").write_bytes(b"E" * 9000)
@@ -653,3 +668,31 @@ def test_saving_left_paused_by_an_unfinished_copy_is_turned_back_on(far):
     m._rcon = rcon
     loop.run_until_complete(m.tick(now=5000))
     assert sent == ["save-on"] and "saving_paused_at" not in m.backup_mark()
+
+
+def test_saving_is_turned_back_on_even_if_rcon_misses_save_on_the_first_time(far):
+    """save-on not answered: tried again; still not answered, the copy says so, and the mirror keeps trying until it is."""
+    loop, root, cfg, key = far
+    sid = _added(loop, cfg)
+    m = remote.mirror(sid)
+    sent, up = [], {"ok": False}
+
+    async def rcon(cmd, wait=None):
+        sent.append(cmd)
+        return None if cmd == "save-on" and not up["ok"] else "ok"
+    m._rcon = rcon
+
+    async def no_sleep(s):
+        return None
+    import asyncio as aio
+    real = aio.sleep
+    remote.asyncio.sleep = no_sleep
+    try:
+        mark = loop.run_until_complete(m.backup("asked"))
+    finally:
+        remote.asyncio.sleep = real
+    assert mark["ok"] and sent.count("save-on") == 3 and "couldn't be turned back on" in mark["warning"]
+    assert m.backup_status()["saving_paused"] and mark.get("saving_paused_at")
+    up["ok"] = True                                                       # RCON back
+    loop.run_until_complete(m.tick(now=9000))
+    assert sent[-1] == "save-on" and not m.backup_status()["saving_paused"] and "saving_paused_at" not in m.backup_mark()

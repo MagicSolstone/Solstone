@@ -2374,6 +2374,35 @@ async def remote_backup_status(sid: str, request: Request):
     return m.backup_status()
 
 
+@app.get("/api/manage/remote/{sid}/backup/history")
+async def remote_backup_history(sid: str, request: Request, started: float | None = None):
+    """Admin: the last full copies (newest first); with started, that one with every file it fetched and removed."""
+    auth.require_admin(request)
+    m = remote.mirror(sid)
+    if not m:
+        raise HTTPException(404, "No such server")
+    runs = await asyncio.to_thread(m.history)
+    if started is not None:
+        run = next((r for r in runs if abs((r.get("started") or 0) - started) < 0.001), None)
+        if not run:
+            raise HTTPException(404, "No such copy")
+        return run
+    return [{k: v for k, v in r.items() if k not in ("changed", "removed_files")} for r in runs]
+
+
+@app.get("/api/manage/remote/{sid}/backup/files")
+async def remote_backup_files(sid: str, request: Request, path: str = ""):
+    """Admin: one folder of the full copy: what's in it, how big, when the server last changed each."""
+    auth.require_admin(request)
+    m = remote.mirror(sid)
+    if not m:
+        raise HTTPException(404, "No such server")
+    try:
+        return await asyncio.to_thread(m.browse, path)
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(404, "No such folder in the copy") from e
+
+
 @app.delete("/api/manage/remote/{sid}")
 async def delete_remote(sid: str, request: Request):
     """Admin: stop looking after a server elsewhere (its history in Solstone stays; the mirror's files go)."""

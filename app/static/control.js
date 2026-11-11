@@ -1171,6 +1171,7 @@ function backupLine(b) {
   if (!b) return "";
   const p = b.progress || {}, l = b.last || {};
   const lines = [];
+  if (b.saving_paused) lines.push(`<p class="notice small">⚠ The game's saving is still paused from a full copy: RCON didn't answer <code>save-on</code>. Solstone keeps trying every 10 seconds; restarting the server also turns saving back on.</p>`);
   if (b.running) lines.push(`<p class="muted small"><span class="spin" aria-hidden="true"></span> ${esc(p.phase || "Copying")}${p.files ? ` · ${p.fetched || 0} files (${fmtBytes(p.fetched_bytes)}) fetched of ${fmtBytes(p.to_fetch_bytes)} that changed · ${p.files} files, ${fmtBytes(p.total_bytes)} in all` : ""}</p>`);
   if (l.finished) {
     const when = `${esc(fmtAgo(l.finished))}${l.started ? `, took ${Math.max(1, Math.round((l.finished - l.started) / 60))} min` : ""}`;
@@ -1220,6 +1221,8 @@ async function openServerSetup(sid, then) {
         <label class="check wide"><input type="checkbox" name="backup_dh" ${c.backup_dh !== false ? "checked" : ""}> With Distant Horizons' data <small class="muted">large, and fetched whole again on nights it changed; it can be rebuilt from the world</small></label>
       </div>
       <div id="backup-status">${sid ? backupLine(row?.backup) : ""}</div>
+      ${sid ? `<details class="small" data-backup-history><summary>🕘 History of full copies <span class="muted">(each one: what changed, what was removed)</span></summary><div class="bk-hist muted">Loading…</div></details>
+      <details class="small" data-backup-browse><summary>📂 What's in the copy <span class="muted">(each file with when the server last changed it)</span></summary><div class="bk-browse muted">Loading…</div></details>` : ""}
       <div class="btn-row"><button class="btn" type="button" data-test>🔌 Test the connection</button>
         ${sid ? `<button class="btn" type="button" data-backup-now>💾 Copy now</button>` : ""}
         ${sid && c.host_key ? `<button class="btn sm" type="button" data-forget-key title="Only if your host moved your server to another machine">Forget its identity</button>` : ""}</div>
@@ -1299,6 +1302,39 @@ async function openServerSetup(sid, then) {
       } catch (err) { result.innerHTML = `<p class="notice">${esc(err.message)}</p>`; }
       e.target.disabled = false;
     });
+    // the full copies so far, and what's in the copy (loaded when opened)
+    const hist = m.querySelector("[data-backup-history]");
+    hist?.addEventListener("toggle", async () => {
+      if (!hist.open) return;
+      const box = hist.querySelector(".bk-hist");
+      const runs = await api(`/api/manage/remote/${encodeURIComponent(sid)}/backup/history`).catch((e) => { box.textContent = e.message; return null; });
+      if (!runs) return;
+      if (!runs.length) { box.innerHTML = "None yet."; return; }
+      box.innerHTML = `<ul class="bk-runs">${runs.map((r) => `<li><button type="button" class="linkish" data-run="${r.started}">${r.ok ? "✓" : "✗"} ${esc(new Date(r.finished * 1000).toLocaleString())}</button>
+        <span class="muted">${r.ok ? `${r.fetched} of ${r.files} files changed, ${fmtBytes(r.fetched_bytes)} fetched${r.removed ? `, ${r.removed} removed` : ""}${r.paused_secs != null ? `, saving paused ${Math.round(r.paused_secs)} s` : ""}` : esc(r.error || "failed")}${r.warning ? ` · ⚠ ${esc(r.warning)}` : ""} · ${esc(r.why === "nightly" ? "nightly" : "Copy now")}</span><div class="bk-run"></div></li>`).join("")}</ul>`;
+      box.querySelectorAll("[data-run]").forEach((b) => b.addEventListener("click", async () => {
+        const out = b.parentElement.querySelector(".bk-run");
+        if (out.innerHTML) { out.innerHTML = ""; return; }
+        const r = await api(`/api/manage/remote/${encodeURIComponent(sid)}/backup/history?started=${b.dataset.run}`).catch(() => null);
+        if (!r) return;
+        const how = { chunks: "changed chunks", changed: "changed", new: "new" };
+        out.innerHTML = (r.changed?.length ? `<table class="bk-files"><tr><th>Fetched</th><th>Size</th><th>Server changed it</th><th></th></tr>${r.changed.map(([p, size, mt, h, got]) => `<tr><td><code>${esc(p)}</code></td><td>${fmtBytes(size)}</td><td>${esc(new Date(mt * 1000).toLocaleString())}</td><td class="muted">${esc(how[h] || h)}${h === "chunks" ? ` (${fmtBytes(got)})` : ""}</td></tr>`).join("")}</table>${r.changed_more ? `<p>…and ${r.changed_more} more.</p>` : ""}` : "<p>Nothing had changed.</p>")
+          + (r.removed_files?.length ? `<p>Removed (the server no longer has them): ${r.removed_files.map((p) => `<code>${esc(p)}</code>`).join(", ")}</p>` : "");
+      }));
+    });
+    const browse = m.querySelector("[data-backup-browse]");
+    const showDir = async (path) => {
+      const box = browse.querySelector(".bk-browse");
+      const d = await api(`/api/manage/remote/${encodeURIComponent(sid)}/backup/files?path=${encodeURIComponent(path)}`).catch((e) => { box.textContent = e.message.includes("No such folder") ? "Nothing in the copy yet." : e.message; return null; });
+      if (!d) return;
+      const parts = d.path ? d.path.split("/") : [];
+      const crumbs = [`<button type="button" class="linkish" data-dir="">copy</button>`, ...parts.map((p, i) => `<button type="button" class="linkish" data-dir="${esc(parts.slice(0, i + 1).join("/"))}">${esc(p)}</button>`)].join(" / ");
+      box.innerHTML = `<p>${crumbs}</p><table class="bk-files"><tr><th>Name</th><th>Size</th><th>Server last changed it</th></tr>
+        ${d.dirs.map((x) => `<tr><td>📁 <button type="button" class="linkish" data-dir="${esc(x.path)}">${esc(x.name)}</button> <span class="muted">${x.files} file${x.files === 1 ? "" : "s"}</span></td><td>${fmtBytes(x.size)}</td><td>${esc(new Date(x.changed * 1000).toLocaleString())} <span class="muted">(newest in it)</span></td></tr>`).join("")}
+        ${d.files.map((x) => `<tr><td><code>${esc(x.name)}</code></td><td>${fmtBytes(x.size)}</td><td>${esc(new Date(x.changed * 1000).toLocaleString())}</td></tr>`).join("")}</table>`;
+      box.querySelectorAll("[data-dir]").forEach((b) => b.addEventListener("click", () => showDir(b.dataset.dir)));
+    };
+    browse?.addEventListener("toggle", () => { if (browse.open) showDir(""); });
     // the full copy, now: its progress shown while it runs
     m.querySelector("[data-backup-now]")?.addEventListener("click", async (e) => {
       const box = $("#backup-status", m);

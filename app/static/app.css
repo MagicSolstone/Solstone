@@ -2658,3 +2658,12 @@ body.ui-hidden .manage-sub { display: none; }
 .remote-result { margin: 8px 0; }
 .remote-result .ok { color: #5fd08a; margin: 4px 0; }
 .remote-form .actions .spacer { flex: 1; }
+/* the full copy of a server elsewhere: its history and what's in it (Server setup → ⚙ Settings → 2. Its files) */
+.remote-form details[data-backup-history], .remote-form details[data-backup-browse] { margin: 6px 0; }
+.remote-form details summary { cursor: pointer; }
+.remote-form .linkish { background: none; border: 0; color: var(--accent, #7dc4ff); cursor: pointer; padding: 0; font: inherit; text-decoration: underline; }
+.bk-runs { list-style: none; padding: 0; margin: 6px 0; max-height: 280px; overflow: auto; }
+.bk-runs li { padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+.bk-files { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: .85rem; display: block; max-height: 320px; overflow: auto; }
+.bk-files th, .bk-files td { text-align: left; padding: 3px 8px 3px 0; vertical-align: top; }
+.bk-files td code { word-break: break-all; }
