@@ -2365,6 +2365,24 @@ async def remote_backup_now(sid: str, request: Request):
     return m.backup_status()
 
 
+@app.post("/api/manage/remote/{sid}/backup/stop")
+async def remote_backup_stop(sid: str, request: Request):
+    """Admin: stop a full copy that's running (what it fetched so far stays; saving is turned back on if it was paused)."""
+    user = auth.require_admin(request)
+    m = remote.mirror(sid)
+    if not m:
+        raise HTTPException(404, "No such server")
+    if not m.backup_running:
+        raise HTTPException(409, "No full copy is running")
+    m.backup_task.cancel()
+    try:
+        await asyncio.wait_for(asyncio.shield(m.backup_task), 30)
+    except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+        pass
+    auth.audit(user, sid, "remote_server:full_copy", "stopped")
+    return m.backup_status()
+
+
 @app.get("/api/manage/remote/{sid}/backup")
 async def remote_backup_status(sid: str, request: Request):
     auth.require_admin(request)

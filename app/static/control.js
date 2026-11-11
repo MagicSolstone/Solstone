@@ -1219,7 +1219,11 @@ function backupLine(b) {
   const p = b.progress || {}, l = b.last || {};
   const lines = [];
   if (b.saving_paused) lines.push(`<p class="notice small">⚠ The game's saving is still paused from a full copy: RCON didn't answer <code>save-on</code>. Solstone keeps trying every 10 seconds; restarting the server also turns saving back on.</p>`);
-  if (b.running) lines.push(`<p class="muted small"><span class="spin" aria-hidden="true"></span> ${esc(p.phase || "Copying")}${p.files ? ` · ${p.fetched || 0} files (${fmtBytes(p.fetched_bytes)}) fetched of ${fmtBytes(p.to_fetch_bytes)} that changed · ${p.files} files, ${fmtBytes(p.total_bytes)} in all` : ""}</p>`);
+  if (b.running) {
+    lines.push(`<p class="muted small"><span class="spin" aria-hidden="true"></span> ${esc(p.phase || "Copying")}${p.files ? ` · looked at ${(p.looked || 0).toLocaleString()} of ${p.files.toLocaleString()} files · ${(p.fetched || 0).toLocaleString()} of the ${(p.to_fetch || 0).toLocaleString()} that differ fetched (${fmtBytes(p.fetched_bytes)} so far) · ${fmtBytes(p.total_bytes)} in all` : ""}</p>`);
+    if (p.files && p.to_fetch) lines.push(`<p class="muted small">At most ${fmtBytes(p.to_fetch_bytes)} to download whole${p.patch_files ? `, plus the changed chunks of ${p.patch_files.toLocaleString()} region file${p.patch_files === 1 ? "" : "s"} this copy already has (${fmtBytes(p.patch_bytes)} in all, usually only a little of it fetched)` : ""}.</p>`);
+    if (p.now) lines.push(`<p class="muted small">Now: <code>${esc(p.now)}</code>${p.now_size > 4 * 1024 * 1024 ? ` · ${fmtBytes(p.now_bytes)} of ${fmtBytes(p.now_size)}` : ""}</p>`);
+  }
   if (l.finished) {
     const when = `${esc(fmtAgo(l.finished))}${l.started ? `, took ${Math.max(1, Math.round((l.finished - l.started) / 60))} min` : ""}`;
     lines.push(l.ok ? `<p class="ok small">✓ Last full copy ${when}: ${l.files} files, ${fmtBytes(l.total_bytes)}; ${l.fetched} changed (${fmtBytes(l.fetched_bytes)} fetched)${l.removed ? `, ${l.removed} the server no longer has removed` : ""}. Checked: every file matches the server's.${l.paused_secs != null ? ` Saving paused ${Math.round(l.paused_secs)} s.` : ""}</p>`
@@ -1265,13 +1269,15 @@ async function openServerSetup(sid, then) {
       <label class="check"><input type="checkbox" name="backup" ${c.backup ? "checked" : ""}> Copy the whole server here each night <small class="muted">every file of the server (but logs and what the game downloads again by itself), updated with only what changed. The game's saving is paused for the last moments (save-off, save-all), so the copy is of one moment, not a file caught halfway. Point Kopia (or any backup) at its folder.</small></label>
       <div class="remote-grid">
         <label>At <input class="input" type="time" name="backup_at" value="${esc(c.backup_at || "04:00")}" style="width:120px"></label>
+        <label>No faster than <select class="input sm" name="backup_mbps">${[[0, "as fast as it goes"], [2, "2 MB/s"], [5, "5 MB/s"], [10, "10 MB/s"], [20, "20 MB/s"], [50, "50 MB/s"]].map(([v, l]) => `<option value="${v}" ${(+c.backup_mbps || 0) === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+          <small class="muted">leaves the server's connection room for players during a big copy</small></label>
         <label class="check wide"><input type="checkbox" name="backup_dh" ${c.backup_dh !== false ? "checked" : ""}> With Distant Horizons' data <small class="muted">large, and fetched whole again on nights it changed; it can be rebuilt from the world</small></label>
       </div>
       <div id="backup-status">${sid ? backupLine(row?.backup) : ""}</div>
       ${sid ? `<details class="small" data-backup-history><summary>🕘 History of full copies <span class="muted">(each one: what changed, what was removed)</span></summary><div class="bk-hist muted">Loading…</div></details>
       <details class="small" data-backup-browse><summary>📂 What's in the copy <span class="muted">(each file with when the server last changed it)</span></summary><div class="bk-browse muted">Loading…</div></details>` : ""}
       <div class="btn-row"><button class="btn" type="button" data-test>🔌 Test the connection</button>
-        ${sid ? `<button class="btn" type="button" data-backup-now>💾 Copy now</button>` : ""}
+        ${sid ? `<button class="btn" type="button" data-backup-now ${row?.backup?.running ? "hidden" : ""}>💾 Copy now</button><button class="btn" type="button" data-backup-stop ${row?.backup?.running ? "" : "hidden"}>⏹ Stop the copy</button>` : ""}
         ${sid && c.host_key ? `<button class="btn sm" type="button" data-forget-key title="Only if your host moved your server to another machine">Forget its identity</button>` : ""}</div>
       <div class="remote-result" id="remote-result">${c.host_key ? `<p class="muted small">Its identity: <code>${esc(c.host_key)}</code> (remembered the first time; Solstone won't connect if it changes)</p>` : ""}
         ${row?.files?.error ? `<p class="notice small">Its files aren't updating: ${esc(row.files.error)}</p>` : row?.files?.synced ? `<p class="muted small">Files last updated ${esc(fmtAgo(row.files.synced))}.</p>` : ""}
@@ -1312,7 +1318,7 @@ async function openServerSetup(sid, then) {
     const f = new FormData(form), out = { name: (f.get("display_name") || "").trim() || rc?.name || row?.found_as || "" };
     for (const k of ["host", "port", "user", "password", "path", "conn", "panel_id", "files_secs"]) out[k] = (f.get(k) || "").trim();
     out.map = !!f.get("map");
-    out.backup = !!f.get("backup"); out.backup_dh = !!f.get("backup_dh"); out.backup_at = f.get("backup_at") || "04:00";
+    out.backup = !!f.get("backup"); out.backup_dh = !!f.get("backup_dh"); out.backup_at = f.get("backup_at") || "04:00"; out.backup_mbps = f.get("backup_mbps") || 0;
     if (sid) out.id = sid;
     return out;
   };
@@ -1382,20 +1388,31 @@ async function openServerSetup(sid, then) {
       box.querySelectorAll("[data-dir]").forEach((b) => b.addEventListener("click", () => showDir(b.dataset.dir)));
     };
     browse?.addEventListener("toggle", () => { if (browse.open) showDir(""); });
-    // the full copy, now: its progress shown while it runs
-    m.querySelector("[data-backup-now]")?.addEventListener("click", async (e) => {
+    // the full copy, now: its progress shown while it runs (and a copy already running is followed when this opens)
+    const nowBtn = m.querySelector("[data-backup-now]"), stopBtn = m.querySelector("[data-backup-stop]");
+    let poll = null;
+    const follow = () => {
+      if (poll) return;
       const box = $("#backup-status", m);
-      try { box.innerHTML = backupLine(await post(`/api/manage/remote/${encodeURIComponent(sid)}/backup`, {})); }
-      catch (err) { showError(esc(err.message), 4000); return; }
-      e.target.disabled = true;
-      const poll = setInterval(async () => {
-        if (!document.body.contains(box)) { clearInterval(poll); return; }
+      nowBtn.hidden = true; stopBtn.hidden = false;
+      poll = setInterval(async () => {
+        if (!document.body.contains(box)) { clearInterval(poll); poll = null; return; }
         const st = await api(`/api/manage/remote/${encodeURIComponent(sid)}/backup`).catch(() => null);
         if (!st) return;
         box.innerHTML = backupLine(st);
-        if (!st.running) { clearInterval(poll); e.target.disabled = false; }
+        if (!st.running) { clearInterval(poll); poll = null; nowBtn.hidden = false; stopBtn.hidden = true; }
       }, 2000);
+    };
+    nowBtn?.addEventListener("click", async () => {
+      try { $("#backup-status", m).innerHTML = backupLine(await post(`/api/manage/remote/${encodeURIComponent(sid)}/backup`, {})); follow(); }
+      catch (err) { showError(esc(err.message), 4000); }
     });
+    stopBtn?.addEventListener("click", async () => {
+      if (!(await confirmBox("Stop the full copy?", "What it has fetched so far stays, and the next copy carries on from there. If the game's saving was paused, it's turned back on.", "Stop it"))) return;
+      try { $("#backup-status", m).innerHTML = backupLine(await post(`/api/manage/remote/${encodeURIComponent(sid)}/backup/stop`, {})); }
+      catch (err) { showError(esc(err.message), 4000); }
+    });
+    if (row?.backup?.running) follow();
     m.querySelector("[data-forget-key]")?.addEventListener("click", async () => {
       if (!(await confirmBox("Forget its identity?", "Only if your host moved your server to another machine (they'd tell you). Solstone then learns the new one now.", "Forget and reconnect"))) return;
       try { const r = await post(`/api/manage/remote/${encodeURIComponent(sid)}/forget-key`, {}); showToast(r.ok ? "Learned its new identity" : esc(r.error || "Couldn't connect"), 4000); closeModal(); openServerSetup(sid, then); }

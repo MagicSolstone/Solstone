@@ -65,6 +65,8 @@ BACKUP_SKIP_TOP = {"logs", "crash-reports", "debug", "cache", ".cache", "librari
 BACKUP_SKIP_ENDS = (".part", ".solstone-tmp", ".tmp", "session.lock")
 BACKUP_MARK = ".solstone-full-copy.json"   # how the last one went (and, once it has finished, that it has: for Kopia)
 SAVE_OFF_MAX = 10 * 60              # saving is never left paused longer than this
+STALL_SECS = 120                    # a file the server stops sending for this long: the copy stops (and says so)
+BLOCK = 1024 * 1024                 # a file is fetched this much at a time
 HISTORY_KEEP = 60                   # full copies remembered (what each fetched and removed)
 CHANGED_KEEP = 2000                 # files listed for each (a first copy lists the first of them, and how many more)
 SAVING_STUCK = ("The game's saving couldn't be turned back on (RCON didn't answer save-on). Solstone keeps trying every 10 "
@@ -128,7 +130,8 @@ def clean(body: dict, old: dict | None = None) -> dict:
            # the full copy (a backup on this machine): off until ticked; when; Distant Horizons' data too
            "backup": bool(body["backup"]) if "backup" in body else bool(old.get("backup")),
            "backup_at": _hhmm(body.get("backup_at"), old.get("backup_at") or BACKUP_AT),
-           "backup_dh": bool(body["backup_dh"]) if "backup_dh" in body else old.get("backup_dh", True)}
+           "backup_dh": bool(body["backup_dh"]) if "backup_dh" in body else old.get("backup_dh", True),
+           "backup_mbps": num("backup_mbps", 0, 1000, 0)}                            # (0: as fast as it goes)
     # (switched on: from the next time it comes round, not straight away; Copy now is for that)
     cfg["backup_since"] = (old.get("backup_since") or time.time()) if cfg["backup"] else 0
     if not cfg["name"] or not cfg["host"] or not cfg["user"]:
@@ -656,7 +659,11 @@ class Mirror:
     def backup_status(self) -> dict:
         """For the settings: on or off, when, how the last one went, what one running now is doing."""
         c, mark = self.cfg, self.backup_mark()
+        if mark.get("started") and not mark.get("finished") and not self.backup_running:
+            mark = {**mark, "finished": mark["started"], "ok": False,                 # (cut off: Solstone stopped while it ran)
+                    "error": "It didn't finish: Solstone stopped while it was running. Copy now carries on from what it has"}
         return {"on": bool(c.get("backup")), "at": c.get("backup_at") or BACKUP_AT, "dh": c.get("backup_dh", True),
+                "mbps": c.get("backup_mbps") or 0,
                 "running": self.backup_running, "progress": dict(self.backup_progress) if self.backup_running else {},
                 "last": {k: mark.get(k) for k in ("started", "finished", "ok", "error", "warning", "files", "fetched", "fetched_bytes",
                                                   "total_bytes", "removed", "paused_secs", "checked", "why") if k in mark},
@@ -825,31 +832,55 @@ class Mirror:
 
     async def _copy_changed(self, sftp, files: dict[str, tuple[int, int]], deadline: float | None = None) -> tuple[int, int]:
         """Every file that differs from the copy: a region file the copy has, just its changed chunks; any other, whole
-        (streamed, however big). (files fetched, bytes fetched)"""
+        (streamed in blocks, however big, at most the speed set). (files fetched, bytes fetched)"""
         n = got = 0
+        p = self.backup_progress
         for rel, (size, mtime) in sorted(files.items()):
             if deadline and time.monotonic() > deadline:
                 raise BackupProblem(f"the last changes took over {SAVE_OFF_MAX // 60} minutes to copy, so saving was turned back on")
+            p["looked"] = p.get("looked", 0) + 1
             if self._have(rel, size, mtime):
                 continue
             local = self._local(rel)
             before = self.status["bytes"]
             had = local.exists()
-            if rel.endswith(".mca") and had and await self._patch_region(rel, rel, size, mtime, sftp):
+            p.update(now=rel, now_size=size, now_bytes=0)
+            if rel.endswith(".mca") and had and await asyncio.wait_for(self._patch_region(rel, rel, size, mtime, sftp), STALL_SECS * 3):
                 fetched, how = self.status["bytes"] - before, "chunks"
             else:
                 local.parent.mkdir(parents=True, exist_ok=True)
+                await self._stream(sftp, rel, local.with_name(local.name + ".part"))
                 tmp = local.with_name(local.name + ".part")
-                await sftp.get(self._remote(rel), str(tmp))
                 os.utime(tmp, (mtime, mtime))
                 tmp.replace(local)
                 self.known[rel] = (size, mtime)
                 fetched, how = size, "changed" if had else "new"
             n, got = n + 1, got + fetched
             self._changed[rel] = [rel, size, mtime, how, fetched]
-            p = self.backup_progress
-            p.update(fetched=p.get("fetched", 0) + 1, fetched_bytes=p.get("fetched_bytes", 0) + fetched)
+            p.update(fetched=p.get("fetched", 0) + 1, fetched_bytes=p.get("fetched_bytes", 0) + fetched, now=None)
         return n, got
+
+    async def _stream(self, sftp, rel: str, tmp: Path) -> None:
+        """One file, a block at a time: nothing for STALL_SECS and it gives up (it never hangs); a speed limit is kept to."""
+        limit = float(self.cfg.get("backup_mbps") or 0) * 1024 * 1024
+        p, start, done = self.backup_progress, time.monotonic(), 0
+        async with sftp.open(self._remote(rel), "rb") as f:
+            with tmp.open("wb") as out:
+                while True:
+                    try:
+                        block = await asyncio.wait_for(f.read(BLOCK), STALL_SECS)
+                    except asyncio.TimeoutError:
+                        raise BackupProblem(f"the server stopped sending {rel} (nothing for {STALL_SECS // 60} minutes)") from None
+                    if not block:
+                        break
+                    out.write(block)
+                    done += len(block)
+                    p["now_bytes"] = done
+                    self.status["bytes"] += len(block)
+                    if limit:                                # (ahead of the limit: wait until it's caught up)
+                        ahead = done / limit - (time.monotonic() - start)
+                        if ahead > 0:
+                            await asyncio.sleep(ahead)
 
     def _local_files(self) -> list[str]:
         out = []
@@ -877,12 +908,15 @@ class Mirror:
             conn, sftp, _ident = await _connect(self.cfg)
             files = await self._walk(sftp)
             total = sum(sz for sz, _m in files.values())
-            need = sum(sz for rel, (sz, mt) in files.items() if not self._have(rel, sz, mt))
+            differ = [(rel, sz) for rel, (sz, mt) in files.items() if not self._have(rel, sz, mt)]
+            need = sum(sz for rel, sz in differ if not (rel.endswith(".mca") and self._local(rel).exists()))
+            patch = [sz for rel, sz in differ if rel.endswith(".mca") and self._local(rel).exists()]
             self.dir.mkdir(parents=True, exist_ok=True)
             free = shutil.disk_usage(self.dir).free
             if need > free - 512 * 1024 * 1024:
                 raise BackupProblem(f"not enough room here: it needs {need / 1e9:.1f} GB more and {free / 1e9:.1f} GB is free")
-            self.backup_progress.update(phase="Copying what changed", files=len(files), total_bytes=total, to_fetch_bytes=need)
+            self.backup_progress.update(phase="Copying what changed", files=len(files), total_bytes=total, to_fetch_bytes=need,
+                                        to_fetch=len(differ), patch_files=len(patch), patch_bytes=sum(patch), looked=0)
             n1, b1 = await self._copy_changed(sftp, files)
             # now the moment the copy is of: the game writes everything down, then stops writing while the rest is fetched
             warning = ""
@@ -897,7 +931,7 @@ class Mirror:
                 self._write_mark(saving_paused_at=None)
                 warning = ("RCON didn't answer, so the game's saving couldn't be paused. Fine if the server was stopped; if it "
                            "was running, a file being saved right then could be caught halfway (the next copy puts it right)")
-            self.backup_progress.update(phase="Copying the last changes" + (" (saving paused)" if paused_at else ""))
+            self.backup_progress.update(phase="Copying the last changes" + (" (saving paused)" if paused_at else ""), looked=0)
             files = await self._walk(sftp)
             n2, b2 = await self._copy_changed(sftp, files, deadline=time.monotonic() + SAVE_OFF_MAX if paused_at else None)
             if paused_at:
@@ -921,6 +955,8 @@ class Mirror:
                 raise BackupProblem(f"{len(bad)} file(s) don't match the server's after copying, e.g. {bad[0]}")
             result.update(ok=True, files=len(files), fetched=n1 + n2, fetched_bytes=b1 + b2, total_bytes=sum(sz for sz, _m in files.values()),
                           removed=removed, checked=len(files), warning=warning or None)
+        except asyncio.CancelledError:
+            result.update(ok=False, error="Stopped by an admin")
         except Exception as e:
             result.update(ok=False, error=str(e) if isinstance(e, BackupProblem) else _why(e))
             log.warning("server %s: the full copy didn't finish: %s", self.sid, result["error"])

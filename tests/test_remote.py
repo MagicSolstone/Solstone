@@ -696,3 +696,45 @@ def test_saving_is_turned_back_on_even_if_rcon_misses_save_on_the_first_time(far
     up["ok"] = True                                                       # RCON back
     loop.run_until_complete(m.tick(now=9000))
     assert sent[-1] == "save-on" and not m.backup_status()["saving_paused"] and "saving_paused_at" not in m.backup_mark()
+
+
+def test_a_full_copy_keeps_to_its_speed_never_hangs_and_can_be_stopped(far, monkeypatch):
+    import time
+    loop, root, cfg, key = far
+    (root / "big.bin").write_bytes(b"x" * (3 * 1024 * 1024))
+    sid = _added(loop, cfg)
+    _backup_on(sid, backup_mbps=2)                                         # 3 MB at 2 MB/s: about a second and a half
+    m = remote.mirror(sid)
+    t0 = time.monotonic()
+    mark = loop.run_until_complete(m.backup("asked"))
+    assert mark["ok"] and time.monotonic() - t0 >= 1.2 and (remote.mirror_dir(sid) / "big.bin").stat().st_size == 3 * 1024 * 1024
+    # the server stops sending: it gives up and says which file, not hang
+    (root / "big.bin").write_bytes(b"y" * (3 * 1024 * 1024))
+    _backup_on(sid, backup_mbps=0)
+    monkeypatch.setattr(remote, "STALL_SECS", 0.000001)
+    stuck = loop.run_until_complete(m.backup("asked"))
+    assert not stuck["ok"] and "stopped sending" in stuck["error"] and not m.backup_running
+    monkeypatch.setattr(remote, "STALL_SECS", 120)
+    # stopped by an admin: recorded as such, nothing left running
+    _backup_on(sid, backup_mbps=1)
+
+    async def stop_soon():
+        m.start_backup("asked")
+        await asyncio.sleep(0.5)
+        assert m.backup_progress.get("now") == "big.bin" and m.backup_progress["now_bytes"] > 0
+        m.backup_task.cancel()
+        try:
+            await m.backup_task
+        except asyncio.CancelledError:
+            pass
+    loop.run_until_complete(stop_soon())
+    assert m.backup_mark()["error"] == "Stopped by an admin" and not m.backup_running and m.history()[0]["error"] == "Stopped by an admin"
+
+
+def test_a_copy_cut_off_by_a_restart_says_so(far):
+    loop, root, cfg, key = far
+    sid = _added(loop, cfg)
+    m = remote.mirror(sid)
+    m._write_mark(started=1000.0, finished=None)
+    last = m.backup_status()["last"]
+    assert last["ok"] is False and "didn't finish" in last["error"]
