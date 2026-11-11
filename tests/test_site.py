@@ -359,6 +359,8 @@ def test_offline_worker(client, viewer, anon):
         cfg = json.loads(re.search(r"const SITE = (\{.*?\n\});", code, re.S).group(1))
         assert cfg["contact"] == "help@fbc.example" and isinstance(cfg["servers"], list)
         assert set(cfg) == {"name", "contact", "discord", "servers", "key"}   # what the home page shows, and its maintenance key
+        for srv in cfg["servers"]:                                             # how to join each, as the home page shows it
+            assert {"java", "bedrock", "bedrock_port", "xbox", "note", "version", "main"} <= set(srv)
         if shutil.which("node"):
             import tempfile
             from pathlib import Path
@@ -367,6 +369,33 @@ def test_offline_worker(client, viewer, anon):
             assert subprocess.run(["node", "--check", str(f)], capture_output=True).returncode == 0
     finally:
         client.put("/api/settings/site", json={"contact": ""})
+
+
+def test_the_down_page_says_how_to_get_on(tmp_path):
+    """The Cloudflare page while the website's down: Java's address, Bedrock's Xbox friend first and the address and
+    port as the other way, whether it's up and how many play (a count, never names)."""
+    import json
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    import pytest
+    if not shutil.which("node"):
+        pytest.skip("needs node")
+    src = (Path(__file__).parent.parent / "app" / "offline_worker.js").read_text()
+    site = {"name": "FBC", "contact": "", "discord": "", "key": "", "servers": []}
+    code = src.replace("__SITE__", json.dumps(site)).replace("export default", "const W =") + "\nexport { page };\n"
+    (tmp_path / "w.mjs").write_text(code)
+    srv = {"name": "Family", "java": "play.example.com", "bedrock": "play.example.com", "bedrock_port": 10010, "xbox": "FBCMCLINK",
+           "note": "", "version": "26.3", "main": True, "online": True, "known": True, "playing": 3, "max": 30, "motd": "Hi"}
+    (tmp_path / "r.mjs").write_text("import { page } from './w.mjs'; console.log(page(" + json.dumps([srv]) + ", null));")
+    html = subprocess.run(["node", str(tmp_path / "r.mjs")], capture_output=True, text=True, check=True).stdout
+    assert "the game is still up" in html and "3 of 30 playing" in html and "26.3" in html
+    assert html.index("play.example.com") < html.index("FBCMCLINK") < html.rindex("10010")            # Java, the friend, then the address
+    assert 'data-copy="FBCMCLINK"' in html and "account.xbox.com" in html and "Or add it as a server" in html
+    down = subprocess.run(["node", "-e", "import('" + str(tmp_path / "w.mjs") + "').then(m => console.log(m.page(" + json.dumps([{**srv, "online": False, "playing": 0}]) + ", null)))"],
+                          capture_output=True, text=True, check=True).stdout
+    assert "Offline" in down and "still up" not in down
 
 
 def test_post_card_description(client, anon):

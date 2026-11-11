@@ -358,7 +358,7 @@ function wsSite(el) {
     <div class="actions"><a class="btn" href="/" target="_blank" rel="noopener">Open the home page</a><button class="btn primary" type="submit">Save</button></div>
   </form>
   <section class="panel ws-offline"><h3>If this website goes down</h3>
-    <p class="muted">When this computer is off or Solstone isn't running, visitors can still get a page from Cloudflare: the site's name, your contact email, and whether each Minecraft server is still up (and how many are playing, never who). It's a small Cloudflare Worker, free on Cloudflare's free plan.</p>
+    <p class="muted">When this computer is off or Solstone isn't running, visitors can still get a page from Cloudflare: the site's name, how to get on each Minecraft server (Java: its address; Bedrock: the Xbox friend, and the address and port as the other way, all with Copy buttons), whether each is still up and how many are playing (never who), and your contact email. It's a small Cloudflare Worker, free on Cloudflare's free plan.</p>
     <ol class="ws-steps">
       <li>Save the details above, then <a class="btn sm" href="/api/settings/site/offline-worker" download>⬇ Download the Worker</a></li>
       <li>In Cloudflare: <b>Workers &amp; Pages → Create application → Start with Hello World</b>, name it (like <i>site-offline</i>) and <b>Deploy</b>. Then <b>Edit code</b>, replace everything there with the downloaded file, and <b>Deploy</b> again. (Not <i>Upload</i> or static files: that's for Pages, and won't take it.)</li>
@@ -366,7 +366,7 @@ function wsSite(el) {
       <li>For planned maintenance (below), give it somewhere to keep the notice: in Cloudflare, <b>Storage &amp; Databases → KV → Create</b> (name it <i>solstone</i>), then in the Worker <b>Settings → Bindings → Add → KV namespace</b>, variable name <code>SOLSTONE</code>, that namespace, and <b>Deploy</b>.</li>
       <li>To try it, stop Solstone for a moment and open the website.</li>
     </ol>
-    <p class="muted small">Changed the name, contact or servers? Download it again and paste it over the old one. The server check uses mcsrvstat.us, a free public status checker.</p>
+    <p class="muted small">Changed the name, contact, servers or how to join them (addresses, the Xbox friend, the note)? Download it again and paste it over the old one. The server check uses mcsrvstat.us, a free public status checker.</p>
   </section>
   <section class="panel ws-offline" id="ws-maint"><h3>🛠️ Planned maintenance</h3>
     <p class="muted">Taking the servers and website down on purpose (new hardware, say)? Plan it here: every page shows a banner counting down to it, and while everything's off, the Cloudflare page says <i>Down for maintenance, back around …</i> with your message, instead of just "down". Times are the server's.</p>

@@ -741,6 +741,8 @@ async def offline_worker(request: Request):
     pub = json.loads((await public_site()).body)
     cfg = {"name": pub["name"], "contact": pub.get("contact") or "", "discord": pub.get("discord") or "",
            "servers": [{"name": j["name"], "java": j["java"], "bedrock": j["bedrock"], "bedrock_port": j["bedrock_port"],
+                        "xbox": j.get("xbox") or "", "note": j.get("note") or "", "version": j.get("version") or "",
+                        "main": bool(j.get("main")), "color": j.get("color") or "",
                         # the up/down check: the Java side only (one check covers the server for Bedrock too)
                         "check": (S.registry.servers[j["id"]].settings.get("join_check") if j["id"] in S.registry.servers else "") or j["java"] or ""}
                        for j in pub["joins"]],
