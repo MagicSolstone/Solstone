@@ -1,3 +1,7 @@
+# Solstone 1.20.9
+
+- **Move a server's history to another server.** A server moved to a game host is a new server to Solstone, so what it recorded at home (time played, leaderboards, the activity feed, the Server stats page, adventures, uptime, recaps, fish) stayed with the old one. **Manage → Solstone → History & data → Move history to another server**: pick from and to, **Look first** to see how much of each kind each has, then **Move it**. Days both have are put together: an event both saw is kept once, and that day's stats are worked out again from the two. A backup of Solstone is made first (it's listed under Solstone's own backups), the move is in the activity log, and the game servers aren't touched.
+
 # Solstone 1.20.8
 
 - **The full copy makes sure the game is saving again.** `save-on` is now confirmed by the game's answer and tried three times. If RCON still doesn't answer, the copy says so (and sends the backup notification), the settings show a warning, and Solstone keeps trying every 10 seconds until saving is back on. Before, a missed `save-on` could leave saving paused until the server restarted. If `save-off` got no answer, `save-on` is sent anyway, in case it did get there.

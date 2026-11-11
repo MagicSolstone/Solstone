@@ -124,6 +124,10 @@ The SFTP server's identity (its host key) is learned the first time you test, an
 
 Not mirrored all day: the rest of the world (so the map shows where players have been, not a pregenerated world they haven't seen). For that there's the full copy:
 
+### Moving a server here to a game host: its history too
+
+A server moved to a game host is a new server to Solstone, so what it recorded at home (time played, leaderboards, the activity feed, the stats page, adventures, uptime, recaps, fish) stays with the old one. **Manage → Solstone → History & data → Move history to another server** gives all of it to the new one: pick from and to, **Look first** to see what moves, then **Move it**. Days both have are put together (an event both saw is kept once; that day's stats are worked out again from the two). A backup of Solstone is made first, so it can be undone. The players' own stats (in the world's files) came with the world already.
+
 ### A full copy, each night (a backup on your own machine)
 
 In the server's ⚙ Settings → 2. Its files, tick **Copy the whole server here each night** and pick the time (Solstone's time zone; 04:00 to start with). It's off until you tick it, and switching it on waits for the next time that comes round; **💾 Copy now** runs one straight away.

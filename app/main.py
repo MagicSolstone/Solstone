@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 import httpx
 
-from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, remote, connections, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, welcome, worldmap, xboxwatch, serverstats, traffic
+from . import adventures, auth, backups, forget, board, challenges, community, control, db, eventgroups, fishing, fishpack, gamemsg, remote, connections, games, holidaygifts, kits, stacks, storage, mcname, modpack, modupdates, races, fireworks, fwshow, guard, notify, nudge, optin, playtime, recap, selfcheck, selfbackup, signup, site, skins, tide, upcoming, votegame, watchdog, maintenance, movehistory, welcome, worldmap, xboxwatch, serverstats, traffic
 from . import reading, twostep
 from . import servers as S
 from . import settings_store
@@ -34,7 +34,7 @@ from .config import config
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.20.8"
+VERSION = "1.20.9"
 
 
 @asynccontextmanager
@@ -2372,6 +2372,34 @@ async def remote_backup_status(sid: str, request: Request):
     if not m:
         raise HTTPException(404, "No such server")
     return m.backup_status()
+
+
+@app.get("/api/manage/history/move")
+async def move_history_preview(request: Request, src: str, dst: str):
+    """Admin: what moving one server's history to another would move (Manage → History & data → Move history)."""
+    auth.require_admin(request)
+    if src == dst:
+        raise HTTPException(400, "Pick two different servers")
+    return await asyncio.to_thread(movehistory.preview, src, dst)
+
+
+@app.post("/api/manage/history/move")
+async def move_history(request: Request):
+    """Admin: give one server's history to another (a server moved to a game host is a new server to Solstone)."""
+    user = auth.require_admin(request)
+    body = await _body(request)
+    src, dst = str(body.get("src") or ""), str(body.get("dst") or "")
+    await S.registry.refresh()
+    names = {s.id: s.display_name for s in S.registry.servers.values()}
+    if dst not in names:
+        raise HTTPException(400, "Pick the server to move it to")
+    try:
+        res = await asyncio.to_thread(movehistory.move, src, dst)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    total = sum(v for k, v in res["moved"].items() if not k.endswith("_same"))
+    auth.audit(user, dst, "history:move", f"from {names.get(src, src)} to {names[dst]}: {total} records", f"backup {res['backup']}")
+    return res
 
 
 @app.get("/api/manage/remote/{sid}/backup/history")

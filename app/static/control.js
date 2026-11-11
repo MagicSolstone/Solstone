@@ -488,6 +488,12 @@ async function viewAdmin(section = "users") {
       <div class="panel" id="storage" style="max-width:720px"><p class="muted">Loading…</p></div></section>
     <section class="section"><div class="section-head"><h2>Solstone's own backups</h2><span class="muted">Accounts, settings, posts and history</span></div>
       <div class="panel" id="self-backups" style="max-width:720px"><p class="muted">Loading…</p></div></section>
+    <section class="section"><div class="section-head"><h2>🚚 Move history to another server</h2><span class="muted">A server that moved (to a game host, say)</span></div>
+      <form class="panel" id="move-form" style="max-width:720px">
+        <p class="muted small">A server moved somewhere else is a new server to Solstone, so what it recorded before (time played, leaderboards, the activity feed, the stats page, adventures, uptime, recaps, fish) stays with the old one. This gives all of it to the new one. Days both have are put together, each thing kept once. The old one keeps its settings, with no history; hide it afterwards. A backup of Solstone is made first, so it can be undone (Solstone's own backups, below). The game servers aren't touched.</p>
+        <div class="remote-grid"><label class="wide">From <select class="input" name="src"></select></label><label class="wide">To <select class="input" name="dst"></select></label></div>
+        <div id="move-preview"></div>
+        <div class="btn-row"><button class="btn" type="button" data-move-look>Look first</button><button class="btn primary" type="submit" disabled>Move it</button></div></form></section>
     <section class="section"><div class="section-head"><h2>Clear saved history</h2><span class="muted">For a new world, or a fresh start</span></div>
       <form class="panel clear-form" id="clear-form" style="max-width:720px">
         <p class="muted small">Only what Solstone kept. The game server isn't touched: the world, everyone's items, the whitelist and the server's own log files all stay.</p>
@@ -499,6 +505,47 @@ async function viewAdmin(section = "users") {
   setView({ users: usersHtml, setup: setupHtml, servers: serversHtml, activity: activityHtml }[section] || usersHtml);
   if ($("#srv-manage")) { manageServers(); manageConnections(); }
   if ($("#audit-browse")) mountAuditBrowser($("#audit-browse"));
+
+  // Move history: from one server to another, after a look at what moves
+  const moveForm = $("#move-form");
+  if (moveForm) {
+    api("/api/manage/servers").then((all) => {
+      const opts = all.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}${x.remote ? " (somewhere else)" : x.hidden ? " (hidden)" : ""}</option>`).join("");
+      moveForm.src.innerHTML = opts; moveForm.dst.innerHTML = opts;
+      const far = all.find((x) => x.remote), here = all.find((x) => !x.remote);
+      if (far && here) { moveForm.src.value = here.id; moveForm.dst.value = far.id; }
+    }).catch(() => {});
+    const box = $("#move-preview"), go = moveForm.querySelector("[type=submit]");
+    const reset = () => { box.innerHTML = ""; go.disabled = true; };
+    moveForm.src.addEventListener("change", reset); moveForm.dst.addEventListener("change", reset);
+    const look = async () => {
+      if (moveForm.src.value === moveForm.dst.value) { box.innerHTML = `<p class="notice small">Pick two different servers.</p>`; return null; }
+      const p = await api(`/api/manage/history/move?src=${encodeURIComponent(moveForm.src.value)}&dst=${encodeURIComponent(moveForm.dst.value)}`).catch((e) => { box.innerHTML = `<p class="notice">${esc(e.message)}</p>`; return null; });
+      if (!p) return null;
+      const when = (t) => (t ? new Date(t * 1000).toLocaleDateString() : "–");
+      const rows = p.from.counts.map((c, i) => `<tr><td>${esc(c.label)}</td><td class="num">${c.rows.toLocaleString()}</td><td class="num">${p.to.counts[i].rows.toLocaleString()}</td></tr>`).join("");
+      const moving = p.from.counts.reduce((n, c) => n + c.rows, 0);
+      box.innerHTML = `<table class="bk-files"><tr><th></th><th>${esc(moveForm.src.selectedOptions[0].text)} has</th><th>${esc(moveForm.dst.selectedOptions[0].text)} has</th></tr>${rows}</table>
+        <p class="muted small">From ${when(p.from.first)} to ${when(p.from.last)} moves over${p.to.first ? `; the other has ${when(p.to.first)} to ${when(p.to.last)}` : ""}.${p.both_days.length ? ` ${p.both_days.length} day${p.both_days.length === 1 ? "" : "s"} both have (${esc(p.both_days.join(", "))}): put together.` : ""}</p>`;
+      go.disabled = !moving;
+      if (!moving) box.insertAdjacentHTML("beforeend", `<p class="muted small">Nothing to move.</p>`);
+      return p;
+    };
+    moveForm.querySelector("[data-move-look]").addEventListener("click", look);
+    moveForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const a = moveForm.src.selectedOptions[0].text, b = moveForm.dst.selectedOptions[0].text;
+      if (!(await confirmBox(`Move ${esc(a)}'s history to ${esc(b)}?`, `All of it becomes ${esc(b)}'s, and ${esc(a)} is left with none. A backup of Solstone is made first.`, "Move it"))) return;
+      go.disabled = true; box.insertAdjacentHTML("beforeend", `<p class="muted"><span class="spin" aria-hidden="true"></span> Backing up, then moving…</p>`);
+      try {
+        const r = await post("/api/manage/history/move", { src: moveForm.src.value, dst: moveForm.dst.value });
+        const n = Object.entries(r.moved).filter(([k]) => !k.endsWith("_same")).reduce((t, [, v]) => t + v, 0);
+        const same = Object.entries(r.moved).filter(([k]) => k.endsWith("_same")).reduce((t, [, v]) => t + v, 0);
+        box.innerHTML = `<p class="ok">✓ Moved ${n.toLocaleString()} records to ${esc(b)}${same ? ` (${same.toLocaleString()} it already had, kept once)` : ""}. Backup first: <code>${esc(r.backup)}</code>.</p>`;
+        showToast("History moved", 3000);
+      } catch (err) { box.insertAdjacentHTML("beforeend", `<p class="notice">${esc(err.message)}</p>`); go.disabled = false; }
+    });
+  }
 
   const selfBackups = async () => {
     const box = $("#self-backups");
