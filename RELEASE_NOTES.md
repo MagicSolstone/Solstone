@@ -1,3 +1,7 @@
+# Solstone 1.21.2
+
+- **The "website is down" page says how to get on.** When Solstone or this computer is down but the game isn't, the Cloudflare page now leads with "the game is still up: you can play", and each server gets the home page's join card: **Java**, its address (with the version to launch); **Bedrock**, the Xbox friend first (its gamertag, a link to its Xbox profile, and Play → Friends), with the server address and port as the other way. Every address has a Copy button. It shows whether each server is online and how many are playing out of how many (never who), its message of the day, and your note for it, and has a Check again button. Download the Worker again (Website → Site details → If this website goes down) and paste it over the old one to get it.
+
 # Solstone 1.21.1
 
 (With everything in 1.21.0, whose build didn't publish: GitHub's build machines couldn't reach Ubuntu's servers that day.)
