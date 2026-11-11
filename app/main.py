@@ -2185,7 +2185,8 @@ async def manage_servers(request: Request):
             out[-1]["crafty_name"] = (connections.get(s.crafty.get("_conn")) or {}).get("name", "Crafty")
         if s.remote:                                  # somewhere else: how its files and panel are doing
             m, p = remote.mirror(s.id), s.panel
-            out[-1].update(remote=True, files=dict(m.status) if m else {}, panel=bool(p), panel_error=(p.error if p else ""),
+            out[-1].update(remote=True, files=dict(m.status) if m else {}, backup=m.backup_status() if m else None,
+                           panel=bool(p), panel_error=(p.error if p else ""),
                            where=(remote.get(s.id) or {}).get("host", ""),
                            map=bool((remote.get(s.id) or {}).get("map", True)))
     return out
@@ -2351,6 +2352,28 @@ async def remote_forget_key(sid: str, request: Request):
     return res
 
 
+@app.post("/api/manage/remote/{sid}/backup")
+async def remote_backup_now(sid: str, request: Request):
+    """Admin: the full copy of a server elsewhere, now (whether or not the nightly one is on)."""
+    user = auth.require_admin(request)
+    m = remote.mirror(sid)
+    if not m:
+        raise HTTPException(404, "No such server")
+    if not m.start_backup("asked"):
+        raise HTTPException(409, "A full copy is already running")
+    auth.audit(user, sid, "remote_server:full_copy", "started")
+    return m.backup_status()
+
+
+@app.get("/api/manage/remote/{sid}/backup")
+async def remote_backup_status(sid: str, request: Request):
+    auth.require_admin(request)
+    m = remote.mirror(sid)
+    if not m:
+        raise HTTPException(404, "No such server")
+    return m.backup_status()
+
+
 @app.delete("/api/manage/remote/{sid}")
 async def delete_remote(sid: str, request: Request):
     """Admin: stop looking after a server elsewhere (its history in Solstone stays; the mirror's files go)."""
@@ -2360,6 +2383,8 @@ async def delete_remote(sid: str, request: Request):
         raise HTTPException(404, "No such server")
     m = remote.mirror(sid)
     if m:
+        if m.backup_running:
+            m.backup_task.cancel()                    # (a full copy running: stopped, its saving pause put right first)
         m.close()
     remote.forget(sid)
     shutil.rmtree(remote.mirror_dir(sid), ignore_errors=True)

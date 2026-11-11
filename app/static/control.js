@@ -1137,7 +1137,7 @@ async function manageServers() {
           ${x.java ? chip(x.rcon && !x.rcon_error ? "on" : "warn", x.rcon ? (x.rcon_error ? "RCON not answering" : "RCON ✓") : "RCON off", x.rcon_error || "") : chip("", esc(x.game || "Bedrock"))}
           ${x.remote ? chip(x.files?.ok === false ? "warn" : x.files?.ok ? "on" : "", x.files?.ok === false ? "Files: not updating" : `🌐 ${esc(x.where)}`, x.files?.error || (x.files?.synced ? `Files updated ${fmtAgo(x.files.synced)}` : "Somewhere else, over SFTP"))
             + (x.panel ? chip(x.panel_error ? "warn" : "on", x.panel_error ? "Panel: not answering" : "Panel ✓", x.panel_error || "Start, stop, CPU and memory through the host's panel") : "")
-            : chip("", x.crafty ? "Crafty" : "Folder", x.crafty ? "Started and stopped through Crafty" : `The ${x.folder} folder`)}${x.version ? chip("", esc(x.version)) : ""}${x.remote && x.map ? chip("", "🗺 Map", "Copies the parts of the world players go to, for the map") : ""}</div></div>
+            : chip("", x.crafty ? "Crafty" : "Folder", x.crafty ? "Started and stopped through Crafty" : `The ${x.folder} folder`)}${x.version ? chip("", esc(x.version)) : ""}${x.remote && x.map ? chip("", "🗺 Map", "Copies the parts of the world players go to, for the map") : ""}${backupChip(x.backup, chip)}</div></div>
       <div class="btn-row">${x.hidden ? `<button class="btn sm primary" type="button" data-show>Show it</button>` : `<a class="btn sm" href="#/s/${encodeURIComponent(x.id)}">Open</a>`}
         <button class="btn sm" type="button" data-edit>⚙ Settings</button></div></div>`).join("")
     + `<p class="muted small">A server Solstone finds for the first time starts <b>hidden</b>, so nothing new turns up on the website until you show it.</p>
@@ -1152,6 +1152,35 @@ async function manageServers() {
       catch (e) { showError(esc(e.message), 4000); }
     });
   });
+}
+
+// The full copy of a server elsewhere: running now, or how the last one went, and when the next is.
+function fmtBytes(n) {
+  if (!n) return "0 B";
+  const u = ["B", "KB", "MB", "GB", "TB"], i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+  return `${(n / 1024 ** i).toFixed(i > 1 ? 1 : 0)} ${u[i]}`;
+}
+function backupChip(b, chip) {
+  if (!b || !(b.on || b.last?.finished || b.running)) return "";
+  const l = b.last || {}, stale = b.on && (!l.finished || Date.now() / 1000 - l.finished > 36 * 3600);
+  if (b.running) return chip("", "💾 Copying…", b.progress?.phase || "");
+  if (l.finished && !l.ok) return chip("warn", "💾 Full copy failed", l.error || "");
+  return chip(stale || l.warning ? "warn" : "on", l.finished ? `💾 Copied ${fmtAgo(l.finished)}` : "💾 No full copy yet", l.warning || (stale ? "No full copy in the last day and a half" : `Next: ${b.next ? new Date(b.next * 1000).toLocaleString() : "when asked"}`));
+}
+function backupLine(b) {
+  if (!b) return "";
+  const p = b.progress || {}, l = b.last || {};
+  const lines = [];
+  if (b.running) lines.push(`<p class="muted small"><span class="spin" aria-hidden="true"></span> ${esc(p.phase || "Copying")}${p.files ? ` · ${p.fetched || 0} files (${fmtBytes(p.fetched_bytes)}) fetched of ${fmtBytes(p.to_fetch_bytes)} that changed · ${p.files} files, ${fmtBytes(p.total_bytes)} in all` : ""}</p>`);
+  if (l.finished) {
+    const when = `${esc(fmtAgo(l.finished))}${l.started ? `, took ${Math.max(1, Math.round((l.finished - l.started) / 60))} min` : ""}`;
+    lines.push(l.ok ? `<p class="ok small">✓ Last full copy ${when}: ${l.files} files, ${fmtBytes(l.total_bytes)}; ${l.fetched} changed (${fmtBytes(l.fetched_bytes)} fetched)${l.removed ? `, ${l.removed} the server no longer has removed` : ""}. Checked: every file matches the server's.${l.paused_secs != null ? ` Saving paused ${Math.round(l.paused_secs)} s.` : ""}</p>`
+      : `<p class="notice small">The last full copy (${when}) didn't finish: ${esc(l.error || "")}</p>`);
+    if (l.ok && l.warning) lines.push(`<p class="notice small">${esc(l.warning)}</p>`);
+  } else if (!b.running) lines.push(`<p class="muted small">No full copy yet.</p>`);
+  if (b.on && b.next) lines.push(`<p class="muted small">Next: ${esc(new Date(b.next * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }))}.</p>`);
+  if (b.folder) lines.push(`<p class="muted small">Kept in <code>${esc(b.folder)}</code> (inside Solstone's container: the folder you mapped to its data folder, then <code>remote/…</code>). Already have a copy? Put its files there before the first one, and only what differs is fetched (for region files, just the chunks that differ).</p>`);
+  return lines.join("");
 }
 
 // One server's settings, the same window for every server (Manage → Server setup → Your servers):
@@ -1184,7 +1213,15 @@ async function openServerSetup(sid, then) {
           <small class="muted">The log (who joined, chat, deaths) is followed every few seconds either way, fetching only its new lines.</small></label>
       </div>
       <label class="check"><input type="checkbox" name="map" ${c.map !== false ? "checked" : ""}> Draw the map where players have been <small class="muted">copies just those parts of the world (about 1-10 MB for each 512 × 512 blocks), and again when they change while someone's there; never the whole world</small></label>
+      <h4 class="set-h">💾 A full copy here <small class="muted">a backup on this machine</small></h4>
+      <label class="check"><input type="checkbox" name="backup" ${c.backup ? "checked" : ""}> Copy the whole server here each night <small class="muted">every file of the server (but logs and what the game downloads again by itself), updated with only what changed. The game's saving is paused for the last moments (save-off, save-all), so the copy is of one moment, not a file caught halfway. Point Kopia (or any backup) at its folder.</small></label>
+      <div class="remote-grid">
+        <label>At <input class="input" type="time" name="backup_at" value="${esc(c.backup_at || "04:00")}" style="width:120px"></label>
+        <label class="check wide"><input type="checkbox" name="backup_dh" ${c.backup_dh !== false ? "checked" : ""}> With Distant Horizons' data <small class="muted">large, and fetched whole again on nights it changed; it can be rebuilt from the world</small></label>
+      </div>
+      <div id="backup-status">${sid ? backupLine(row?.backup) : ""}</div>
       <div class="btn-row"><button class="btn" type="button" data-test>🔌 Test the connection</button>
+        ${sid ? `<button class="btn" type="button" data-backup-now>💾 Copy now</button>` : ""}
         ${sid && c.host_key ? `<button class="btn sm" type="button" data-forget-key title="Only if your host moved your server to another machine">Forget its identity</button>` : ""}</div>
       <div class="remote-result" id="remote-result">${c.host_key ? `<p class="muted small">Its identity: <code>${esc(c.host_key)}</code> (remembered the first time; Solstone won't connect if it changes)</p>` : ""}
         ${row?.files?.error ? `<p class="notice small">Its files aren't updating: ${esc(row.files.error)}</p>` : row?.files?.synced ? `<p class="muted small">Files last updated ${esc(fmtAgo(row.files.synced))}.</p>` : ""}
@@ -1225,6 +1262,7 @@ async function openServerSetup(sid, then) {
     const f = new FormData(form), out = { name: (f.get("display_name") || "").trim() || rc?.name || row?.found_as || "" };
     for (const k of ["host", "port", "user", "password", "path", "conn", "panel_id", "files_secs"]) out[k] = (f.get(k) || "").trim();
     out.map = !!f.get("map");
+    out.backup = !!f.get("backup"); out.backup_dh = !!f.get("backup_dh"); out.backup_at = f.get("backup_at") || "04:00";
     if (sid) out.id = sid;
     return out;
   };
@@ -1260,6 +1298,20 @@ async function openServerSetup(sid, then) {
         result.innerHTML = lines.join("");
       } catch (err) { result.innerHTML = `<p class="notice">${esc(err.message)}</p>`; }
       e.target.disabled = false;
+    });
+    // the full copy, now: its progress shown while it runs
+    m.querySelector("[data-backup-now]")?.addEventListener("click", async (e) => {
+      const box = $("#backup-status", m);
+      try { box.innerHTML = backupLine(await post(`/api/manage/remote/${encodeURIComponent(sid)}/backup`, {})); }
+      catch (err) { showError(esc(err.message), 4000); return; }
+      e.target.disabled = true;
+      const poll = setInterval(async () => {
+        if (!document.body.contains(box)) { clearInterval(poll); return; }
+        const st = await api(`/api/manage/remote/${encodeURIComponent(sid)}/backup`).catch(() => null);
+        if (!st) return;
+        box.innerHTML = backupLine(st);
+        if (!st.running) { clearInterval(poll); e.target.disabled = false; }
+      }, 2000);
     });
     m.querySelector("[data-forget-key]")?.addEventListener("click", async () => {
       if (!(await confirmBox("Forget its identity?", "Only if your host moved your server to another machine (they'd tell you). Solstone then learns the new one now.", "Forget and reconnect"))) return;

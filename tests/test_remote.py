@@ -213,6 +213,21 @@ def test_adding_one_from_manage_servers(client, viewer):
         assert client.put(f"/api/manage/remote/{sid}", json={**body, "password": ""}).status_code == 200
         assert remote.get(sid)["password"] == "secret-pw"                                # blank kept the saved one
         assert client.put("/api/manage/remote", json={**body, "host": ""}).status_code == 400
+        # the full copy: off at first, switched on with a time, its status listed, Copy now (the host isn't there:
+        # it says why it didn't finish)
+        assert not row["backup"]["on"] and row["backup"]["folder"].endswith(sid)
+        assert client.put(f"/api/manage/remote/{sid}", json={**body, "backup": True, "backup_at": "3:30"}).status_code == 200
+        assert remote.get(sid)["backup_at"] == "03:30" and remote.get(sid)["backup_since"] > 0
+        assert client.put(f"/api/manage/remote/{sid}", json={**body, "backup_at": "noon"}).status_code == 400
+        assert viewer.post(f"/api/manage/remote/{sid}/backup").status_code == 403
+        assert client.post(f"/api/manage/remote/{sid}/backup").status_code == 200
+        import time
+        for _ in range(50):
+            st = client.get(f"/api/manage/remote/{sid}/backup").json()
+            if not st["running"] and st["last"].get("finished"):
+                break
+            time.sleep(0.1)
+        assert st["on"] and st["at"] == "03:30" and st["last"]["ok"] is False and st["last"]["error"]
     finally:
         assert client.delete(f"/api/manage/remote/{sid}").status_code == 200
     assert not any(x["id"] == sid for x in client.get("/api/manage/servers").json())
@@ -494,3 +509,147 @@ def test_the_map_finds_regions_where_26_1_keeps_them(far):
     from app import worldmap
     assert worldmap.region_dir(remote.mirror_dir(sid) / "world", "minecraft:overworld") == got.parent
     db.x("DELETE FROM positions WHERE server_id=?", (sid,))
+
+
+def test_the_map_follows_the_server_to_another_world(far):
+    """level-name changed (a world copied in under a new name): the map looks in the new world's folders, not the old."""
+    import time
+
+    from app import db
+    loop, root, cfg, key = far
+    old = root / "world" / "dimensions" / "minecraft" / "overworld" / "region"
+    old.mkdir(parents=True)
+    (old / "r.0.0.mca").write_bytes(b"O" * 64)
+    sid = _added(loop, cfg)
+    now = time.time()
+    db.x("DELETE FROM positions WHERE server_id=?", (sid,))
+    db.x("INSERT INTO positions(server_id, ts, player, dim, x, y, z) VALUES (?,?,?,?,?,?,?)", (sid, now, "Ann", "minecraft:overworld", 10, 64, 10))
+    m = remote.mirror(sid)
+    for i in range(6):
+        loop.run_until_complete(m.tick(now=now + i * 3))
+    d = remote.mirror_dir(sid)
+    assert (d / "world/dimensions/minecraft/overworld/region/r.0.0.mca").read_bytes() == b"O" * 64
+    new = root / "world-fbc" / "dimensions" / "minecraft" / "overworld" / "region"           # the real world, moved in
+    new.mkdir(parents=True)
+    (new / "r.0.0.mca").write_bytes(b"N" * 64)
+    (root / "server.properties").write_text((root / "server.properties").read_text().replace("level-name=world", "level-name=world-fbc"))
+    import os
+    os.utime(root / "server.properties", (now + 50, now + 50))
+    m.last = dict.fromkeys(m.last, 0.0)
+    for i in range(6):
+        loop.run_until_complete(m.tick(now=now + 100 + i * 3))
+    assert m.status["map"]["no_folder"] == []
+    assert (d / "world-fbc/dimensions/minecraft/overworld/region/r.0.0.mca").read_bytes() == b"N" * 64
+    db.x("DELETE FROM positions WHERE server_id=?", (sid,))
+
+
+def _backup_on(sid, **extra):
+    data = remote.all_cfg(); data[sid].update(backup=True, backup_at="04:00", backup_since=0, **extra)
+    settings_store.save_section(remote.SECTION, data)
+
+
+def test_the_full_copy_copies_everything_checks_it_and_then_only_what_changed(far):
+    """Every file of the server (but logs), checked against the server's; the next time, only what changed: a region
+    file just its changed chunks, a file the server no longer has removed. RCON pauses saving for the last moments."""
+    import os
+    loop, root, cfg, key = far
+    reg = root / "world" / "region"
+    reg.mkdir(parents=True)
+    (reg / "r.0.0.mca").write_bytes(_region({0: (b"A" * 5000, 100), 1: (b"B" * 300, 100)}))
+    (root / "world" / "data").mkdir()
+    (root / "world" / "data" / "DistantHorizons.sqlite").write_bytes(b"D" * 9000)
+    (root / "crash-reports").mkdir()
+    (root / "crash-reports" / "crash.txt").write_text("boom")
+    sid = _added(loop, cfg)
+    _backup_on(sid)
+    m = remote.mirror(sid)
+    sent = []
+
+    async def rcon(cmd, wait=None):
+        sent.append(cmd)
+        return "ok"
+    m._rcon = rcon
+    mark = loop.run_until_complete(m.backup("asked"))
+    d = remote.mirror_dir(sid)
+    assert mark["ok"], mark
+    assert sent == ["save-off", "save-all flush", "save-on"] and mark["paused_secs"] >= 0 and "saving_paused_at" not in mark
+    assert (d / "world/region/r.0.0.mca").read_bytes() == (reg / "r.0.0.mca").read_bytes()
+    assert (d / "world/data/DistantHorizons.sqlite").exists() and (d / "secret.txt").exists() and (d / "mods/tide.jar").exists()
+    assert not (d / "logs/latest.log").exists() and not (d / "crash-reports").exists()      # (the game makes those again)
+    assert mark["checked"] == mark["files"] == mark["fetched"] and not mark.get("warning")
+    assert (d / remote.BACKUP_MARK).exists()
+    # nothing changed: nothing fetched
+    again = loop.run_until_complete(m.backup("asked"))
+    assert again["ok"] and again["fetched"] == 0 and again["fetched_bytes"] == 0
+    # one chunk saved again, a mod taken out, a new file: just those
+    (reg / "r.0.0.mca").write_bytes(_region({0: (b"A" * 5000, 100), 1: (b"C" * 300, 200)}))
+    os.utime(reg / "r.0.0.mca", (2_000_000_000, 2_000_000_000))
+    (root / "mods" / "tide.jar").unlink()
+    (root / "ops.json").write_text("[]")
+    third = loop.run_until_complete(m.backup("nightly"))
+    assert third["ok"] and third["fetched"] == 2 and third["removed"] == 1
+    assert third["fetched_bytes"] < 4 * 4096 + 2 * 8192 + 10                                # the table and one chunk, not the region
+    assert (d / "world/region/r.0.0.mca").read_bytes() == (reg / "r.0.0.mca").read_bytes()
+    assert not (d / "mods/tide.jar").exists() and (d / "ops.json").exists()
+    # without Distant Horizons' data: it's neither fetched nor removed
+    _backup_on(sid, backup_dh=False)
+    (root / "world" / "data" / "DistantHorizons.sqlite").write_bytes(b"E" * 9000)
+    fourth = loop.run_until_complete(m.backup("asked"))
+    assert fourth["ok"] and fourth["fetched"] == 0 and (d / "world/data/DistantHorizons.sqlite").read_bytes() == b"D" * 9000
+
+
+def test_a_full_copy_starts_from_files_already_here(far):
+    """Files put in its folder first (an older copy of the same world): a region file only its differing chunks."""
+    import shutil
+    loop, root, cfg, key = far
+    reg = root / "world" / "region"
+    reg.mkdir(parents=True)
+    chunks = {i: (bytes([65 + i % 20]) * 6000, 100) for i in range(40)}
+    (reg / "r.0.0.mca").write_bytes(_region(chunks))
+    sid = _added(loop, cfg)
+    d = remote.mirror_dir(sid)
+    (d / "world" / "region").mkdir(parents=True)
+    shutil.copyfile(reg / "r.0.0.mca", d / "world/region/r.0.0.mca")          # (an older copy: an older date)
+    import os
+    os.utime(d / "world/region/r.0.0.mca", (1_700_000_000, 1_700_000_000))
+    chunks[3] = (b"Z" * 6000, 300)
+    (reg / "r.0.0.mca").write_bytes(_region(chunks))
+    m = remote.mirror(sid)
+    mark = loop.run_until_complete(m.backup("asked"))
+    assert mark["ok"] and (d / "world/region/r.0.0.mca").read_bytes() == (reg / "r.0.0.mca").read_bytes()
+    region_bytes = (reg / "r.0.0.mca").stat().st_size
+    others = sum(p.stat().st_size for p in root.rglob("*") if p.is_file() and "region" not in str(p) and "logs" not in str(p))
+    assert mark["fetched_bytes"] < others + 3 * 8192 + 4096 < region_bytes                  # not the whole region again
+    assert "RCON" in mark["warning"]                                                        # (no RCON here: said so)
+
+
+def test_the_nightly_full_copy_runs_once_a_night_from_when_it_was_switched_on(far):
+    loop, root, cfg, key = far
+    sid = _added(loop, cfg)
+    with pytest.raises(ValueError):
+        remote.clean({**cfg, "backup": True, "backup_at": "25:00"})
+    remote.save(sid, {**cfg, "backup": True, "backup_at": "04:00"})
+    m = remote.mirror(sid)
+    now = m.cfg["backup_since"]
+    assert not m._is_due(m._slot(now))                          # switched on after today's: not straight away
+    later = now + 86400 + 60
+    assert m._is_due(m._slot(later)) and m.backup_next(now) == m._slot(later)
+    m._write_mark(started=later)
+    assert not m._is_due(m._slot(later + 60))                   # once a night
+    remote.save(sid, {**cfg, "backup": False})
+    assert not remote.mirror(sid).backup_if_due(later + 2 * 86400)
+
+
+def test_saving_left_paused_by_an_unfinished_copy_is_turned_back_on(far):
+    loop, root, cfg, key = far
+    sid = _added(loop, cfg)
+    m = remote.mirror(sid)
+    m._write_mark(saving_paused_at=123.0)
+    sent = []
+
+    async def rcon(cmd, wait=None):
+        sent.append(cmd)
+        return "ok"
+    m._rcon = rcon
+    loop.run_until_complete(m.tick(now=5000))
+    assert sent == ["save-on"] and "saving_paused_at" not in m.backup_mark()

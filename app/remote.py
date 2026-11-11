@@ -24,8 +24,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import os
 import posixpath
+import re
 import secrets
+import shutil
 import stat as stat_mod
 import time
 from pathlib import Path
@@ -56,6 +59,12 @@ HEADER = 2 * SECTOR                 # last saved (4 KB), then the chunks, each a
 _DIM_DIRS = {"minecraft:overworld": ("region",), "minecraft:the_nether": ("DIM-1/region", "_nether/DIM-1/region"),
              "minecraft:the_end": ("DIM1/region", "_the_end/DIM1/region")}     # (Paper keeps the Nether and End apart)
 CONNECT_SECS = 15
+# The full copy: every file of the server (but what the game makes again by itself), on this machine, each night
+BACKUP_AT = "04:00"                 # (Solstone's time zone)
+BACKUP_SKIP_TOP = {"logs", "crash-reports", "debug", "cache", ".cache", "libraries", "versions", ".fabric", ".mixin.out"}
+BACKUP_SKIP_ENDS = (".part", ".solstone-tmp", ".tmp", "session.lock")
+BACKUP_MARK = ".solstone-full-copy.json"   # how the last one went (and, once it has finished, that it has: for Kopia)
+SAVE_OFF_MAX = 10 * 60              # saving is never left paused longer than this
 
 
 # ------------------------------------------------------------------ the saved settings
@@ -111,7 +120,13 @@ def clean(body: dict, old: dict | None = None) -> dict:
            "path": (str(body.get("path") if body.get("path") is not None else old.get("path") or "") or "/").strip()[:300] or "/",
            "conn": text("conn", 40), "panel_id": text("panel_id", 64),
            "files_secs": num("files_secs", 10, 600, FILES_SECS), "host_key": old.get("host_key", ""), "host_pub": old.get("host_pub", ""),
-           "map": bool(body["map"]) if "map" in body else old.get("map", True)}      # the map where players have been
+           "map": bool(body["map"]) if "map" in body else old.get("map", True),       # the map where players have been
+           # the full copy (a backup on this machine): off until ticked; when; Distant Horizons' data too
+           "backup": bool(body["backup"]) if "backup" in body else bool(old.get("backup")),
+           "backup_at": _hhmm(body.get("backup_at"), old.get("backup_at") or BACKUP_AT),
+           "backup_dh": bool(body["backup_dh"]) if "backup_dh" in body else old.get("backup_dh", True)}
+    # (switched on: from the next time it comes round, not straight away; Copy now is for that)
+    cfg["backup_since"] = (old.get("backup_since") or time.time()) if cfg["backup"] else 0
     if not cfg["name"] or not cfg["host"] or not cfg["user"]:
         raise ValueError("A name, the SFTP address and the username are needed")
     if cfg["conn"]:
@@ -124,6 +139,14 @@ def clean(body: dict, old: dict | None = None) -> dict:
     if (cfg["host"], cfg["port"]) != (old.get("host"), old.get("port")):
         cfg["host_key"] = cfg["host_pub"] = ""    # a different machine: its key is learned afresh
     return cfg
+
+
+def _hhmm(v, default: str) -> str:
+    v = str(v or "").strip()
+    m = re.fullmatch(r"([01]?\d|2[0-3]):([0-5]\d)", v)
+    if v and not m:
+        raise ValueError("The time for the full copy is like 04:00")
+    return f"{int(m.group(1)):02d}:{m.group(2)}" if m else default
 
 
 def save(sid: str | None, body: dict) -> str:
@@ -151,6 +174,10 @@ def mirror_dir(sid: str) -> Path:
 # ------------------------------------------------------------------ SFTP
 class HostKeyChanged(Exception):
     pass
+
+
+class BackupProblem(Exception):
+    """Something about the full copy itself (room, a mismatch): its message says what."""
 
 
 async def _connect(cfg: dict, learn: bool = False):
@@ -232,11 +259,18 @@ class Mirror:
         self.log_head = b""
         self.last: dict[str, float] = {"log": 0.0, "files": 0.0, "slow": 0.0, "regions": 0.0}
         self.regions: list[tuple[str, str, bool]] = []    # (local path, remote path, only if missing) still to look at
-        self._dim_base: dict[str, str] = {}              # each dimension's region folder on the server, once found
+        self._dim_base: dict[tuple[str, str], str] = {}  # (world, dimension): its region folder on the server, once found
         self._world_has: list[str] = []                  # the world folder's contents, when a dimension's wasn't found
         self._spots: tuple[tuple, list] = ((), [])       # players' saved spots and spawn (read again when a file changes)
         self.status = {"ok": None, "error": "", "synced": None, "files": 0, "bytes": 0}
         self._lock = asyncio.Lock()
+        self.backup_task: asyncio.Task | None = None
+        self.backup_progress: dict = {}                  # what the full copy running now is doing
+        self._saving_checked = False                     # (once: saving left paused by a copy Solstone didn't finish)
+
+    @property
+    def backup_running(self) -> bool:
+        return bool(self.backup_task and not self.backup_task.done())
 
     @property
     def cfg(self) -> dict:
@@ -276,7 +310,6 @@ class Mirror:
             data = await f.read()
         tmp.write_bytes(data)
         tmp.replace(local)
-        import os
         os.utime(local, (mtime, mtime))                  # (the copy keeps the server's time: "last played" and the like)
         self.known[rel] = (size, mtime)
         self.status["bytes"] += len(data)
@@ -416,9 +449,9 @@ class Mirror:
 
     async def _region_base(self, dim: str) -> str | None:
         """Where a dimension's region files are on the server (and so in the copy: the usual place)."""
-        if dim in self._dim_base:
-            return self._dim_base[dim]
         level = self._level()
+        if (level, dim) in self._dim_base:              # (per world: a server switched to another world looks afresh)
+            return self._dim_base[(level, dim)]
         ns, _, rest = dim.partition(":")
         if not ns or not rest or ".." in dim or "/" in ns:
             return None
@@ -430,7 +463,7 @@ class Mirror:
                 await sftp.stat(self._remote(o))
             except Exception:
                 continue
-            self._dim_base[dim] = o
+            self._dim_base[(level, dim)] = o
             return o
         try:                                                             # (what is there, for the settings to show)
             names = await sftp.listdir(self._remote(level))
@@ -480,7 +513,7 @@ class Mirror:
             if not have or not await self._patch_region(local, remote_rel, size, mtime):
                 await self._fetch(local, size, mtime, remote_rel)
 
-    async def _patch_region(self, local: str, remote_rel: str, size: int, mtime: int) -> bool:
+    async def _patch_region(self, local: str, remote_rel: str, size: int, mtime: int, sftp=None) -> bool:
         """Bring a region the copy already has up to date by fetching only its chunks saved since: their table says
         when each was saved, and where it is. A few KB instead of the whole file. False: fetch it whole instead."""
         path = self._local(local)
@@ -490,7 +523,7 @@ class Mirror:
             return False
         if len(mine) < HEADER or size < HEADER:
             return False
-        sftp = await self._session()
+        sftp = sftp or await self._session()
         async with sftp.open(self._remote(remote_rel), "rb") as f:
             theirs = await f.read(HEADER)
             if len(theirs) < HEADER:
@@ -513,7 +546,7 @@ class Mirror:
                 out.write(data)
             out.seek(0)
             out.write(theirs)
-        import os
+            out.truncate(size)                           # (the server's file can have shrunk: nothing it has lies past this)
         os.utime(path, (mtime, mtime))
         self.known[local] = (size, mtime)
         self.status["bytes"] += HEADER + sum(len(d) for _o, d in chunks)
@@ -549,7 +582,10 @@ class Mirror:
                 if now - self.last.get("log", 0.0) >= LOG_SECS:
                     await self.follow_log()
                     self.last["log"] = now
-                if self.cfg.get("map", True):
+                if not self._saving_checked:
+                    self._saving_checked = True
+                    await self._resume_saving_if_left_paused()
+                if self.cfg.get("map", True) and not self.backup_running:    # (the full copy writes the same files)
                     if now - self.last.get("regions", 0.0) >= REGION_SECS:
                         self.last["regions"] = now
                         await self._extra("the map", self.plan_regions(now))
@@ -592,6 +628,228 @@ class Mirror:
             return True
 
 
+    # ------------------------------------------------------------------ the full copy
+    def backup_mark(self) -> dict:
+        try:
+            import json
+            return json.loads((self.dir / BACKUP_MARK).read_text())
+        except (OSError, ValueError):
+            return {}
+
+    def _write_mark(self, **changes) -> dict:
+        import json
+        mark = {**self.backup_mark(), **changes}
+        mark = {k: v for k, v in mark.items() if v is not None}
+        self.dir.mkdir(parents=True, exist_ok=True)
+        tmp = self.dir / (BACKUP_MARK + ".part")
+        tmp.write_text(json.dumps(mark, indent=1))
+        tmp.replace(self.dir / BACKUP_MARK)
+        return mark
+
+    def backup_status(self) -> dict:
+        """For the settings: on or off, when, how the last one went, what one running now is doing."""
+        c, mark = self.cfg, self.backup_mark()
+        return {"on": bool(c.get("backup")), "at": c.get("backup_at") or BACKUP_AT, "dh": c.get("backup_dh", True),
+                "running": self.backup_running, "progress": dict(self.backup_progress) if self.backup_running else {},
+                "last": {k: mark.get(k) for k in ("started", "finished", "ok", "error", "warning", "files", "fetched", "fetched_bytes",
+                                                  "total_bytes", "removed", "paused_secs", "checked", "why") if k in mark},
+                "next": self.backup_next() if c.get("backup") else None, "folder": str(self.dir)}
+
+    def _slot(self, now: float) -> float:
+        """The last time the nightly copy was due (at or before now)."""
+        from datetime import datetime, timedelta
+
+        from .db import tz
+        h, m = (int(x) for x in (self.cfg.get("backup_at") or BACKUP_AT).split(":"))
+        local = datetime.fromtimestamp(now, tz())
+        slot = local.replace(hour=h, minute=m, second=0, microsecond=0)
+        if slot > local:
+            slot -= timedelta(days=1)
+        return slot.timestamp()
+
+    def backup_next(self, now: float | None = None) -> float:
+        now = now or time.time()
+        slot = self._slot(now)
+        return slot if self._is_due(slot) else slot + 86400
+
+    def _is_due(self, slot: float) -> bool:
+        return (self.backup_mark().get("started") or 0) < slot and (self.cfg.get("backup_since") or 0) <= slot
+
+    def backup_if_due(self, now: float | None = None) -> bool:
+        if not self.cfg.get("backup") or self.backup_running:
+            return False
+        if not self._is_due(self._slot(now or time.time())):
+            return False
+        self.start_backup("nightly")
+        return True
+
+    def start_backup(self, why: str = "asked") -> bool:
+        if self.backup_running:
+            return False
+        self.backup_task = asyncio.get_running_loop().create_task(self.backup(why))
+        return True
+
+    def _server(self):
+        from . import servers as S
+        return S.registry.servers.get(self.sid) if S.registry else None
+
+    async def _rcon(self, cmd: str, wait: float | None = None) -> str | None:
+        srv = self._server()
+        if not srv or not srv.rcon_conf():
+            return None
+        try:
+            return await srv.rcon(cmd, wait) if wait else await srv.rcon(cmd)
+        except Exception as e:
+            log.info("server %s: %s didn't work over RCON: %s", self.sid, cmd, e)
+            return None
+
+    async def _resume_saving_if_left_paused(self) -> None:
+        """Solstone stopped (or crashed) in the middle of a full copy, with the game's saving paused: back on."""
+        if self.backup_mark().get("saving_paused_at") and not self.backup_running:
+            if await self._rcon("save-on") is not None:
+                log.warning("server %s: saving was left paused by a full copy that didn't finish: turned back on", self.sid)
+                self._write_mark(saving_paused_at=None)
+
+    def _wanted(self, rel: str) -> bool:
+        top, name = rel.split("/", 1)[0], rel.rsplit("/", 1)[-1]
+        if top in BACKUP_SKIP_TOP or name.endswith(BACKUP_SKIP_ENDS) or name == BACKUP_MARK:
+            return False
+        return bool(self.cfg.get("backup_dh", True)) or not name.startswith("DistantHorizons")
+
+    async def _walk(self, sftp, rel: str = "") -> dict[str, tuple[int, int]]:
+        """Every file on the server the full copy keeps: {path: (size, mtime)}."""
+        out: dict[str, tuple[int, int]] = {}
+        for e in await sftp.readdir(self._remote(rel)):
+            if e.filename in (".", ".."):
+                continue
+            path = f"{rel}/{e.filename}" if rel else str(e.filename)
+            mode = e.attrs.permissions or 0
+            if stat_mod.S_ISDIR(mode):
+                if path not in BACKUP_SKIP_TOP:
+                    out.update(await self._walk(sftp, path))
+            elif stat_mod.S_ISREG(mode) and self._wanted(path):
+                out[path] = (int(e.attrs.size or 0), int(e.attrs.mtime or 0))
+        return out
+
+    def _have(self, rel: str, size: int, mtime: int) -> bool:
+        try:
+            st = self._local(rel).stat()
+        except OSError:
+            return False
+        return st.st_size == size and int(st.st_mtime) == mtime
+
+    async def _copy_changed(self, sftp, files: dict[str, tuple[int, int]], deadline: float | None = None) -> tuple[int, int]:
+        """Every file that differs from the copy: a region file the copy has, just its changed chunks; any other, whole
+        (streamed, however big). (files fetched, bytes fetched)"""
+        n = got = 0
+        for rel, (size, mtime) in sorted(files.items()):
+            if deadline and time.monotonic() > deadline:
+                raise BackupProblem(f"the last changes took over {SAVE_OFF_MAX // 60} minutes to copy, so saving was turned back on")
+            if self._have(rel, size, mtime):
+                continue
+            local = self._local(rel)
+            before = self.status["bytes"]
+            if rel.endswith(".mca") and local.exists() and await self._patch_region(rel, rel, size, mtime, sftp):
+                fetched = self.status["bytes"] - before
+            else:
+                local.parent.mkdir(parents=True, exist_ok=True)
+                tmp = local.with_name(local.name + ".part")
+                await sftp.get(self._remote(rel), str(tmp))
+                os.utime(tmp, (mtime, mtime))
+                tmp.replace(local)
+                self.known[rel] = (size, mtime)
+                fetched = size
+            n, got = n + 1, got + fetched
+            p = self.backup_progress
+            p.update(fetched=p.get("fetched", 0) + 1, fetched_bytes=p.get("fetched_bytes", 0) + fetched)
+        return n, got
+
+    def _local_files(self) -> list[str]:
+        out = []
+        for p in self.dir.rglob("*"):
+            if p.is_file():
+                rel = str(p.relative_to(self.dir)).replace("\\", "/")
+                if self._wanted(rel):
+                    out.append(rel)
+        return out
+
+    async def backup(self, why: str = "nightly") -> dict:
+        """The full copy. Everything that changed is fetched once with the game saving as usual, then the game is
+        told to save everything and pause saving (save-off, save-all flush), whatever changed meanwhile is fetched,
+        and saving goes back on (save-on): a copy of the world as it was at one moment, not a file caught halfway
+        through being saved. Then every file is checked against the server's, and files the server no longer has go."""
+        started = time.time()
+        self.backup_progress = {"phase": "Looking at the server's files", "started": started, "fetched": 0, "fetched_bytes": 0}
+        self._write_mark(started=started, finished=None, ok=None, error=None, warning=None, why=why)
+        conn = None
+        paused_at = None
+        result: dict = {"why": why}
+        try:
+            conn, sftp, _ident = await _connect(self.cfg)
+            files = await self._walk(sftp)
+            total = sum(sz for sz, _m in files.values())
+            need = sum(sz for rel, (sz, mt) in files.items() if not self._have(rel, sz, mt))
+            self.dir.mkdir(parents=True, exist_ok=True)
+            free = shutil.disk_usage(self.dir).free
+            if need > free - 512 * 1024 * 1024:
+                raise BackupProblem(f"not enough room here: it needs {need / 1e9:.1f} GB more and {free / 1e9:.1f} GB is free")
+            self.backup_progress.update(phase="Copying what changed", files=len(files), total_bytes=total, to_fetch_bytes=need)
+            n1, b1 = await self._copy_changed(sftp, files)
+            # now the moment the copy is of: the game writes everything down, then stops writing while the rest is fetched
+            warning = ""
+            self.backup_progress.update(phase="Pausing the game's saving")
+            self._write_mark(saving_paused_at=time.time())
+            if await self._rcon("save-off") is not None:
+                paused_at = time.time()
+                if await self._rcon("save-all flush", 120) is None:
+                    warning = "The game didn't say it had saved everything before the last files were copied"
+            else:
+                self._write_mark(saving_paused_at=None)
+                warning = ("RCON didn't answer, so the game's saving couldn't be paused. Fine if the server was stopped; if it "
+                           "was running, a file being saved right then could be caught halfway (the next copy puts it right)")
+            self.backup_progress.update(phase="Copying the last changes" + (" (saving paused)" if paused_at else ""))
+            files = await self._walk(sftp)
+            n2, b2 = await self._copy_changed(sftp, files, deadline=time.monotonic() + SAVE_OFF_MAX if paused_at else None)
+            if paused_at:
+                await self._rcon("save-on")
+                result["paused_secs"] = round(time.time() - paused_at, 1)
+                paused_at = None
+                self._write_mark(saving_paused_at=None)
+            # checked: every file the server has is here, the same size and time
+            self.backup_progress.update(phase="Checking the copy")
+            bad = [rel for rel, (sz, mt) in files.items() if not self._have(rel, sz, mt)]
+            removed = 0
+            local = self._local_files()
+            if len(files) >= len(local) // 2:            # (a server that suddenly lists far fewer files: nothing is removed)
+                for rel in local:
+                    if rel not in files:
+                        self._local(rel).unlink(missing_ok=True)
+                        removed += 1
+            if bad:
+                raise BackupProblem(f"{len(bad)} file(s) don't match the server's after copying, e.g. {bad[0]}")
+            result.update(ok=True, files=len(files), fetched=n1 + n2, fetched_bytes=b1 + b2, total_bytes=sum(sz for sz, _m in files.values()),
+                          removed=removed, checked=len(files), warning=warning or None)
+        except Exception as e:
+            result.update(ok=False, error=str(e) if isinstance(e, BackupProblem) else _why(e))
+            log.warning("server %s: the full copy didn't finish: %s", self.sid, result["error"])
+        finally:
+            if paused_at:
+                await self._rcon("save-on")
+                result["paused_secs"] = round(time.time() - paused_at, 1)
+                self._write_mark(saving_paused_at=None)
+            if conn:
+                conn.close()
+            self.backup_progress = {}
+        result["finished"] = time.time()
+        mark = self._write_mark(**result)
+        if not mark.get("ok") or mark.get("warning"):
+            from .notify import maybe_notify
+            srv = self._server()
+            name = srv.display_name if srv else self.cfg.get("name", self.sid)
+            maybe_notify("backup", name, f"The full copy {'had a problem' if mark.get('ok') else 'failed'}: {mark.get('error') or mark.get('warning')}", sid=self.sid)
+        return mark
+
+
 _mirrors: dict[str, Mirror] = {}
 
 
@@ -608,6 +866,8 @@ async def tick_all() -> None:
     ms = [m for m in (mirror(sid) for sid in all_cfg()) if m]
     if ms:
         await asyncio.gather(*(m.tick() for m in ms))
+        for m in ms:
+            m.backup_if_due()                            # (the nightly full copy, where it's on: runs on its own)
 
 
 def rel_of(srv, path: Path) -> str | None:

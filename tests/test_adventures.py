@@ -128,8 +128,7 @@ def test_the_feed_summed_up_every_ten_minutes():
 def test_every_block_advancement_and_death_reaches_the_stats_page(monkeypatch):
     """The feed only mentions trips of 500 blocks or more, and the log's advancement line wasn't being seen: the Stats
     page had no distance for short trips and no advancements at all. Each save's exact gains go to it now."""
-    import time
-    from datetime import date
+    from datetime import datetime
 
     from app import adventures, db, serverstats
     from app import servers as S
@@ -151,7 +150,7 @@ def test_every_block_advancement_and_death_reaches_the_stats_page(monkeypatch):
     advs["minecraft:recipes/misc/torch"] = {"done": True}             # (a recipe: not an advancement)
     advs["minecraft:adventure/root"] = {"done": True}
     adventures.progress(Srv(), {"Ann": "u-1"})
-    today = date.fromtimestamp(time.time())
+    today = datetime.now(db.tz()).date()                             # (Solstone's day, not the machine's: they differ at night)
     day = serverstats.compute(Srv.id, [today])[today.isoformat()]
     assert day["travelled"] == 120 and day["advancements"] == 2 and day["deaths"] == 1
     assert not db.q("SELECT 1 FROM events WHERE server_id=? AND type='tally'", (Srv.id,))       # nothing new in any feed

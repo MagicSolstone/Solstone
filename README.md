@@ -115,14 +115,25 @@ How it works: Solstone keeps a **mirror** of just the files it reads, in `/data/
 | `logs/latest.log` | every 3 s | only the new lines (a restarted server's new log from the start) |
 | `server.properties`, `usercache.json`, `whitelist.json`, `ops.json`, the world's `level.dat`, players' `stats`, `playerdata`, `advancements` | every 30 s (15 s to 5 min, your choice) | only files whose size or time changed |
 | `mods/*.jar`, old `logs/*.log.gz`, `config/` | every 10 min | each one once, then only when it changes |
+| the world's region files (for the map) | every minute, a few at a time | only around the spawn and where players are or were (Solstone's own record, and each player's spot in their player file, so it starts before anyone has been seen on), fetched again when they change; never the whole world. Off with **Draw the map where players have been** |
 
 The only file Solstone writes there is `whitelist.json` (a Bedrock player added to the whitelist), sent back the same way.
 
 The SFTP server's identity (its host key) is learned the first time you test, and checked before the password is sent every time after. If it changes, Solstone stops and says so; if your host really moved your server to another machine, press **Forget its identity** in its connection settings.
 
-| the world's region files (for the map) | every 5 min, a few at a time | only around the spawn and where players are or were (Solstone's own record, and each player's spot in their player file, so it starts before anyone has been seen on), fetched again when they change; never the whole world. Off with **Draw the map where players have been** |
 
-Not mirrored: the rest of the world (so the map shows where players have been, not a pregenerated world they haven't seen) and backups (your host keeps those; with a panel, **Back up** starts one).
+Not mirrored all day: the rest of the world (so the map shows where players have been, not a pregenerated world they haven't seen). For that there's the full copy:
+
+### A full copy, each night (a backup on your own machine)
+
+In the server's ⚙ Settings → 2. Its files, tick **Copy the whole server here each night** and pick the time (Solstone's time zone; 04:00 to start with). It's off until you tick it, and switching it on waits for the next time that comes round; **💾 Copy now** runs one straight away.
+
+- **What:** every file of the server, but its logs, crash reports and what the game downloads again by itself (`libraries/`, `versions/`, caches). Distant Horizons' data is included unless you untick it: it's large, it's fetched whole again on nights it changed, and it can be rebuilt from the world.
+- **How:** everything that changed is fetched first, with the game saving as usual. Then over RCON the game is told to save everything and pause saving (`save-off`, `save-all flush`), whatever changed meanwhile is fetched, and saving goes back on (`save-on`): the copy is of one moment, not a region file caught halfway through being saved. Players don't notice; the pause is usually seconds. It's never left paused longer than 10 minutes, and if Solstone stops in the middle, saving is turned back on the next time it starts. Without RCON it still copies, and says the copy couldn't be paused.
+- **Only what changed:** files whose size or time differ; a region file the copy already has, just the chunks saved since (its table says which). Files the server no longer has are removed from the copy.
+- **Checked:** afterwards every file is compared with the server's (size and time); the settings say how the last one went, how much was fetched and when the next one is, and a 💾 chip on the server says when it last copied (orange if it failed, or it's been more than a day and a half). A failed one sends the **backup** notification, if that's on.
+- **Where:** Solstone's data folder, `remote/<server id>/` (the settings show the exact folder). Back that folder up with Kopia (or anything): run it an hour or two after the copy's time. `.solstone-full-copy.json` there says when the last copy finished and whether it was good.
+- **Starting from a copy you already have:** put its files in that folder first (the same layout as the server's folder). Only what differs is fetched, and for region files only the chunks that differ.
 
 ## Getting back in
 

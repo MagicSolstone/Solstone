@@ -5,6 +5,11 @@ from datetime import datetime
 from app import board, challenges, db, fwshow, holidaygifts, settings_store, upcoming
 
 
+def _today():
+    """Solstone's day (its time zone), not the machine's: at night they're different days."""
+    return datetime.now(db.tz()).date()
+
+
 class FakeServer:
     id = "hg-test"
     display_name = "Test"
@@ -230,10 +235,9 @@ def test_who_has_had_the_reward(monkeypatch):
 def test_an_event_on_just_one_server(monkeypatch):
     """With two servers, an event can be on just one: its reward only there, and the Events page says which."""
     import asyncio
-    from datetime import date
 
     from app import fwshow, holidaygifts, upcoming
-    e = fwshow._clean_entry({"id": "build", "name": "Build week", "date": {"type": "once", "iso": date.today().isoformat()}, "days": 3,
+    e = fwshow._clean_entry({"id": "build", "name": "Build week", "date": {"type": "once", "iso": _today().isoformat()}, "days": 3,
                              "servers": ["creative", "creative", ""], "reward": {"items": [{"item": "minecraft:stick", "count": 1}]}})
     assert e["servers"] == ["creative"]
     assert fwshow._clean_entry({"name": "x"})["servers"] == []                        # none: every server
