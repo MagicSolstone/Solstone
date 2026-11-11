@@ -1,3 +1,7 @@
+# Solstone 1.20.11
+
+- **The map redraws pictures from another world at the same spot.** A picture was drawn again only when its region file got newer than it; a server elsewhere's copy keeps the server's own times, so after a world was swapped (a test world, then the real one), the old world's pictures stayed. Each picture now remembers the exact file it was drawn from (its size and time) and is drawn again when that's different, newer or older. Pictures from before are each drawn again once, in the background.
+
 # Solstone 1.20.10
 
 - **The full copy can't hang, and shows what it's doing.** Files are fetched a megabyte at a time: if the server stops sending one for 2 minutes, the copy stops and says which file (before, a stalled download could leave it on "Copying what changed" forever). The progress line now says how many files it has looked at, how many of those that differ it has fetched, the file it's on now (with how far through a big one it is), and how much is to download whole versus region files that only fetch their changed chunks (a first copy from files you put there first counts those as "differing" by date, but fetches only what differs).
