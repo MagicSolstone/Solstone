@@ -34,7 +34,7 @@ from .config import config
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.20.6"
+VERSION = "1.20.7"
 
 
 @asynccontextmanager
