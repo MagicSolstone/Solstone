@@ -1,3 +1,8 @@
+# Solstone 1.20.10
+
+- **The full copy can't hang, and shows what it's doing.** Files are fetched a megabyte at a time: if the server stops sending one for 2 minutes, the copy stops and says which file (before, a stalled download could leave it on "Copying what changed" forever). The progress line now says how many files it has looked at, how many of those that differ it has fetched, the file it's on now (with how far through a big one it is), and how much is to download whole versus region files that only fetch their changed chunks (a first copy from files you put there first counts those as "differing" by date, but fetches only what differs).
+- **Stop a full copy, and limit its speed.** **⏹ Stop the copy** stops one that's running (what it fetched stays; the next carries on from there). **No faster than** (2 to 50 MB/s) keeps a big copy from crowding players off the server's connection. A copy cut off by Solstone restarting now says so instead of "No full copy yet".
+
 # Solstone 1.20.9
 
 - **Move a server's history to another server.** A server moved to a game host is a new server to Solstone, so what it recorded at home (time played, leaderboards, the activity feed, the Server stats page, adventures, uptime, recaps, fish) stayed with the old one. **Manage → Solstone → History & data → Move history to another server**: pick from and to, **Look first** to see how much of each kind each has, then **Move it**. Days both have are put together: an event both saw is kept once, and that day's stats are worked out again from the two. A backup of Solstone is made first (it's listed under Solstone's own backups), the move is in the activity log, and the game servers aren't touched.
