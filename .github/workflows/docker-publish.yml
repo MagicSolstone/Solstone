@@ -54,7 +54,8 @@ jobs:
   browser:
     # Opens every page in Chromium on a test world; fails on JS errors, broken pages
     # and Content-Security-Policy violations.
-    runs-on: ubuntu-latest
+    # (24.04, not latest: on the 26.04 image, Chromium's system packages couldn't be fetched with apt, every time)
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
@@ -65,7 +66,9 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt -r requirements-dev.txt
-          python -m playwright install --with-deps chromium
+          # the system packages Chromium needs come from Ubuntu's servers: a few tries, so a passing blip doesn't fail a release
+          for i in 1 2 3; do python -m playwright install --with-deps chromium && break; echo "try $i didn't work"; sleep 20; done
+          python -m playwright install chromium
       - name: Smoke test
         env:
           SMOKE_SHOTS: smoke-shots
