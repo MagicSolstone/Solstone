@@ -1,7 +1,6 @@
 """Moving a server's history to another (a server moved to a game host is a new server to Solstone): every kind moves,
 an event both have is kept once, the days both have are worked out again from the two together, a backup comes first."""
 import json
-import time
 from datetime import datetime
 
 from app import db, movehistory, selfbackup, serverstats
@@ -20,7 +19,7 @@ def _day(ts):
 def test_a_servers_history_moves_to_another_and_shared_days_are_put_together(client):
     home, far = "mv-home", "mv-far"
     _clear(home, far)
-    now = time.time()
+    now = datetime.now(db.tz()).replace(hour=12, minute=0, second=0, microsecond=0).timestamp()   # (midday: no session crosses midnight)
     old = now - 40 * 86400                                                   # only home has this day
     for sid, start in ((home, old), (home, now - 3600), (far, now - 7200)):
         db.x("INSERT INTO sessions(server_id, player, uuid, start_ts, last_seen_ts, end_ts) VALUES (?,?,?,?,?,?)",
