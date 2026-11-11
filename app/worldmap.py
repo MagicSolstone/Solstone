@@ -757,7 +757,8 @@ def _work() -> None:
         key, src, dst, assets, nether = job
         try:
             colors = Colors(assets)
-            info: dict = {}
+            st = src.stat()                       # (what it's drawn from: before reading, so a save meanwhile redraws it)
+            info: dict = {"src": [st.st_size, st.st_mtime_ns]}
             img = render_region(src, colors, nether, info)
             colors.save()
             dst.parent.mkdir(parents=True, exist_ok=True)
@@ -770,6 +771,7 @@ def _work() -> None:
             tmp = dst.with_suffix(".tmp")
             tmp.write_bytes(buf.getvalue())
             tmp.replace(dst)
+            _from[dst] = info["src"]
         except Exception:
             log.exception("map tile %s failed", key)
         finally:
@@ -869,6 +871,15 @@ def check(sid: str, world: Path, dim: str, near: list[tuple[float, float]], asse
     return out
 
 
+_from: dict[Path, list] = {}              # each picture: [size, time] of the region file it was drawn from
+
+
+def _drawn_from(dst: Path) -> list | None:
+    if dst not in _from:
+        _from[dst] = tile_info(dst).get("src")    # (a picture from before this was kept: drawn again once)
+    return _from[dst]
+
+
 def tile(sid: str, world: Path, dim: str, rx: int, rz: int, assets) -> tuple[str, Path | None]:
     """('ready', path) when there's a picture (maybe slightly old), ('working', None) while it's
     being drawn for the first time, ('none', None) when that region doesn't exist."""
@@ -880,11 +891,13 @@ def tile(sid: str, world: Path, dim: str, rx: int, rz: int, assets) -> tuple[str
         return "none", None
     dst = _tile_path(sid, dim, rx, rz)
     try:
-        src_m = src.stat().st_mtime
+        st = src.stat()
         dst_m = dst.stat().st_mtime if dst.is_file() else 0
     except OSError:
         return "none", None
-    stale = dst_m < src_m and time.time() - dst_m > REDRAW_AFTER
+    # Drawn from this very file? (Its size and time then, not "is the file newer": a copy of a server elsewhere keeps the
+    # server's own times, which can be older than a picture drawn from another world's file at the same spot.)
+    stale = _drawn_from(dst) != [st.st_size, st.st_mtime_ns] and time.time() - dst_m > REDRAW_AFTER
     key = (sid, dim, rx, rz)
     with _qlock:
         if not dst_m or stale:
@@ -979,4 +992,6 @@ def clear_tiles(sid: str) -> int:
         _filled.difference_update({k for k in _filled if k[0] == sid})
     n = sum(1 for _ in root.rglob("*.png")) if root.is_dir() else 0
     shutil.rmtree(root, ignore_errors=True)
+    for k in [k for k in _from if root in k.parents]:
+        _from.pop(k, None)
     return n

@@ -111,6 +111,20 @@ def test_tiles_are_cached_and_queued(tmp_path, monkeypatch):
             break
         time.sleep(0.05)
     assert state == "ready" and Image.open(path).size == (512, 512)
+    # another world's file at the same spot, with an OLDER time (a copied server keeps the server's own times):
+    # the picture was drawn from a different file, so it's drawn again
+    import os
+    first = path.read_bytes()
+    _region(world / "region" / "r.-1.0.mca", {(-1, 0): _chunk(-1, 0, _land), (-2, 0): _chunk(-2, 0, _land)})
+    os.utime(world / "region" / "r.-1.0.mca", (1_000_000_000, 1_000_000_000))
+    monkeypatch.setattr(worldmap, "REDRAW_AFTER", 0)
+    for _ in range(100):
+        state, path = worldmap.tile("s", world, "minecraft:overworld", -1, 0, None)
+        if path.read_bytes() != first:
+            break
+        time.sleep(0.05)
+    assert path.read_bytes() != first
+    assert worldmap.tile_info(path)["src"] == [(world / "region" / "r.-1.0.mca").stat().st_size, 1_000_000_000 * 10**9]
 
 
 def test_old_chunk_format_and_nether(tmp_path):
