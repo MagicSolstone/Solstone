@@ -1,3 +1,11 @@
+# Solstone 1.21.0
+
+- **Each server's settings, in tabs, and 🩺 Check.** The settings window (Manage → Solstone → Server setup → ⚙ Settings) is split into **🔌 Connection** (name, who sees it, its files, RCON, start and stop), **🗺 Map** and **💾 Full copy** (for a server elsewhere), and **🩺 Check**: one button that tries everything the server needs right now (logging in over SFTP or its folder, the world, start and stop, RCON, the log, the map, the full copy, room on this machine) and lists each with ✓, ⚠ or ✗ and what it saw. Each server's row in Server setup has a **🩺 Check** button too. Tidier checkboxes, too (the name of each, its explanation underneath).
+- **Adjust a player's leaderboard numbers.** Testing a race or a game piled up flying, damage or kills? On a server's **Leaderboards**, admins have **⚖ Adjust a player's numbers**: any board **From zero** (from now on only what they do next counts), all of a player's boards at once, or **Use the game's** to put the real number back. Only Solstone's boards change: the game's own statistics (and the player's page) stay as they are. Boards that are a value right now (level, longest alive) can't be adjusted.
+- **Server stats: 💬 Chat messages instead of Advancements** in the cards at the top.
+- **The Backups notification says what it covers**: backups overdue, or a full copy of a server elsewhere failed or needs a look.
+- Buttons that need a "Sure?" inside a window (Stop the copy, From zero for every board) ask on the button itself, instead of closing the window to ask.
+
 # Solstone 1.20.11
 
 - **The map redraws pictures from another world at the same spot.** A picture was drawn again only when its region file got newer than it; a server elsewhere's copy keeps the server's own times, so after a world was swapped (a test world, then the real one), the old world's pictures stayed. Each picture now remembers the exact file it was drawn from (its size and time) and is drawn again when that's different, newer or older. Pictures from before are each drawn again once, in the background.
