@@ -2820,16 +2820,27 @@ h3.fw-sub:not(:first-child) { margin-top: 18px; }
 .fav-modal .fav-find { width: 100%; margin: 0 0 8px; }
 .fav-every ol { max-height: 58vh; overflow-y: auto; padding-right: 4px; }
 
-/* Sub-tabs that stand out: the pills under a page's tabs (a server's Server ▾ / Stats ▾, Manage's groups) */
-.subtabs a { background: rgba(255, 255, 255, .07); border-color: rgba(255, 255, 255, .13); color: #c3c9d4; }
-.subtabs a:hover { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .22); }
-.subtabs a[aria-current="page"] { background: rgba(242, 193, 78, .2); border-color: #f2c14e; color: #fff; box-shadow: 0 0 0 2px rgba(242, 193, 78, .14); }
-/* A player's sections (below the trophies and favourites): a bar of their own, so they aren't lost */
-nav.tabs[aria-label="Player sections"] { background: var(--tuff); border: 1px solid rgba(255, 255, 255, .1); border-radius: var(--radius-m);
-  padding: 4px; gap: 2px; margin: 8px 0 18px; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
-nav.tabs[aria-label="Player sections"] a { border-radius: 8px; border-bottom: 3px solid transparent; margin-bottom: 0; padding: 9px 14px 7px; }
-nav.tabs[aria-label="Player sections"] a:hover { background: rgba(255, 255, 255, .06); }
-nav.tabs[aria-label="Player sections"] a[aria-current="page"] { background: rgba(242, 193, 78, .12); border-bottom-color: var(--gold); }
+/* Every row of sub-tabs, one look (as a player's sections): a raised bar, the one you're on tinted with a gold line.
+   The pills under a server's tabs and Manage's, a player's sections, the bars inside a page (Notifications, Control,
+   Site details, Fireworks) */
+nav.tabs[aria-label="Player sections"], .subtabs, .seg.set-tabs, .fwe-tabs {
+  display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 2px; padding: 4px;
+  background: var(--tuff); border: 1px solid rgba(255, 255, 255, .1); border-radius: var(--radius-m); box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
+  backdrop-filter: none; -webkit-backdrop-filter: none; }
+nav.tabs[aria-label="Player sections"] { margin: 8px 0 18px; }
+nav.tabs[aria-label="Player sections"] a, .subtabs a, .seg.set-tabs button, .fwe-tabs button {
+  flex: 0 0 auto; font-weight: 700; font-size: .95rem; color: var(--muted); text-decoration: none; white-space: nowrap; cursor: pointer;
+  background: none; border: 0; border-bottom: 3px solid transparent; border-radius: 8px; margin: 0; padding: 9px 14px 7px; box-shadow: none; }
+.seg.set-tabs button { flex: 1 1 auto; }
+nav.tabs[aria-label="Player sections"] a:hover, .subtabs a:hover, .seg.set-tabs button:hover, .fwe-tabs button:hover { background: rgba(255, 255, 255, .06); color: var(--bone); }
+nav.tabs[aria-label="Player sections"] a[aria-current="page"], .subtabs a[aria-current="page"], .seg.set-tabs button[aria-pressed="true"], .fwe-tabs button[aria-selected="true"] {
+  background: rgba(242, 193, 78, .12); color: var(--bone); border-bottom-color: var(--gold); box-shadow: none; }
+.subtabs { margin: 0 0 22px; }
+.subtabs.manage-sub { margin: 18px auto -6px; box-sizing: border-box; }
+.server-head ~ .tabs:has(+ .subtabs) { margin-bottom: 12px; }
+/* Manage's groups (Players, Website, …): the one you're in, lit like any other page's tabs */
+.manage-nav a[aria-current] { color: var(--bone); border-bottom-color: var(--gold); }
+
 /* Favourites: even rows (four across, two on a phone) */
 @media (min-width: 860px) { .fav-shelf { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 520px) { .fav-shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
