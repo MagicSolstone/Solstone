@@ -193,6 +193,18 @@ def main() -> int:
             else:
                 pg.locator(".favs").scroll_into_view_if_needed()
                 check(pg, "player-favourites")
+                pg.locator(".favs [data-fav]").first.click(); pg.wait_for_timeout(500)
+                if not pg.locator(".fav-modal .fav-cat li").count():
+                    problems.append("player page: tapping a favourite doesn't show the top five of each")
+                check(pg, "player-favourites-all")
+                pg.keyboard.press("Escape"); pg.wait_for_timeout(300)
+            # another tab of the same player: swapped in place, the page stays where it was scrolled to
+            pg.locator('nav[aria-label="Player sections"]').scroll_into_view_if_needed(); pg.wait_for_timeout(200)
+            pg.evaluate("() => { document.querySelector('#trophies').dataset.kept = '1'; }")
+            pg.locator('nav[aria-label="Player sections"] a:has-text("Statistics")').click(); pg.wait_for_timeout(800)
+            kept = pg.evaluate("() => document.querySelector('#trophies')?.dataset.kept === '1'")
+            if not kept or not pg.locator("#stats-body").count() or pg.evaluate("() => window.scrollY") < 100:
+                problems.append("player page: changing tabs reloads the page (or jumps back to the top)")
             pg.goto(f"{base}/app#/s/{sid}/p/{puuid}/travels"); pg.wait_for_timeout(2500)
             if not (pg.locator("#tv-map canvas").count() or pg.locator("#player-tab .empty").count()):
                 problems.append("player page: the Travels tab shows neither a map nor 'no travels yet'")

@@ -2756,6 +2756,8 @@ async def get_player_travels(sid: str, uuid: str, span: str = "all"):
     tog = await asyncio.to_thread(stacks.together, srv, p["name"])
     names = [a["name"] for a in (tog or {}).get("accounts", [])] or [p["name"]]
     data = await asyncio.to_thread(adventures.travels if span == "recent" else adventures.travels_all, srv.id, names)
+    spawn = (await asyncio.to_thread(S.world_info, srv, False)).get("spawn")
+    data = adventures.farthest_from(data, spawn)
     return {**data, "names": names, "span": "recent" if span == "recent" else "all"}
 
 

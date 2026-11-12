@@ -1182,6 +1182,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
     state.items.clear();
     const el = $("#player-tab");
     if (!el) return;
+    el.onclick = null;                                  // (a tab's own clicks, like Travels', go with it)
     // All together (someone with more than one Minecraft account): statistics added up, advancements from whichever
     // got each first, and every account's play history. The inventory is always this one character's.
     const all = !!p.together && !stripAlone;
@@ -1195,7 +1196,18 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
     else if (tab === "travels") renderPlayerTravels(el, sid, p);
   };
   renderTab();
+  // Another tab of the same player: just that part changes, so the page stays where it's scrolled to
+  state.playerPage = { sid, uuid, setTab(t) {
+    tab = tabs.some(([k]) => k === t) ? t : "inventory";
+    $$('nav[aria-label="Player sections"] a').forEach((a) => { if (a.getAttribute("href") === `${base}${tab === "inventory" ? "" : "/" + tab}`) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+    hideTip();
+    renderTab();
+  } };
   loadTrophies(sid, p);
+  $("#favs")?.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-fav]");
+    if (b) openFavourites(p.name, p.together?.stats || p.stats, +b.dataset.fav);
+  });
   const flip = (e) => {
     const b = e.target.closest("[data-strip]");
     if (b) { stripAlone = b.dataset.strip === "one"; $("#strip").innerHTML = statStrip(p); renderTab(); }
@@ -1478,41 +1490,46 @@ function favourites(st) {
   const top = (obj, keep = () => true) => {
     const rows = Object.entries(obj || {}).filter(([k, v]) => v > 0 && keep(k)).sort((a, b) => b[1] - a[1]);
     const total = rows.reduce((n, [, v]) => n + v, 0);
-    return rows.length ? { id: rows[0][0], n: rows[0][1], share: rows[0][1] / total, next: rows[1], kinds: rows.length } : null;
+    return rows.length ? { id: rows[0][0], n: rows[0][1], total, rows: rows.slice(0, 5), kinds: rows.length } : null;
   };
-  const mob = (id) => ({ icon: itemIcon({ id: `${id}_spawn_egg` }), name: entityName(id) });
-  const item = (id) => ({ icon: itemIcon({ id }), name: itemName(id) });
+  const mobIcon = (id) => itemIcon({ id: `${id}_spawn_egg` });
+  const itemIco = (id) => itemIcon({ id });
   const out = [];
-  const add = (title, t, look, unit, nextName) => t && out.push({ title, ...look(t.id), n: t.n, share: t.share, unit, kinds: t.kinds,
-    next: t.next ? `${nextName(t.next[0])} (${fmtNum(t.next[1])})` : "" });
+  const add = (title, t, icon, name, unit, fmt = fmtNum) => t && out.push({ title, t, icon, name, unit, fmt });
   const used = st["minecraft:used"] || {};
-  add("⛏ Favourite tool", top(used, (k) => FAV_TOOL.test(k)), item, "uses", itemName);
-  add("⚔ Favourite weapon", top(used, (k) => FAV_WEAPON.test(k)), item, "uses", itemName);
-  add("🍖 Favourite food", top(used, (k) => FAV_FOODS.has(k)), item, "eaten", itemName);
-  add("🧟 Most defeated", top(st["minecraft:killed"]), mob, "defeated", entityName);
-  add("🧱 Most mined", top(st["minecraft:mined"]), item, "mined", itemName);
-  add("🔨 Most crafted", top(st["minecraft:crafted"]), item, "crafted", itemName);
+  add("⛏ Favourite tool", top(used, (k) => FAV_TOOL.test(k)), itemIco, itemName, "uses");
+  add("⚔ Favourite weapon", top(used, (k) => FAV_WEAPON.test(k)), itemIco, itemName, "uses");
+  add("🍖 Favourite food", top(used, (k) => FAV_FOODS.has(k)), itemIco, itemName, "eaten");
+  add("🧟 Most defeated", top(st["minecraft:killed"]), mobIcon, entityName, "defeated");
+  add("🧱 Most mined", top(st["minecraft:mined"]), itemIco, itemName, "mined");
+  add("🔨 Most crafted", top(st["minecraft:crafted"]), itemIco, itemName, "crafted");
   const custom = st["minecraft:custom"] || {};
-  const moves = Object.fromEntries(FAV_MOVES.map(([k]) => [k, custom[`minecraft:${k}`] || 0]));
-  const mv = top(moves);
-  if (mv) {
-    const [, name, emo] = FAV_MOVES.find(([k]) => k === mv.id);
-    out.push({ title: "🧭 Getting around", icon: `<span class="fav-emo">${emo}</span>`, name, n: mv.n, cm: true, share: mv.share, unit: "", kinds: mv.kinds,
-      next: mv.next ? `${FAV_MOVES.find(([k]) => k === mv.next[0])[1]} (${fmtStat("cm", mv.next[1])})` : "" });
-  }
-  add("💀 Defeated most by", top(st["minecraft:killed_by"]), mob, "times", entityName);
+  const move = Object.fromEntries(FAV_MOVES.map(([k, l, e]) => [k, { l, e }]));
+  add("🧭 Getting around", top(Object.fromEntries(FAV_MOVES.map(([k]) => [k, custom[`minecraft:${k}`] || 0]))),
+    (id) => `<span class="fav-emo">${move[id].e}</span>`, (id) => move[id].l, "", (v) => fmtStat("cm", v));
+  add("💀 Defeated most by", top(st["minecraft:killed_by"]), mobIcon, entityName, "times");
   return out;
 }
 function favouritesHtml(st) {
   const favs = favourites(st || {});
   if (!favs.length) return "";
-  return `<section class="favs"><div class="trophies-head"><h2>⭐ Favourites</h2><span class="muted small">from the game's own statistics</span></div>
-    <div class="fav-shelf">${favs.map((f) => `<div class="fav">
+  return `<section class="favs"><div class="trophies-head"><h2>⭐ Favourites</h2><span class="muted small">from the game's own statistics · tap one for the top five of each</span></div>
+    <div class="fav-shelf">${favs.map((f, i) => `<button type="button" class="fav" data-fav="${i}">
       <span class="fav-title">${f.title}</span>
-      <div class="fav-main">${f.icon}<div><b>${esc(f.name)}</b><span class="muted small">${f.cm ? esc(fmtStat("cm", f.n)) : `${fmtNum(f.n)} ${esc(f.unit)}`}</span></div></div>
-      ${f.kinds > 1 ? `<div class="fav-bar" title="${Math.round(f.share * 100)}% of all of them"><span style="width:${Math.max(4, f.share * 100)}%"></span></div>
-        <span class="fav-next muted small">${Math.round(f.share * 100)}% of all${f.next ? ` · then ${esc(f.next)}` : ""}</span>` : `<span class="fav-next muted small">the only one so far</span>`}
-    </div>`).join("")}</div></section>`;
+      <span class="fav-main">${f.icon(f.t.id)}<span><b>${esc(f.name(f.t.id))}</b><span class="muted small">${esc(f.fmt(f.t.n))}${f.unit ? ` ${esc(f.unit)}` : ""}</span></span></span>
+    </button>`).join("")}</div></section>`;
+}
+function openFavourites(name, st, first = 0) {
+  const favs = favourites(st || {});
+  openModal(`<h2>⭐ ${esc(name)}'s favourites</h2>
+    <p class="muted small">The top five of each kind, from the game's own statistics. The bar is each one's share of everything of that kind.</p>
+    <div class="fav-all">${favs.map((f, i) => `<section class="fav-cat" data-cat="${i}"><h3>${f.title} <small class="muted">${f.t.kinds} kind${f.t.kinds === 1 ? "" : "s"} · ${esc(f.fmt(f.t.total))}${f.unit ? ` ${esc(f.unit)}` : ""} in all</small></h3>
+      <ol>${f.t.rows.map(([id, n], j) => `<li class="${j ? "" : "top"}">${f.icon(id)}<span class="fav-n">${esc(f.name(id))}</span><span class="fav-v">${esc(f.fmt(n))}</span>
+        <span class="fav-pct">${n / f.t.total < 0.005 ? "<1" : Math.round((n / f.t.total) * 100)}%</span><span class="fav-bar"><span style="width:${Math.max(2, (n / f.t.total) * 100)}%"></span></span></li>`).join("")}</ol></section>`).join("")}</div>
+    <div class="actions"><button type="button" class="btn" data-close-modal>Close</button></div>`, (m) => {
+    m.classList.add("fav-modal");
+    m.querySelector(`[data-cat="${first}"]`)?.scrollIntoView({ block: "nearest" });
+  });
 }
 
 // ---------------------------------------------------------------- travels (a player's page → Travels)
@@ -1541,7 +1558,7 @@ async function renderPlayerTravels(el, sid, p, span = "all") {
     const d = t.dims[dim];
     const rec = (emo, label, r, extra = "") => r ? `<button type="button" class="tv-rec" data-go="${r.x},${r.z}"><span>${emo}</span><b>${label}</b><span>${extra}</span><small class="muted">${coords(r)} · ${esc(fmtAgo(r.ts))}</small></button>` : "";
     return `${rec("⬇", "Deepest", d.deepest, `Y ${d.deepest?.y}`)}${d.highest?.y !== d.deepest?.y ? rec("⬆", "Highest", d.highest, `Y ${d.highest?.y}`) : ""}
-      ${rec("🧭", "Farthest out", d.farthest, d.farthest ? fmtStat("cm", d.farthest.dist * 100) + " from 0, 0" : "")}
+      ${d.farthest ? `<button type="button" class="tv-rec" data-go="${d.farthest.x},${d.farthest.z}"><span>🧭</span><b>Farthest out</b><span>${esc(fmtStat("cm", d.farthest.dist * 100))}</span><small class="muted">from ${d.farthest.from === "spawn" ? "the world spawn" : "0, 0"} · around ${fmtNum(d.farthest.x)}, ${fmtNum(d.farthest.z)}</small></button>` : ""}
       ${pins(dim).map((x) => `<button type="button" class="tv-rec" data-go="${x.x},${x.z}"><span>${x.emo}</span><b>${esc(x.label)}</b><span></span><small class="muted">${fmtNum(x.x)}, ${fmtNum(x.z)}</small></button>`).join("")}`;
   };
   el.innerHTML = `<div class="tv-head">${spanSeg}
@@ -2024,6 +2041,14 @@ async function openSettings(s, then) {
 
 // ================================================================ router
 async function route() {
+  // a player's page, another of its tabs: swapped in place (no reload, no jump back to the top)
+  const pm = location.hash.match(/^#\/s\/([^/]+)\/p\/([^/]+)(?:\/([^/]+))?$/);
+  const pp = state.playerPage;
+  if (pm && pp && decodeURIComponent(pm[1]) === pp.sid && decodeURIComponent(pm[2]) === pp.uuid && $("#player-tab")) {
+    pp.setTab(pm[3] ? decodeURIComponent(pm[3]) : "inventory");
+    return "in-place";
+  }
+  state.playerPage = null;
   clearTimers();
   const parts = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent).filter(Boolean);
   const seq = ++routeSeq, done = slowPage(seq, viewsShown);
@@ -2092,7 +2117,8 @@ async function route() {
 }
 let boardSid = null;
 addEventListener("hashchange", async () => {
-  await route(); view().focus({ preventScroll: true }); scrollTo(0, 0); appSky.bar?.skyChanged();
+  if (await route() === "in-place") return;                     // (another tab of the same page: it stays where it was)
+  view().focus({ preventScroll: true }); scrollTo(0, 0); appSky.bar?.skyChanged();
   if ((curSid || "") !== boardSid) { boardSid = curSid || ""; appSky.board?.refresh(); }   // bedtime banners follow the server in view
 });
 document.addEventListener("DOMContentLoaded", async () => {

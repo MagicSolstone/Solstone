@@ -345,7 +345,7 @@ def test_a_players_travels(player, client, sid, tyler):
         ow = t["dims"]["minecraft:overworld"]
         assert ow["chunks"] == 3 and ow["points"] == 4 and ow["cells"][0] == [0, 0, 2]          # (5,5) and (6,7): one chunk, twice
         assert [-19, 25, 1] in ow["cells"]                                                      # -300 / 16 rounds down
-        assert ow["deepest"]["y"] == -50 and ow["highest"]["y"] == 120 and ow["farthest"]["x"] == -300
+        assert ow["deepest"]["y"] == -50 and ow["highest"]["y"] == 120 and (ow["farthest"]["x"], ow["farthest"]["z"]) == (-296, 408)
         assert t["dims"]["minecraft:the_nether"]["chunks"] == 1 and t["names"] == ["Tyler"] and t["span"] == "all"
         recent = client.get(f"/api/servers/{sid}/players/{tyler}/travels?span=recent").json()
         assert recent["dims"]["minecraft:overworld"]["cells"][0] == [0, 0, 2] and recent["span"] == "recent"
@@ -362,3 +362,12 @@ def test_a_players_travels(player, client, sid, tyler):
         db.x("DELETE FROM positions WHERE server_id=? AND player IN ('Tyler','Gimli_Jr')", (sid,))
         db.x("DELETE FROM travel_cells WHERE server_id=?", (sid,))
         db.x("DELETE FROM travel_records WHERE server_id=?", (sid,))
+
+
+def test_farthest_is_from_the_world_spawn():
+    from app import adventures
+    t = {"dims": {"minecraft:overworld": {"cells": [[0, 0, 5], [10, 0, 1], [-3, 0, 1]]}, "minecraft:the_nether": {"cells": [[2, 0, 1]]}}}
+    adventures.farthest_from(t, {"x": 200, "y": 64, "z": 8, "dimension": "minecraft:overworld"})
+    far = t["dims"]["minecraft:overworld"]["farthest"]
+    assert (far["x"], far["dist"], far["from"]) == (-40, 240, "spawn")          # not the one at x 168, farthest from 0, 0
+    assert t["dims"]["minecraft:the_nether"]["farthest"]["from"] == "0, 0"

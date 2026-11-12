@@ -590,3 +590,22 @@ def travels(server_id: str, names: list[str]) -> dict:
         out[dim] = {"cells": [[cx, cz, n] for (cx, cz), n in cells], "chunks": len(d["cells"]), "points": d["points"],
                     "deepest": d["deepest"], "highest": d["highest"], "farthest": d["farthest"]}
     return {"dims": out, "since": first, "cell": CELL, "keep_days": POSITIONS_DAYS}
+
+
+def farthest_from(t: dict, spawn: dict | None) -> dict:
+    """Each dimension's farthest point from its middle: the world spawn in its own dimension (moved from 0, 0 maybe),
+    else 0, 0. Worked out from the chunks, so it follows the spawn if it's moved again (to within a chunk)."""
+    import math
+    for dim, d in (t.get("dims") or {}).items():
+        sx, sz, frm = 0.0, 0.0, "0, 0"
+        if spawn and (spawn.get("dimension") or "minecraft:overworld") == dim:
+            sx, sz, frm = float(spawn["x"]), float(spawn["z"]), "spawn"
+        best = None
+        for cx, cz, _n in d.get("cells") or []:
+            x, z = (cx + 0.5) * CELL, (cz + 0.5) * CELL
+            far = math.hypot(x - sx, z - sz)
+            if best is None or far > best["dist"]:
+                best = {"x": round(x), "z": round(z), "dist": round(far)}
+        d["farthest"] = {**best, "from": frm} if best else None
+    return t
+
