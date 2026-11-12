@@ -1,3 +1,12 @@
+# Solstone 1.22.0
+
+The stable version: from here, bug fixes only.
+
+- **Remove a server from Solstone.** Manage → Solstone → Server setup: each server has a 🗑 button. Its settings here, map pictures and (for a server elsewhere) the copy of its files go, and its history too if ticked (a full backup of Solstone is made first). The game server itself isn't touched. One still in the servers folder or Crafty isn't found again until it's brought back from under the list.
+- **Crafty is just a connection.** Add it, remove it, add it again in Server setup → Connections. The container's `CRAFTY_URL` and `CRAFTY_TOKEN` aren't read any more (the connection they made earlier stays). The servers folder mount is optional: only for servers on the same machine as Solstone.
+- **Wording for servers anywhere:** the pages no longer assume the server runs at home with Crafty.
+- Behind the scenes: the player page has its own files, a test checks every page script parses, and the browser test runs in under 4 minutes instead of 9, so releases are quicker.
+
 # Solstone 1.21.8
 
 - **Bedrock linked to Java.** Floodgate can link a Bedrock account to a Java one (once, by the player, on GeyserMC's link server): then joining from Bedrock is joining as the Java player, with its name, items and progress. Player pages now say so: a Bedrock player's page shows **Linked: joins as …** (or that it isn't, with how), and a Java player's page lists any Bedrock accounts linked to them. Read from GeyserMC; Solstone never makes or changes a link.
