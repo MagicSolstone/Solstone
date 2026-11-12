@@ -528,6 +528,24 @@ async function renderPlayerHistory(el, sid, p, together = false) {
 }
 
 // ================================================================ notification settings
+// What each notification switch is, in groups (and which ones a server can have its own choice of: the rest aren't about one server).
+const NOTIFY_GROUPS = [
+  ["🎮 Players", [["join", "Someone joins"], ["leave", "Someone leaves"], ["death", "Someone dies"], ["advancement", "Advancements"]]],
+  ["🙋 Asking you", [["requests", "Someone asks to join from the website (tap it to let them in)"],
+    ["blocked", "Someone the whitelist turned away (with their exact name, to let them in from Control)"],
+    ["messages", "A player sends a message (Manage → Community → Messages)"],
+    ["fireworks", "A player draws a picture firework that needs approving"]]],
+  ["🖥 Servers", [["server", "Server starts, stops or crashes"],
+    ["backup", "Backups are overdue, Solstone's own backup failed, or a full copy of a server elsewhere failed or needs a look"],
+    ["updates", "New builds of the server's mods (tap it for what changed; Geyser and Floodgate first: Bedrock players need them)"]]],
+  ["⏰ Family", [["screen_time", "Someone reaches their daily play-time limit (limits are set in Play time)"]]],
+];
+const NOTIFY_PER_SERVER = ["join", "leave", "death", "advancement", "server", "backup", "updates"];
+const NOTIFY_KIND = { ...Object.fromEntries(NOTIFY_GROUPS.flatMap(([, rows]) => rows.map(([k, l]) => [k, l.split(" (")[0]]))),
+  digest: "Weekly digest", test: "Test", other: "Other" };
+const NOTIFY_ICON = { join: "🟢", leave: "👋", death: "💀", advancement: "🏆", requests: "🙋", blocked: "⛔", messages: "✉️", fireworks: "🎆",
+  server: "⚙️", backup: "💾", updates: "⬆️", screen_time: "⏳", digest: "📊", test: "🔔", other: "🔔" };
+
 async function viewNotifications() {
   if (!isAdmin()) { location.replace("#/"); return; }
   curSid = null;
@@ -535,87 +553,138 @@ async function viewNotifications() {
   fillServersMenu(state.servers, null);
   const c = await api("/api/settings/notifications").catch(() => null);
   if (!c) { setView('<div class="panel"><p>Couldn\'t load the notification settings.</p></div>'); return; }
-  const labels = { join: "Someone joins", leave: "Someone leaves", death: "Someone dies", advancement: "Advancements",
-    server: "Server starts, stops or crashes", backup: "Backups are overdue, or a full copy of a server elsewhere failed or needs a look", blocked: "Someone the whitelist turned away (with their exact name, to let them in from Control)",
-    updates: "New builds of the server's mods (Geyser and Floodgate first: Bedrock players need them up to date)",
-    messages: "A player sends a message (Manage → Community → Messages)" };
+  const known = new Set(c.event_types);
+  const groups = NOTIFY_GROUPS.map(([g, rows]) => [g, rows.filter(([k]) => known.has(k))]).filter(([, rows]) => rows.length);
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const hourLabel = (h) => new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: "numeric" });
+  const channels = [c.ntfy_url && "ntfy", c.discord_webhook_set && "Discord"].filter(Boolean);
+  const tabs = [["what", "What"], ["where", "Where to"], ["when", "When"], ["log", "Log"]];
   setView(`<div class="fwe-head"><h1>Notifications</h1>
-      <p class="muted">Get a message on your phone (ntfy) or in Discord when things happen on the servers.</p></div>
+      <p class="muted">Get a message on your phone (ntfy) or in Discord when things happen on the servers.
+      ${channels.length ? `Sending to ${esc(channels.join(" and "))}.` : `<b>Nothing set up to send to yet</b>: see <a href="#" data-goto="where">Where to</a>.`}</p></div>
+    <div class="seg set-tabs" role="tablist">${tabs.map(([k, l]) => `<button type="button" role="tab" data-ntab="${k}" aria-pressed="false">${l}</button>`).join("")}</div>
     <form id="notify-form" class="panel notify-page">
-      <label>ntfy topic URL <small>For example https://ntfy.sh/your-secret-topic or your own ntfy server</small><input class="input" name="ntfy_url" value="${esc(c.ntfy_url || "")}" placeholder="https://ntfy.sh/solstone-abc123"></label>
-      <label>ntfy access token <small>${c.ntfy_token_set ? "Saved. Type a new one to replace it." : "Only needed if your topic is protected"}</small><input class="input" type="password" name="ntfy_token" autocomplete="off"></label>
-      <label>Discord webhook URL <small>${c.discord_webhook_set ? "Saved. Paste a new one to replace it." : "Server Settings → Integrations → Webhooks in Discord"}</small><input class="input" type="password" name="discord_webhook" autocomplete="off"></label>
-      <fieldset class="checks"><legend>Send a notification when</legend>
-        ${c.event_types.map((t) => `<label class="check"><input type="checkbox" name="ev" value="${t}" ${c.events.includes(t) ? "checked" : ""}> ${esc(labels[t] || t)}</label>`).join("")}
-      </fieldset>
-      <p class="muted small">Daily screen-time limits and bedtimes are in <a href="#/manage/playtime">Manage → Play time</a>. You're notified here when someone reaches their limit.</p>
-      <fieldset class="checks"><legend>Weekly digest</legend>
-        <label class="check"><input type="checkbox" name="digest_enabled" ${c.digest_enabled ? "checked" : ""}> Send a weekly summary of who played, deaths and advancements</label>
-        <div class="row2">
-          <label>Day<select class="input" name="digest_day">${days.map((d, i) => `<option value="${i}" ${i === c.digest_day ? "selected" : ""}>${d}</option>`).join("")}</select></label>
-          <label>Time<select class="input" name="digest_hour">${Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === c.digest_hour ? "selected" : ""}>${hourLabel(h)}</option>`).join("")}</select></label>
-        </div>
-        <button type="button" class="link-btn" id="btn-digest">Preview this week's digest</button>
-        <pre class="digest-preview" id="digest-preview" hidden></pre>
-      </fieldset>
-      <fieldset class="checks"><legend>Each server</legend>
-        <p class="muted" style="font-size:.85rem;margin:0 0 8px">Leave a server on <b>Same as above</b>, turn it off, or give it its own choices and quiet hours.</p>
-        ${(state.servers || []).map((s) => { const o = c.servers?.[s.id] || { mode: "same", events: c.events, quiet_enabled: false, quiet_start: "22:00", quiet_end: "07:00" };
-          return `<div class="ns-server" data-sid="${esc(s.id)}"><div class="ns-head"><b>${esc(s.name)}</b>
-            <select class="input sm" data-ns-mode aria-label="Notifications for ${esc(s.name)}">${[["same", "Same as above"], ["off", "No notifications"], ["own", "Its own choices"]].map(([k, l]) => `<option value="${k}" ${o.mode === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
-            <div class="ns-own" ${o.mode === "own" ? "" : "hidden"}>${c.event_types.map((t) => `<label class="check"><input type="checkbox" data-ns-ev value="${t}" ${(o.events || []).includes(t) ? "checked" : ""}> ${esc(labels[t] || t)}</label>`).join("")}
-              <label class="check"><input type="checkbox" data-ns-quiet ${o.quiet_enabled ? "checked" : ""}> Quiet hours for this server</label>
-              <div class="row2"><label>From<input class="input" type="time" data-ns-from value="${esc(o.quiet_start || "22:00")}"></label><label>Until<input class="input" type="time" data-ns-until value="${esc(o.quiet_end || "07:00")}"></label></div></div></div>`; }).join("")}
-      </fieldset>
-      <label class="switch-row"><span><b>Quiet hours</b><br><small class="muted">No notifications between these times${c.quiet_now ? " (they're on right now)" : ""}. A server with its own choices uses its own.</small></span>
-        <input type="checkbox" role="switch" name="quiet_enabled" ${c.quiet_enabled ? "checked" : ""}></label>
-      <div class="row2" id="quiet-times">
-        <label>Quiet from<input class="input" type="time" name="quiet_start" value="${esc(c.quiet_start || "22:00")}"></label>
-        <label>Until<input class="input" type="time" name="quiet_end" value="${esc(c.quiet_end || "07:00")}"></label>
+      <div data-npane="what">
+        <p class="muted small" style="margin:0 0 12px">Each kind of notification Solstone sends. Ones that aren't ticked aren't sent at all.</p>
+        <div class="ngroups">${groups.map(([g, rows]) => `<fieldset class="checks"><legend>${g}</legend>
+          ${rows.map(([k, l]) => `<label class="check"><input type="checkbox" name="ev" value="${k}" ${c.events.includes(k) ? "checked" : ""}> ${esc(l)}</label>`).join("")}
+          ${g.includes("Family") ? `<p class="muted small" style="margin:0 0 8px">Limits and bedtimes: <a href="#/manage/playtime">Manage → Play time</a>.</p>` : ""}</fieldset>`).join("")}</div>
+        <fieldset class="checks"><legend>📊 Weekly digest</legend>
+          <label class="check"><input type="checkbox" name="digest_enabled" ${c.digest_enabled ? "checked" : ""}> Send a weekly summary of who played, deaths and advancements</label>
+          <div class="row2">
+            <label>Day<select class="input" name="digest_day">${days.map((d, i) => `<option value="${i}" ${i === c.digest_day ? "selected" : ""}>${d}</option>`).join("")}</select></label>
+            <label>Time<select class="input" name="digest_hour">${Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${h === c.digest_hour ? "selected" : ""}>${hourLabel(h)}</option>`).join("")}</select></label>
+          </div>
+          <button type="button" class="link-btn" id="btn-digest">Preview this week's digest</button>
+          <pre class="digest-preview" id="digest-preview" hidden></pre>
+        </fieldset>
       </div>
-      <div class="actions"><button type="button" class="btn" id="btn-test">Send test</button><span style="flex:1"></span>
+      <div data-npane="where" hidden>
+        <label>ntfy topic URL <small>For example https://ntfy.sh/your-secret-topic or your own ntfy server</small><input class="input" name="ntfy_url" value="${esc(c.ntfy_url || "")}" placeholder="https://ntfy.sh/solstone-abc123"></label>
+        <label>ntfy access token <small>${c.ntfy_token_set ? "Saved. Type a new one to replace it." : "Only needed if your topic is protected"}</small><input class="input" type="password" name="ntfy_token" autocomplete="off"></label>
+        <label>Discord webhook URL <small>${c.discord_webhook_set ? "Saved. Paste a new one to replace it." : "Server Settings → Integrations → Webhooks in Discord"}</small><input class="input" type="password" name="discord_webhook" autocomplete="off"></label>
+        <p class="muted small">Tapping a notification in ntfy opens the page it's about (the whitelist, a mod's changes on Modrinth…). In Discord, the link is under the message.</p>
+      </div>
+      <div data-npane="when" hidden>
+        <label class="switch-row"><span><b>Quiet hours</b><br><small class="muted">No notifications between these times${c.quiet_now ? " (they're on right now)" : ""}. They're still in the Log, marked "quiet". A server with its own choices uses its own.</small></span>
+          <input type="checkbox" role="switch" name="quiet_enabled" ${c.quiet_enabled ? "checked" : ""}></label>
+        <div class="row2" id="quiet-times">
+          <label>Quiet from<input class="input" type="time" name="quiet_start" value="${esc(c.quiet_start || "22:00")}"></label>
+          <label>Until<input class="input" type="time" name="quiet_end" value="${esc(c.quiet_end || "07:00")}"></label>
+        </div>
+        <fieldset class="checks"><legend>Each server</legend>
+          <p class="muted" style="font-size:.85rem;margin:0 0 8px">Leave a server on <b>Same as everywhere</b>, turn it off, or give it its own choices and quiet hours.</p>
+          ${(state.servers || []).map((s) => { const o = c.servers?.[s.id] || { mode: "same", events: c.events, quiet_enabled: false, quiet_start: "22:00", quiet_end: "07:00" };
+            return `<div class="ns-server" data-sid="${esc(s.id)}"><div class="ns-head"><b>${esc(s.name)}</b>
+              <select class="input sm" data-ns-mode aria-label="Notifications for ${esc(s.name)}">${[["same", "Same as everywhere"], ["off", "No notifications"], ["own", "Its own choices"]].map(([k, l]) => `<option value="${k}" ${o.mode === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+              <div class="ns-own" ${o.mode === "own" ? "" : "hidden"}>${NOTIFY_PER_SERVER.filter((t) => known.has(t)).map((t) => `<label class="check"><input type="checkbox" data-ns-ev value="${t}" ${(o.events || []).includes(t) ? "checked" : ""}> ${esc(NOTIFY_KIND[t] || t)}</label>`).join("")}
+                <label class="check"><input type="checkbox" data-ns-quiet ${o.quiet_enabled ? "checked" : ""}> Quiet hours for this server</label>
+                <div class="row2"><label>From<input class="input" type="time" data-ns-from value="${esc(o.quiet_start || "22:00")}"></label><label>Until<input class="input" type="time" data-ns-until value="${esc(o.quiet_end || "07:00")}"></label></div></div></div>`; }).join("")}
+        </fieldset>
+      </div>
+      <div data-npane="log" hidden><div id="notify-log"><p class="muted">Loading…</p></div></div>
+      <div class="actions" data-nsave><button type="button" class="btn" id="btn-test">Send test</button><span style="flex:1"></span>
         <button class="btn primary" type="submit">Save notifications</button></div>
     </form>`);
-  {
-    const m = view();
-    const form = $("#notify-form", m);
-    const quiet = () => { const on = form.quiet_enabled.checked; $$("#quiet-times input", form).forEach((i) => { i.disabled = !on; }); $("#quiet-times", form).classList.toggle("off", !on); };
-    form.quiet_enabled.addEventListener("change", quiet); quiet();
-    $$("[data-ns-mode]", form).forEach((sel) => sel.addEventListener("change", () => { sel.closest(".ns-server").querySelector(".ns-own").hidden = sel.value !== "own"; }));
-    const body = () => {
-      const f = new FormData(form);
-      const b = { ntfy_url: f.get("ntfy_url"), events: f.getAll("ev"), quiet_enabled: !!f.get("quiet_enabled"), quiet_start: form.quiet_start.value, quiet_end: form.quiet_end.value,
-        digest_enabled: !!f.get("digest_enabled"), digest_day: Number(f.get("digest_day")), digest_hour: Number(f.get("digest_hour")) };
-      b.servers = {};
-      $$(".ns-server", form).forEach((el) => {
-        const mode = $("[data-ns-mode]", el).value;
-        b.servers[el.dataset.sid] = { mode, events: $$("[data-ns-ev]", el).filter((i) => i.checked).map((i) => i.value),
-          quiet_enabled: $("[data-ns-quiet]", el).checked, quiet_start: $("[data-ns-from]", el).value, quiet_end: $("[data-ns-until]", el).value };
-      });
-      if (f.get("ntfy_token")) b.ntfy_token = f.get("ntfy_token");
-      if (f.get("discord_webhook")) b.discord_webhook = f.get("discord_webhook");
-      return b;
-    };
-    const adminFetch = (url, opts) => api(url, opts);
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      try { await adminFetch("/api/settings/notifications", { method: "PUT", body: JSON.stringify(body()) }); showToast("Notifications saved", 2500); }
-      catch (err) { showError(`Couldn't save notifications: ${esc(err.message)}`, 5000); }
+  const m = view();
+  const form = $("#notify-form", m);
+  const show = (k) => {
+    if (!tabs.some(([t]) => t === k)) k = "what";
+    $$("[data-ntab]", m).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.ntab === k)));
+    $$("[data-npane]", m).forEach((p) => { p.hidden = p.dataset.npane !== k; });
+    $("[data-nsave]", m).hidden = k === "log";
+    try { localStorage.setItem("solstone-ntab", k); } catch { /* fine */ }
+    if (k === "log") loadLog();
+  };
+  $$("[data-ntab]", m).forEach((b) => b.addEventListener("click", () => show(b.dataset.ntab)));
+  $$("[data-goto]", m).forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); show(a.dataset.goto); }));
+  const quiet = () => { const on = form.quiet_enabled.checked; $$("#quiet-times input", form).forEach((i) => { i.disabled = !on; }); $("#quiet-times", form).classList.toggle("off", !on); };
+  form.quiet_enabled.addEventListener("change", quiet); quiet();
+  $$("[data-ns-mode]", form).forEach((sel) => sel.addEventListener("change", () => { sel.closest(".ns-server").querySelector(".ns-own").hidden = sel.value !== "own"; }));
+  const body = () => {
+    const f = new FormData(form);
+    const b = { ntfy_url: f.get("ntfy_url"), events: f.getAll("ev"), quiet_enabled: !!f.get("quiet_enabled"), quiet_start: form.quiet_start.value, quiet_end: form.quiet_end.value,
+      digest_enabled: !!f.get("digest_enabled"), digest_day: Number(f.get("digest_day")), digest_hour: Number(f.get("digest_hour")) };
+    b.servers = {};
+    $$(".ns-server", form).forEach((el) => {
+      const mode = $("[data-ns-mode]", el).value;
+      b.servers[el.dataset.sid] = { mode, events: $$("[data-ns-ev]", el).filter((i) => i.checked).map((i) => i.value),
+        quiet_enabled: $("[data-ns-quiet]", el).checked, quiet_start: $("[data-ns-from]", el).value, quiet_end: $("[data-ns-until]", el).value };
     });
-    $("#btn-digest", m).addEventListener("click", async () => {
-      const pre = $("#digest-preview", m);
-      pre.hidden = false; pre.textContent = "Building…";
-      try { pre.textContent = (await api("/api/settings/notifications/digest", { method: "POST" })).text; }
-      catch (err) { pre.textContent = `Couldn't build the digest: ${err.message}`; }
+    if (f.get("ntfy_token")) b.ntfy_token = f.get("ntfy_token");
+    if (f.get("discord_webhook")) b.discord_webhook = f.get("discord_webhook");
+    return b;
+  };
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try { await api("/api/settings/notifications", { method: "PUT", body: JSON.stringify(body()) }); showToast("Notifications saved", 2500); }
+    catch (err) { showError(`Couldn't save notifications: ${esc(err.message)}`, 5000); }
+  });
+  $("#btn-digest", m).addEventListener("click", async () => {
+    const pre = $("#digest-preview", m);
+    pre.hidden = false; pre.textContent = "Building…";
+    try { pre.textContent = (await api("/api/settings/notifications/digest", { method: "POST" })).text; }
+    catch (err) { pre.textContent = `Couldn't build the digest: ${err.message}`; }
+  });
+  $("#btn-test", m).addEventListener("click", async () => {
+    try {
+      await api("/api/settings/notifications", { method: "PUT", body: JSON.stringify(body()) });
+      const r = await api("/api/settings/notifications/test", { method: "POST" });
+      showToast(r.ok ? "Test notification sent" : `Test failed: ${esc(r.errors.join("; "))}`, 6000);
+    } catch (err) { showToast(`Test failed: ${esc(err.message)}`, 6000); }
+  });
+
+  // The log: what was sent (or held back by quiet hours), newest first, and how many of each kind lately
+  let filter = "";
+  const STATUS = { sent: ["Sent", "ok"], quiet: ["Quiet hours", "muted"], off: ["Server turned off", "muted"], failed: ["Didn't send", "bad"] };
+  const loadLog = async () => {
+    const box = $("#notify-log", m);
+    if (!box) return;
+    let r;
+    try { r = await api("/api/settings/notifications/log?limit=300"); }
+    catch (err) { box.innerHTML = `<p class="muted">Couldn't load the log: ${esc(err.message)}</p>`; return; }
+    const kinds = Object.entries(r.counts).sort((a, b) => b[1].month - a[1].month);
+    const rows = r.entries.filter((e) => !filter || e.kind === filter);
+    const when = (ts) => new Date(ts * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    box.innerHTML = `${kinds.length ? `<table class="nlog-counts"><thead><tr><th>Sent</th><th>Today</th><th>7 days</th><th>30 days</th></tr></thead><tbody>
+        ${kinds.map(([k, n]) => `<tr data-kind="${esc(k)}" class="${filter === k ? "on" : ""}"><td>${NOTIFY_ICON[k] || "🔔"} ${esc(NOTIFY_KIND[k] || humanize(k))}</td><td>${n.day}</td><td>${n.week}</td><td>${n.month}</td></tr>`).join("")}</tbody></table>
+        <p class="muted small">Tap a row to see only that kind${filter ? ` · <button type="button" class="link-btn" data-nall>Show all</button>` : ""}.</p>` : ""}
+      ${rows.length ? `<ul class="nlog">${rows.map((e) => { const [sl, sc] = STATUS[e.status] || [e.status, "muted"];
+        return `<li><span class="nlog-ic">${NOTIFY_ICON[e.kind] || "🔔"}</span><div class="nlog-body">
+          <div class="nlog-top"><b>${esc(e.title)}</b>${e.server && e.server !== e.title ? `<span class="muted small">${esc(e.server)}</span>` : ""}<span class="nlog-st ${sc}">${esc(sl)}</span><time class="muted small">${esc(when(e.ts))}</time></div>
+          <div class="nlog-msg">${esc(e.message)}</div>
+          ${e.errors ? `<div class="small bad">${esc(e.errors.join("; "))}</div>` : ""}
+          ${e.click ? `<a class="small" href="${esc(e.click)}" target="_blank" rel="noopener">Opens: ${esc(e.click.replace(/^https?:\/\//, "").slice(0, 70))}</a>` : ""}</div></li>`; }).join("")}</ul>`
+        : `<p class="muted">${filter ? "None of that kind yet." : "Nothing sent yet. Notifications show here as they go out."}</p>`}
+      ${r.total ? `<div class="actions"><span class="muted small">The newest ${r.total > 500 ? 500 : r.total} kept</span><span style="flex:1"></span><button type="button" class="btn sm" data-nclear>Clear the log</button></div>` : ""}`;
+    $$("tr[data-kind]", box).forEach((tr) => tr.addEventListener("click", () => { filter = filter === tr.dataset.kind ? "" : tr.dataset.kind; loadLog(); }));
+    $("[data-nall]", box)?.addEventListener("click", () => { filter = ""; loadLog(); });
+    $("[data-nclear]", box)?.addEventListener("click", async (e) => {
+      if (!sureTwice(e.currentTarget)) return;
+      try { await api("/api/settings/notifications/log", { method: "DELETE" }); filter = ""; loadLog(); } catch (err) { showError(esc(err.message), 5000); }
     });
-    $("#btn-test", m).addEventListener("click", async () => {
-      try {
-        await adminFetch("/api/settings/notifications", { method: "PUT", body: JSON.stringify(body()) });
-        const r = await adminFetch("/api/settings/notifications/test", { method: "POST" });
-        showToast(r.ok ? "Test notification sent" : `Test failed: ${esc(r.errors.join("; "))}`, 6000);
-      } catch (err) { showToast(`Test failed: ${esc(err.message)}`, 6000); }
-    });
-  }
+  };
+  let first = "what";
+  try { first = localStorage.getItem("solstone-ntab") || "what"; } catch { /* fine */ }
+  show(first);
 }

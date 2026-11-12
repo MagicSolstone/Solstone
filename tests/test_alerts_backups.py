@@ -76,7 +76,7 @@ def test_each_server_its_own_notifications(client, sid, monkeypatch):
     from app import notify
     sent = []
 
-    async def fake_send(title, message, tag="video_game", force=False, sid=None):
+    async def fake_send(title, message, tag="video_game", force=False, sid=None, click=None, kind=""):
         sent.append((title, message, sid))
         return []
     try:
@@ -91,3 +91,52 @@ def test_each_server_its_own_notifications(client, sid, monkeypatch):
         assert client.get("/api/settings/notifications").json()["servers"][sid]["mode"] == "off"
     finally:
         client.put("/api/settings/notifications", json={"ntfy_url": "", "events": ["join"], "servers": {}})
+
+
+def test_switches_added_later_start_on():
+    from app import settings_store
+    before = settings_store.load().get("notify", {})
+    try:
+        settings_store.save_section("notify", {"events": ["join"]})            # saved before these had a switch
+        assert notify.get_config()["events"] == ["join", "requests", "fireworks", "screen_time"]
+        notify.save_config({"events": ["join"]})                               # once saved here, an unticked one stays off
+        assert notify.get_config()["events"] == ["join"]
+    finally:
+        settings_store.save_section("notify", before)
+
+
+def test_notification_log_and_switches(client, viewer, monkeypatch):
+    import asyncio
+
+    import httpx
+
+    class Resp:
+        status_code, text = 200, ""
+    posted = []
+
+    async def fake_post(self, url, **kw):
+        posted.append((url, kw))
+        return Resp()
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    url = "/api/settings/notifications"
+    try:
+        client.delete(f"{url}/log")
+        client.put(url, json={"ntfy_url": "https://ntfy.example/t", "events": ["requests"], "quiet_enabled": False, "servers": {}})
+        asyncio.run(notify.send("Asking to join", "Tyler would like to join", "wave", click="https://x/app#/manage/whitelist", kind="requests"))
+        asyncio.run(notify.send("Firework to look at", "a picture", "art", kind="fireworks"))         # switched off: not sent
+        assert len(posted) == 1 and posted[0][1]["headers"]["Click"] == "https://x/app#/manage/whitelist"
+        assert viewer.get(f"{url}/log").status_code == 403
+        log = client.get(f"{url}/log").json()
+        assert [e["kind"] for e in log["entries"]] == ["requests"]
+        assert log["entries"][0]["status"] == "sent" and log["entries"][0]["to"] == ["ntfy"]
+        assert log["counts"]["requests"] == {"day": 1, "week": 1, "month": 1}
+        # quiet hours: held back, but in the log
+        client.put(url, json={"quiet_enabled": True, "quiet_start": "00:00", "quiet_end": "23:59"})
+        asyncio.run(notify.send("Asking to join", "again", "wave", kind="requests"))
+        assert len(posted) == 1
+        assert client.get(f"{url}/log").json()["entries"][0]["status"] == "quiet"
+        assert viewer.delete(f"{url}/log").status_code == 403
+        client.delete(f"{url}/log")
+        assert client.get(f"{url}/log").json()["entries"] == []
+    finally:
+        client.put(url, json={"ntfy_url": "", "events": ["join"], "quiet_enabled": False, "servers": {}})

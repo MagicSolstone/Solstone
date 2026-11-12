@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
+import threading
+import time
 
 import httpx
 
@@ -12,9 +15,12 @@ from . import settings_store
 
 log = logging.getLogger("solstone.notify")
 
-EVENT_TYPES = ["join", "leave", "death", "advancement", "server", "backup", "blocked", "updates", "messages"]
-DEFAULT_EVENTS = ["join", "messages"]
-TAGS = {"join": "green_circle", "leave": "wave", "death": "skull", "advancement": "trophy", "server": "gear",
+EVENT_TYPES = ["join", "leave", "death", "advancement", "server", "backup", "blocked", "updates", "messages",
+               "requests", "fireworks", "screen_time"]
+DEFAULT_EVENTS = ["join", "messages", "requests", "fireworks", "screen_time"]
+# switches added later: these were always sent before they had one, so they start on for settings saved before then
+ADDED_ON = ["requests", "fireworks", "screen_time"]
+TAGS = {"requests": "wave", "fireworks": "art", "join": "green_circle", "leave": "wave", "death": "skull", "advancement": "trophy", "server": "gear",
         "backup": "floppy_disk", "blocked": "no_entry", "screen_time": "hourglass", "digest": "bar_chart", "updates": "arrow_up", "messages": "envelope"}
 
 
@@ -24,7 +30,7 @@ def get_config() -> dict:
         "ntfy_url": stored.get("ntfy_url") or os.getenv("NTFY_URL", ""),
         "ntfy_token": stored.get("ntfy_token") or os.getenv("NTFY_TOKEN", ""),
         "discord_webhook": stored.get("discord_webhook") or os.getenv("DISCORD_WEBHOOK_URL", ""),
-        "events": stored.get("events", DEFAULT_EVENTS),
+        "events": _events(stored),
         "quiet_start": stored.get("quiet_start", ""),  # "22:00" -> no pushes until quiet_end
         "quiet_end": stored.get("quiet_end", ""),
         # quiet hours can be switched off without losing the times (older settings: on if both set)
@@ -39,6 +45,13 @@ def get_config() -> dict:
         # each server: "same" (the choices above), "off" (nothing from it), or "own" (its own events and quiet hours)
         "servers": {sid: _server_cfg(v) for sid, v in (stored.get("servers") or {}).items() if isinstance(v, dict)},
     }
+
+
+def _events(stored: dict) -> list[str]:
+    if "events" not in stored:
+        return list(DEFAULT_EVENTS)
+    known = set(stored.get("events_known") or [])
+    return [e for e in EVENT_TYPES if e in stored["events"] or (e in ADDED_ON and e not in known)]
 
 
 _TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -96,6 +109,7 @@ def save_config(values: dict) -> dict:
                 cur.pop(k, None)
     if "events" in values and isinstance(values["events"], list):
         cur["events"] = [e for e in values["events"] if e in EVENT_TYPES]
+        cur["events_known"] = list(EVENT_TYPES)
     if "limits" in values and isinstance(values["limits"], dict):
         limits = {}
         for name, mins in values["limits"].items():
@@ -144,14 +158,79 @@ def _in_quiet_hours(c: dict) -> bool:
     return (s <= now < e) if s <= e else (now >= s or now < e)
 
 
+# ---------------------------------------------------------------- the log (Notifications → Log)
+LOG_KEEP = 500
+_log_lock = threading.Lock()
+
+
+def _log_path():
+    from .config import config
+    return config.data_dir / "notifications.jsonl"
+
+
+def _record(entry: dict) -> None:
+    """Every notification Solstone sent, or held back (quiet hours, a server turned off), newest last."""
+    try:
+        p = _log_path()
+        with _log_lock:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with p.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            if p.stat().st_size > LOG_KEEP * 600:                    # (now and then: keep the newest LOG_KEEP)
+                lines = p.read_text(encoding="utf-8").splitlines()
+                if len(lines) > LOG_KEEP:
+                    tmp = p.with_suffix(".tmp")
+                    tmp.write_text("\n".join(lines[-LOG_KEEP:]) + "\n", encoding="utf-8")
+                    tmp.replace(p)
+    except OSError:
+        log.exception("Couldn't write the notification log")
+
+
+def history(limit: int = 200) -> dict:
+    """The newest entries first, and how many of each kind were sent in the last day, week and 30 days."""
+    try:
+        lines = _log_path().read_text(encoding="utf-8").splitlines()
+    except OSError:
+        lines = []
+    rows = []
+    for ln in lines:
+        try:
+            rows.append(json.loads(ln))
+        except ValueError:
+            continue
+    now = time.time()
+    counts: dict[str, dict] = {}
+    for r in rows:
+        if r.get("status") != "sent":
+            continue
+        k = counts.setdefault(r.get("kind") or "other", {"day": 0, "week": 0, "month": 0})
+        age = now - (r.get("ts") or 0)
+        for name, secs in (("day", 86400), ("week", 7 * 86400), ("month", 30 * 86400)):
+            if age < secs:
+                k[name] += 1
+    return {"entries": rows[::-1][:max(1, min(LOG_KEEP, limit))], "counts": counts, "total": len(rows)}
+
+
+def clear_history() -> None:
+    with _log_lock:
+        _log_path().unlink(missing_ok=True)
+
+
 async def send(title: str, message: str, tag: str = "video_game", force: bool = False, sid: str | None = None,
-               click: str | None = None) -> list[str]:
+               click: str | None = None, kind: str = "") -> list[str]:
     """Send to every configured channel. Returns error strings (empty = all good). sid: the server it's about,
-    for that server's own quiet hours (or none at all, if it's switched off)."""
+    for that server's own quiet hours (or none at all, if it's switched off). kind: which switch it is (EVENT_TYPES),
+    for the log; one that's switched off isn't sent."""
     c = get_config()
     rules = for_server(c, sid) if sid else c
-    if not force and (rules is None or _in_quiet_hours(rules)):
-        return []
+    entry = {"ts": round(time.time()), "kind": kind or ("test" if force else "other"), "title": title, "message": message[:600],
+             "sid": sid or "", "click": click or ""}
+    if not force:
+        if rules is not None and kind in EVENT_TYPES and kind not in rules["events"]:
+            return []
+        if rules is None or _in_quiet_hours(rules):
+            _record({**entry, "status": "off" if rules is None else "quiet"})
+            return []
     errors: list[str] = []
     async with httpx.AsyncClient(timeout=8) as client:
         jobs = []
@@ -167,6 +246,7 @@ async def send(title: str, message: str, tag: str = "video_game", force: bool = 
                                                                              "content": f"**{title}**\n{message}" + (f"\n{click}" if click else "")})))
         if not jobs:
             return ["No notification channel is set up"]
+        entry["to"] = [name for name, _ in jobs]
         results = await asyncio.gather(*(j for _, j in jobs), return_exceptions=True)
         for (name, _), r in zip(jobs, results, strict=True):
             if isinstance(r, Exception):
@@ -175,19 +255,21 @@ async def send(title: str, message: str, tag: str = "video_game", force: bool = 
                 errors.append(f"{name}: HTTP {r.status_code} {r.text[:120]}")
     for e in errors:
         log.warning("Notification failed: %s", e)
+    _record({**entry, "status": "failed" if len(errors) == len(entry["to"]) else "sent", **({"errors": errors} if errors else {})})
     return errors
 
 
-def maybe_notify(etype: str, server_name: str, message: str, sid: str | None = None) -> None:
+def maybe_notify(etype: str, server_name: str, message: str, sid: str | None = None, click: str | None = None) -> None:
     """Fire-and-forget notification if this event type is enabled (for this server)."""
     c = get_config()
     rules = for_server(c, sid)
     if rules is None or etype not in rules["events"] or not (c["ntfy_url"] or c["discord_webhook"]):
         return
     from .config import config
-    click = f"{config.public_url}/app#/manage/whitelist" if etype == "blocked" and config.public_url else None
+    if not click and etype == "blocked" and config.public_url:
+        click = f"{config.public_url}/app#/manage/whitelist"
     try:
-        asyncio.get_running_loop().create_task(send(server_name, message, TAGS.get(etype, "video_game"), sid=sid, click=click))
+        asyncio.get_running_loop().create_task(send(server_name, message, TAGS.get(etype, "video_game"), sid=sid, click=click, kind=etype))
     except RuntimeError:
         pass
 

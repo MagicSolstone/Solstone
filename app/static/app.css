@@ -409,7 +409,7 @@ table.data tr:hover td { background: var(--line); }
 .rules .off { color: var(--faint); }
 
 /* ------------------------------------------------------------ mods */
-.mods { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.mods { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; margin-bottom: 16px; }
 .mod { background: var(--tuff); border-radius: var(--radius-m); padding: 14px 16px; }
 .mod .mn { font-weight: 700; display: flex; justify-content: space-between; gap: 10px; }
 .mod .mv { color: var(--faint); font-weight: 400; font-size: .88rem; white-space: nowrap; }
@@ -1911,7 +1911,13 @@ a.glance-me:hover { border-color: var(--gold); }
 /* Mods: updates from Modrinth */
 .mod-updates { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 10px; }
 .mod-bedrock { flex-basis: 100%; margin: 0; padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(255, 140, 90, .6); background: rgba(255, 140, 90, .12); }
-.mod-badge { font-size: .78rem; margin-left: auto; white-space: nowrap; color: var(--muted); }
+.mod { display: flex; flex-direction: column; }
+.mod-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: auto; padding-top: 8px; font-size: .8rem; }
+.mod-foot .mod-page { margin-left: auto; color: var(--faint); text-decoration: none; }
+.mod-foot .mod-page:hover { color: var(--bone); }
+.mod-foot .link-btn { font-size: .78rem; }
+.mod-badge { font-size: .78rem; color: var(--muted); display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.mod-badge.skipped { color: var(--faint); }
 .mod-badge.update a { color: var(--gold); font-weight: 700; }
 .mod-badge.update.key a { color: #ff9d6b; }
 .mod-badge.ok { color: #69db7c; }
@@ -2699,3 +2705,24 @@ body.ui-hidden .manage-sub { display: none; }
 .check-list li.bad .ck-i { color: var(--bad, #eb5757); } .check-list li.off { opacity: .65; }
 .check-list .ck-d { color: var(--muted, #aab4c3); font-size: .9rem; word-break: break-word; }
 @media (max-width: 560px) { .check-list li { grid-template-columns: 22px 1fr; } .check-list .ck-d { grid-column: 2; } }
+
+/* Notifications: grouped switches and the log */
+.ngroups { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 14px; }
+.nlog-counts { width: 100%; border-collapse: collapse; font-size: .9rem; margin-bottom: 4px; }
+.nlog-counts th { text-align: right; color: var(--faint); font-weight: 600; font-size: .78rem; padding: 4px 8px; }
+.nlog-counts th:first-child, .nlog-counts td:first-child { text-align: left; }
+.nlog-counts td { text-align: right; padding: 6px 8px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.nlog-counts tr[data-kind] { cursor: pointer; }
+.nlog-counts tr[data-kind]:hover, .nlog-counts tr.on { background: var(--tuff); }
+.nlog { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; }
+.nlog li { display: flex; gap: 10px; background: var(--tuff); border-radius: var(--radius-m); padding: 10px 12px; }
+.nlog-ic { font-size: 1.1rem; line-height: 1.4; }
+.nlog-body { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.nlog-top { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.nlog-top time { margin-left: auto; }
+.nlog-msg { color: var(--muted); font-size: .88rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.nlog-body a { overflow-wrap: anywhere; color: #9fb6f0; }
+.nlog-st { font-size: .72rem; font-weight: 700; padding: 1px 7px; border-radius: 99px; background: var(--well); }
+.nlog-st.ok { color: #69db7c; }
+.nlog-st.bad, .nlog-body .bad { color: #ff8a7a; }
+.nlog-st.muted { color: var(--faint); }

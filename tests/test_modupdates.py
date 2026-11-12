@@ -39,13 +39,27 @@ def test_updates_by_fingerprint(client, viewer, sid, monkeypatch):
     n = len(calls)
     client.get(f"/api/servers/{sid}/mods/updates")
     assert len(calls) == n                                                                # kept for an hour
-    # a notification line, once per new build
+    assert rows[first["file"]]["page"] == "https://modrinth.com/project/p1"
+    # a notification line, once per new build; tapping it opens that build's page (what changed)
     try:
-        line = modupdates.updates_line(r, server_id=sid)
-        assert line and "9.9.9" in line
+        line, click = modupdates.updates_note(r, server_id=sid, mods_page="https://x/app#/s/a/mods")
+        assert line and "9.9.9" in line and click == "https://modrinth.com/project/p1/version/v2"
         assert modupdates.updates_line(r, server_id=sid) is None
+        # skip this build: no badge, nothing told, until a different one comes out
+        settings_store.save_section("mod_updates_told", {})
+        assert viewer.put(f"/api/servers/{sid}/mods/updates/skip", json={"project": "p1", "version": "v2"}).status_code == 403
+        r = client.put(f"/api/servers/{sid}/mods/updates/skip", json={"project": "p1", "version": "v2"}).json()
+        assert r["mods"][first["file"]]["status"] == "skipped"
+        assert modupdates.updates_line(r, server_id=sid) is None
+        assert client.get(f"/api/servers/{sid}/mods/updates").json()["mods"][first["file"]]["status"] == "skipped"
+        modupdates._cache[srv.id][1]["mods"][first["file"]].update(latest="10.0.0", latest_id="v3")       # a newer one
+        r = client.get(f"/api/servers/{sid}/mods/updates").json()
+        assert r["mods"][first["file"]]["status"] == "update"
+        r = client.put(f"/api/servers/{sid}/mods/updates/skip", json={"project": "p1", "version": None}).json()
+        assert modupdates.skips(sid) == {}
     finally:
         settings_store.save_section("mod_updates_told", {})
+        settings_store.save_section("mod_updates_skip", {})
         modupdates._cache.clear()
 
 

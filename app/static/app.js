@@ -1747,22 +1747,38 @@ async function viewMods(sid) {
     if (!box || !upd) return;
     if (upd.error) { box.innerHTML = `<span class="muted small">⚠️ ${esc(upd.error)}</span> <button class="btn sm" type="button" data-recheck>Try again</button>`; }
     else {
-      const rows = Object.values(upd.mods), news = rows.filter((r) => r.status === "update"), bedrock = news.filter((r) => r.important);
+      const rows = Object.values(upd.mods), news = rows.filter((r) => r.status === "update"), bedrock = news.filter((r) => r.important), skipped = rows.filter((r) => r.status === "skipped").length;
       box.innerHTML = `${bedrock.length ? `<p class="mod-bedrock">⚠️ <b>Update ${esc(bedrock.map((r) => r.name).join(" and "))}</b>: Bedrock players may not be able to join until ${bedrock.length > 1 ? "they're" : "it's"} up to date.</p>` : ""}
         <span class="${news.length ? "" : "muted"} small">${news.length ? `⬆ ${news.length} ${news.length === 1 ? "mod has" : "mods have"} a newer build for Minecraft ${esc(upd.mc || "")}` : "✓ Everything on Modrinth is up to date"}
-        · checked ${esc(fmtAgo(upd.checked))}</span> <button class="btn sm" type="button" data-recheck>Check again</button>`;
+        ${skipped ? ` · ${skipped} skipped` : ""} · checked ${esc(fmtAgo(upd.checked))}</span> <button class="btn sm" type="button" data-recheck>Check again</button>`;
       $$(".mod[data-file]").forEach((el) => {
         const r = upd.mods[el.dataset.file];
         el.querySelector(".mod-badge")?.remove();
         if (!r) return;
         const b = document.createElement("span");
         b.className = `mod-badge ${r.status}${r.important ? " key" : ""}`;
-        b.innerHTML = r.status === "update" ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">⬆ ${esc(r.latest)} available</a>`
+        b.innerHTML = r.status === "update" ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" title="What's new in it, on Modrinth">⬆ ${esc(r.latest)} available</a>
+            <button class="link-btn" type="button" data-skip="${esc(r.project || "")}" data-ver="${esc(r.latest_id || "")}" title="No badge or notification for ${esc(r.latest)}. A newer one shows again.">Skip this version</button>`
+          : r.status === "skipped" ? `<span title="A newer one shows again">Skipping <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.latest)}</a></span>
+            <button class="link-btn" type="button" data-skip="${esc(r.project || "")}" data-ver="">Undo</button>`
           : r.status === "ok" ? "✓ Up to date" : "Not on Modrinth";
-        el.querySelector(".mn")?.append(b);
+        el.querySelector(".mod-foot")?.remove();
+        const foot = document.createElement("div");
+        foot.className = "mod-foot";
+        foot.append(b);
+        if (r.page) foot.insertAdjacentHTML("beforeend", `<a class="mod-page" href="${esc(r.page)}" target="_blank" rel="noopener">Modrinth ↗</a>`);
+        el.append(foot);
       });
     }
     box.querySelector("[data-recheck]")?.addEventListener("click", () => loadUpdates(true));
+    $$(".mod [data-skip]").forEach((btn) => btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        upd = await api(`/api/servers/${encodeURIComponent(sid)}/mods/updates/skip`, { method: "PUT", body: JSON.stringify({ project: btn.dataset.skip, version: btn.dataset.ver || null }) });
+        showToast(btn.dataset.ver ? "Skipped: you'll hear again when a newer one comes out" : "Not skipped any more", 3000);
+      } catch (err) { showError(esc(err.message), 5000); }
+      paintUpdates();
+    }));
   };
   const loadUpdates = async (force) => {
     const box = $("#mod-updates");

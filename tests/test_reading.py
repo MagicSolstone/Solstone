@@ -45,7 +45,7 @@ def test_timeline_by_the_hour():
     reading._ensure()
     db.x("DELETE FROM reading_hours WHERE page LIKE '/guides/rdt-%'")
     now = time.time()
-    two_ago = now - 2 * 3600
+    two_ago = (now // 3600 - 2) * 3600 + 60                 # (early in its hour: the view a minute later is the same hour)
     reading.note("/guides/rdt-a", "A", "view", "t1", None, "5.5.5.5", now=two_ago)
     reading.note("/guides/rdt-a", "A", "view", "t2", None, "5.5.5.5", now=two_ago + 60)   # the same hour
     reading.note("/guides/rdt-b", "B", "view", "t3", None, "5.5.5.6", now=now)

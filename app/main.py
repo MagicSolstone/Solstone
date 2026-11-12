@@ -904,7 +904,7 @@ async def join_request(request: Request):
     where = ", ".join(public[x].display_name for x in picked)
     msg = f"{player} would like to join {where}" + (f" ({name})" if name else "") + (f": {note}" if note else "")
     await notify.send("Asking to join", msg + "\nTap to let them in (Manage → Players → Whitelist).", "wave",
-                      click=f"{_public_base(request)}/app#/manage/whitelist")
+                      click=f"{_public_base(request)}/app#/manage/whitelist", kind="requests")
     return {"ok": True, "token": token, "player": player,
             "message": "Thanks! The admins have your request. This page shows here when you've been let in."}
 
@@ -1639,7 +1639,7 @@ async def _tell_admins_picture(request: Request, d: dict, user) -> None:
     who = auth.shown_names().get(user.username.lower(), user.username)
     await notify.send("Firework to look at", f"{who} drew a picture firework, \"{d.get('name') or 'Firework'}\". "
                       "It's hidden until an admin approves it (Fireworks → Waiting for approval).", "art",
-                      click=f"{_public_base(request)}/app#/fireworks")
+                      click=f"{_public_base(request)}/app#/fireworks", kind="fireworks")
 
 
 @app.get("/api/sounds")
@@ -2530,6 +2530,21 @@ async def mod_updates(sid: str, request: Request, force: bool = False):
     """Admins: which mods have a newer build on Modrinth for this server's Minecraft version and loader."""
     auth.require_admin(request)
     return await modupdates.check(await _server(sid), force=force)
+
+
+@app.put("/api/servers/{sid}/mods/updates/skip")
+async def mod_update_skip(sid: str, request: Request):
+    """Admins: {project, version} skips that build (no badge, no notification) until a different one comes out;
+    {project, version: null} stops skipping."""
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    body = await request.json()
+    project = str(body.get("project") or "").strip()
+    if not project:
+        raise HTTPException(400, "Which mod?")
+    modupdates.set_skip(srv.id, project, body.get("version") or None)
+    auth.audit(user, srv.id, "mod_update_skip", f"{project} {body.get('version') or '(not skipped)'}")
+    return await modupdates.check(srv)
 
 
 # ---- the family modpack (packwiz): Prism updates every PC's mods from here
@@ -3551,7 +3566,7 @@ async def digest_preview(request: Request, send: bool = False):
     text = recorder.digest(list(S.registry.servers.values()))
     result = {"text": text}
     if send:
-        errors = await notify.send("Solstone weekly digest", text, notify.TAGS["digest"], force=True)
+        errors = await notify.send("Solstone weekly digest", text, notify.TAGS["digest"], force=True, kind="digest")
         result.update(ok=not errors, errors=errors)
     return result
 
@@ -3570,6 +3585,25 @@ async def all_players():
 @app.get("/api/servers/{sid}/backups")
 async def server_backups(sid: str):
     return await asyncio.to_thread(backups.status, await _server(sid))
+
+
+@app.get("/api/settings/notifications/log")
+async def notifications_log(request: Request, limit: int = 200):
+    """Admins: the notifications sent (or held back by quiet hours), newest first, and how many of each kind."""
+    auth.require_admin(request)
+    out = await asyncio.to_thread(notify.history, limit)
+    names = {s.id: s.display_name for s in S.registry.servers.values()}
+    for e in out["entries"]:
+        e["server"] = names.get(e.get("sid") or "", "")
+    return out
+
+
+@app.delete("/api/settings/notifications/log")
+async def notifications_log_clear(request: Request):
+    user = auth.require_admin(request)
+    await asyncio.to_thread(notify.clear_history)
+    auth.audit(user, None, "notifications_log_cleared", "")
+    return {"ok": True}
 
 
 @app.post("/api/settings/notifications/test")

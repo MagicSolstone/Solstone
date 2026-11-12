@@ -94,7 +94,7 @@ def test_ask_to_join(client, anon, monkeypatch):
     from app import main, notify, signup
     sent = []
 
-    async def fake_send(title, message, tag="video_game", force=False, sid=None, click=None):
+    async def fake_send(title, message, tag="video_game", force=False, sid=None, click=None, kind=""):
         sent.append((title, message, click))
         return []
     monkeypatch.setattr(notify, "send", fake_send)

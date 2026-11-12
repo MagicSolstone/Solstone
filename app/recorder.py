@@ -121,9 +121,11 @@ class Recorder:
             except Exception:
                 log.exception("mod update check failed for %s", srv.id)
                 continue
-            line = None if result.get("error") else modupdates.updates_line(result, server_id=srv.id)
+            from .config import config
+            page = f"{config.public_url}/app#/s/{srv.id}/mods" if config.public_url else ""
+            line, click = (None, None) if result.get("error") else modupdates.updates_note(result, server_id=srv.id, mods_page=page)
             if line:
-                maybe_notify("updates", srv.display_name, f"Mod updates: {line}", sid=srv.id)
+                maybe_notify("updates", srv.display_name, f"Mod updates: {line}", sid=srv.id, click=click)
 
     async def self_backup(self) -> None:
         """Solstone's own backup, once a day (selfbackup.py). A failure is a notification, not a silent gap."""
@@ -278,12 +280,12 @@ class Recorder:
                 if db.alert_once(f"limit:{key}:{today}"):
                     name = display.get(key) or playtime.label(key)
                     await notify.send("Screen time", f"{name} has played {notify._fmt(secs)} today "
-                                      f"(daily limit {notify._fmt(limit * 60)})", notify.TAGS["screen_time"])
+                                      f"(daily limit {notify._fmt(limit * 60)})", notify.TAGS["screen_time"], kind="screen_time")
 
         if c["digest_enabled"] and channels and now.weekday() == c["digest_day"] and now.hour >= c["digest_hour"]:
             week = now.isocalendar()
             if db.alert_once(f"digest:{week.year}-{week.week}"):
-                await notify.send("Solstone weekly digest", self.digest(servers), notify.TAGS["digest"])
+                await notify.send("Solstone weekly digest", self.digest(servers), notify.TAGS["digest"], kind="digest")
 
         if channels:
             for srv in servers:
@@ -293,7 +295,7 @@ class Recorder:
                 b = backups.status(srv)
                 if b.get("found") and b.get("stale") and db.alert_once(f"backup:{srv.id}:{today}"):
                     await notify.send(srv.display_name, f"No new backup for {int(b['age_hours'])} hours "
-                                      f"(last: {b['latest']['name']})", notify.TAGS["backup"], sid=srv.id)
+                                      f"(last: {b['latest']['name']})", notify.TAGS["backup"], sid=srv.id, kind="backup")
 
     @staticmethod
     def digest(servers: list) -> str:
