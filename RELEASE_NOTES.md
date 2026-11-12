@@ -1,3 +1,9 @@
+# Solstone 1.21.5
+
+- **Player pages change tabs in place.** Inventory, Play history, Travels, Statistics… now swap just that part: no reload, and the page stays where it was scrolled, instead of jumping back above the trophies and favourites.
+- **Favourites: tap one for the top five of each.** The cards show just the favourite (nothing cut off any more). Tapping any of them opens a window with the top five of every kind, each with its number and its share of that kind as a bar, so it's easy to see one used a lot, or another almost as much.
+- **Travels: Farthest out is from the world spawn**, wherever it's been moved (worked out from the chunks, so it follows the spawn if it moves again). The Nether and the End measure from 0, 0.
+
 # Solstone 1.21.4
 
 - **🏆 Trophies on each player's page.** Every leaderboard where they hold 1st, 2nd or 3rd right now, as gold, silver and bronze cards with their number and place ("tied 1st of 3"), linked accounts counted as one. The first six show, the rest fold under "All N trophies". **Nearly there** lists the boards where they're 4th or 5th, and how far off the next place.
