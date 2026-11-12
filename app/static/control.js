@@ -156,7 +156,7 @@ async function viewControl(sid) {
           <button class="btn" data-power="backup_server">Back up now</button>
           <button class="btn" data-quick="save" data-value="">Save world</button>
         </div>
-        ${info.can_crafty ? "" : `<p class="muted small">Start, stop and backups need Crafty connected.</p>`}
+        ${info.can_crafty ? "" : `<p class="muted small">Start, stop and backups need what runs the server connected (Crafty, or the host's panel) in <a href="#/manage/setup">Server setup</a>.</p>`}
       </section>
       ${info.xbox ? `<section class="panel ctl-xbox"><h3>🎮 Xbox friend joining</h3>
         ${xboxStateHtml(info.xbox, "ctl-xbox-st")}
@@ -241,7 +241,7 @@ async function viewControl(sid) {
       stop_server: ["Stop the server?", "Stop"], backup_server: ["Back up the server now?", "Back up"] }[a];
     const online = info.online.length ? `${info.online.length} player${info.online.length === 1 ? " is" : "s are"} online and will be disconnected.` : "Nobody is online.";
     if (a !== "backup_server" && a !== "start_server" && !(await confirmBox(words[0], esc(online), words[1], a === "stop_server"))) return;
-    try { await post(`${base}/control/power/${a}`); showToast(`${words[1]} requested. Crafty is on it.`, 4000); setTimeout(() => route(), 4000); }
+    try { await post(`${base}/control/power/${a}`); showToast(`${words[1]} requested.`, 4000); setTimeout(() => route(), 4000); }
     catch (err) { showError(esc(err.message), 6000); }
   }));
   $$("[data-quick]").forEach((q) => q.addEventListener("click", () => act("quick", { action: q.dataset.quick, value: q.dataset.value }, "Done")));
@@ -1174,7 +1174,7 @@ function removePlayerHtml() {
     <div class="panel rm-guide">
       <p class="muted">Do these in order. The game and its mods keep things about each player by their <b>ID</b> (a long code; the check below shows it), so their files are named by it.</p>
       <ol>
-        <li><b>Take a server backup</b> (in Crafty) before anything else. It's the only way to undo.</li>
+        <li><b>Take a server backup</b> (Back up now in Control, or in your host's panel) before anything else. It's the only way to undo.</li>
         <li><b>Their land claims (Flan):</b> in the server console run <code>/flan help</code> to find the admin delete command for your Flan version, then delete all of their claims (it's usually <code>/flan adminDelete all &lt;name&gt;</code>). Their claimed land becomes free to build on.</li>
         <li><b>Off the whitelist</b>, above, on every server (or <code>/whitelist remove &lt;name&gt;</code> in the console). If they were an operator, <code>/deop &lt;name&gt;</code> too. If they must never come back, <code>/ban &lt;name&gt;</code>.</li>
         <li><b>Their files</b>, while they're offline (stopping the server is safest), in the world folder:
@@ -1363,7 +1363,7 @@ async function openServerSetup(sid, then, tab = "") {
   const saved = (set) => (set ? "Saved. Type a new one to replace it." : "");
   let tested = null;
   const title = sid ? (cur.display_name || row.found_as) : "Add a server somewhere else";
-  const filesHere = row && !remote ? `<p>📁 <b>On this machine</b>: the <code>${esc(row.folder)}</code> folder${row.crafty ? `, found through ${esc(row.crafty_name || "Crafty")}` : ""}.</p>
+  const filesHere = row && !remote ? `<p>📁 <b>On the same machine as Solstone</b>: the <code>${esc(row.folder)}</code> folder${row.crafty ? `, found through ${esc(row.crafty_name || "Crafty")}` : ""}.</p>
       <p class="muted small">Solstone reads its files where they are. (For a server at a game host or on another computer, use <b>Add a server somewhere else</b>.)</p>` : "";
   const filesThere = `<p class="muted small">🌐 <b>Somewhere else, over SFTP</b>: a game host, a rented server, another computer. Solstone keeps a copy of the few files it reads (the log, players' stats, the world's info) up to date, and reads that. In your host's panel, look for <b>SFTP details</b>: an address, a port and a username (the password is usually your panel password).</p>
       <div class="remote-grid">
@@ -1385,7 +1385,7 @@ async function openServerSetup(sid, then, tab = "") {
       <div class="map-status">
         ${row?.files?.["error_the map"] ? `<p class="notice small">The map isn't updating (everything else is): ${esc(row.files["error_the map"])}</p>` : ""}
         ${row?.files?.map ? `<p class="muted small">🗺 <b>${row.files.map.visited}</b> area${row.files.map.visited === 1 ? "" : "s"} to copy (spawn, and where players are or were: ${row.files.map.now} around someone now) · <b>${row.files.map.copied}</b> copied · ${row.files.map.queued} waiting · looked ${esc(fmtAgo(row.files.map.looked))}${row.files.map.no_folder?.length ? ` · <span class="notice">no world folder found on the server for ${esc(row.files.map.no_folder.join(", "))}${row.files.map.world_has?.length ? ` (its world folder has: ${esc(row.files.map.world_has.join(", "))})` : ""}</span>` : ""}</p>` : ""}</div>`;
-  const copyPart = `<p class="muted small">A backup on this machine: every file of the server (but logs and what the game downloads again by itself), updated each night with only what changed. Point Kopia (or any backup) at its folder.</p>
+  const copyPart = `<p class="muted small">A backup where Solstone runs: every file of the server (but logs and what the game downloads again by itself), updated each night with only what changed. Point Kopia (or any backup) at its folder.</p>
       <label class="check"><input type="checkbox" name="backup" ${c.backup ? "checked" : ""}> <span><b>Copy the whole server here each night</b><br><small class="muted">The game's saving is paused for the last moments (save-off, save-all flush, then save-on), so the copy is of one moment, not a file caught halfway.</small></span></label>
       <div class="remote-grid">
         <label>At <input class="input" type="time" name="backup_at" value="${esc(c.backup_at || "04:00")}" style="width:120px"></label>
@@ -1606,7 +1606,7 @@ async function manageConnections() {
       <div class="btn-row"><button class="btn sm" type="button" data-edit-conn>Edit</button></div></div>`).join("")
     : `<p class="muted">None yet. Crafty, if you use it, goes here; so does a game host's panel.</p>`)
     + `<div class="btn-row"><button class="btn" type="button" data-add-conn>＋ Add a connection</button>
-      <span class="muted small">Crafty 4 on this machine, a game host's Pterodactyl or Pelican panel, or ServerPrism.</span></div>`;
+      <span class="muted small">A game host's Pterodactyl or Pelican panel, ServerPrism, or Crafty 4.</span></div>`;
   box.querySelector("[data-add-conn]").addEventListener("click", () => openConnection(null));
   box.querySelectorAll("[data-cid]").forEach((row) => row.querySelector("[data-edit-conn]").addEventListener("click", () => openConnection(list.find((x) => x.id === row.dataset.cid))));
 }

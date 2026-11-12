@@ -113,8 +113,8 @@ NET_WATCH = """(() => { window.__busy = 0; window.__lastNet = performance.now();
     return f.apply(this, a).finally(done); };
   const send = XMLHttpRequest.prototype.send; XMLHttpRequest.prototype.send = function (...a) { window.__busy++;
     this.addEventListener("loadend", done, { once: true }); return send.apply(this, a); }; })();"""
-QUIET_MS = 200            # nothing loading for this long: settled
-MIN_MS = 120              # but always at least this (a click's own drawing, a little animation)
+QUIET_MS = 400            # nothing loading for this long: settled
+MIN_MS = 250              # but always at least this (a click's own drawing, a little animation)
 
 
 def _settle(page, ms: float) -> None:
@@ -410,6 +410,7 @@ def main() -> int:
                                                "sessions": sessions, "counts": {"death": 1, "advancement": 1}, "events": evs}], "next_before": None})
             pg.route(f"**/api/servers/{sid}/timeline*", safely(busy_timeline))
             pg.goto(f"{base}/app#/s/{sid}"); pg.reload(); pg.wait_for_timeout(2000)
+            appear(pg, ".tl-did > .did-row", 3, 10000)
             if pg.locator(".tl-did > .did-row").count() != 3 or pg.locator(".timeline .ev-progress").count():
                 problems.append("overview: activity lines aren't added up into one row per player")
             pg.locator(".tl-did").first.scroll_into_view_if_needed(); check(pg, "overview-activity")

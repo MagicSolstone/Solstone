@@ -464,8 +464,8 @@ async function viewPerformance(sid) {
       <div class="panel"><h3>TPS</h3>${hasTps ? '<div class="chart" id="c-tps"></div>' : `<p class="muted">TPS needs RCON on Minecraft 1.20.3 or newer.</p>`}</div>
       <div class="panel"><h3>Tick time</h3>${hasTps ? '<div class="chart" id="c-mspt"></div>' : `<p class="muted">Tick time needs RCON on Minecraft 1.20.3 or newer.</p>`}</div>
       <div class="panel"><h3>Players online</h3><div class="chart" id="c-players"></div></div>
-      <div class="panel"><h3>CPU</h3>${pts.some((p) => p.cpu != null) ? '<div class="chart" id="c-cpu"></div>' : '<p class="muted">CPU comes from what runs the server (Crafty or a host's panel): add it under Manage → Solstone → Server setup → Connections to record it.</p>'}</div>
-      <div class="panel"><h3>Memory</h3>${pts.some((p) => p.mem_mb != null) ? '<div class="chart" id="c-mem"></div>' : '<p class="muted">Memory comes from what runs the server (Crafty or a host's panel): add it under Manage → Solstone → Server setup → Connections to record it.</p>'}</div>
+      <div class="panel"><h3>CPU</h3>${pts.some((p) => p.cpu != null) ? '<div class="chart" id="c-cpu"></div>' : '<p class="muted">CPU comes from what runs the server (Crafty, or a game host’s panel): add it under Manage → Solstone → Server setup → Connections to record it.</p>'}</div>
+      <div class="panel"><h3>Memory</h3>${pts.some((p) => p.mem_mb != null) ? '<div class="chart" id="c-mem"></div>' : '<p class="muted">Memory comes from what runs the server (Crafty, or a game host’s panel): add it under Manage → Solstone → Server setup → Connections to record it.</p>'}</div>
     </div><p class="muted" style="margin-top:12px;font-size:.88rem">Shaded areas are times the server was offline.</p>`;
     const base = { bucket: mt.bucket, since: mt.since, until };
     const safe = (id, spec) => {

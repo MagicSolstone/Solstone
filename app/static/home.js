@@ -117,7 +117,7 @@ function statusPanel(site) {
       s.version ? tile("Minecraft", esc(s.version), s.loader ? s.loader.charAt(0).toUpperCase() + s.loader.slice(1) : "") : "",
       s.up_since ? tile("Up for", esc(sinceText(s.up_since * 1000)), s.uptime_7d != null ? `${Math.round(s.uptime_7d * 1000) / 10}% of the last 7 days` : "", "", "uptime") : "",
       s.cpu != null ? tile("CPU", `${Math.round(Number(s.cpu))}%`, s.cpu_cores ? `of its ${+s.cpu_cores} core${+s.cpu_cores === 1 ? "" : "s"}` : "", sparkline(tr.cpu, 0, 100, `CPU over ${hrs}`), "cpu") : "",
-      s.mem ? tile("Memory", esc(s.mem), s.mem_percent != null ? `${Math.round(Number(s.mem_percent))}% of the computer's RAM` : "",
+      s.mem ? tile("Memory", esc(s.mem), s.mem_percent != null ? `${Math.round(Number(s.mem_percent))}% of its memory` : "",
         sparkline(tr.mem_mb, 0, Math.max(0, ...(tr.mem_mb || []).filter((x) => x != null)) * 1.15, `Memory over ${hrs}`), "mem_mb") : "",
     ].join("");
     return `<article class="hp-status-card"><header><span class="hp-dot on"></span><h3>${esc(s.name)}</h3><span class="hp-status-word">Online</span></header>

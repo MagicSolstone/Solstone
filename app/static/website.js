@@ -399,7 +399,7 @@ function wsSite(el) {
     <div class="actions"><a class="btn" href="/" target="_blank" rel="noopener">Open the home page</a><button class="btn primary" type="submit">Save</button></div>
   </form>
   <section class="panel ws-offline" data-spane="down" hidden><h3>If this website goes down</h3>
-    <p class="muted">When this computer is off or Solstone isn't running, visitors can still get a page from Cloudflare: the site's name, how to get on each Minecraft server (Java: its address; Bedrock: the Xbox friend, and the address and port as the other way, all with Copy buttons), whether each is still up and how many are playing (never who), and your contact email. It's a small Cloudflare Worker, free on Cloudflare's free plan.</p>
+    <p class="muted">When Solstone isn't running (its computer is off, restarting or offline), visitors can still get a page from Cloudflare: the site's name, how to get on each Minecraft server (Java: its address; Bedrock: the Xbox friend, and the address and port as the other way, all with Copy buttons), whether each is still up and how many are playing (never who), and your contact email. It's a small Cloudflare Worker, free on Cloudflare's free plan.</p>
     <ol class="ws-steps">
       <li>Save the details on <b>Home page</b> and <b>Joining</b>, then <a class="btn sm" href="/api/settings/site/offline-worker" download>⬇ Download the Worker</a></li>
       <li>In Cloudflare: <b>Workers &amp; Pages → Create application → Start with Hello World</b>, name it (like <i>site-offline</i>) and <b>Deploy</b>. Then <b>Edit code</b>, replace everything there with the downloaded file, and <b>Deploy</b> again. (Not <i>Upload</i> or static files: that's for Pages, and won't take it.)</li>

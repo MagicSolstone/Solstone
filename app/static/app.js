@@ -967,8 +967,9 @@ function setupHelp(st) {
   const lines = [];
   if (!st.crafty?.configured) lines.push(`Using Crafty? Add it in <a href="#/manage/setup">Manage → Solstone → Server setup → Connections</a> so Solstone can list its servers. A server at a game host is added there too.`);
   else if (st.crafty?.error) lines.push(`Crafty answered with an error: <code>${esc(st.crafty.error)}</code>. Check the URL and API token.`);
-  if (!st.servers_dir_found) lines.push(`Mount Crafty's <code>servers</code> folder at <code>${esc(st.servers_dir)}</code> (read-only is fine).`);
-  return `<div class="empty"><h3>Connect Solstone to Crafty</h3>${lines.map((l) => `<p style="margin-top:6px">${l}</p>`).join("") || "<p>Start a server in Crafty and it will appear here.</p>"}</div>`;
+  lines.push(`At a game host? <a href="#/manage/setup">Manage → Solstone → Server setup</a> → <b>Add a server somewhere else</b>.`);
+  if (!st.servers_dir_found) lines.push(`On the same machine as Solstone? Mount its servers folder at <code>${esc(st.servers_dir)}</code> (read-only is fine).`);
+  return `<div class="empty"><h3>Add a server</h3>${lines.map((l) => `<p style="margin-top:6px">${l}</p>`).join("")}</div>`;
 }
 
 function serverHeader(s, tab) {
@@ -1017,10 +1018,10 @@ function serverHeader(s, tab) {
       <div class="head-actions">${statePill}</div>
     </header>
     ${!java ? `<div class="notice">${esc(s.game_label)} server: Solstone shows its status, who's online, play time and performance. Inventories, stats and world details are Minecraft Java only for now.</div>` : ""}
-    ${java && !s.folder_found ? `<div class="notice">Solstone can't find this server's files at <code>${esc(s.folder)}</code>. Mount Crafty's servers folder so player data can be read.</div>` : ""}
+    ${java && !s.folder_found ? `<div class="notice">Solstone can't find this server's files at <code>${esc(s.folder)}</code>. For a server on the same machine, mount its folder; for one somewhere else, check its SFTP in Manage → Solstone → Server setup.</div>` : ""}
     ${s.rcon?.error && s.running ? `<div class="notice">Live data is unavailable: ${esc(s.rcon.error)}. Showing the last saved data instead.</div>` : ""}
-    ${s.backup?.found && s.backup.stale ? `<div class="notice">The last backup was ${esc(fmtAgo(s.backup.latest.ts))}. Check the backup schedule in Crafty.</div>` : ""}
-    ${s.backup?.configured && !s.backup.found ? `<div class="notice">No backups found for this server in Crafty's backups folder.</div>` : ""}
+    ${s.backup?.found && s.backup.stale ? `<div class="notice">The last backup was ${esc(fmtAgo(s.backup.latest.ts))}. Check where the server's backups are made (Crafty, or the host).</div>` : ""}
+    ${s.backup?.configured && !s.backup.found ? `<div class="notice">No backups found for this server in the backups folder.</div>` : ""}
     ${tabsHtml}`;
 }
 
