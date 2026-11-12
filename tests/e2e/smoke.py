@@ -181,6 +181,13 @@ def main() -> int:
                 check(pg, name)
 
             # the event: its lineup on Challenges → Events, one card with pills on Events
+            # a player's page: the trophies they hold on the leaderboards
+            pg.goto(f"{base}/app#/s/{sid}/p/{puuid}"); pg.wait_for_timeout(1500)
+            if not pg.locator(".trophies .trophy").count():
+                problems.append("player page: no trophies (places held on the leaderboards)")
+            else:
+                pg.locator(".trophies").scroll_into_view_if_needed()
+                check(pg, "player-trophies")
             pg.goto(f"{base}/app#/s/{sid}/challenges/events"); pg.wait_for_timeout(1300)
             if pg.locator(".eg-card .eg-part").count() != 3:
                 problems.append("events tab: the event's three challenges aren't listed")
@@ -1146,6 +1153,8 @@ def main() -> int:
                 pg.locator('.ws-join [data-j="join_note"]').first.fill("Our survival world for the whole family.")
                 check(pg, "website-joins")
                 pg.click('[data-stab="down"]'); pg.wait_for_timeout(300)
+                if pg.locator(".ws-unused").count() and pg.locator(".ws-unused").is_visible():
+                    problems.append("website: Unused pictures shows outside the Tidy up tab")
                 if not pg.locator('.ws-offline:visible a[href="/api/settings/site/offline-worker"]').count():
                     problems.append("website: no download for the Cloudflare offline page")
                 if not pg.locator("#ws-maint-form:visible [name=start]").count():

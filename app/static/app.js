@@ -1173,6 +1173,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
     <div id="hero">${playerHero(p)}</div>
     <div id="hero-acts">${giveBtn(p)}</div>
     <div id="strip">${statStrip(p)}</div>
+    <div id="trophies"></div>
     <nav class="tabs" aria-label="Player sections">${tabs.map(([k, l]) => `<a href="${base}${k === "inventory" ? "" : "/" + k}" ${k === tab ? 'aria-current="page"' : ""}>${l}</a>`).join("")}</nav>
     <div id="player-tab"></div>`);
   document.title = `${p.name} · ${s.name}`;
@@ -1192,6 +1193,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
     else if (tab === "fishing") renderPlayerFishing(el, sid, p);
   };
   renderTab();
+  loadTrophies(sid, p);
   const flip = (e) => {
     const b = e.target.closest("[data-strip]");
     if (b) { stripAlone = b.dataset.strip === "one"; $("#strip").innerHTML = statStrip(p); renderTab(); }
@@ -1454,6 +1456,48 @@ function treeOrder(list) {
   const walk = (d) => { out.push(d); (kids[d.id] || []).sort((a, b) => a.id.localeCompare(b.id)).forEach(walk); };
   roots.sort((a, b) => a.id.localeCompare(b.id)).forEach(walk);
   return out;
+}
+
+// ---------------------------------------------------------------- trophies (a player's page)
+// The places a player holds on this server's leaderboards right now: 🥇🥈🥉 on each board (equal scores share a
+// place, as on the Leaderboards page), and the boards where they're just off the podium. Linked accounts count as one.
+function boardPlaces(data, match) {
+  const won = [], close = [];
+  for (const b of data.boards || []) {
+    if (b.medals === false) continue;
+    const rows = data.players.filter((r) => r[b.key] > 0);
+    const me = rows.find(match);
+    if (!me) continue;
+    const values = [...new Set(rows.map((r) => r[b.key]))].sort((x, y) => y - x);
+    const place = values.indexOf(me[b.key]);
+    const shared = rows.filter((r) => r[b.key] === me[b.key]).length > 1;
+    const item = { board: b, value: me[b.key], place, shared, of: rows.length, gap: place > 0 ? values[place - 1] - me[b.key] : 0 };
+    if (place < 3) won.push(item); else if (place < 5) close.push(item);
+  }
+  won.sort((x, y) => x.place - y.place || x.board.title.localeCompare(y.board.title));
+  close.sort((x, y) => x.place - y.place);
+  return { won, close };
+}
+async function loadTrophies(sid, p) {
+  const box = $("#trophies");
+  const data = await api(`/api/servers/${encodeURIComponent(sid)}/leaderboard`).catch(() => null);
+  if (!box || !data?.players?.length) return;
+  const names = new Set([p.name, ...(p.together?.accounts || []).map((a) => a.name)].map((n) => n.toLowerCase()));
+  const match = (r) => r.uuid === p.uuid || names.has(r.name.toLowerCase()) || (r.also || []).some((n) => names.has(n.toLowerCase()));
+  const { won, close } = boardPlaces(data, match);
+  if (!won.length && !close.length) return;
+  const MEDAL = ["🥇", "🥈", "🥉"], CLS = ["gold", "silver", "bronze"], PLACE = ["1st", "2nd", "3rd", "4th", "5th"];
+  const count = [0, 1, 2].map((i) => won.filter((w) => w.place === i).length);
+  const lb = `#/s/${encodeURIComponent(sid)}/leaderboards`;
+  const card = (w) => `<a class="trophy ${CLS[w.place]}" href="${lb}" title="${w.shared ? "Tied " : ""}${PLACE[w.place]} of ${w.of}">
+      <span class="trophy-medal">${MEDAL[w.place]}</span><span class="trophy-title">${esc(w.board.title)}</span>
+      <span class="trophy-val">${esc(fmtStat(w.board.kind, w.value))}</span><span class="trophy-place">${w.shared ? "tied " : ""}${PLACE[w.place]} of ${w.of}</span></a>`;
+  box.innerHTML = `<section class="trophies">
+    <div class="trophies-head"><h2>🏆 Trophies</h2><span class="muted small">${won.length ? count.map((n, i) => n ? `${MEDAL[i]} ${n}` : "").filter(Boolean).join(" · ") + " · held right now on" : "On"} <a href="${lb}">the leaderboards</a></span></div>
+    ${won.length ? `<div class="trophy-shelf">${won.slice(0, 8).map(card).join("")}</div>
+      ${won.length > 8 ? `<details class="trophy-more"><summary>All ${won.length} trophies</summary><div class="trophy-shelf">${won.slice(8).map(card).join("")}</div></details>` : ""}` : ""}
+    ${close.length ? `<p class="trophy-close muted small"><b>Nearly there:</b> ${close.slice(0, 4).map((c) => `${PLACE[c.place]} in ${esc(c.board.title)} (${esc(fmtStat(c.board.kind, c.gap))} off ${PLACE[c.place - 1]})`).join(" · ")}</p>` : ""}
+  </section>`;
 }
 
 // ---------------------------------------------------------------- leaderboards

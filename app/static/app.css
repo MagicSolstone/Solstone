@@ -2756,3 +2756,24 @@ h3.fw-sub:not(:first-child) { margin-top: 18px; }
   .pt-people .input.sm { width: 6.5em; }
   .pt-page .table-wrap { overflow: visible; background: none; padding: 0; }
 }
+[data-spane][hidden], [data-cpane][hidden], [data-npane][hidden] { display: none !important; }
+
+/* A player's trophies: the places they hold on the leaderboards right now */
+.trophies { margin: 4px 0 18px; }
+.trophies-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.trophies-head h2 { font-size: 1.1rem; margin: 0; }
+.trophy-shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.trophy { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto auto; column-gap: 10px; align-items: center;
+  padding: 10px 12px; border-radius: var(--radius-m); background: var(--tuff); text-decoration: none; color: var(--bone);
+  border: 1px solid var(--line); border-top: 3px solid var(--tc); transition: transform .12s; }
+.trophy:hover { transform: translateY(-2px); }
+.trophy.gold { --tc: #f2c14e; background: linear-gradient(180deg, rgba(242, 193, 78, .14), var(--tuff) 60%); }
+.trophy.silver { --tc: #c9d1dc; background: linear-gradient(180deg, rgba(201, 209, 220, .1), var(--tuff) 60%); }
+.trophy.bronze { --tc: #d08a4e; background: linear-gradient(180deg, rgba(208, 138, 78, .12), var(--tuff) 60%); }
+.trophy-medal { grid-row: 1 / 4; font-size: 1.9rem; line-height: 1; }
+.trophy-title { font-weight: 700; font-size: .88rem; line-height: 1.2; }
+.trophy-val { font-variant-numeric: tabular-nums; color: var(--tc); font-weight: 700; font-size: .95rem; }
+.trophy-place { color: var(--faint); font-size: .74rem; }
+.trophy-close { margin: 8px 0 0; }
+.trophy-more { margin-top: 8px; }
+.trophy-more > summary { cursor: pointer; color: #9fb6f0; font-weight: 700; font-size: .88rem; margin-bottom: 8px; }
