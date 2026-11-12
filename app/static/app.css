@@ -2816,3 +2816,6 @@ h3.fw-sub:not(:first-child) { margin-top: 18px; }
 .tv-rec > span:nth-child(3) { color: #f2c14e; font-weight: 700; font-size: .85rem; }
 .tv-rec small { grid-column: 2 / 4; }
 @media (max-width: 760px) { .tv-wrap { grid-template-columns: 1fr; } .tv-wrap .world-own-map { min-height: 340px; } }
+.fav-cat [data-all] { margin-top: 4px; font-size: .82rem; }
+.fav-modal .fav-find { width: 100%; margin: 0 0 8px; }
+.fav-every ol { max-height: 58vh; overflow-y: auto; padding-right: 4px; }

@@ -196,6 +196,12 @@ def main() -> int:
                 pg.locator(".favs [data-fav]").first.click(); pg.wait_for_timeout(500)
                 if not pg.locator(".fav-modal .fav-cat li").count():
                     problems.append("player page: tapping a favourite doesn't show the top five of each")
+                if pg.locator(".fav-modal [data-all]").count():
+                    pg.locator(".fav-modal [data-all]").first.click(); pg.wait_for_timeout(300)
+                    if pg.locator(".fav-modal .fav-every li").count() <= 5:
+                        problems.append("player page: Show all in favourites doesn't list every one")
+                    check(pg, "player-favourites-every")
+                    pg.locator(".fav-modal [data-back]").click(); pg.wait_for_timeout(300)
                 check(pg, "player-favourites-all")
                 pg.keyboard.press("Escape"); pg.wait_for_timeout(300)
             # another tab of the same player: swapped in place, the page stays where it was scrolled to

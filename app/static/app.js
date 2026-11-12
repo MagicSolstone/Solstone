@@ -1490,7 +1490,7 @@ function favourites(st) {
   const top = (obj, keep = () => true) => {
     const rows = Object.entries(obj || {}).filter(([k, v]) => v > 0 && keep(k)).sort((a, b) => b[1] - a[1]);
     const total = rows.reduce((n, [, v]) => n + v, 0);
-    return rows.length ? { id: rows[0][0], n: rows[0][1], total, rows: rows.slice(0, 5), kinds: rows.length } : null;
+    return rows.length ? { id: rows[0][0], n: rows[0][1], total, rows: rows.slice(0, 5), all: rows, kinds: rows.length } : null;
   };
   const mobIcon = (id) => itemIcon({ id: `${id}_spawn_egg` });
   const itemIco = (id) => itemIcon({ id });
@@ -1519,16 +1519,39 @@ function favouritesHtml(st) {
       <span class="fav-main">${f.icon(f.t.id)}<span><b>${esc(f.name(f.t.id))}</b><span class="muted small">${esc(f.fmt(f.t.n))}${f.unit ? ` ${esc(f.unit)}` : ""}</span></span></span>
     </button>`).join("")}</div></section>`;
 }
+function favRow(f, [id, n], j, numbered = false) {
+  return `<li class="${j ? "" : "top"}">${f.icon(id)}<span class="fav-n">${numbered ? `<small class="muted">${j + 1}.</small> ` : ""}${esc(f.name(id))}</span><span class="fav-v">${esc(f.fmt(n))}</span>
+    <span class="fav-pct">${n / f.t.total < 0.005 ? "<1" : Math.round((n / f.t.total) * 100)}%</span><span class="fav-bar"><span style="width:${Math.max(2, (n / f.t.total) * 100)}%"></span></span></li>`;
+}
 function openFavourites(name, st, first = 0) {
   const favs = favourites(st || {});
   openModal(`<h2>⭐ ${esc(name)}'s favourites</h2>
-    <p class="muted small">The top five of each kind, from the game's own statistics. The bar is each one's share of everything of that kind.</p>
+    <p class="muted small">The top five of each kind, from the game's own statistics. The bar is each one's share of everything of that kind. <b>Show all</b> lists every one.</p>
     <div class="fav-all">${favs.map((f, i) => `<section class="fav-cat" data-cat="${i}"><h3>${f.title} <small class="muted">${f.t.kinds} kind${f.t.kinds === 1 ? "" : "s"} · ${esc(f.fmt(f.t.total))}${f.unit ? ` ${esc(f.unit)}` : ""} in all</small></h3>
-      <ol>${f.t.rows.map(([id, n], j) => `<li class="${j ? "" : "top"}">${f.icon(id)}<span class="fav-n">${esc(f.name(id))}</span><span class="fav-v">${esc(f.fmt(n))}</span>
-        <span class="fav-pct">${n / f.t.total < 0.005 ? "<1" : Math.round((n / f.t.total) * 100)}%</span><span class="fav-bar"><span style="width:${Math.max(2, (n / f.t.total) * 100)}%"></span></span></li>`).join("")}</ol></section>`).join("")}</div>
+      <ol>${f.t.rows.map((r, j) => favRow(f, r, j)).join("")}</ol>
+      ${f.t.kinds > 5 ? `<button type="button" class="link-btn" data-all="${i}">Show all ${f.t.kinds} →</button>` : ""}</section>`).join("")}</div>
     <div class="actions"><button type="button" class="btn" data-close-modal>Close</button></div>`, (m) => {
     m.classList.add("fav-modal");
     m.querySelector(`[data-cat="${first}"]`)?.scrollIntoView({ block: "nearest" });
+    m.addEventListener("click", (e) => { const b = e.target.closest("[data-all]"); if (b) openFavouriteKind(name, st, +b.dataset.all); });
+  });
+}
+// Every one of a kind (every block mined, every mob…), biggest first, with a box to find one and a way back
+function openFavouriteKind(name, st, i) {
+  const f = favourites(st || {})[i];
+  if (!f) return;
+  const list = f.t.all.map((r, j) => ({ r, j, name: f.name(r[0]).toLowerCase() }));
+  openModal(`<h2>${f.title}</h2>
+    <p class="muted small">Every one of ${esc(name)}'s, biggest first: ${f.t.kinds} kind${f.t.kinds === 1 ? "" : "s"}, ${esc(f.fmt(f.t.total))}${f.unit ? ` ${esc(f.unit)}` : ""} in all.</p>
+    ${list.length > 12 ? `<input class="input fav-find" type="search" placeholder="Find one…" aria-label="Find one">` : ""}
+    <div class="fav-cat fav-every"><ol></ol></div>
+    <div class="actions"><button type="button" class="btn" data-back>← All favourites</button><span style="flex:1"></span><button type="button" class="btn" data-close-modal>Close</button></div>`, (m) => {
+    m.classList.add("fav-modal");
+    const ol = m.querySelector("ol");
+    const paint = (q = "") => { ol.innerHTML = list.filter((x) => !q || x.name.includes(q)).map((x) => favRow(f, x.r, x.j, true)).join("") || `<li class="muted small">None called that</li>`; };
+    paint();
+    m.querySelector(".fav-find")?.addEventListener("input", (e) => paint(e.target.value.trim().toLowerCase()));
+    m.querySelector("[data-back]").addEventListener("click", () => openFavourites(name, st, i));
   });
 }
 

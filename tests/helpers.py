@@ -126,7 +126,8 @@ def build(root: Path) -> Path:
             "minecraft:mined": {"minecraft:stone": 9000-i*2000, "minecraft:oak_log": 1200, "minecraft:diamond_ore": 40, "minecraft:grass_block": 600},
             "minecraft:crafted": {"minecraft:torch": 640, "minecraft:oak_stairs": 120, "minecraft:furnace": 5},
             "minecraft:used": {"minecraft:diamond_sword": 2000, "minecraft:cooked_beef": 300},
-            "minecraft:killed": {"minecraft:zombie": 180, "minecraft:skeleton": 120, "minecraft:creeper": 44, "minecraft:ender_dragon": 1 if i == 0 else 0},
+            "minecraft:killed": {"minecraft:zombie": 180, "minecraft:skeleton": 120, "minecraft:creeper": 44, "minecraft:ender_dragon": 1 if i == 0 else 0,
+                                 "minecraft:spider": 30, "minecraft:enderman": 12, "minecraft:witch": 4, "minecraft:slime": 9},
             "minecraft:killed_by": {"minecraft:creeper": 3, "minecraft:skeleton": 2},
             "minecraft:picked_up": {"minecraft:diamond": 60}, "minecraft:broken": {"minecraft:iron_pickaxe": 4},
             "minecraft:dropped": {"minecraft:dirt": 64}}, "DataVersion": 4556}
