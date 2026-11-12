@@ -32,7 +32,7 @@ async function viewWebsite() {
 function renderWebsite() {
   const el = $("#ws-body");
   if (!el) return;
-  if (ws.tab === "site") { wsSite(el); wsSky(el); wsUnusedImages(el); } else if (ws.tab === "welcome") wsWelcome(el); else wsPosts(el);
+  if (ws.tab === "site") { wsSite(el); wsSky(el); wsUnusedImages(el); wsSiteTabs(el); } else if (ws.tab === "welcome") wsWelcome(el); else wsPosts(el);
 }
 
 // ---------------------------------------------------------------- posts
@@ -294,6 +294,33 @@ async function wsMaintenance() {
 }
 
 // ---------------------------------------------------------------- site details
+// Site details in parts: the home page, joining, the sky, when the site is down, and tidying up
+const WS_SITE_TABS = [["home", "🏠 Home page"], ["join", "🎮 Joining"], ["sky", "🌌 Sky"], ["down", "🛠 When it's down"], ["tidy", "🧹 Tidy up"]];
+function wsSiteTabs(el) {
+  const bar = document.createElement("div");
+  bar.className = "seg set-tabs ws-subtabs";
+  bar.setAttribute("role", "tablist");
+  bar.innerHTML = WS_SITE_TABS.map(([k, l]) => `<button type="button" role="tab" data-stab="${k}" aria-pressed="false">${l}</button>`).join("");
+  el.prepend(bar);
+  const form = $("#ws-site", el);
+  const show = (k) => {
+    if (!WS_SITE_TABS.some(([t]) => t === k)) k = "home";
+    ws.subtab = k;
+    $$("[data-stab]", bar).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.stab === k)));
+    // (the sky and unused-pictures panels arrive a moment later: they're marked when they do)
+    $(".ws-sky", el)?.setAttribute("data-spane", "sky");
+    $(".ws-unused", el)?.setAttribute("data-spane", "tidy");
+    $$("[data-spane]", el).forEach((p) => { p.hidden = p.dataset.spane !== k; });
+    if (form) form.style.display = ["home", "join"].includes(k) ? "" : "none";   // (.ws-site sets its own display, over [hidden])
+    try { localStorage.setItem("solstone-wstab", k); } catch { /* fine */ }
+  };
+  bar.addEventListener("click", (e) => { const b = e.target.closest("[data-stab]"); if (b) show(b.dataset.stab); });
+  let first = ws.subtab;
+  try { first ||= localStorage.getItem("solstone-wstab") || "home"; } catch { first ||= "home"; }
+  show(first);
+  const watch = new MutationObserver(() => { if (bar.isConnected) show(ws.subtab); else watch.disconnect(); });
+  watch.observe(el, { childList: true });
+}
 // Pictures uploaded for posts and votes that nothing uses any more: listed (with what they'd free up) and removed
 // on request. Only ones more than a day old, so a picture in a post still being written is never one of them.
 async function wsUnusedImages(el) {
@@ -320,6 +347,7 @@ async function wsUnusedImages(el) {
 function wsSite(el) {
   const s = ws.data.site;
   el.innerHTML = `<form class="panel ws-site" id="ws-site">
+    <div data-spane="home">
     <div class="ws-logo"><img src="${esc(ws.data.logo || SITE_LOGO)}" alt="The site's logo" width="64" height="64" id="ws-logo-img">
       <div><b>Logo</b><small class="muted">A square picture works best (PNG, JPEG, WebP or GIF, under 1 MB). It shows beside the name and in the browser tab.</small>
         <span class="btn-row"><label class="btn sm ws-file">Choose a picture<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" id="ws-logo-file" hidden></label>
@@ -329,10 +357,16 @@ function wsSite(el) {
     <label>Distances in <small>Everywhere: player stats, the home page, Server stats, Adventures</small><select class="input" name="units">
       <option value="km" ${s.units !== "miles" ? "selected" : ""}>Kilometres (km)</option><option value="miles" ${s.units === "miles" ? "selected" : ""}>Miles (mi)</option></select></label>
     <label class="check"><input type="checkbox" name="home_title" ${s.home_title ? "checked" : ""}> Show the name (and tagline) big at the top of the home page <small>Off: just the bar at the top, with the logo and name</small></label>
+    <label class="check"><input type="checkbox" name="home_live" ${s.home_live ? "checked" : ""}> Show each server's status at the top of the home page <small>Up or not, how many are playing (never who), TPS, version, how long it's been up and CPU, with little graphs. Private servers are never shown.</small></label>
     <div class="row2"><label>News on the home page <small>The newest (pinned first), then a <b>More news</b> button. 0: none</small><input class="input" type="number" name="home_news" min="0" max="12" value="${s.home_news ?? 3}"></label>
       <label>Guides on the home page <small>Then a <b>More guides</b> button. 0: none</small><input class="input" type="number" name="home_guides" min="0" max="12" value="${s.home_guides ?? 4}"></label></div>
     <label>Past events on the Events page <small>Finished contests, races and games stay under <b>Lately</b>, with how they went (never who), for</small><select class="input" name="past_days">
       ${[[0, "Don't show them"], [1, "1 day"], [2, "2 days"], [3, "3 days"], [5, "5 days"], [7, "A week"], [14, "2 weeks"], [30, "30 days"]].map(([v, l]) => `<option value="${v}" ${(s.past_days ?? 3) === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+    <label>Contact email <small>Where players and parents can reach you: account problems, questions, something stolen or broken. Shown on the Help page and at the bottom of every page, and <code>{contact}</code> puts it in any post.</small><input class="input" type="email" name="contact" maxlength="120" value="${esc(s.contact || "")}" placeholder="contact@example.com"></label>
+    <label>Discord invite <small>A discord.gg or discord.com link</small><input class="input" name="discord" maxlength="200" value="${esc(s.discord)}" placeholder="https://discord.gg/..."></label>
+    <label>About <small>Shown at the bottom of the home page. Same formatting as posts.</small><textarea class="input" name="about" rows="6" maxlength="4000">${esc(s.about)}</textarea></label>
+    </div>
+    <div data-spane="join" hidden>
     <fieldset class="ws-joins"><legend>How to join each server <small class="muted">One card per server on the home page, with how it's doing</small></legend>
       <p class="muted small">Each server gets its own card. Leave Bedrock empty for Java only, or Java empty for Bedrock only; a server with neither isn't shown. Private servers never show. The join guide uses the first server's addresses.</p>
       ${(state.servers || []).filter((x) => !x.private).map((x, i) => `<div class="ws-join" data-sid="${esc(x.id)}">
@@ -347,20 +381,17 @@ function wsSite(el) {
         <label>About this server <small>Optional, shown on its card: what it is, who it's for. For example: Our survival world for the whole family, or: Modded adventures, needs the modpack.</small><textarea class="input" data-j="join_note" maxlength="300" rows="2"></textarea></label>
         <label class="check"><input type="checkbox" data-j="join_mods"> List the mods players need</label></div>`).join("")}
     </fieldset>
-    <label>Contact email <small>Where players and parents can reach you: account problems, questions, something stolen or broken. Shown on the Help page and at the bottom of every page, and <code>{contact}</code> puts it in any post.</small><input class="input" type="email" name="contact" maxlength="120" value="${esc(s.contact || "")}" placeholder="contact@example.com"></label>
-    <label>Discord invite <small>A discord.gg or discord.com link</small><input class="input" name="discord" maxlength="200" value="${esc(s.discord)}" placeholder="https://discord.gg/..."></label>
-    <label>About <small>Shown at the bottom of the home page. Same formatting as posts.</small><textarea class="input" name="about" rows="6" maxlength="4000">${esc(s.about)}</textarea></label>
     <fieldset class="ws-start"><legend>Getting started <small class="muted">The steps on the home page for someone new</small></legend>
       <label class="check"><input type="checkbox" name="join_requests" ${s.join_requests ? "checked" : ""}> <b>Ask to join</b> <small>A button that opens a form: their name in the game (and, if they like, a first name and a note). You get a notification, and they show in Manage → Players → Whitelist.${ws.data.notify_ready === false ? " Set up notifications first (Manage → Solstone → Notifications)." : ""}</small></label>
       <label class="check"><input type="checkbox" name="signup" ${s.signup ? "checked" : ""}> <b>Make a website account</b> <small>Players make their own: they type their name while they're playing, get a code in the game chat, and pick a password. They start as Players. Your whitelist decides who can.</small></label>
     </fieldset>
-    <label class="check"><input type="checkbox" name="home_live" ${s.home_live ? "checked" : ""}> Show each server's status at the top of the home page <small>Up or not, how many are playing (never who), TPS, version, how long it's been up and CPU, with little graphs. Private servers are never shown.</small></label>
+    </div>
     <div class="actions"><a class="btn" href="/" target="_blank" rel="noopener">Open the home page</a><button class="btn primary" type="submit">Save</button></div>
   </form>
-  <section class="panel ws-offline"><h3>If this website goes down</h3>
+  <section class="panel ws-offline" data-spane="down" hidden><h3>If this website goes down</h3>
     <p class="muted">When this computer is off or Solstone isn't running, visitors can still get a page from Cloudflare: the site's name, how to get on each Minecraft server (Java: its address; Bedrock: the Xbox friend, and the address and port as the other way, all with Copy buttons), whether each is still up and how many are playing (never who), and your contact email. It's a small Cloudflare Worker, free on Cloudflare's free plan.</p>
     <ol class="ws-steps">
-      <li>Save the details above, then <a class="btn sm" href="/api/settings/site/offline-worker" download>⬇ Download the Worker</a></li>
+      <li>Save the details on <b>Home page</b> and <b>Joining</b>, then <a class="btn sm" href="/api/settings/site/offline-worker" download>⬇ Download the Worker</a></li>
       <li>In Cloudflare: <b>Workers &amp; Pages → Create application → Start with Hello World</b>, name it (like <i>site-offline</i>) and <b>Deploy</b>. Then <b>Edit code</b>, replace everything there with the downloaded file, and <b>Deploy</b> again. (Not <i>Upload</i> or static files: that's for Pages, and won't take it.)</li>
       <li>In the Worker: <b>Settings → Domains &amp; Routes → Add → Route</b> (not <i>Custom domain</i>): <code>${esc(location.host)}/*</code> on your domain's zone. The website's address must be proxied by Cloudflare (orange cloud, or a Cloudflare Tunnel). Its own <i>workers.dev</i> address isn't needed; you can turn it off there.</li>
       <li>For planned maintenance (below), give it somewhere to keep the notice: in Cloudflare, <b>Storage &amp; Databases → KV → Create</b> (name it <i>solstone</i>), then in the Worker <b>Settings → Bindings → Add → KV namespace</b>, variable name <code>SOLSTONE</code>, that namespace, and <b>Deploy</b>.</li>
@@ -368,7 +399,7 @@ function wsSite(el) {
     </ol>
     <p class="muted small">Changed the name, contact, servers or how to join them (addresses, the Xbox friend, the note)? Download it again and paste it over the old one. The server check uses mcsrvstat.us, a free public status checker.</p>
   </section>
-  <section class="panel ws-offline" id="ws-maint"><h3>🛠️ Planned maintenance</h3>
+  <section class="panel ws-offline" id="ws-maint" data-spane="down" hidden><h3>🛠️ Planned maintenance</h3>
     <p class="muted">Taking the servers and website down on purpose (new hardware, say)? Plan it here: every page shows a banner counting down to it, and while everything's off, the Cloudflare page says <i>Down for maintenance, back around …</i> with your message, instead of just "down". Times are the server's.</p>
     <form id="ws-maint-form" class="ws-row">
       <label>From<input class="input" type="datetime-local" name="start" required></label>

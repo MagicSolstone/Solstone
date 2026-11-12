@@ -588,7 +588,11 @@ body.logged-out .account-menu { display: none; }
 
 /* ------------------------------------------------------------ control */
 .ctl-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; margin-bottom: 20px; }
-.ctl-top h3, .ctl-side h3 { margin-bottom: 10px; }
+.ctl-top h3, .ctl-side h3, .ctl-world h3 { margin-bottom: 10px; }
+.ctl-tabs { margin: 4px 0 18px; }
+.ctl-world { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; margin-bottom: 30px; }
+.ctl-world .ctl-rules { grid-column: 1 / -1; }
+[data-cpane="console"] { margin-bottom: 30px; }
 .ctl-state { margin-bottom: 10px; }
 .bc-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .bc-form .check { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; color: var(--muted); }
@@ -2726,3 +2730,29 @@ body.ui-hidden .manage-sub { display: none; }
 .nlog-st.ok { color: #69db7c; }
 .nlog-st.bad, .nlog-body .bad { color: #ff8a7a; }
 .nlog-st.muted { color: var(--faint); }
+
+/* Fireworks: the built-in kinds in folding groups */
+.fw-group { border: 1px solid var(--line); border-radius: var(--radius-m); margin: 0 0 10px; background: rgba(0, 0, 0, .08); }
+.fw-group > summary { cursor: pointer; padding: 10px 14px; display: flex; gap: 10px; align-items: baseline; list-style: none; }
+.fw-group > summary::-webkit-details-marker { display: none; }
+.fw-group > summary::before { content: "▸"; color: var(--faint); transition: transform .15s; }
+.fw-group[open] > summary::before { transform: rotate(90deg); }
+.fw-group > summary span { margin-left: auto; }
+.fw-group > .fw-all, .fw-group > .fw-kinds { margin: 0 14px; }
+.fw-group > .fw-kinds { margin-bottom: 10px; }
+.fw-all { border-bottom: 1px dashed var(--basalt); }
+.fw-all .fw-kname { color: var(--muted); font-weight: 700; }
+.fw-sub + .fw-row { margin-top: 0; }
+h3.fw-sub:not(:first-child) { margin-top: 18px; }
+
+/* Play time on a phone: a card for each player instead of a table that scrolls sideways */
+@media (max-width: 640px) {
+  .pt-people thead { display: none; }
+  .pt-people, .pt-people tbody, .pt-people td { display: block; width: 100%; }
+  .pt-people tr { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; padding: 12px; margin-bottom: 8px; background: var(--tuff); border-radius: var(--radius-m); }
+  .pt-people td { padding: 0; border: 0; }
+  .pt-people td.pt-who { grid-column: 1 / -1; }
+  .pt-people td[data-label]::before { content: attr(data-label); display: block; font-size: .72rem; font-weight: 700; color: var(--faint); margin-bottom: 3px; text-transform: uppercase; letter-spacing: .03em; }
+  .pt-people .input.sm { width: 6.5em; }
+  .pt-page .table-wrap { overflow: visible; background: none; padding: 0; }
+}

@@ -78,11 +78,11 @@ function renderPlaytime() {
     <section class="panel"><div class="section-head"><h2>👥 Each player</h2></div>
       ${d.rows.length ? `<div class="table-wrap"><table class="pt-people"><thead><tr><th>Player</th><th>Bedtime</th><th>Daily limit</th><th>Weekends</th><th>Today</th></tr></thead><tbody>
         ${d.rows.map((r) => `<tr data-key="${esc(r.key)}">
-          <td><b>${esc(r.label)}</b>${r.account && (r.names.length > 1 || r.names[0] !== r.label) ? `<br><small class="muted">${esc(r.names.join(" + "))}</small>` : ""}</td>
-          <td><label class="check"><input type="checkbox" name="bedtime" ${r.bedtime ? "checked" : ""}> ${r.bedtime ? "Applies" : "Stays up"}</label></td>
-          <td><input class="input sm" type="number" min="0" max="1440" step="15" name="limit" value="${r.limit || ""}" placeholder="No limit" aria-label="Daily limit for ${esc(r.label)}"> <small class="muted">min</small></td>
-          <td><input class="input sm" type="number" min="0" max="1440" step="15" name="weekend_limit" value="${r.weekend_limit || ""}" placeholder="Same" aria-label="Weekend limit for ${esc(r.label)}"> <small class="muted">min</small></td>
-          <td class="muted">${ptMins(r.today)}</td></tr>`).join("")}
+          <td class="pt-who"><b>${esc(r.label)}</b>${r.account && (r.names.length > 1 || r.names[0] !== r.label) ? `<br><small class="muted">${esc(r.names.join(" + "))}</small>` : ""}</td>
+          <td data-label="Bedtime"><label class="check"><input type="checkbox" name="bedtime" ${r.bedtime ? "checked" : ""}> ${r.bedtime ? "Applies" : "Stays up"}</label></td>
+          <td data-label="Daily limit"><input class="input sm" type="number" min="0" max="1440" step="15" name="limit" value="${r.limit || ""}" placeholder="No limit" aria-label="Daily limit for ${esc(r.label)}"> <small class="muted">min</small></td>
+          <td data-label="Weekends"><input class="input sm" type="number" min="0" max="1440" step="15" name="weekend_limit" value="${r.weekend_limit || ""}" placeholder="Same" aria-label="Weekend limit for ${esc(r.label)}"> <small class="muted">min</small></td>
+          <td class="muted" data-label="Today">${ptMins(r.today)}</td></tr>`).join("")}
       </tbody></table></div>
       <p class="muted small">Weekends are Saturday and Sunday. Leave <b>Weekends</b> empty to use the daily limit then too.</p>` : '<p class="muted">Players show here once they have joined a server.</p>'}
     </section>

@@ -174,7 +174,12 @@ async function viewControl(sid) {
       </section>
     </div>
     ${info.can_rcon || info.can_crafty ? "" : `<div class="notice">Turn on RCON for this server (<a href="#/manage/setup">Manage → Server setup</a>) to send commands.</div>`}
-    <div class="ctl-main">
+    <div class="seg set-tabs ctl-tabs" role="tablist">${[...(info.is_java ? [["players", "👥 Players"]] : []), ["console", "⌨ Console"], ...(info.is_java ? [["world", "🌍 World"]] : []), ["log", "📋 Admin actions"]]
+      .map(([k, l]) => `<button type="button" role="tab" data-ctab="${k}" aria-pressed="false">${l}</button>`).join("")}</div>
+    ${info.is_java ? `<div data-cpane="players">
+    <section class="section"><div class="section-head"><h2>Players</h2><span class="muted" id="online-count"></span></div><div id="ctl-players"></div></section>
+    <section class="section"><div class="section-head"><h2>Whitelist and operators</h2></div><div class="panel" id="ctl-lists"></div></section></div>` : ""}
+    <div data-cpane="console" hidden>
       <section class="console-wrap"><div class="section-head"><h2>Console</h2><span class="muted small" id="console-state">Connecting…</span></div>
         <div class="console" id="console" role="log" aria-live="off"></div>
         <form id="cmd-form" class="cmd-form" autocomplete="off">
@@ -183,20 +188,34 @@ async function viewControl(sid) {
         </form>
         <div class="chips">${QUICK_COMMANDS.map((c) => `<button class="chip chip-btn" type="button" data-cmd="${esc(c)}">${esc(c)}</button>`).join("")}</div>
       </section>
-      <aside class="ctl-side">${info.is_java ? `
+    </div>
+    <div data-cpane="world" hidden>
+      <div class="ctl-world">${info.is_java ? `
         <section class="panel"><h3>World</h3>
           <div class="ctl-row"><span>Time</span><div class="seg">${["day", "noon", "night", "midnight"].map((v) => `<button data-quick="time" data-value="${v}">${humanize(v)}</button>`).join("")}</div></div>
           <div class="ctl-row"><span>Weather</span><div class="seg">${["clear", "rain", "thunder"].map((v) => `<button data-quick="weather" data-value="${v}">${humanize(v)}</button>`).join("")}</div></div>
           <div class="ctl-row"><span>Difficulty</span><div class="seg">${["peaceful", "easy", "normal", "hard"].map((v) => `<button data-quick="difficulty" data-value="${v}">${humanize(v)}</button>`).join("")}</div></div>
         </section>
-        <section class="panel"><h3>Game rules</h3><div id="rules">${rulesHtml(info.game_rules, info.can_rcon)}</div></section>` : `<section class="panel"><p class="muted">Quick world controls are for Minecraft Java servers. Use the console for this server.</p></section>`}
-      </aside>
+        <section class="panel"><h3>Bedtime</h3><p class="muted small" id="bed-status"></p><div id="ctl-bedtime"></div></section>
+        <section class="panel ctl-rules"><h3>Game rules</h3><div id="rules">${rulesHtml(info.game_rules, info.can_rcon)}</div></section>` : ""}
+      </div>
     </div>
-    ${info.is_java ? `<section class="section"><div class="section-head"><h2>Players</h2><span class="muted" id="online-count"></span></div><div id="ctl-players"></div></section>
-    <section class="section"><div class="section-head"><h2>Whitelist and operators</h2></div><div class="panel" id="ctl-lists"></div></section>
-    <section class="section"><div class="section-head"><h2>Bedtime</h2><span class="muted" id="bed-status"></span></div><div class="panel" id="ctl-bedtime"></div></section>` : ""}
-    <section class="section"><div class="section-head"><h2>Recent admin actions</h2></div><div class="panel" id="ctl-audit">${auditHtml(info.audit)}</div></section>`);
+    <div data-cpane="log" hidden><section class="section"><div class="section-head"><h2>Recent admin actions</h2></div><div class="panel" id="ctl-audit">${auditHtml(info.audit)}</div></section></div>`);
   wireHeader(s);
+  {
+    const tabs = $$("[data-ctab]").map((b) => b.dataset.ctab);
+    const show = (k) => {
+      if (!tabs.includes(k)) k = tabs[0];
+      $$("[data-ctab]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.ctab === k)));
+      $$("[data-cpane]").forEach((p) => { p.hidden = p.dataset.cpane !== k; });
+      try { localStorage.setItem("solstone-ctltab", k); } catch { /* fine */ }
+      if (k === "console") { const c = $("#console"); if (c) c.scrollTop = c.scrollHeight; }
+    };
+    $$("[data-ctab]").forEach((b) => b.addEventListener("click", () => show(b.dataset.ctab)));
+    let first = tabs[0];
+    try { first = localStorage.getItem("solstone-ctltab") || first; } catch { /* fine */ }
+    show(first);
+  }
 
   // ---- helpers
   const refreshInfo = async () => {
@@ -878,20 +897,42 @@ const FW_LABELS = [
   ["cube", "Block"], ["pickaxe", "Pickaxe"], ["axe", "Axe"], ["creeper", "Creeper"], ["heart", "Heart"],
   ["dragon", "Ender dragon", "show-piece"], ["bow", "Bow and arrow", "show-piece"], ["tree", "Tree", "show-piece"],
 ];
+// The built-in fireworks in groups, each folding away, with one "all of them" row
+const FW_GROUPS = [
+  ["✨ In the sky", ["ball", "large", "star", "burst", "ring", "crossette", "spiral", "willow", "saturn", "pair", "shootingstar"]],
+  ["🎇 From the ground", ["candle", "cake", "fountain", "wheel", "sparkler"]],
+  ["⛏ Pictures", ["cube", "pickaxe", "axe", "creeper", "heart"]],
+  ["🐉 Show-pieces", ["dragon", "bow", "tree"]],
+];
+function fwWeights(fw) {
+  return fw.weights || Object.fromEntries(Object.entries(fw.kinds || {}).map(([k, v]) => [k, v ? 1 : 0]));
+}
+function fwGroupSummary(keys, weights) {
+  const on = keys.filter((k) => (weights[k] ?? 1) > 0).length;
+  return on === keys.length ? `all ${on} on` : on ? `${on} of ${keys.length} on` : "all off";
+}
 function fireworksSettingsHtml(fw) {
   const seg = (name, opts, cur) => `<div class="seg" role="group" data-fw-seg="${name}">${opts.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${v === cur}">${l}</button>`).join("")}</div>`;
-  const weights = fw.weights || Object.fromEntries(Object.entries(fw.kinds || {}).map(([k, v]) => [k, v ? 1 : 0]));
-  return `<h3 class="fw-sub">Built-in fireworks <span class="muted small">how often each one comes up</span></h3>
-    <div class="fw-kinds">${FW_LABELS.map(([k, l, note]) => `<div class="fw-kind ${weights[k] ? "" : "off"}">
-      <span class="fw-kname">${esc(l)}${note ? ` <small class="muted">${esc(note)}</small>` : ""}</span>
-      ${freqSeg(`data-fw-weight="${k}"`, weights[k] ?? 1)}
-      <button type="button" class="icon-btn fw-try" data-try="${k}" title="Launch one now" aria-label="Try ${esc(l)}">▶</button></div>`).join("")}</div>
-    <p class="muted small" style="margin:-4px 0 14px">Dragon, bow and arrow, and tree are show-pieces: their frequencies are compared with each other, and “Show-pieces” below sets how often any of them appears.</p>
+  const weights = fwWeights(fw);
+  const label = Object.fromEntries(FW_LABELS.map(([k, l, note]) => [k, [l, note]]));
+  let open = [];
+  try { open = JSON.parse(localStorage.getItem("solstone-fwgroups") || "[0]"); } catch { open = [0]; }
+  return `<h3 class="fw-sub">The show</h3>
     <div class="fw-row"><span>Colours</span><div class="fw-colors">${FW_COLORS.map((c) => `<button type="button" class="fw-swatch" data-color="${c}" aria-pressed="${fw.colors.includes(c)}" style="--c:${c}" aria-label="Colour ${c}"></button>`).join("")}</div></div>
     <div class="fw-row"><span>How often</span>${seg("pace", [["calm", "Calm"], ["normal", "Normal"], ["lively", "Lively"]], fw.pace)}</div>
     <p class="muted small">Everyone's usual. Each person can pick their own in the 🎆 Launch list (Show pace), just for their device.</p>
     <div class="fw-row"><span>Show-pieces</span>${seg("showpieces", [["rare", "Rare"], ["sometimes", "Sometimes"], ["often", "Often"]], fw.showpieces)}</div>
-    <p class="muted small">Creeper, heart and tree keep their own colours, and willows are often classic gold. The ▶ buttons are easiest to watch with the Show switch (bottom right) turned off.</p>`;
+    <p class="muted small">How often any show-piece (dragon, bow and arrow, tree) appears. Creeper, heart and tree keep their own colours, and willows are often classic gold.</p>
+    <h3 class="fw-sub">Built-in fireworks <span class="muted small">how often each one comes up · ▶ launches one now (easiest to watch with the Show switch, bottom right, off)</span></h3>
+    ${FW_GROUPS.map(([g, keys], i) => `<details class="fw-group" data-gi="${i}" ${open.includes(i) ? "open" : ""}>
+      <summary><b>${g}</b><span class="muted small" data-gsum>${fwGroupSummary(keys, weights)}</span></summary>
+      <div class="fw-kind fw-all"><span class="fw-kname">All of these</span>${freqSeg(`data-fw-group="${i}"`, -1)}<span></span></div>
+      <div class="fw-kinds">${keys.map((k) => { const [l, note] = label[k] || [k]; return `<div class="fw-kind ${weights[k] ?? 1 ? "" : "off"}">
+        <span class="fw-kname">${esc(l)}${note && note !== "show-piece" ? ` <small class="muted">${esc(note)}</small>` : ""}</span>
+        ${freqSeg(`data-fw-weight="${k}"`, weights[k] ?? 1)}
+        <button type="button" class="icon-btn fw-try" data-try="${k}" title="Launch one now" aria-label="Try ${esc(l)}">▶</button></div>`; }).join("")}</div>
+    </details>`).join("")}
+    ${FW_GROUPS.length ? `<p class="muted small">Show-pieces are compared with each other; “Show-pieces” above sets how often any of them appears.</p>` : ""}`;
 }
 // Off · Rare · Normal · Often · Lots, used for kinds, designs and people.
 const FREQS = [[0, "Off"], [0.5, "Rare"], [1, "Normal"], [2, "Often"], [4, "Lots"]];
@@ -899,6 +940,9 @@ function freqSeg(attr, cur) {
   return `<div class="seg freq" role="group" ${attr}>${FREQS.map(([v, l]) => `<button type="button" data-freq="${v}" aria-pressed="${+cur === v}">${l}</button>`).join("")}</div>`;
 }
 function wireFireworksSettings(el, fw) {
+  $$(".fw-group", el).forEach((d) => d.addEventListener("toggle", () => {
+    try { localStorage.setItem("solstone-fwgroups", JSON.stringify($$(".fw-group", el).filter((x) => x.open).map((x) => +x.dataset.gi))); } catch { /* fine */ }
+  }));
   const save = async (body) => {
     try {
       const cfg = await post("/api/settings/fireworks", body, "PUT");
@@ -909,6 +953,22 @@ function wireFireworksSettings(el, fw) {
   el.addEventListener("click", (e) => {
     const t = e.target.closest("button");
     if (!t) return;
+    const gseg = t.closest("[data-fw-group]");
+    if (gseg) {
+      const det = gseg.closest(".fw-group"), keys = FW_GROUPS[+gseg.dataset.fwGroup][1], v = +t.dataset.freq;
+      const others = Object.entries(fwWeights(fw)).some(([x, w]) => !keys.includes(x) && w > 0);
+      if (v === 0 && !others) { showToast("Leave at least one kind of firework on", 2500); return; }
+      gseg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === t)));
+      $$("[data-fw-weight]", det).forEach((w) => {
+        w.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.freq === v)));
+        w.closest(".fw-kind").classList.toggle("off", v === 0);
+      });
+      const weights = Object.fromEntries(keys.map((k) => [k, v]));
+      fw.weights = { ...fwWeights(fw), ...weights };
+      $("[data-gsum]", det).textContent = fwGroupSummary(keys, fw.weights);
+      save({ weights });
+      return;
+    }
     const wseg = t.closest("[data-fw-weight]");
     if (wseg) {
       const k = wseg.dataset.fwWeight, v = +t.dataset.freq;
@@ -916,6 +976,13 @@ function wireFireworksSettings(el, fw) {
       if (v === 0 && !others) { showToast("Leave at least one kind of firework on", 2500); return; }
       wseg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === t)));
       wseg.closest(".fw-kind").classList.toggle("off", v === 0);
+      fw.weights = { ...fwWeights(fw), [k]: v };
+      const det = wseg.closest(".fw-group");
+      if (det) {
+        const keys = FW_GROUPS[+det.dataset.gi][1];
+        $("[data-gsum]", det).textContent = fwGroupSummary(keys, fw.weights);
+        $$("[data-fw-group] button", det).forEach((b) => b.setAttribute("aria-pressed", "false"));
+      }
       save({ weights: { [k]: v } });
       return;
     }
@@ -1282,6 +1349,8 @@ async function openServerSetup(sid, then, tab = "") {
         <label>No faster than <select class="input sm" name="backup_mbps">${[[0, "as fast as it goes"], [2, "2 MB/s"], [5, "5 MB/s"], [10, "10 MB/s"], [20, "20 MB/s"], [50, "50 MB/s"]].map(([v, l]) => `<option value="${v}" ${(+c.backup_mbps || 0) === v ? "selected" : ""}>${l}</option>`).join("")}</select>
           <small class="muted">leaves the server's connection room for players during a big copy</small></label>
         <label class="check wide"><input type="checkbox" name="backup_dh" ${c.backup_dh !== false ? "checked" : ""}> <span><b>With Distant Horizons' data</b><br><small class="muted">large, and fetched whole again on nights it changed; it can be rebuilt from the world</small></span></label>
+        <label class="wide">Don't copy <small class="muted">One per line: a file or folder from the server's own folder (<code>bluemap</code>, <code>world/DistantHorizons.sqlite</code>) or a pattern (<code>*.jar</code>, <code>world/data/*.bak</code>). Logs, crash reports and what the game downloads by itself are never copied. Ones already in the copy stay there until you delete them (📂 below shows what's in it).</small>
+          <textarea class="input mono" name="backup_skip" rows="3" spellcheck="false" placeholder="bluemap&#10;*.jar">${esc((c.backup_skip || []).join("\n"))}</textarea></label>
       </div>
       <div id="backup-status">${sid ? backupLine(row?.backup) : ""}</div>
       ${sid ? `<details class="small" data-backup-history><summary>🕘 History of full copies <span class="muted">(each one: what changed, what was removed)</span></summary><div class="bk-hist muted">Loading…</div></details>
@@ -1329,7 +1398,7 @@ async function openServerSetup(sid, then, tab = "") {
     const f = new FormData(form), out = { name: (f.get("display_name") || "").trim() || rc?.name || row?.found_as || "" };
     for (const k of ["host", "port", "user", "password", "path", "conn", "panel_id", "files_secs"]) out[k] = (f.get(k) || "").trim();
     out.map = !!f.get("map");
-    out.backup = !!f.get("backup"); out.backup_dh = !!f.get("backup_dh"); out.backup_at = f.get("backup_at") || "04:00"; out.backup_mbps = f.get("backup_mbps") || 0;
+    out.backup = !!f.get("backup"); out.backup_dh = !!f.get("backup_dh"); out.backup_at = f.get("backup_at") || "04:00"; out.backup_mbps = f.get("backup_mbps") || 0; out.backup_skip = f.get("backup_skip") || "";
     if (sid) out.id = sid;
     return out;
   };

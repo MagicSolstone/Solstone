@@ -215,7 +215,8 @@ def main() -> int:
             # the sky's settings live on Website → Site details now
             pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(900)
             pg.click("[data-tab=site]"); pg.wait_for_timeout(1200)
-            if not pg.locator(".ws-sky [data-sky=mode] button").count():
+            pg.click('[data-stab="sky"]'); pg.wait_for_timeout(300)
+            if not pg.locator(".ws-sky:visible [data-sky=mode] button").count():
                 problems.append("website: the sky settings aren't on Site details")
 
             # the website's pages: the same account menu as in the app
@@ -1131,7 +1132,8 @@ def main() -> int:
                 anon.keyboard.press("Escape")
                 pg.goto(f"{base}/app#/manage/website"); pg.wait_for_timeout(1000)
                 pg.click('.fws-tabs [data-tab="site"]'); pg.wait_for_timeout(800)
-                if not pg.locator(".ws-join").count():
+                pg.click('[data-stab="join"]'); pg.wait_for_timeout(300)
+                if not pg.locator(".ws-join:visible").count():
                     problems.append("website: no join details for each server in Site details")
                 pg.wait_for_timeout(500)
                 if pg.locator('#ws-site [name="java_address"]').count():
@@ -1143,11 +1145,17 @@ def main() -> int:
                 pg.evaluate("""() => { const c = document.querySelector('.ws-join [data-j="join_color"]'); c.value = '#4cd964'; c.dispatchEvent(new Event('input')); }""")
                 pg.locator('.ws-join [data-j="join_note"]').first.fill("Our survival world for the whole family.")
                 check(pg, "website-joins")
-                pg.fill('#ws-site [name="contact"]', "contact@example.net")
-                if not pg.locator('.ws-offline a[href="/api/settings/site/offline-worker"]').count():
+                pg.click('[data-stab="down"]'); pg.wait_for_timeout(300)
+                if not pg.locator('.ws-offline:visible a[href="/api/settings/site/offline-worker"]').count():
                     problems.append("website: no download for the Cloudflare offline page")
-                if not pg.locator("#ws-maint-form [name=start]").count():
+                if not pg.locator("#ws-maint-form:visible [name=start]").count():
                     problems.append("website: no Planned maintenance in Site details")
+                if pg.locator("#ws-site").is_visible():
+                    problems.append("website: Site details' form still shows on the When it's down tab")
+                check(pg, "website-down-tab")
+                pg.click('[data-stab="home"]'); pg.wait_for_timeout(300)
+                pg.fill('#ws-site [name="contact"]', "contact@example.net")
+                check(pg, "website-home-tab")
                 pg.click('#ws-site button[type="submit"]'); pg.wait_for_timeout(1500)
                 anon.goto(f"{base}/"); anon.reload(); anon.wait_for_timeout(1200)
                 if "main" not in (anon.locator(".hp-join-card").first.get_attribute("class") or "").split() or "survival world" not in (anon.locator(".hp-join-card.main").text_content() or ""):

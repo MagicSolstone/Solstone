@@ -612,6 +612,23 @@ def test_the_full_copy_copies_everything_checks_it_and_then_only_what_changed(fa
     (root / "world" / "data" / "DistantHorizons.sqlite").write_bytes(b"E" * 9000)
     fourth = loop.run_until_complete(m.backup("asked"))
     assert fourth["ok"] and fourth["fetched"] == 0 and (d / "world/data/DistantHorizons.sqlite").read_bytes() == b"D" * 9000
+    # the admin's own "Don't copy" list: a folder and a pattern, neither fetched nor removed
+    (root / "bluemap").mkdir()
+    (root / "bluemap" / "tile.png").write_bytes(b"T" * 500)
+    (root / "notes.bak").write_bytes(b"N" * 10)
+    _backup_on(sid, backup_dh=False, backup_skip=remote._skip_list("/bluemap/\n*.bak\n../etc"))
+    assert remote.all_cfg()[sid]["backup_skip"] == ["bluemap", "*.bak"]
+    fifth = loop.run_until_complete(m.backup("asked"))
+    assert fifth["ok"] and fifth["fetched"] == 0 and not (d / "bluemap").exists() and not (d / "notes.bak").exists()
+
+
+def test_dont_copy_patterns():
+    pats = remote._skip_list(["bluemap", "world/data/*.bak", "*.jar", "", "a/../b"])
+    assert pats == ["bluemap", "world/data/*.bak", "*.jar"]
+    assert remote.skipped("bluemap", pats) and remote.skipped("bluemap/web/x.png", pats)
+    assert not remote.skipped("bluemapx/a", pats)
+    assert remote.skipped("world/data/old.bak", pats) and not remote.skipped("world/old.bak", pats)
+    assert remote.skipped("mods/lithium.jar", pats) and not remote.skipped("world/level.dat", pats)
 
 
 def test_a_full_copy_starts_from_files_already_here(far):

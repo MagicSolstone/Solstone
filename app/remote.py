@@ -22,6 +22,7 @@ says so instead of sending the password to something else.
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import logging
 import math
 import os
@@ -71,6 +72,35 @@ HISTORY_KEEP = 60                   # full copies remembered (what each fetched 
 CHANGED_KEEP = 2000                 # files listed for each (a first copy lists the first of them, and how many more)
 SAVING_STUCK = ("The game's saving couldn't be turned back on (RCON didn't answer save-on). Solstone keeps trying every 10 "
                 "seconds; restarting the server also turns it back on")
+
+
+SKIP_MAX = 40
+
+
+def _skip_list(v) -> list[str]:
+    """What the full copy leaves out, as the admin typed it: one per line, a file or folder (from the server's own
+    folder, like world/DistantHorizons.sqlite or bluemap) or a pattern (*.jar, world/data/*.bak)."""
+    lines = v.splitlines() if isinstance(v, str) else v if isinstance(v, list) else []
+    out: list[str] = []
+    for x in lines:
+        x = str(x).strip().replace("\\", "/").strip("/")
+        while x.startswith("./"):
+            x = x[2:]
+        if x and ".." not in x.split("/") and x not in out:
+            out.append(x[:200])
+    return out[:SKIP_MAX]
+
+
+def skipped(rel: str, patterns: list[str]) -> bool:
+    """A path (a file, or a folder) the admin's list leaves out: the path itself, anything under it, or a pattern match
+    (on the whole path, or, for a pattern with no /, on the name alone)."""
+    name = rel.rsplit("/", 1)[-1]
+    for p in patterns:
+        if rel == p or rel.startswith(p + "/"):
+            return True
+        if any(c in p for c in "*?[") and (fnmatch.fnmatchcase(rel, p) or ("/" not in p and fnmatch.fnmatchcase(name, p))):
+            return True
+    return False
 
 
 # ------------------------------------------------------------------ the saved settings
@@ -131,7 +161,8 @@ def clean(body: dict, old: dict | None = None) -> dict:
            "backup": bool(body["backup"]) if "backup" in body else bool(old.get("backup")),
            "backup_at": _hhmm(body.get("backup_at"), old.get("backup_at") or BACKUP_AT),
            "backup_dh": bool(body["backup_dh"]) if "backup_dh" in body else old.get("backup_dh", True),
-           "backup_mbps": num("backup_mbps", 0, 1000, 0)}                            # (0: as fast as it goes)
+           "backup_mbps": num("backup_mbps", 0, 1000, 0),                           # (0: as fast as it goes)
+           "backup_skip": _skip_list(body["backup_skip"]) if "backup_skip" in body else old.get("backup_skip", [])}
     # (switched on: from the next time it comes round, not straight away; Copy now is for that)
     cfg["backup_since"] = (old.get("backup_since") or time.time()) if cfg["backup"] else 0
     if not cfg["name"] or not cfg["host"] or not cfg["user"]:
@@ -662,7 +693,7 @@ class Mirror:
         if mark.get("started") and not mark.get("finished") and not self.backup_running:
             mark = {**mark, "finished": mark["started"], "ok": False,                 # (cut off: Solstone stopped while it ran)
                     "error": "It didn't finish: Solstone stopped while it was running. Copy now carries on from what it has"}
-        return {"on": bool(c.get("backup")), "at": c.get("backup_at") or BACKUP_AT, "dh": c.get("backup_dh", True),
+        return {"on": bool(c.get("backup")), "at": c.get("backup_at") or BACKUP_AT, "dh": c.get("backup_dh", True), "skip": c.get("backup_skip") or [],
                 "mbps": c.get("backup_mbps") or 0,
                 "running": self.backup_running, "progress": dict(self.backup_progress) if self.backup_running else {},
                 "last": {k: mark.get(k) for k in ("started", "finished", "ok", "error", "warning", "files", "fetched", "fetched_bytes",
@@ -806,6 +837,8 @@ class Mirror:
         top, name = rel.split("/", 1)[0], rel.rsplit("/", 1)[-1]
         if top in BACKUP_SKIP_TOP or name.endswith(BACKUP_SKIP_ENDS) or name == BACKUP_MARK:
             return False
+        if skipped(rel, self.cfg.get("backup_skip") or []):
+            return False
         return bool(self.cfg.get("backup_dh", True)) or not name.startswith("DistantHorizons")
 
     async def _walk(self, sftp, rel: str = "") -> dict[str, tuple[int, int]]:
@@ -817,7 +850,7 @@ class Mirror:
             path = f"{rel}/{e.filename}" if rel else str(e.filename)
             mode = e.attrs.permissions or 0
             if stat_mod.S_ISDIR(mode):
-                if path not in BACKUP_SKIP_TOP:
+                if path not in BACKUP_SKIP_TOP and not skipped(path, self.cfg.get("backup_skip") or []):
                     out.update(await self._walk(sftp, path))
             elif stat_mod.S_ISREG(mode) and self._wanted(path):
                 out[path] = (int(e.attrs.size or 0), int(e.attrs.mtime or 0))
