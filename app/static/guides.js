@@ -7,6 +7,30 @@ const GUIDE_PLACEHOLDERS = [["name", "The site's name"], ["java_address", "Java 
   ["bedrock_port", "Bedrock port"], ["java_version", "The server's Minecraft version"], ["discord", "Discord invite link"], ["ask", "A link to the Ask to join form"],
   ["rules", "A link to the rules"], ["contact", "The contact email (Site details)"], ["xbox_friend", "The Xbox gamertag Bedrock players add as a friend"]];
 
+// Wording an admin can start a post from, that isn't one of the built-in guides (no page of its own until it's a post)
+const POST_TEMPLATES = {
+  bedrock_link: {
+    title: "Play on Bedrock as your Java player",
+    excerpt: "Link your Bedrock and Java accounts once, then be the same player on either.",
+    body: () => `If you play {name} on both Java and Bedrock, you can link your two accounts once. After that, joining from Bedrock (phone, tablet, Windows or console) puts you in the world as your Java player: the same name, inventory, ender chest, advancements and stats.
+
+## Before you link
+Whatever your Bedrock player has now (its inventory, ender chest, levels, bed) stays with the Bedrock player, and that player isn't used after linking. Put anything you want to keep in a chest first, or ask an admin to help.
+
+## Link your accounts (once)
+GeyserMC, who make the Bedrock bridge this server uses, run a free link server for it.
+1. Join **link.geysermc.org** on one edition (on Bedrock, add it as a server with port **19132**).
+2. Type \`/linkaccount\` and follow what it says: it gives you a code to type on the other edition.
+3. Join **link.geysermc.org** on the other edition and finish it there.
+
+That's it: next time you join {name} from Bedrock, you're your Java player. The steps, with pictures, are also on GeyserMC's wiki: [Global linking](https://geysermc.org/wiki/floodgate/linking/).
+
+## Good to know
+- You can't be on from Java and Bedrock at the same time: it's one player now.
+- Your Java name needs to be on the server's list (the whitelist).
+- To undo it, join **link.geysermc.org** again and type \`/unlinkaccount\`.`,
+  },
+};
 const GUIDES = {
   join: {
     title: "How to join the server",

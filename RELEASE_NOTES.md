@@ -1,3 +1,10 @@
+# Solstone 1.21.8
+
+- **Bedrock linked to Java.** Floodgate can link a Bedrock account to a Java one (once, by the player, on GeyserMC's link server): then joining from Bedrock is joining as the Java player, with its name, items and progress. Player pages now say so: a Bedrock player's page shows **Linked: joins as …** (or that it isn't, with how), and a Java player's page lists any Bedrock accounts linked to them. Read from GeyserMC; Solstone never makes or changes a link.
+- **A guide for it:** Website → Posts → New post → Start from **Play on Bedrock as your Java player**: what linking does, moving things out of the Bedrock player first, the steps, and how to undo it.
+- **One look for every row of sub-tabs:** a raised bar, the one you're on tinted with a gold line (a server's Server and Stats pages, Manage's pages, a player's sections, and the bars inside Notifications, Control, Website and Fireworks).
+- **Manage's groups** (Players, Website, Announcements…) light up again for the one you're in.
+
 # Solstone 1.21.7
 
 - **Sub-tabs that stand out.** The pill sub-tabs (a server's Server and Stats pages, Manage's pages like Server setup and Notifications) have an outline, and the one you're on is gold-edged.

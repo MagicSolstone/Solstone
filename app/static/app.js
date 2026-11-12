@@ -1172,6 +1172,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
   setView(`<a class="back" href="#/s/${encodeURIComponent(sid)}">← ${esc(s.name)}</a>
     <div id="hero">${playerHero(p)}</div>
     <div id="hero-acts">${giveBtn(p)}</div>
+    <div id="plink"></div>
     <div id="strip">${statStrip(p)}</div>
     <div id="trophies"></div>
     <div id="favs">${favouritesHtml(p.together?.stats || p.stats)}</div>
@@ -1204,6 +1205,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
     renderTab();
   } };
   loadTrophies(sid, p);
+  loadBedrockLink(sid, p);
   $("#favs")?.addEventListener("click", (e) => {
     const b = e.target.closest("[data-fav]");
     if (b) openFavourites(p.name, p.together?.stats || p.stats, +b.dataset.fav);
@@ -1625,6 +1627,21 @@ async function renderPlayerTravels(el, sid, p, span = "all") {
     const g = e.target.closest("[data-go]");
     if (g) { const [x, z] = g.dataset.go.split(",").map(Number); map.view.cx = x; map.view.cz = z; map.view.scale = Math.max(map.view.scale, 2); map.draw(); }
   };
+}
+
+// ---------------------------------------------------------------- a Bedrock account linked to a Java one (Floodgate)
+async function loadBedrockLink(sid, p) {
+  const box = $("#plink");
+  const l = await api(`/api/servers/${encodeURIComponent(sid)}/players/${p.uuid}/link`).catch(() => null);
+  if (!box || !l || l.error) return;
+  const who = (x) => x.here ? `<a href="#/s/${encodeURIComponent(sid)}/p/${x.uuid}">${esc(x.name)}</a>` : `<b>${esc(x.name || "a Java player")}</b>`;
+  if (l.bedrock && l.plays_as) {
+    box.innerHTML = `<p class="plink on">🔗 <span>Linked: from Bedrock, ${esc(p.name)} joins as ${who(l.plays_as)} (Java), with that player's name, items and progress. What's shown here is the Bedrock player from before the link.</span></p>`;
+  } else if (l.bedrock) {
+    box.innerHTML = `<p class="plink">🔗 <span>Not linked to a Java account. Someone who plays both can link them once, then join from Bedrock as their Java player. <a href="https://geysermc.org/wiki/floodgate/linking/" target="_blank" rel="noopener">How</a></span></p>`;
+  } else if (l.linked_bedrock?.length) {
+    box.innerHTML = `<p class="plink on">🔗 <span>Also plays from Bedrock: ${l.linked_bedrock.map(who).join(", ")} ${l.linked_bedrock.length === 1 ? "is" : "are"} linked to ${esc(p.name)}, and join${l.linked_bedrock.length === 1 ? "s" : ""} as this player.</span></p>`;
+  }
 }
 
 // ---------------------------------------------------------------- trophies (a player's page)

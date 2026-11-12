@@ -48,7 +48,8 @@ const wsSaveLabel = (saved, published) => (published ? (saved ? "Save" : "Publis
 function wsEditHtml(p) {
   return `<form class="ws-edit panel" id="ws-edit">
     ${p.id ? "" : `<label class="ws-template">Start from <small>Solstone's wording, ready to make your own</small><select class="input" data-template>
-      <option value="">A blank post</option>${Object.entries(GUIDES).map(([k, g]) => `<option value="${k}">${esc(g.title)}</option>`).join("")}</select></label>`}
+      <option value="">A blank post</option>${Object.entries(GUIDES).map(([k, g]) => `<option value="${k}">${esc(g.title)}</option>`).join("")}
+      ${Object.entries(POST_TEMPLATES).map(([k, g]) => `<option value="t:${k}">${esc(g.title)}</option>`).join("")}</select></label>`}
     <label>Title<input class="input" name="title" maxlength="120" required value="${esc(p.title || "")}"></label>
     <label>Card description <small>Optional: a line or two under the title on the post's card (home page, News, Help). Leave it empty to show the start of the post. Fill-ins like {name} work.</small><textarea class="input" name="summary" rows="2" maxlength="240">${esc(p.summary || "")}</textarea></label>
     <div class="ws-card-pic"><label>Card picture <small>The picture on the post's card</small><select class="input sm" data-card-mode>
@@ -201,6 +202,15 @@ function wsPosts(el) {
     const k = e.target.value;
     if (!k) return;
     if (ta.value.trim() && !confirm("Replace the text with Solstone's wording?")) { e.target.value = ""; return; }
+    if (k.startsWith("t:")) {                                  // wording for a post of its own (not standing in for a built-in guide)
+      const t = POST_TEMPLATES[k.slice(2)];
+      ta.value = t.body();
+      if (!form.title.value.trim()) form.title.value = t.title;
+      if (!form.summary.value.trim()) form.summary.value = t.excerpt;
+      form.category.value = "guide"; form.role.value = "";
+      redraw();
+      return;
+    }
     ta.value = guideTemplate(k, { ...(ws.pub || {}), ...ws.data.site });
     if (!form.title.value.trim()) form.title.value = GUIDES[k].title;
     if (!form.summary.value.trim()) form.summary.value = GUIDES[k].excerpt;      // its card says what the built-in one did

@@ -34,7 +34,7 @@ from .config import config
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.21.7"
+VERSION = "1.21.8"
 
 
 @asynccontextmanager
@@ -118,6 +118,7 @@ PLAYER_ROUTES: dict[str, set[str]] = {
     "/api/servers/{sid}/players/{uuid}": {"GET"},       # their own page only
     "/api/servers/{sid}/players/{uuid}/history": {"GET"},
     "/api/servers/{sid}/players/{uuid}/travels": {"GET"},   # their own only (see _own)
+    "/api/servers/{sid}/players/{uuid}/link": {"GET"},      # their own only: a Bedrock account linked to a Java one
     "/api/servers/{sid}/leaderboard": {"GET"},
     "/api/servers/{sid}/stats/history": {"GET"},        # the whole server's totals over time (no names)
     "/api/servers/{sid}/adventures": {"GET"},             # only the sessions they played in (see adventures_list)
@@ -2759,6 +2760,33 @@ async def get_player_travels(sid: str, uuid: str, span: str = "all"):
     spawn = (await asyncio.to_thread(S.world_info, srv, False)).get("spawn")
     data = adventures.farthest_from(data, spawn)
     return {**data, "names": names, "span": "recent" if span == "recent" else "all"}
+
+
+@app.get("/api/servers/{sid}/players/{uuid}/link")
+async def get_player_link(sid: str, uuid: str):
+    """Floodgate's link between a Bedrock and a Java account, as GeyserMC has it: for a Bedrock player, the Java player
+    they join as; for a Java player, any Bedrock accounts here linked to them. Only read, never changed."""
+    from . import bedrocklink
+    from .skins import bedrock_xuid
+    if not _own(uuid):
+        raise HTTPException(404, "Player not found")
+    srv = await _server(sid)
+    known = S.known_players(srv)
+    p = known.get(S.norm_uuid(uuid))
+    if not p:
+        raise HTTPException(404, "Player not found")
+    def here(u: str) -> dict:
+        k = known.get(S.norm_uuid(u))
+        return {"uuid": k["uuid"] if k else u, "name": k["name"] if k else "", "here": bool(k)}
+    if bedrock_xuid(p["uuid"]) is not None:
+        try:
+            link = await bedrocklink.linked_java(p["uuid"])
+        except Exception as e:
+            return {"bedrock": True, "error": f"Couldn't ask GeyserMC: {type(e).__name__}"}
+        return {"bedrock": True, "plays_as": {**here(link["java_uuid"]), "name": link["java_name"] or here(link["java_uuid"])["name"]} if link else None}
+    bedrock = [u for u in known if bedrock_xuid(u) is not None]
+    found = await bedrocklink.bedrock_for(p["uuid"], bedrock) if bedrock else []
+    return {"bedrock": False, "linked_bedrock": [here(u) for u in found]}
 
 
 @app.get("/api/servers/{sid}/leaderboard")

@@ -2844,3 +2844,9 @@ nav.tabs[aria-label="Player sections"] a[aria-current="page"], .subtabs a[aria-c
 /* Favourites: even rows (four across, two on a phone) */
 @media (min-width: 860px) { .fav-shelf { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 520px) { .fav-shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* A Bedrock account linked to a Java one */
+.plink { display: flex; gap: 8px; align-items: baseline; margin: 0 0 14px; padding: 8px 12px; border-radius: var(--radius-m);
+  background: rgba(255, 255, 255, .04); border: 1px dashed rgba(255, 255, 255, .14); color: var(--muted); font-size: .88rem; }
+.plink.on { background: rgba(105, 219, 124, .08); border: 1px solid rgba(105, 219, 124, .35); color: var(--bone); }
+.plink a { color: #9fb6f0; }
