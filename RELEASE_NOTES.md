@@ -1,3 +1,9 @@
+# Solstone 1.21.7
+
+- **Sub-tabs that stand out.** The pill sub-tabs (a server's Server and Stats pages, Manage's pages like Server setup and Notifications) have an outline, and the one you're on is gold-edged.
+- **A player's sections in a bar of their own.** Inventory, Play history, Travels, Statistics… sit in a raised bar under the trophies and favourites, the one you're on lit, so they're not lost down the page.
+- **Favourites in even rows:** four across (two on a phone).
+
 # Solstone 1.21.6
 
 - **Favourites: Show all.** In the favourites window, a kind with more than five has **Show all**: a window listing every one of them (every block mined, every mob defeated, every thing crafted, every way of getting around, sneaking included), numbered, biggest first, each with its share of that kind as a bar. Long lists have a box to find one, and **← All favourites** goes back.
