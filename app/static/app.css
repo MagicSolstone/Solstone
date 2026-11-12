@@ -2850,3 +2850,5 @@ nav.tabs[aria-label="Player sections"] a[aria-current="page"], .subtabs a[aria-c
   background: rgba(255, 255, 255, .04); border: 1px dashed rgba(255, 255, 255, .14); color: var(--muted); font-size: .88rem; }
 .plink.on { background: rgba(105, 219, 124, .08); border: 1px solid rgba(105, 219, 124, .35); color: var(--bone); }
 .plink a { color: #9fb6f0; }
+
+.rm-list { margin: 8px 0 14px; padding-left: 20px; color: var(--muted); font-size: .9rem; display: grid; gap: 4px; }

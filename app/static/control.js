@@ -1253,18 +1253,61 @@ async function manageServers() {
             + (x.panel ? chip(x.panel_error ? "warn" : "on", x.panel_error ? "Panel: not answering" : "Panel ✓", x.panel_error || "Start, stop, CPU and memory through the host's panel") : "")
             : chip("", x.crafty ? "Crafty" : "Folder", x.crafty ? "Started and stopped through Crafty" : `The ${x.folder} folder`)}${x.version ? chip("", esc(x.version)) : ""}${x.remote && x.map ? chip("", "🗺 Map", "Copies the parts of the world players go to, for the map") : ""}${backupChip(x.backup, chip)}</div></div>
       <div class="btn-row">${x.hidden ? `<button class="btn sm primary" type="button" data-show>Show it</button>` : `<a class="btn sm" href="#/s/${encodeURIComponent(x.id)}">Open</a>`}
-        <button class="btn sm" type="button" data-check-row title="Everything this server needs, tried now">🩺 Check</button><button class="btn sm" type="button" data-edit>⚙ Settings</button></div></div>`).join("")
+        <button class="btn sm" type="button" data-check-row title="Everything this server needs, tried now">🩺 Check</button><button class="btn sm" type="button" data-edit>⚙ Settings</button>
+        <button class="btn sm" type="button" data-rm-row title="Remove it from Solstone (an old server you don't play on any more)">🗑</button></div></div>`).join("")
     + `<p class="muted small">A server Solstone finds for the first time starts <b>hidden</b>, so nothing new turns up on the website until you show it.</p>
     <div class="btn-row"><button class="btn" type="button" data-add-remote>🌐 Add a server somewhere else</button>
-      <span class="muted small">A game host, a rented server, another computer: Solstone reaches its files over SFTP.</span></div>`;
+      <span class="muted small">A game host, a rented server, another computer: Solstone reaches its files over SFTP.</span></div>
+    <div id="srv-removed"></div>`;
   wireAdd();
+  // removed ones it would still find (in the servers folder, or Crafty): brought back from here
+  api("/api/manage/servers-removed").then((gone) => {
+    const el = $("#srv-removed");
+    if (!el || !gone.length) return;
+    el.innerHTML = `<p class="muted small">Removed from Solstone (still in its folder or Crafty, so it would be found again): ${gone.map((g) =>
+      `<b>${esc(g.name || g.id)}</b> <button type="button" class="link-btn" data-back="${esc(g.id)}">Bring back</button>`).join(" · ")}</p>`;
+    el.querySelectorAll("[data-back]").forEach((b) => b.addEventListener("click", async () => {
+      try { await api(`/api/manage/servers-removed/${encodeURIComponent(b.dataset.back)}`, { method: "DELETE" }); showToast("Back: it starts hidden", 2500); await loadServers(); manageServers(); }
+      catch (e) { showError(esc(e.message), 4000); }
+    }));
+  }).catch(() => {});
   box.querySelectorAll("[data-msid]").forEach((row) => {
     const x = list.find((y) => y.id === row.dataset.msid);
     row.querySelector("[data-edit]").addEventListener("click", () => openServerSetup(x.id, manageServers));
     row.querySelector("[data-check-row]").addEventListener("click", () => openServerSetup(x.id, manageServers, "check"));
+    row.querySelector("[data-rm-row]").addEventListener("click", () => openRemoveServer(x.id, manageServers));
     row.querySelector("[data-show]")?.addEventListener("click", async () => {
       try { await post(`/api/servers/${encodeURIComponent(x.id)}/settings`, { hidden: "" }, "PUT"); showToast(`${esc(x.name)} is shown`, 2500); await loadServers(); manageServers(); }
       catch (e) { showError(esc(e.message), 4000); }
+    });
+  });
+}
+
+// Removing a server from Solstone: what goes (its settings, map pictures, copied files; its history if ticked), what stays
+// (the game server itself, untouched)
+async function openRemoveServer(sid, then) {
+  let p;
+  try { p = await api(`/api/manage/servers/${encodeURIComponent(sid)}/remove`); }
+  catch (err) { showError(esc(err.message), 4000); return; }
+  const kinds = p.history.filter((h) => h.rows);
+  openModal(`<h2>🗑 Remove ${esc(p.name)} from Solstone?</h2>
+    <p>For a server you don't play on any more (the old one, after moving somewhere else). Nothing on the game server itself changes.</p>
+    <ul class="rm-list">
+      <li>Its settings here go (name, who sees it, RCON, notifications, mod updates, the boards' adjustments)</li>
+      ${p.map_bytes ? `<li>Its map pictures (${fmtBytes(p.map_bytes)})</li>` : ""}
+      ${p.remote ? `<li>How to reach it, and Solstone's copy of its files${p.copy_bytes ? ` (${fmtBytes(p.copy_bytes)})` : ""}</li>` : `<li>Its folder (${esc(p.folder)}) stays as it is: Solstone just stops looking after it. It can be brought back from the list.</li>`}
+    </ul>
+    <label class="check"><input type="checkbox" id="rm-history" ${p.history_rows ? "" : "disabled"}> <span><b>Its history too</b><br><small class="muted">${p.history_rows
+      ? `${kinds.map((h) => `${fmtNum(h.rows)} ${esc(h.label.split(" (")[0].toLowerCase())}`).join(", ")}. A full backup of Solstone is made first (Manage → Solstone → Backups). Moved it to the new server? Then it's already gone from here.`
+      : "None left here (moved to another server, or never played)."}</small></span></label>
+    <div class="actions"><button type="button" class="btn" data-close-modal>Cancel</button><button type="button" class="btn danger" id="rm-go">Remove it</button></div>`, (m) => {
+    $("#rm-go", m).addEventListener("click", async (e) => {
+      if (!sureTwice(e.currentTarget, "Sure? Remove it")) return;
+      e.currentTarget.disabled = true;
+      try {
+        await post(`/api/manage/servers/${encodeURIComponent(sid)}/remove`, { history: $("#rm-history", m).checked });
+        closeModal(); showToast(`${esc(p.name)} removed from Solstone`, 3000); await loadServers(); if (then) await then();
+      } catch (err) { showError(esc(err.message), 5000); e.currentTarget.disabled = false; }
     });
   });
 }
@@ -1391,7 +1434,7 @@ async function openServerSetup(sid, then, tab = "") {
       ${remote ? `<div class="set-pane" data-pane="map" hidden>${mapPart}</div><div class="set-pane" data-pane="copy" hidden>${copyPart}</div>` : ""}
       ${sid ? `<div class="set-pane" data-pane="check" hidden><p class="muted small">Everything this server needs, tried now: its files, the world, start and stop, RCON, the log, the map${remote ? ", the full copy" : ""} and room on this machine. Nothing is changed.</p>
         <div class="btn-row"><button class="btn primary" type="button" data-check>🩺 Check everything</button></div><div id="check-result"></div></div>` : ""}
-      <div class="actions">${remote && sid ? `<button type="button" class="btn danger" data-remove>Stop looking after it</button>` : ""}<span class="spacer"></span>
+      <div class="actions">${remote && sid ? `<button type="button" class="btn danger" data-remove>🗑 Remove from Solstone</button>` : ""}<span class="spacer"></span>
         <button type="button" class="btn" data-close-modal>Cancel</button><button class="btn primary" type="submit">${sid ? "Save" : "Add it"}</button></div>
     </form>`;
   const remoteBody = (form) => {
@@ -1525,11 +1568,7 @@ async function openServerSetup(sid, then, tab = "") {
       try { const r = await post(`/api/manage/remote/${encodeURIComponent(sid)}/forget-key`, {}); showToast(r.ok ? "Learned its new identity" : esc(r.error || "Couldn't connect"), 4000); closeModal(); openServerSetup(sid, then); }
       catch (err) { showError(esc(err.message), 4000); }
     });
-    m.querySelector("[data-remove]")?.addEventListener("click", async () => {
-      if (!(await confirmBox(`Stop looking after ${esc(title)}?`, "Solstone forgets how to reach it and deletes its copy of the files. Its history in Solstone (activity, stats, leaderboards) stays. Nothing on the server itself changes.", "Stop looking after it"))) return;
-      try { await api(`/api/manage/remote/${encodeURIComponent(sid)}`, { method: "DELETE" }); closeModal(); showToast("Done", 2500); await loadServers(); if (then) await then(); }
-      catch (err) { showError(esc(err.message), 4000); }
-    });
+    m.querySelector("[data-remove]")?.addEventListener("click", () => openRemoveServer(sid, then));
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const f = new FormData(form);

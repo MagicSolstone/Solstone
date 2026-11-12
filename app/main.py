@@ -2494,6 +2494,51 @@ async def delete_remote(sid: str, request: Request):
     return {"ok": True}
 
 
+@app.get("/api/manage/servers/{sid}/remove")
+async def remove_server_plan(sid: str, request: Request):
+    """Admin: what removing a server from Solstone would clear (nothing is changed)."""
+    from . import serverremove
+    auth.require_admin(request)
+    return await asyncio.to_thread(serverremove.plan, await _server(sid))
+
+
+@app.post("/api/manage/servers/{sid}/remove")
+async def remove_server(sid: str, request: Request):
+    """Admin: remove a server from Solstone: its settings, map pictures and copied files, and with history=true its
+    history (after a backup of Solstone). The game server itself isn't touched."""
+    from . import serverremove
+    user = auth.require_admin(request)
+    srv = await _server(sid)
+    body = await _body(request)
+    if srv.remote and (m := remote.mirror(sid)):
+        if m.backup_running:
+            m.backup_task.cancel()                    # (a full copy running: stopped, its saving pause put right first)
+        m.close()
+    out = await asyncio.to_thread(serverremove.remove, srv, bool(body.get("history")))
+    await S.registry.refresh(force=True)
+    auth.audit(user, sid, "server_removed", f"{srv.display_name}" + (", with its history" if body.get("history") else ", history kept"))
+    return out
+
+
+@app.get("/api/manage/servers-removed")
+async def removed_servers(request: Request):
+    """Admin: servers removed from Solstone that it would otherwise still find (in the servers folder, or Crafty)."""
+    from . import serverremove
+    auth.require_admin(request)
+    return [{"id": k, **v} for k, v in serverremove.removed().items()]
+
+
+@app.delete("/api/manage/servers-removed/{sid}")
+async def bring_back_server(sid: str, request: Request):
+    from . import serverremove
+    user = auth.require_admin(request)
+    if not serverremove.bring_back(sid):
+        raise HTTPException(404, "Not a removed server")
+    await S.registry.refresh(force=True)
+    auth.audit(user, sid, "server_brought_back", sid)
+    return {"ok": True}
+
+
 @app.get("/api/servers-hidden")
 async def hidden_servers(request: Request):
     """Admin: servers hidden from Solstone, so they can be brought back."""
