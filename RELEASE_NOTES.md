@@ -1,3 +1,7 @@
+# Solstone 1.21.6
+
+- **Favourites: Show all.** In the favourites window, a kind with more than five has **Show all**: a window listing every one of them (every block mined, every mob defeated, every thing crafted, every way of getting around, sneaking included), numbered, biggest first, each with its share of that kind as a bar. Long lists have a box to find one, and **← All favourites** goes back.
+
 # Solstone 1.21.5
 
 - **Player pages change tabs in place.** Inventory, Play history, Travels, Statistics… now swap just that part: no reload, and the page stays where it was scrolled, instead of jumping back above the trophies and favourites.
