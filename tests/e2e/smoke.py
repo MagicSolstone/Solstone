@@ -188,6 +188,16 @@ def main() -> int:
             else:
                 pg.locator(".trophies").scroll_into_view_if_needed()
                 check(pg, "player-trophies")
+            if not pg.locator(".favs .fav").count():
+                problems.append("player page: no favourites (tool, mob, block...)")
+            else:
+                pg.locator(".favs").scroll_into_view_if_needed()
+                check(pg, "player-favourites")
+            pg.goto(f"{base}/app#/s/{sid}/p/{puuid}/travels"); pg.wait_for_timeout(2500)
+            if not (pg.locator("#tv-map canvas").count() or pg.locator("#player-tab .empty").count()):
+                problems.append("player page: the Travels tab shows neither a map nor 'no travels yet'")
+            pg.locator("#player-tab").scroll_into_view_if_needed()
+            check(pg, "player-travels")
             pg.goto(f"{base}/app#/s/{sid}/challenges/events"); pg.wait_for_timeout(1300)
             if pg.locator(".eg-card .eg-part").count() != 3:
                 problems.append("events tab: the event's three challenges aren't listed")

@@ -117,6 +117,7 @@ PLAYER_ROUTES: dict[str, set[str]] = {
     "/api/servers/{sid}/players": {"GET"},              # who's on; nobody else's whereabouts (see _for_player)
     "/api/servers/{sid}/players/{uuid}": {"GET"},       # their own page only
     "/api/servers/{sid}/players/{uuid}/history": {"GET"},
+    "/api/servers/{sid}/players/{uuid}/travels": {"GET"},   # their own only (see _own)
     "/api/servers/{sid}/leaderboard": {"GET"},
     "/api/servers/{sid}/stats/history": {"GET"},        # the whole server's totals over time (no names)
     "/api/servers/{sid}/adventures": {"GET"},             # only the sessions they played in (see adventures_list)
@@ -2740,6 +2741,22 @@ async def get_player(sid: str, uuid: str):
     if not data:
         raise HTTPException(404, "Player not found")
     return data
+
+
+@app.get("/api/servers/{sid}/players/{uuid}/travels")
+async def get_player_travels(sid: str, uuid: str):
+    """Where a player (all their accounts) has been: the chunks, how often, and their records. Their own page only, for
+    a player account, like the rest of it."""
+    if not _own(uuid):
+        raise HTTPException(404, "Player not found")
+    srv = await _server(sid)
+    p = S.known_players(srv).get(S.norm_uuid(uuid))
+    if not p:
+        raise HTTPException(404, "Player not found")
+    tog = await asyncio.to_thread(stacks.together, srv, p["name"])
+    names = [a["name"] for a in (tog or {}).get("accounts", [])] or [p["name"]]
+    data = await asyncio.to_thread(adventures.travels, srv.id, names)
+    return {**data, "names": names}
 
 
 @app.get("/api/servers/{sid}/leaderboard")

@@ -1167,13 +1167,14 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
   try { p = await api(`/api/servers/${sid}/players/${uuid}`); }
   catch (e) { setView(serverHeader(s, "overview") + `<div class="empty"><h3>Player not found</h3><p>${esc(e.message)}</p></div>`); wireHeader(s); return; }
   const base = `#/s/${encodeURIComponent(sid)}/p/${uuid}`;
-  const tabs = [["inventory", "Inventory"], ["history", "Play history"], ["stats", "Statistics"], ["advancements", "Advancements"],
+  const tabs = [["inventory", "Inventory"], ["history", "Play history"], ["travels", "🗺 Travels"], ["stats", "Statistics"], ["advancements", "Advancements"],
     ...(s.fishing_journal ? [["fishing", "Fishing"]] : [])];
   setView(`<a class="back" href="#/s/${encodeURIComponent(sid)}">← ${esc(s.name)}</a>
     <div id="hero">${playerHero(p)}</div>
     <div id="hero-acts">${giveBtn(p)}</div>
     <div id="strip">${statStrip(p)}</div>
     <div id="trophies"></div>
+    <div id="favs">${favouritesHtml(p.together?.stats || p.stats)}</div>
     <nav class="tabs" aria-label="Player sections">${tabs.map(([k, l]) => `<a href="${base}${k === "inventory" ? "" : "/" + k}" ${k === tab ? 'aria-current="page"' : ""}>${l}</a>`).join("")}</nav>
     <div id="player-tab"></div>`);
   document.title = `${p.name} · ${s.name}`;
@@ -1191,6 +1192,7 @@ async function viewPlayer(sid, uuid, tab = "inventory") {
     else if (tab === "advancements") el.innerHTML = note + advancementsHtml(shown);
     else if (tab === "history") { renderPlayerHistory(el, sid, p, all); }
     else if (tab === "fishing") renderPlayerFishing(el, sid, p);
+    else if (tab === "travels") renderPlayerTravels(el, sid, p);
   };
   renderTab();
   loadTrophies(sid, p);
@@ -1458,6 +1460,129 @@ function treeOrder(list) {
   return out;
 }
 
+// ---------------------------------------------------------------- favourites (a player's page)
+// The top one in each kind, read from the game's own statistics: how much of that kind it is, and what comes next.
+const FAV_FOODS = new Set(["apple", "bread", "cooked_beef", "cooked_porkchop", "cooked_chicken", "cooked_mutton", "cooked_rabbit", "cooked_cod",
+  "cooked_salmon", "baked_potato", "carrot", "golden_carrot", "golden_apple", "enchanted_golden_apple", "melon_slice", "sweet_berries",
+  "glow_berries", "cookie", "pumpkin_pie", "mushroom_stew", "rabbit_stew", "beetroot_soup", "suspicious_stew", "beef", "porkchop", "chicken",
+  "mutton", "rabbit", "cod", "salmon", "tropical_fish", "potato", "beetroot", "dried_kelp", "honey_bottle", "chorus_fruit", "rotten_flesh",
+  "spider_eye", "poisonous_potato", "pufferfish"].map((x) => `minecraft:${x}`));
+const FAV_TOOL = /_(pickaxe|axe|shovel|hoe)$|^minecraft:(shears|flint_and_steel|brush|fishing_rod)$/;
+const FAV_WEAPON = /_sword$|^minecraft:(bow|crossbow|trident|mace)$/;
+const FAV_MOVES = [["walk_one_cm", "Walking", "🚶"], ["sprint_one_cm", "Sprinting", "🏃"], ["crouch_one_cm", "Sneaking", "🐾"],
+  ["swim_one_cm", "Swimming", "🏊"], ["walk_under_water_one_cm", "Walking under water", "🫧"], ["walk_on_water_one_cm", "Walking on water", "💧"],
+  ["aviate_one_cm", "Elytra", "🪽"], ["fly_one_cm", "Flying", "🕊"], ["boat_one_cm", "Boat", "🛶"], ["horse_one_cm", "Horse", "🐎"],
+  ["minecart_one_cm", "Minecart", "🛤"], ["pig_one_cm", "Pig", "🐖"], ["strider_one_cm", "Strider", "🔥"], ["climb_one_cm", "Climbing", "🧗"],
+  ["happy_ghast_one_cm", "Happy ghast", "👻"], ["nautilus_one_cm", "Nautilus", "🐚"]];
+function favourites(st) {
+  const top = (obj, keep = () => true) => {
+    const rows = Object.entries(obj || {}).filter(([k, v]) => v > 0 && keep(k)).sort((a, b) => b[1] - a[1]);
+    const total = rows.reduce((n, [, v]) => n + v, 0);
+    return rows.length ? { id: rows[0][0], n: rows[0][1], share: rows[0][1] / total, next: rows[1], kinds: rows.length } : null;
+  };
+  const mob = (id) => ({ icon: itemIcon({ id: `${id}_spawn_egg` }), name: entityName(id) });
+  const item = (id) => ({ icon: itemIcon({ id }), name: itemName(id) });
+  const out = [];
+  const add = (title, t, look, unit, nextName) => t && out.push({ title, ...look(t.id), n: t.n, share: t.share, unit, kinds: t.kinds,
+    next: t.next ? `${nextName(t.next[0])} (${fmtNum(t.next[1])})` : "" });
+  const used = st["minecraft:used"] || {};
+  add("⛏ Favourite tool", top(used, (k) => FAV_TOOL.test(k)), item, "uses", itemName);
+  add("⚔ Favourite weapon", top(used, (k) => FAV_WEAPON.test(k)), item, "uses", itemName);
+  add("🍖 Favourite food", top(used, (k) => FAV_FOODS.has(k)), item, "eaten", itemName);
+  add("🧟 Most defeated", top(st["minecraft:killed"]), mob, "defeated", entityName);
+  add("🧱 Most mined", top(st["minecraft:mined"]), item, "mined", itemName);
+  add("🔨 Most crafted", top(st["minecraft:crafted"]), item, "crafted", itemName);
+  const custom = st["minecraft:custom"] || {};
+  const moves = Object.fromEntries(FAV_MOVES.map(([k]) => [k, custom[`minecraft:${k}`] || 0]));
+  const mv = top(moves);
+  if (mv) {
+    const [, name, emo] = FAV_MOVES.find(([k]) => k === mv.id);
+    out.push({ title: "🧭 Getting around", icon: `<span class="fav-emo">${emo}</span>`, name, n: mv.n, cm: true, share: mv.share, unit: "", kinds: mv.kinds,
+      next: mv.next ? `${FAV_MOVES.find(([k]) => k === mv.next[0])[1]} (${fmtStat("cm", mv.next[1])})` : "" });
+  }
+  add("💀 Defeated most by", top(st["minecraft:killed_by"]), mob, "times", entityName);
+  return out;
+}
+function favouritesHtml(st) {
+  const favs = favourites(st || {});
+  if (!favs.length) return "";
+  return `<section class="favs"><div class="trophies-head"><h2>⭐ Favourites</h2><span class="muted small">from the game's own statistics</span></div>
+    <div class="fav-shelf">${favs.map((f) => `<div class="fav">
+      <span class="fav-title">${f.title}</span>
+      <div class="fav-main">${f.icon}<div><b>${esc(f.name)}</b><span class="muted small">${f.cm ? esc(fmtStat("cm", f.n)) : `${fmtNum(f.n)} ${esc(f.unit)}`}</span></div></div>
+      ${f.kinds > 1 ? `<div class="fav-bar" title="${Math.round(f.share * 100)}% of all of them"><span style="width:${Math.max(4, f.share * 100)}%"></span></div>
+        <span class="fav-next muted small">${Math.round(f.share * 100)}% of all${f.next ? ` · then ${esc(f.next)}` : ""}</span>` : `<span class="fav-next muted small">the only one so far</span>`}
+    </div>`).join("")}</div></section>`;
+}
+
+// ---------------------------------------------------------------- travels (a player's page → Travels)
+// Where they've been: every chunk they were seen in (warmer = more often), with their bed, last death, where they are or
+// left off, and their records (deepest, highest, farthest). From the positions Solstone keeps.
+async function renderPlayerTravels(el, sid, p) {
+  el.innerHTML = `<p class="muted">Loading…</p>`;
+  let t;
+  try { t = await api(`/api/servers/${encodeURIComponent(sid)}/players/${p.uuid}/travels`); }
+  catch (err) { el.innerHTML = `<p class="muted">Couldn't load their travels: ${esc(err.message)}</p>`; return; }
+  const DIM_ORDER = ["minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"];
+  const dims = Object.keys(t.dims).sort((a, b) => ((DIM_ORDER.indexOf(a) + 1 || 9) - (DIM_ORDER.indexOf(b) + 1 || 9)));
+  if (!dims.length) { el.innerHTML = `<div class="empty"><h3>No travels yet</h3><p>Where ${esc(p.name)} goes shows here once they've played a while (from the last ${t.keep_days} days).</p></div>`; return; }
+  const d0 = p.data || {};
+  const here = d0.position ? { dim: d0.position.dimension || "minecraft:overworld", x: d0.position.x, z: d0.position.z } : null;
+  const pins = (dim) => [
+    d0.respawn && (d0.respawn.dimension || "minecraft:overworld") === dim && { ...d0.respawn, label: "Bed", emo: "🛏" },
+    d0.last_death && d0.last_death.dimension === dim && { ...d0.last_death, label: "Last death", emo: "💀" },
+    here && here.dim === dim && here.x != null && { ...here, label: p.online ? "Here now" : "Left off here", emo: "📍" },
+  ].filter(Boolean);
+  let dim = dims.includes(here?.dim) ? here.dim : dims[0];
+  const coords = (r) => `${fmtNum(r.x)}, ${fmtNum(r.y)}, ${fmtNum(r.z)}`;
+  const recordsHtml = () => {
+    const d = t.dims[dim];
+    const rec = (emo, label, r, extra = "") => r ? `<button type="button" class="tv-rec" data-go="${r.x},${r.z}"><span>${emo}</span><b>${label}</b><span>${extra}</span><small class="muted">${coords(r)} · ${esc(fmtAgo(r.ts))}</small></button>` : "";
+    return `${rec("⬇", "Deepest", d.deepest, `Y ${d.deepest?.y}`)}${d.highest?.y !== d.deepest?.y ? rec("⬆", "Highest", d.highest, `Y ${d.highest?.y}`) : ""}
+      ${rec("🧭", "Farthest out", d.farthest, d.farthest ? fmtStat("cm", d.farthest.dist * 100) + " from 0, 0" : "")}
+      ${pins(dim).map((x) => `<button type="button" class="tv-rec" data-go="${x.x},${x.z}"><span>${x.emo}</span><b>${esc(x.label)}</b><span></span><small class="muted">${fmtNum(x.x)}, ${fmtNum(x.z)}</small></button>`).join("")}`;
+  };
+  el.innerHTML = `<div class="tv-head">
+      ${dims.length > 1 ? `<div class="seg" role="group" aria-label="Dimension">${dims.map((x) => `<button type="button" data-dim="${esc(x)}" aria-pressed="${x === dim}">${esc(dimName(x))}</button>`).join("")}</div>` : ""}
+      <span class="muted small" id="tv-sum"></span></div>
+    <div class="tv-wrap"><div id="tv-map" class="world-own-map"></div><div class="tv-recs" id="tv-recs"></div></div>
+    <p class="muted small">Each square is a chunk (16 × 16 blocks) they've been in, warmer the more time they spent there: from the last ${t.keep_days} days${t.since ? ` (since ${esc(new Date(t.since * 1000).toLocaleDateString())})` : ""} and saved adventures.${t.names.length > 1 ? ` All of ${esc(t.names.join(" + "))}.` : ""}</p>`;
+  let cells = [], max = 1;
+  const pick = () => {
+    const d = t.dims[dim];
+    cells = d.cells; max = Math.max(1, ...cells.slice(0, 50).map((c) => c[2]));
+    $("#tv-sum", el).textContent = `${fmtNum(d.chunks)} chunks explored in ${dimName(dim)}`;
+    $("#tv-recs", el).innerHTML = recordsHtml();
+  };
+  pick();
+  const heat = (n) => { const f = Math.log1p(n) / Math.log1p(max); return `hsla(${Math.round(200 - 170 * f)}, 90%, ${55 + f * 5}%, ${0.35 + 0.45 * f})`; };
+  const map = worldMapCanvas($("#tv-map", el), sid, { dim, center: { x: cells[0][0] * t.cell, z: cells[0][1] * t.cell }, scale: 0.5,
+    overlay: (ctx, toScreen, view) => {
+      const sz = Math.max(1.5, t.cell * view.scale);
+      for (const [cx, cz, n] of cells) {
+        const [x, y] = toScreen(cx * t.cell, cz * t.cell);
+        if (x < -sz || y < -sz || x > ctx.canvas.width || y > ctx.canvas.height) continue;
+        ctx.fillStyle = heat(n); ctx.fillRect(x, y, sz, sz);
+      }
+      ctx.font = "16px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      for (const pin of pins(dim)) {
+        const [x, y] = toScreen(pin.x, pin.z);
+        ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.beginPath(); ctx.arc(x, y, 13, 0, Math.PI * 2); ctx.fill();
+        ctx.fillText(pin.emo, x, y + 1);
+      }
+      ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
+    } });
+  el.querySelector("canvas")?.setAttribute("aria-label", `Map of where ${p.name} has been`);
+  const fit = () => map.fit(cells.slice(0, 400).map(([cx, cz]) => ({ x: cx * t.cell, z: cz * t.cell })));
+  fit();
+  el.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-dim]");
+    if (b) { dim = b.dataset.dim; $$("[data-dim]", el).forEach((x) => x.setAttribute("aria-pressed", String(x === b))); pick(); map.setDim(dim); fit(); return; }
+    const g = e.target.closest("[data-go]");
+    if (g) { const [x, z] = g.dataset.go.split(",").map(Number); map.view.cx = x; map.view.cz = z; map.view.scale = Math.max(map.view.scale, 2); map.draw(); }
+  });
+}
+
 // ---------------------------------------------------------------- trophies (a player's page)
 // The places a player holds on this server's leaderboards right now: 🥇🥈🥉 on each board (equal scores share a
 // place, as on the Leaderboards page), and the boards where they're just off the podium. Linked accounts count as one.
@@ -1494,8 +1619,8 @@ async function loadTrophies(sid, p) {
       <span class="trophy-val">${esc(fmtStat(w.board.kind, w.value))}</span><span class="trophy-place">${w.shared ? "tied " : ""}${PLACE[w.place]} of ${w.of}</span></a>`;
   box.innerHTML = `<section class="trophies">
     <div class="trophies-head"><h2>🏆 Trophies</h2><span class="muted small">${won.length ? count.map((n, i) => n ? `${MEDAL[i]} ${n}` : "").filter(Boolean).join(" · ") + " · held right now on" : "On"} <a href="${lb}">the leaderboards</a></span></div>
-    ${won.length ? `<div class="trophy-shelf">${won.slice(0, 8).map(card).join("")}</div>
-      ${won.length > 8 ? `<details class="trophy-more"><summary>All ${won.length} trophies</summary><div class="trophy-shelf">${won.slice(8).map(card).join("")}</div></details>` : ""}` : ""}
+    ${won.length ? `<div class="trophy-shelf">${won.slice(0, 6).map(card).join("")}</div>
+      ${won.length > 6 ? `<details class="trophy-more"><summary>All ${won.length} trophies</summary><div class="trophy-shelf">${won.slice(6).map(card).join("")}</div></details>` : ""}` : ""}
     ${close.length ? `<p class="trophy-close muted small"><b>Nearly there:</b> ${close.slice(0, 4).map((c) => `${PLACE[c.place]} in ${esc(c.board.title)} (${esc(fmtStat(c.board.kind, c.gap))} off ${PLACE[c.place - 1]})`).join(" · ")}</p>` : ""}
   </section>`;
 }

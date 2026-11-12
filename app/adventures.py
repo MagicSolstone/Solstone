@@ -443,3 +443,42 @@ def erase(server_id: str, start: float, end: float) -> dict:
     db.x("DELETE FROM adventures WHERE server_id=? AND start_ts < ? AND end_ts > ?", (server_id, end, start))
     hide(server_id, start, end, "", True)
     return {"positions": n, "lines": e}
+
+
+# ------------------------------------------------------------------ a player's travels (their page → Travels)
+CELL = 16                     # one square on the travels map: a chunk
+
+
+def travels(server_id: str, names: list[str]) -> dict:
+    """Where these names (one person's accounts) have been, from the positions kept (the last POSITIONS_DAYS days, and
+    saved adventures): each dimension's chunks with how often they were seen there, and their records (deepest,
+    highest, farthest from 0, 0)."""
+    import math
+    low = [n.lower() for n in names if n]
+    if not low:
+        return {"dims": {}, "since": None}
+    marks = ",".join("?" * len(low))
+    dims: dict[str, dict] = {}
+    first = None
+    for r in db.q(f"SELECT ts, dim, x, y, z FROM positions WHERE server_id=? AND lower(player) IN ({marks})", (server_id, *low)):
+        d = dims.get(r["dim"])
+        if d is None:
+            d = dims[r["dim"]] = {"cells": {}, "points": 0, "deepest": None, "highest": None, "farthest": None}
+        first = r["ts"] if first is None else min(first, r["ts"])
+        key = (math.floor(r["x"] / CELL), math.floor(r["z"] / CELL))
+        d["cells"][key] = d["cells"].get(key, 0) + 1
+        d["points"] += 1
+        here = {"x": round(r["x"]), "y": round(r["y"]), "z": round(r["z"]), "ts": r["ts"]}
+        if d["deepest"] is None or r["y"] < d["deepest"]["y"]:
+            d["deepest"] = here
+        if d["highest"] is None or r["y"] > d["highest"]["y"]:
+            d["highest"] = here
+        far = math.hypot(r["x"], r["z"])
+        if d["farthest"] is None or far > d["farthest"]["dist"]:
+            d["farthest"] = {**here, "dist": round(far)}
+    out = {}
+    for dim, d in dims.items():
+        cells = sorted(d["cells"].items(), key=lambda kv: -kv[1])[:20000]
+        out[dim] = {"cells": [[cx, cz, n] for (cx, cz), n in cells], "chunks": len(d["cells"]), "points": d["points"],
+                    "deepest": d["deepest"], "highest": d["highest"], "farthest": d["farthest"]}
+    return {"dims": out, "since": first, "cell": CELL, "keep_days": POSITIONS_DAYS}

@@ -2762,7 +2762,7 @@ h3.fw-sub:not(:first-child) { margin-top: 18px; }
 .trophies { margin: 4px 0 18px; }
 .trophies-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
 .trophies-head h2 { font-size: 1.1rem; margin: 0; }
-.trophy-shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.trophy-shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
 .trophy { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto auto; column-gap: 10px; align-items: center;
   padding: 10px 12px; border-radius: var(--radius-m); background: var(--tuff); text-decoration: none; color: var(--bone);
   border: 1px solid var(--line); border-top: 3px solid var(--tc); transition: transform .12s; }
@@ -2777,3 +2777,30 @@ h3.fw-sub:not(:first-child) { margin-top: 18px; }
 .trophy-close { margin: 8px 0 0; }
 .trophy-more { margin-top: 8px; }
 .trophy-more > summary { cursor: pointer; color: #9fb6f0; font-weight: 700; font-size: .88rem; margin-bottom: 8px; }
+
+/* A player's favourites: the top one of each kind */
+.favs { margin: 0 0 18px; }
+.fav-shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.fav { background: var(--tuff); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 10px 12px; display: grid; gap: 6px; align-content: start; }
+.fav-title { font-size: .75rem; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: .03em; }
+.fav-main { display: flex; gap: 10px; align-items: center; }
+.fav-main > div { display: grid; min-width: 0; }
+.fav-main b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fav-main .item { width: 32px; height: 32px; flex: none; }
+.fav-emo { font-size: 1.7rem; width: 32px; text-align: center; flex: none; }
+.fav-bar { height: 5px; background: var(--well); border-radius: 99px; overflow: hidden; }
+.fav-bar span { display: block; height: 100%; background: linear-gradient(90deg, #f2c14e, #ff9d6b); border-radius: 99px; }
+.fav-next { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A player's travels */
+.tv-head { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.tv-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 12px; align-items: start; }
+.tv-wrap .world-own-map { min-height: 460px; }
+.tv-recs { display: grid; gap: 6px; }
+.tv-rec { display: grid; grid-template-columns: 28px 1fr auto; grid-template-rows: auto auto; column-gap: 8px; align-items: center; text-align: left;
+  background: var(--tuff); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 8px 10px; color: var(--bone); cursor: pointer; font: inherit; }
+.tv-rec:hover { border-color: rgba(242, 193, 78, .5); }
+.tv-rec > span:first-child { grid-row: 1 / 3; font-size: 1.3rem; text-align: center; }
+.tv-rec > span:nth-child(3) { color: #f2c14e; font-weight: 700; font-size: .85rem; }
+.tv-rec small { grid-column: 2 / 4; }
+@media (max-width: 760px) { .tv-wrap { grid-template-columns: 1fr; } .tv-wrap .world-own-map { min-height: 340px; } }
