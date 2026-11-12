@@ -2819,3 +2819,17 @@ h3.fw-sub:not(:first-child) { margin-top: 18px; }
 .fav-cat [data-all] { margin-top: 4px; font-size: .82rem; }
 .fav-modal .fav-find { width: 100%; margin: 0 0 8px; }
 .fav-every ol { max-height: 58vh; overflow-y: auto; padding-right: 4px; }
+
+/* Sub-tabs that stand out: the pills under a page's tabs (a server's Server ▾ / Stats ▾, Manage's groups) */
+.subtabs a { background: rgba(255, 255, 255, .07); border-color: rgba(255, 255, 255, .13); color: #c3c9d4; }
+.subtabs a:hover { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .22); }
+.subtabs a[aria-current="page"] { background: rgba(242, 193, 78, .2); border-color: #f2c14e; color: #fff; box-shadow: 0 0 0 2px rgba(242, 193, 78, .14); }
+/* A player's sections (below the trophies and favourites): a bar of their own, so they aren't lost */
+nav.tabs[aria-label="Player sections"] { background: var(--tuff); border: 1px solid rgba(255, 255, 255, .1); border-radius: var(--radius-m);
+  padding: 4px; gap: 2px; margin: 8px 0 18px; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); }
+nav.tabs[aria-label="Player sections"] a { border-radius: 8px; border-bottom: 3px solid transparent; margin-bottom: 0; padding: 9px 14px 7px; }
+nav.tabs[aria-label="Player sections"] a:hover { background: rgba(255, 255, 255, .06); }
+nav.tabs[aria-label="Player sections"] a[aria-current="page"] { background: rgba(242, 193, 78, .12); border-bottom-color: var(--gold); }
+/* Favourites: even rows (four across, two on a phone) */
+@media (min-width: 860px) { .fav-shelf { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .fav-shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
