@@ -1,3 +1,16 @@
+# Solstone 1.21.3
+
+- **A switch for every notification.** "Someone asks to join", "a picture firework needs approving" and "someone reached their play-time limit" used to be sent with no way to turn them off; each has its own switch now (on, as before, until you untick it).
+- **Notifications in tabs.** Manage → Solstone → Notifications is split into **What** (the switches, grouped: Players, Asking you, Servers, Family, and the weekly digest), **Where to** (ntfy and Discord), **When** (quiet hours, and each server's own choices) and **Log**.
+- **📋 The notification log.** Every notification Solstone sends, or holds back for quiet hours, with when, which server, where it went and where tapping it leads. At the top: how many of each kind went out today, in the last 7 days and in the last 30 days (tap a row to see just that kind). The newest 500 are kept, and there's Clear the log.
+- **Mod updates open the mod.** Tapping a mod-update notification opens that build's Modrinth page, with what changed; several at once open the server's Mods tab. Each mod there has a **Modrinth ↗** link.
+- **Skip this version.** On a server's Mods tab, an update can be skipped: no badge and no notification for it, until a different build comes out (then it shows again). **Undo** brings it back.
+- **Server → Control in tabs:** the server and Message everyone stay on top; **Players** (with the whitelist), **Console**, **World** (time, weather, difficulty, bedtime, game rules) and **Admin actions** are tabs.
+- **Fireworks → The show:** colours, pace and show-pieces first, then the built-in fireworks in folding groups (in the sky, from the ground, pictures, show-pieces), each saying how many are on, with an **All of these** row.
+- **Play time on a phone:** a card for each player, instead of a table that scrolls sideways.
+- **Website → Site details in parts:** Home page, Joining, Sky, When it's down, and Tidy up.
+- **Full copy: Don't copy.** Your own list of what the nightly copy leaves out, one per line: a file or folder (`bluemap`, `world/DistantHorizons.sqlite`) or a pattern (`*.jar`). Anything listed is never fetched and never removed; files already in the copy stay until you delete them.
+
 # Solstone 1.21.2
 
 - **The "website is down" page says how to get on.** When Solstone or this computer is down but the game isn't, the Cloudflare page now leads with "the game is still up: you can play", and each server gets the home page's join card: **Java**, its address (with the version to launch); **Bedrock**, the Xbox friend first (its gamertag, a link to its Xbox profile, and Play → Friends), with the server address and port as the other way. Every address has a Copy button. It shows whether each server is online and how many are playing out of how many (never who), its message of the day, and your note for it, and has a Check again button. Download the Worker again (Website → Site details → If this website goes down) and paste it over the old one to get it.
