@@ -34,7 +34,7 @@ from .config import config
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solstone")
 STATIC = Path(__file__).parent / "static"
-VERSION = "1.21.3"
+VERSION = "1.21.4"
 
 
 @asynccontextmanager
@@ -2744,7 +2744,7 @@ async def get_player(sid: str, uuid: str):
 
 
 @app.get("/api/servers/{sid}/players/{uuid}/travels")
-async def get_player_travels(sid: str, uuid: str):
+async def get_player_travels(sid: str, uuid: str, span: str = "all"):
     """Where a player (all their accounts) has been: the chunks, how often, and their records. Their own page only, for
     a player account, like the rest of it."""
     if not _own(uuid):
@@ -2755,8 +2755,8 @@ async def get_player_travels(sid: str, uuid: str):
         raise HTTPException(404, "Player not found")
     tog = await asyncio.to_thread(stacks.together, srv, p["name"])
     names = [a["name"] for a in (tog or {}).get("accounts", [])] or [p["name"]]
-    data = await asyncio.to_thread(adventures.travels, srv.id, names)
-    return {**data, "names": names}
+    data = await asyncio.to_thread(adventures.travels if span == "recent" else adventures.travels_all, srv.id, names)
+    return {**data, "names": names, "span": "recent" if span == "recent" else "all"}
 
 
 @app.get("/api/servers/{sid}/leaderboard")

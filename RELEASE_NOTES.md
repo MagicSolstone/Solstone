@@ -1,3 +1,11 @@
+# Solstone 1.21.4
+
+- **🏆 Trophies on each player's page.** Every leaderboard where they hold 1st, 2nd or 3rd right now, as gold, silver and bronze cards with their number and place ("tied 1st of 3"), linked accounts counted as one. The first six show, the rest fold under "All N trophies". **Nearly there** lists the boards where they're 4th or 5th, and how far off the next place.
+- **⭐ Favourites on each player's page.** The top one of each kind, from the game's own statistics: tool, weapon, food, mob defeated, block mined, thing crafted, way of getting around (walking, elytra, boat, horse…) and what defeated them most. Each shows how much of that kind it is, and what comes next.
+- **🗺 Travels.** A new tab on each player's page: a map of every chunk they've been in, warmer where they spent more time, for each dimension, with their bed, last death and where they are (or left off), and their deepest, highest and farthest points (tap one to go there). **All time** or **Last 45 days**. A player account sees only its own, like the rest of the page.
+- **Travels kept for good.** Where everyone has been is now also kept as a small tally of chunks (a few MB for years of play), so Travels goes back as far as Solstone has counted, while the detailed positions for replaying adventures are still kept 45 days. It starts from the positions already here. Moving history to another server moves it too; Forget a player and clearing Play history remove it.
+- Website → Site details: Unused pictures showed under every part; now only under **Tidy up**.
+
 # Solstone 1.21.3
 
 - **A switch for every notification.** "Someone asks to join", "a picture firework needs approving" and "someone reached their play-time limit" used to be sent with no way to turn them off; each has its own switch now (on, as before, until you untick it).

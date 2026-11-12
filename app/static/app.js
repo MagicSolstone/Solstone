@@ -1518,14 +1518,16 @@ function favouritesHtml(st) {
 // ---------------------------------------------------------------- travels (a player's page → Travels)
 // Where they've been: every chunk they were seen in (warmer = more often), with their bed, last death, where they are or
 // left off, and their records (deepest, highest, farthest). From the positions Solstone keeps.
-async function renderPlayerTravels(el, sid, p) {
+async function renderPlayerTravels(el, sid, p, span = "all") {
   el.innerHTML = `<p class="muted">Loading…</p>`;
   let t;
-  try { t = await api(`/api/servers/${encodeURIComponent(sid)}/players/${p.uuid}/travels`); }
+  try { t = await api(`/api/servers/${encodeURIComponent(sid)}/players/${p.uuid}/travels?span=${span}`); }
   catch (err) { el.innerHTML = `<p class="muted">Couldn't load their travels: ${esc(err.message)}</p>`; return; }
   const DIM_ORDER = ["minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"];
   const dims = Object.keys(t.dims).sort((a, b) => ((DIM_ORDER.indexOf(a) + 1 || 9) - (DIM_ORDER.indexOf(b) + 1 || 9)));
-  if (!dims.length) { el.innerHTML = `<div class="empty"><h3>No travels yet</h3><p>Where ${esc(p.name)} goes shows here once they've played a while (from the last ${t.keep_days} days).</p></div>`; return; }
+  const spanSeg = `<div class="seg" role="group" aria-label="How far back">${[["all", "All time"], ["recent", `Last ${t.keep_days} days`]].map(([k, l]) => `<button type="button" data-span="${k}" aria-pressed="${k === span}">${l}</button>`).join("")}</div>`;
+  el.onclick = (e) => { const b = e.target.closest("[data-span]"); if (b && b.dataset.span !== span) renderPlayerTravels(el, sid, p, b.dataset.span); };
+  if (!dims.length) { el.innerHTML = `<div class="tv-head">${spanSeg}</div><div class="empty"><h3>No travels yet</h3><p>Where ${esc(p.name)} goes shows here once they've played a while.</p></div>`; return; }
   const d0 = p.data || {};
   const here = d0.position ? { dim: d0.position.dimension || "minecraft:overworld", x: d0.position.x, z: d0.position.z } : null;
   const pins = (dim) => [
@@ -1542,11 +1544,11 @@ async function renderPlayerTravels(el, sid, p) {
       ${rec("🧭", "Farthest out", d.farthest, d.farthest ? fmtStat("cm", d.farthest.dist * 100) + " from 0, 0" : "")}
       ${pins(dim).map((x) => `<button type="button" class="tv-rec" data-go="${x.x},${x.z}"><span>${x.emo}</span><b>${esc(x.label)}</b><span></span><small class="muted">${fmtNum(x.x)}, ${fmtNum(x.z)}</small></button>`).join("")}`;
   };
-  el.innerHTML = `<div class="tv-head">
+  el.innerHTML = `<div class="tv-head">${spanSeg}
       ${dims.length > 1 ? `<div class="seg" role="group" aria-label="Dimension">${dims.map((x) => `<button type="button" data-dim="${esc(x)}" aria-pressed="${x === dim}">${esc(dimName(x))}</button>`).join("")}</div>` : ""}
       <span class="muted small" id="tv-sum"></span></div>
     <div class="tv-wrap"><div id="tv-map" class="world-own-map"></div><div class="tv-recs" id="tv-recs"></div></div>
-    <p class="muted small">Each square is a chunk (16 × 16 blocks) they've been in, warmer the more time they spent there: from the last ${t.keep_days} days${t.since ? ` (since ${esc(new Date(t.since * 1000).toLocaleDateString())})` : ""} and saved adventures.${t.names.length > 1 ? ` All of ${esc(t.names.join(" + "))}.` : ""}</p>`;
+    <p class="muted small">Each square is a chunk (16 × 16 blocks) they've been in, warmer the more time they spent there: ${span === "all" ? "all the time Solstone has kept count" : `the last ${t.keep_days} days, and saved adventures`}${t.since ? ` (since ${esc(new Date(t.since * 1000).toLocaleDateString())})` : ""}.${t.names.length > 1 ? ` All of ${esc(t.names.join(" + "))}.` : ""}</p>`;
   let cells = [], max = 1;
   const pick = () => {
     const d = t.dims[dim];
@@ -1575,12 +1577,14 @@ async function renderPlayerTravels(el, sid, p) {
   el.querySelector("canvas")?.setAttribute("aria-label", `Map of where ${p.name} has been`);
   const fit = () => map.fit(cells.slice(0, 400).map(([cx, cz]) => ({ x: cx * t.cell, z: cz * t.cell })));
   fit();
-  el.addEventListener("click", (e) => {
+  el.onclick = (e) => {
+    const s0 = e.target.closest("[data-span]");
+    if (s0) { if (s0.dataset.span !== span) renderPlayerTravels(el, sid, p, s0.dataset.span); return; }
     const b = e.target.closest("[data-dim]");
     if (b) { dim = b.dataset.dim; $$("[data-dim]", el).forEach((x) => x.setAttribute("aria-pressed", String(x === b))); pick(); map.setDim(dim); fit(); return; }
     const g = e.target.closest("[data-go]");
     if (g) { const [x, z] = g.dataset.go.split(",").map(Number); map.view.cx = x; map.view.cz = z; map.view.scale = Math.max(map.view.scale, 2); map.draw(); }
-  });
+  };
 }
 
 // ---------------------------------------------------------------- trophies (a player's page)

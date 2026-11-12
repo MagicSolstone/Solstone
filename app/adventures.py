@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 
 from . import db
@@ -271,6 +272,11 @@ def progress(srv, online: dict[str, str | None]) -> int:
 
 def prune() -> None:
     _tally_ensure()
+    try:
+        tally_travels()                     # (counted for all time before any old positions go)
+    except Exception:
+        log.exception("Couldn't count travels before clearing old positions: keeping them for now")
+        return
     db.x("DELETE FROM stat_tally WHERE ts < ?", (time.time() - TALLY_DAYS * 86400,))
     cutoff = time.time() - POSITIONS_DAYS * 86400
     db.x("DELETE FROM adventures_hidden WHERE end_ts < ?", (cutoff,))
@@ -447,6 +453,108 @@ def erase(server_id: str, start: float, end: float) -> dict:
 
 # ------------------------------------------------------------------ a player's travels (their page → Travels)
 CELL = 16                     # one square on the travels map: a chunk
+
+
+# For all time: a tally of each chunk each player has been in (how often, first and last time), and their records
+# (deepest, highest, farthest), kept for good: a few MB for years of play, where the positions themselves (every few
+# seconds) are kept POSITIONS_DAYS days. It's brought up to date from the positions not counted yet (by their rowid),
+# before the travels are read and before old positions are cleared, so nothing is missed.
+_tally_lock = threading.Lock()
+
+
+def travel_ensure() -> None:
+    db.x("CREATE TABLE IF NOT EXISTS travel_cells (server_id TEXT NOT NULL, player TEXT NOT NULL, dim TEXT NOT NULL, "
+         "cx INTEGER NOT NULL, cz INTEGER NOT NULL, n INTEGER NOT NULL, first_ts REAL NOT NULL, last_ts REAL NOT NULL, "
+         "PRIMARY KEY (server_id, player, dim, cx, cz))")
+    db.x("CREATE TABLE IF NOT EXISTS travel_records (server_id TEXT NOT NULL, player TEXT NOT NULL, dim TEXT NOT NULL, "
+         "kind TEXT NOT NULL, v REAL NOT NULL, x REAL, y REAL, z REAL, ts REAL, PRIMARY KEY (server_id, player, dim, kind))")
+    db.x("CREATE TABLE IF NOT EXISTS travel_meta (k TEXT PRIMARY KEY, v REAL NOT NULL)")
+
+
+def tally_travels(batch: int = 200_000) -> int:
+    """Count the positions not counted yet into the all-time tally. Returns how many were counted."""
+    import math
+    travel_ensure()
+    done = 0
+    with _tally_lock:
+        while True:
+            mark = db.q("SELECT v FROM travel_meta WHERE k='positions_rowid'")
+            seen = int(mark[0]["v"]) if mark else 0
+            top = db.q("SELECT MAX(rowid) AS m FROM positions")[0]["m"] or 0
+            seen = min(seen, top)               # (the newest rows were deleted: rowids from there are new ones)
+            rows = db.q("SELECT rowid, server_id, ts, player, dim, x, y, z FROM positions WHERE rowid > ? ORDER BY rowid LIMIT ?",
+                        (seen, batch))
+            if not rows:
+                db.x("INSERT OR REPLACE INTO travel_meta(k, v) VALUES ('positions_rowid', ?)", (seen,))
+                return done
+            cells: dict[tuple, list] = {}
+            recs: dict[tuple, dict] = {}
+            for r in rows:
+                who = (r["server_id"], r["player"].lower(), r["dim"])
+                key = (*who, math.floor(r["x"] / CELL), math.floor(r["z"] / CELL))
+                c = cells.get(key)
+                if c is None:
+                    cells[key] = [1, r["ts"], r["ts"]]
+                else:
+                    c[0] += 1
+                    c[1] = min(c[1], r["ts"])
+                    c[2] = max(c[2], r["ts"])
+                rec = recs.setdefault(who, {})
+                here = (r["x"], r["y"], r["z"], r["ts"])
+                for kind, v, better in (("deepest", r["y"], lambda a, b: a < b), ("highest", r["y"], lambda a, b: a > b),
+                                        ("farthest", math.hypot(r["x"], r["z"]), lambda a, b: a > b)):
+                    if kind not in rec or better(v, rec[kind][0]):
+                        rec[kind] = (v, *here)
+            with db._lock:
+                c = db.conn()
+                c.execute("BEGIN IMMEDIATE")
+                try:
+                    c.executemany("INSERT INTO travel_cells(server_id, player, dim, cx, cz, n, first_ts, last_ts) VALUES (?,?,?,?,?,?,?,?) "
+                                  "ON CONFLICT(server_id, player, dim, cx, cz) DO UPDATE SET n = n + excluded.n, "
+                                  "first_ts = MIN(first_ts, excluded.first_ts), last_ts = MAX(last_ts, excluded.last_ts)",
+                                  [(*k, *v) for k, v in cells.items()])
+                    c.executemany("INSERT INTO travel_records(server_id, player, dim, kind, v, x, y, z, ts) VALUES (?,?,?,?,?,?,?,?,?) "
+                                  "ON CONFLICT(server_id, player, dim, kind) DO UPDATE SET v=excluded.v, x=excluded.x, y=excluded.y, "
+                                  "z=excluded.z, ts=excluded.ts WHERE (excluded.kind = 'deepest' AND excluded.v < travel_records.v) "
+                                  "OR (excluded.kind <> 'deepest' AND excluded.v > travel_records.v)",
+                                  [(*who, kind, *vals) for who, rec in recs.items() for kind, vals in rec.items()])
+                    c.execute("INSERT OR REPLACE INTO travel_meta(k, v) VALUES ('positions_rowid', ?)", (rows[-1]["rowid"],))
+                    c.execute("COMMIT")
+                except Exception:
+                    c.execute("ROLLBACK")
+                    raise
+            done += len(rows)
+            if len(rows) < batch:
+                return done
+
+
+def travels_all(server_id: str, names: list[str]) -> dict:
+    """Where these names (one person's accounts) have ever been, from the all-time tally: like travels(), for all time."""
+    low = [n.lower() for n in names if n]
+    if not low:
+        return {"dims": {}, "since": None}
+    tally_travels()
+    marks = ",".join("?" * len(low))
+    out: dict[str, dict] = {}
+    first = None
+    for r in db.q(f"SELECT dim, cx, cz, SUM(n) AS n, MIN(first_ts) AS f FROM travel_cells WHERE server_id=? AND player IN ({marks}) "
+                  "GROUP BY dim, cx, cz ORDER BY n DESC", (server_id, *low)):
+        d = out.setdefault(r["dim"], {"cells": [], "chunks": 0, "points": 0, "deepest": None, "highest": None, "farthest": None})
+        if len(d["cells"]) < 50000:
+            d["cells"].append([r["cx"], r["cz"], r["n"]])
+        d["chunks"] += 1
+        d["points"] += r["n"]
+        first = r["f"] if first is None else min(first, r["f"])
+    for r in db.q(f"SELECT dim, kind, v, x, y, z, ts FROM travel_records WHERE server_id=? AND player IN ({marks})", (server_id, *low)):
+        d = out.get(r["dim"])
+        if d is None:
+            continue
+        cur = d.get(r["kind"])
+        better = (r["v"] < cur["v"]) if cur and r["kind"] == "deepest" else (r["v"] > cur["v"]) if cur else True
+        if better:
+            d[r["kind"]] = {"x": round(r["x"]), "y": round(r["y"]), "z": round(r["z"]), "ts": r["ts"], "v": r["v"],
+                            **({"dist": round(r["v"])} if r["kind"] == "farthest" else {})}
+    return {"dims": out, "since": first, "cell": CELL, "keep_days": POSITIONS_DAYS}
 
 
 def travels(server_id: str, names: list[str]) -> dict:

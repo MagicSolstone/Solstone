@@ -331,7 +331,11 @@ def test_a_players_travels(player, client, sid, tyler):
 
     from app import db
     t0 = time.time() - 3600
+    from app import adventures
+    adventures.tally_travels()                                  # (whatever earlier tests left, counted and then cleared)
     db.x("DELETE FROM positions WHERE server_id=? AND player IN ('Tyler','Gimli_Jr')", (sid,))
+    db.x("DELETE FROM travel_cells WHERE server_id=?", (sid,))
+    db.x("DELETE FROM travel_records WHERE server_id=?", (sid,))
     for i, (x, y, z) in enumerate([(5, 64, 5), (6, 64, 7), (40, -50, -20), (-300, 120, 400)]):
         db.x("INSERT INTO positions(server_id, ts, player, dim, x, y, z) VALUES (?,?,?,?,?,?,?)", (sid, t0 + i, "Tyler", "minecraft:overworld", x, y, z))
     db.x("INSERT INTO positions(server_id, ts, player, dim, x, y, z) VALUES (?,?,?,?,?,?,?)", (sid, t0, "Tyler", "minecraft:the_nether", 1, 70, 1))
@@ -342,8 +346,19 @@ def test_a_players_travels(player, client, sid, tyler):
         assert ow["chunks"] == 3 and ow["points"] == 4 and ow["cells"][0] == [0, 0, 2]          # (5,5) and (6,7): one chunk, twice
         assert [-19, 25, 1] in ow["cells"]                                                      # -300 / 16 rounds down
         assert ow["deepest"]["y"] == -50 and ow["highest"]["y"] == 120 and ow["farthest"]["x"] == -300
-        assert t["dims"]["minecraft:the_nether"]["chunks"] == 1 and t["names"] == ["Tyler"]
+        assert t["dims"]["minecraft:the_nether"]["chunks"] == 1 and t["names"] == ["Tyler"] and t["span"] == "all"
+        recent = client.get(f"/api/servers/{sid}/players/{tyler}/travels?span=recent").json()
+        assert recent["dims"]["minecraft:overworld"]["cells"][0] == [0, 0, 2] and recent["span"] == "recent"
+        # the positions go (after 45 days): the all-time tally stays, and keeps counting what comes after
+        db.x("DELETE FROM positions WHERE server_id=? AND player='Tyler'", (sid,))
+        db.x("INSERT INTO positions(server_id, ts, player, dim, x, y, z) VALUES (?,?,?,?,?,?,?)", (sid, t0 + 9, "Tyler", "minecraft:overworld", 2, -60, 2))
+        t = client.get(f"/api/servers/{sid}/players/{tyler}/travels").json()
+        ow = t["dims"]["minecraft:overworld"]
+        assert ow["chunks"] == 3 and ow["cells"][0] == [0, 0, 3] and ow["deepest"]["y"] == -60 and ow["highest"]["y"] == 120
+        assert client.get(f"/api/servers/{sid}/players/{tyler}/travels?span=recent").json()["dims"]["minecraft:overworld"]["points"] == 1
         assert player.get(f"/api/servers/{sid}/players/{tyler}/travels").status_code == 200     # their own
         assert player.get(f"/api/servers/{sid}/players/{helpers.PLAYERS[1][1]}/travels").status_code == 404
     finally:
         db.x("DELETE FROM positions WHERE server_id=? AND player IN ('Tyler','Gimli_Jr')", (sid,))
+        db.x("DELETE FROM travel_cells WHERE server_id=?", (sid,))
+        db.x("DELETE FROM travel_records WHERE server_id=?", (sid,))

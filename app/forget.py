@@ -144,6 +144,10 @@ def wipe(name: str) -> dict:
     db.x(f"DELETE FROM sessions WHERE {where}", args)
     db.x(f"DELETE FROM events WHERE {where}", args)
     db.x(f"DELETE FROM positions WHERE {pw}", pargs)
+    from . import adventures
+    adventures.travel_ensure()
+    db.x(f"DELETE FROM travel_cells WHERE {pw}", pargs)
+    db.x(f"DELETE FROM travel_records WHERE {pw}", pargs)
     db.x(f"DELETE FROM fish_catches WHERE {pw}", pargs)
     for r in db.q("SELECT server_id, day, data FROM recaps"):
         if _named(r["data"], p["names"]):

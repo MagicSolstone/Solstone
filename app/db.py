@@ -96,6 +96,12 @@ CREATE TABLE IF NOT EXISTS positions (
     x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS positions_by_time ON positions(server_id, ts);
+CREATE TABLE IF NOT EXISTS travel_cells (server_id TEXT NOT NULL, player TEXT NOT NULL, dim TEXT NOT NULL,
+    cx INTEGER NOT NULL, cz INTEGER NOT NULL, n INTEGER NOT NULL, first_ts REAL NOT NULL, last_ts REAL NOT NULL,
+    PRIMARY KEY (server_id, player, dim, cx, cz));
+CREATE TABLE IF NOT EXISTS travel_records (server_id TEXT NOT NULL, player TEXT NOT NULL, dim TEXT NOT NULL,
+    kind TEXT NOT NULL, v REAL NOT NULL, x REAL, y REAL, z REAL, ts REAL, PRIMARY KEY (server_id, player, dim, kind));
+CREATE TABLE IF NOT EXISTS travel_meta (k TEXT PRIMARY KEY, v REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS adventures (
     id INTEGER PRIMARY KEY,
     server_id TEXT NOT NULL,
@@ -599,6 +605,8 @@ def clear_server(server_id: str, kinds: set[str]) -> dict[str, int]:
         "recaps": [("DELETE FROM recaps WHERE server_id=?", (server_id,))],
         "play": [("DELETE FROM sessions WHERE server_id=? AND end_ts IS NOT NULL", (server_id,)),
                  ("DELETE FROM positions WHERE server_id=?", (server_id,)),
+                 ("DELETE FROM travel_cells WHERE server_id=?", (server_id,)),
+                 ("DELETE FROM travel_records WHERE server_id=?", (server_id,)),
                  ("DELETE FROM adventures WHERE server_id=?", (server_id,)),
                  ("DELETE FROM adventures_hidden WHERE server_id=?", (server_id,))],
         "performance": [("DELETE FROM metrics WHERE server_id=?", (server_id,))],

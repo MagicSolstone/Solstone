@@ -25,6 +25,8 @@ TABLES = (
     ("stat_tally", "Stats from each save (distance, advancements, deaths)"),
     ("daily_stats", "Server stats page days"),
     ("positions", "Where players were (map trails, adventures)"),
+    ("travel_cells", "Where each player has ever been (Travels, all time)"),
+    ("travel_records", "Each player's deepest, highest and farthest"),
     ("adventures", "Adventures named or noted"),
     ("adventures_hidden", "Adventures hidden"),
     ("metrics", "Uptime, players on, CPU and memory"),
@@ -38,6 +40,7 @@ _lock = threading.Lock()
 def _ensure() -> None:
     from . import adventures, serverstats
     adventures._tally_ensure()
+    adventures.travel_ensure()
     serverstats._ensure()
 
 
