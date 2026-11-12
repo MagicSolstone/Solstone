@@ -125,7 +125,11 @@ def test_player_sees_only_their_corner(player, viewer, sid, tyler):
 
 def test_every_api_route_is_judged_for_players():
     """A route a player may use must exist: catches typos in the list when routes are renamed."""
-    paths = {getattr(r, "path", "") for r in main.app.routes}
+    def every(routes):                     # (a router included in the app: its own routes)
+        for r in routes:
+            inner = getattr(r, "original_router", None) or getattr(r, "router", None) if not getattr(r, "path", "") else None
+            yield from every(inner.routes) if inner is not None else [r]
+    paths = {getattr(r, "path", "") for r in every(main.app.routes)}
     assert set(main.PLAYER_ROUTES) <= paths
 
 

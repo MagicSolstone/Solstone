@@ -105,8 +105,40 @@ def safely(handler):
                 raise
     return wrapped
 
+# Every page counts the requests it has in flight (fetch and XHR) and when the last one ended, so a pause in the test
+# ends as soon as the page has settled (nothing loading for a moment) instead of always waiting its full length.
+NET_WATCH = """(() => { window.__busy = 0; window.__lastNet = performance.now();
+  const done = () => { window.__busy = Math.max(0, window.__busy - 1); window.__lastNet = performance.now(); };
+  const f = window.fetch; window.fetch = function (...a) { window.__busy++; window.__lastNet = performance.now();
+    return f.apply(this, a).finally(done); };
+  const send = XMLHttpRequest.prototype.send; XMLHttpRequest.prototype.send = function (...a) { window.__busy++;
+    this.addEventListener("loadend", done, { once: true }); return send.apply(this, a); }; })();"""
+QUIET_MS = 200            # nothing loading for this long: settled
+MIN_MS = 120              # but always at least this (a click's own drawing, a little animation)
+
+
+def _settle(page, ms: float) -> None:
+    """Instead of a fixed pause: wait until the page has settled, for at most the pause asked for."""
+    _fixed(page, min(ms, MIN_MS))
+    if ms <= MIN_MS or os.environ.get("SMOKE_FIXED_WAITS"):
+        if ms > MIN_MS:
+            _fixed(page, ms - MIN_MS)
+        return
+    try:
+        page.wait_for_function("(q) => window.__busy === 0 && performance.now() - window.__lastNet > q", arg=QUIET_MS, timeout=ms - MIN_MS)
+    except Exception:
+        pass                                   # (still busy at the end: as before, the full pause)
+
+
+_fixed = None
+
+
 def main() -> int:
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import Page, sync_playwright
+    global _fixed
+    if _fixed is None:
+        _fixed = Page.wait_for_timeout
+        Page.wait_for_timeout = _settle
 
     root = Path(tempfile.mkdtemp(prefix="solstone-smoke-"))
     shots = Path(os.environ.get("SMOKE_SHOTS") or root / "shots")
@@ -121,6 +153,13 @@ def main() -> int:
     try:
         with sync_playwright() as pw:
             browser = pw.chromium.launch(executable_path=os.environ.get("SMOKE_CHROMIUM") or None)
+            _new_page = browser.new_page
+
+            def new_page(*a, **k):
+                pg_ = _new_page(*a, **k)
+                pg_.add_init_script(NET_WATCH)
+                return pg_
+            browser.new_page = new_page
 
             def page(width=1280, height=860):
                 pg = browser.new_page(viewport={"width": width, "height": height})
@@ -618,7 +657,7 @@ def main() -> int:
                 pg.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
                 for _ in range(25):
                     pg.mouse.wheel(0, 400)                         # out, out, out
-                pg.wait_for_timeout(6000)
+                _fixed(pg, 6000)                               # (map pictures load as images: a real pause)
                 note = pg.locator("#wm-own .rm-note").text_content() or ""
                 lit = pg.evaluate("""() => { const c = document.querySelector('#wm-own canvas'), x = c.getContext('2d');
                     const d = x.getImageData(0, 0, c.width, c.height).data; let n = 0;
@@ -1531,7 +1570,7 @@ def main() -> int:
             m.reload(); m.wait_for_timeout(800)
             if "Waiting for Solstone" not in m.locator("#view").inner_text():
                 problems.append("app: Solstone not answering didn't say it's waiting")
-            m.wait_for_timeout(3500)
+            _fixed(m, 3500)                                  # (a timer, not loading: a real pause)
             if m.locator("#login-root:not([hidden])").count() or len(tries) < 2:
                 problems.append("app: after Solstone answered again it didn't sign back in")
             m.unroute("**/api/auth/me")
