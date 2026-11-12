@@ -173,20 +173,24 @@ def test_registry_keeps_crafty_servers_while_crafty_is_down(monkeypatch, tmp_pat
     connections._clients.clear()
 
 
-def test_the_containers_crafty_settings_are_brought_in_once(monkeypatch, tmp_path):
-    """An older setup had Crafty in the container's settings: it's a connection in Solstone now, made from them once,
-    so nothing needs setting up again. Removed by an admin, it isn't brought back."""
+def test_a_crafty_connection_is_made_removed_and_made_again(monkeypatch, tmp_path):
+    """Crafty is a connection like any other (the container's settings aren't read): added, removed, added again.
+    RCON's default host follows it."""
     from app import connections, settings_store
     from app.config import config
     monkeypatch.setattr(settings_store, "_PATH", tmp_path / "settings.json")
-    monkeypatch.setattr(config, "crafty_url", "https://192.168.1.10:8443")
-    monkeypatch.setattr(config, "crafty_token", "secret-token")
-    c = connections.get("crafty")
-    assert c and c["type"] == "crafty" and c["url"] == "https://192.168.1.10:8443" and c["token"] == "secret-token" and c["from_env"]
+    monkeypatch.setattr(config, "rcon_host", "")
+    assert not connections.all_cfg() and config.default_rcon_host == "127.0.0.1"
+    cid = connections.save(None, {"type": "crafty", "name": "Crafty", "url": "https://192.168.1.10:8443", "token": "secret-token"})
+    c = connections.get(cid)
+    assert c["type"] == "crafty" and c["token"] == "secret-token" and config.default_rcon_host == "192.168.1.10"
     pub = connections.public(c)
     assert "token" not in pub and pub["token_set"] and pub["type_name"] == "Crafty 4"
-    connections.remove("crafty")
-    assert connections.get("crafty") is None and not connections.all_cfg()               # not brought back
+    connections.remove(cid)
+    assert connections.get(cid) is None and not connections.all_cfg()
+    cid = connections.save(None, {"type": "crafty", "name": "Crafty again", "url": "https://192.168.1.11:8443", "token": "t2"})
+    assert connections.get(cid)["name"] == "Crafty again"
+    connections.remove(cid)
     with pytest.raises(ValueError):
         connections.clean({"type": "crafty", "url": "https://x"})                       # no token
     with pytest.raises(ValueError):

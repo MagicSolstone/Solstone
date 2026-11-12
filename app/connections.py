@@ -9,9 +9,8 @@ Two kinds, set up in Solstone itself (not in the container's settings):
 - **ServerPrism** (serverprism): ServerPrism's own API (https://serverprism.com/api), the same things through its
   token. Its commands don't send back the game's reply and are limited to 20 a minute, so RCON still does the game.
 
-There can be more than one of each. Older Solstones took Crafty from the container's CRAFTY_URL and CRAFTY_TOKEN:
-those are brought in once, the first time this version starts, as a Crafty connection (so nothing needs setting up
-again), and after that it's the one in Solstone that counts. The container settings can then be removed.
+There can be more than one of each, and any can be removed and added again here. (Crafty used to be set in the
+container's CRAFTY_URL and CRAFTY_TOKEN; those were brought in as a connection by 1.x versions, and aren't read now.)
 """
 from __future__ import annotations
 
@@ -23,12 +22,10 @@ import threading
 import httpx
 
 from . import settings_store
-from .config import config
 
 log = logging.getLogger("solstone.connections")
 
 SECTION = "connections"                 # {cid: {...}}
-IMPORTED = "connections_env_imported"   # the container's Crafty settings were brought in (once: removing it sticks)
 SECRETS = ("token", "password", "key")
 TYPES = {"crafty": "Crafty 4", "panel": "Pterodactyl or Pelican", "serverprism": "ServerPrism"}
 HOSTS = ("panel", "serverprism")       # the kinds a server somewhere else can be on (start, stop, CPU, memory)
@@ -37,26 +34,9 @@ _lock = threading.Lock()
 
 
 # ------------------------------------------------------------------ the saved connections
-def _import_env(data: dict) -> bool:
-    """The container's CRAFTY_URL and CRAFTY_TOKEN (an older setup), as a Crafty connection: once."""
-    if settings_store.load().get(IMPORTED) or not config.crafty_url:
-        return False
-    if not (config.crafty_token or (config.crafty_user and config.crafty_password)):
-        return False
-    data["crafty"] = {"type": "crafty", "name": "Crafty", "url": config.crafty_url, "token": config.crafty_token,
-                      "user": config.crafty_user, "password": config.crafty_password, "verify_ssl": config.crafty_verify_ssl,
-                      "from_env": True}
-    return True
-
-
 def all_cfg() -> dict[str, dict]:
     with _lock:
-        data = dict(settings_store.load().get(SECTION) or {})
-        if _import_env(data):
-            settings_store.save_section(SECTION, data)
-            settings_store.save_section(IMPORTED, True)
-            log.info("brought in the container's Crafty settings (%s) as a connection", config.crafty_url)
-        return data
+        return dict(settings_store.load().get(SECTION) or {})
 
 
 def get(cid: str | None) -> dict | None:
@@ -124,7 +104,6 @@ def remove(cid: str) -> None:
     data.pop(cid, None)
     with _lock:
         settings_store.save_section(SECTION, data)
-        settings_store.save_section(IMPORTED, True)       # (the container's settings aren't brought back in)
     _clients.pop(cid, None)
 
 

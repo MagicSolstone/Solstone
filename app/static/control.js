@@ -1563,8 +1563,7 @@ async function manageConnections() {
   box.innerHTML = (list.length ? list.map((x) => `<div class="panel srv-row" data-cid="${esc(x.id)}">
       <div class="srv-main"><b>${{ crafty: "🧰", serverprism: "🔷" }[x.type] || "🛰️"} ${esc(x.name)}</b> <span class="muted small">${esc(x.type_name)} · ${esc(x.url)}</span>
         <div class="srv-chips">${x.error || x.unreachable ? chip("warn", "Not answering", x.error || "") : chip("on", "Answering")}
-          ${chip("", x.servers.length ? `${x.servers.length} server${x.servers.length === 1 ? "" : "s"}` : "No servers yet", x.servers.join(", "))}
-          ${x.from_env ? chip("new", "From the container's settings", "Brought in from CRAFTY_URL and CRAFTY_TOKEN once. It's set here now: you can remove those from the container") : ""}</div></div>
+          ${chip("", x.servers.length ? `${x.servers.length} server${x.servers.length === 1 ? "" : "s"}` : "No servers yet", x.servers.join(", "))}</div></div>
       <div class="btn-row"><button class="btn sm" type="button" data-edit-conn>Edit</button></div></div>`).join("")
     : `<p class="muted">None yet. Crafty, if you use it, goes here; so does a game host's panel.</p>`)
     + `<div class="btn-row"><button class="btn" type="button" data-add-conn>＋ Add a connection</button>

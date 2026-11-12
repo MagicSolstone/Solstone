@@ -23,8 +23,6 @@ os.environ.update({
     "SERVERS_DIR": str(ROOT / "servers"),
     "DATA_DIR": str(ROOT / "data"),
     "DOWNLOAD_ASSETS": "false",
-    "CRAFTY_URL": "",
-    "CRAFTY_TOKEN": "",
     "RCON_HOST": "127.0.0.1",
     "RCON_TIMEOUT": "1",
     "ADMIN_USERNAME": "admin",

@@ -45,7 +45,7 @@ def appear(pg, selector: str, n: int = 1, ms: int = 15000) -> bool:
 def start_app(root: Path, port: int) -> subprocess.Popen:
     env = {**os.environ,
            "SERVERS_DIR": str(root / "servers"), "DATA_DIR": str(root / "data"), "BACKUPS_DIR": str(root / "backups"),
-           "DOWNLOAD_ASSETS": "false", "CRAFTY_URL": "", "CRAFTY_TOKEN": "", "RCON_HOST": "127.0.0.1", "RCON_TIMEOUT": "1",
+           "DOWNLOAD_ASSETS": "false", "RCON_HOST": "127.0.0.1", "RCON_TIMEOUT": "1",
            "ADMIN_USERNAME": ADMIN["username"], "ADMIN_PASSWORD": ADMIN["password"], "RECORDER_ENABLED": "false",
            "TZ": "America/Chicago",
            # every page here comes from one address, quicker than any visitor: the public limit (240 a minute) would

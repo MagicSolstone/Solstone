@@ -965,7 +965,7 @@ async function viewHome() {
 
 function setupHelp(st) {
   const lines = [];
-  if (!st.crafty?.configured) lines.push(`Set <code>CRAFTY_URL</code> and <code>CRAFTY_TOKEN</code> so Solstone can list your Crafty servers.`);
+  if (!st.crafty?.configured) lines.push(`Using Crafty? Add it in <a href="#/manage/setup">Manage → Solstone → Server setup → Connections</a> so Solstone can list its servers. A server at a game host is added there too.`);
   else if (st.crafty?.error) lines.push(`Crafty answered with an error: <code>${esc(st.crafty.error)}</code>. Check the URL and API token.`);
   if (!st.servers_dir_found) lines.push(`Mount Crafty's <code>servers</code> folder at <code>${esc(st.servers_dir)}</code> (read-only is fine).`);
   return `<div class="empty"><h3>Connect Solstone to Crafty</h3>${lines.map((l) => `<p style="margin-top:6px">${l}</p>`).join("") || "<p>Start a server in Crafty and it will appear here.</p>"}</div>`;

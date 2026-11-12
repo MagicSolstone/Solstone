@@ -15,11 +15,6 @@ def _bool(name: str, default: bool) -> bool:
 
 class Config:
     # Crafty Controller 4
-    crafty_url: str = os.getenv("CRAFTY_URL", "").rstrip("/")
-    crafty_token: str = os.getenv("CRAFTY_TOKEN", "")
-    crafty_user: str = os.getenv("CRAFTY_USERNAME", "")
-    crafty_password: str = os.getenv("CRAFTY_PASSWORD", "")
-    crafty_verify_ssl: bool = _bool("CRAFTY_VERIFY_SSL", False)
 
     # Where Crafty's "servers" folder is mounted inside this container (read-only is fine)
     servers_dir: Path = Path(os.getenv("SERVERS_DIR", "/servers"))
@@ -51,10 +46,14 @@ class Config:
     def default_rcon_host(self) -> str:
         if self.rcon_host:
             return self.rcon_host
-        if self.crafty_url:
-            host = urlparse(self.crafty_url).hostname
-            if host:
-                return host
+        try:                                   # (as before: where Crafty is, RCON usually is too)
+            from . import connections
+            for c in connections.of_type("crafty").values():
+                host = urlparse(c.get("url") or "").hostname
+                if host:
+                    return host
+        except Exception:
+            pass
         return "127.0.0.1"
 
 

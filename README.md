@@ -1,6 +1,6 @@
 # Solstone
 
-A family-friendly web dashboard for Minecraft Java servers run by **Crafty Controller 4**.
+A family-friendly web dashboard for Minecraft Java servers: at a game host (over SFTP, with Pterodactyl, Pelican or ServerPrism for start and stop), or on the same machine (run by Crafty Controller 4, or just a folder).
 
 - **Website** at `/`, no sign-in needed: how to join (Java and Bedrock addresses, with copy buttons), the public servers' live status, announcements, and posts in three kinds (**News**, **Guides** and **FAQ**). Admins write the posts and set the site's details in the app (🌐 Website). The signed-in app lives at `/app`; old `/#/...` links forward there.
 - **Private servers:** mark a server private (Server settings) and only admins see it. It never appears on the website or the status page, and signed-in players don't see it. Admins keep managing it from the same sign-in, so a home server and a public one can share one Solstone.
@@ -156,9 +156,8 @@ In the server's ⚙ Settings → 2. Its files, tick **Copy the whole server here
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `CRAFTY_URL`, `CRAFTY_TOKEN` (or `CRAFTY_USERNAME` + `CRAFTY_PASSWORD`), `CRAFTY_VERIFY_SSL` | – | *Older setups.* Crafty is set up in **Manage → Server setup → Connections** now. If these are set, they're brought in once as a Crafty connection the first time Solstone starts, and can then be removed. |
-| `SERVERS_DIR` | `/servers` | Where Crafty's `servers` folder is mounted |
-| `RCON_HOST` | Crafty host | Host the RCON ports are reachable on |
+| `SERVERS_DIR` | `/servers` | A folder of Minecraft servers on this machine (Crafty's `servers` folder, say), mounted read-only. Not needed for servers at a game host, which are added in **Manage → Solstone → Server setup** |
+| `RCON_HOST` | your Crafty connection's host, else `127.0.0.1` | Host the RCON ports of servers on this machine are reachable on (a server at a game host has its own, in its settings) |
 | `RCON_TIMEOUT` | `4` | Seconds |
 | `LIVE_TTL` | `3` | Seconds to cache live RCON data |
 | `DOWNLOAD_ASSETS` | `true` | Download the Minecraft client jar for icons and names. If `false`, you can drop a `client.jar` into `/data/assets/<version>/` yourself |
@@ -183,7 +182,7 @@ In the server's ⚙ Settings → 2. Its files, tick **Copy the whole server here
 | `PUID` / `PGID` | `1000` | Host user/group that owns `/data` |
 | `ONLY_SERVERS` | – | Only these servers (Crafty names, Crafty ids or folder names, comma-separated). For running two Solstones against one Crafty, see below |
 
-Without Crafty configured, Solstone still works by scanning `SERVERS_DIR` for folders containing `server.properties`.
+Crafty is a connection like a game host's panel (**Manage → Solstone → Server setup → Connections**): add it, remove it, add it again. Without one, Solstone still finds the servers in `SERVERS_DIR` (folders with a `server.properties`); it just can't start or stop them. (`CRAFTY_URL` and `CRAFTY_TOKEN` in the container aren't read any more: older versions brought them in as a connection, which stays.)
 
 ### Two communities, two websites
 To give two Minecraft servers their own website, accounts and settings, run two Solstone containers against the same Crafty. Give each its own `/data` folder, its own port (each domain or tunnel points at one), and `ONLY_SERVERS` naming its server:
