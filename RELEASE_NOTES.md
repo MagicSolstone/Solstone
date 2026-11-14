@@ -1,3 +1,7 @@
+# Solstone 1.23.0
+
+- **BlueMap is back.** Each server's settings (Manage → Solstone → Server setup → ⚙ Settings) have a **Web map address** (BlueMap, squaremap or Dynmap) and **Show the web map through Solstone**: then it opens from anywhere, walled off from Solstone, only for people signed in who may see the map, and the map itself stays off the internet. The World tab has **🗺️ Top-down map / 🧊 Web map**. Server setup shows a 🧊 Web map chip, and 🩺 Check says whether the map answers.
+
 # Solstone 1.22.0
 
 The stable version: from here, bug fixes only.
