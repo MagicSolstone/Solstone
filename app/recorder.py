@@ -28,6 +28,7 @@ from .rcon import RconError
 log = logging.getLogger("solstone.recorder")
 
 POLL_INTERVAL = float(os.getenv("POLL_INTERVAL", "30"))
+POLL_LIMIT = 60                     # one server's measurement (or the alert checks) given up on after this long
 LOG_INTERVAL = float(os.getenv("LOG_INTERVAL", "5"))
 GUARD_INTERVAL = float(os.getenv("GUARD_INTERVAL", "10"))
 METRICS_DAYS = int(os.getenv("METRICS_RETENTION_DAYS", "30"))
@@ -240,20 +241,28 @@ class Recorder:
 
     # ------------------------------------------------------------ polling
     async def poll_all(self) -> None:
-        await S.registry.refresh()
+        # Each part has a time limit: something that never answers (a server hung while starting, Crafty, a slow
+        # disk) is noted and skipped, so it can't stop every other measurement behind it.
+        try:
+            await asyncio.wait_for(S.registry.refresh(), POLL_LIMIT)
+        except asyncio.TimeoutError:
+            log.warning("Looking for servers took over %d s: measuring the ones already known", POLL_LIMIT)
         servers = list(S.registry.servers.values())
-        results = await asyncio.gather(*(self.poll_server(s) for s in servers), return_exceptions=True)
+        results = await asyncio.gather(*(asyncio.wait_for(self.poll_server(s), POLL_LIMIT) for s in servers), return_exceptions=True)
         for srv, r in zip(servers, results, strict=True):
-            if isinstance(r, Exception):
+            if isinstance(r, asyncio.TimeoutError):
+                self.errors[srv.id] = f"Measuring it took over {POLL_LIMIT} s (the game or what runs it didn't answer), so it was skipped this time"
+                log.warning("Recording %s: %s", srv.id, self.errors[srv.id])
+            elif isinstance(r, Exception):
                 self.errors[srv.id] = f"{type(r).__name__}: {r}"
                 log.warning("Recording %s failed: %s", srv.id, self.errors[srv.id], exc_info=r)
             else:
                 self.errors.pop(srv.id, None)
         self.last_poll = time.time()
         try:
-            await self.check_alerts(servers)
+            await asyncio.wait_for(self.check_alerts(servers), POLL_LIMIT)
         except Exception:
-            log.exception("alert checks failed")
+            log.exception("alert checks failed (or took over %d s)", POLL_LIMIT)
 
     async def check_alerts(self, servers: list) -> None:
         """Screen-time limits, the weekly digest and overdue backups."""

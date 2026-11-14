@@ -317,3 +317,20 @@ def test_timeline_activity_lines_come_with_their_counts(client, sid):
     finally:
         db.x("DELETE FROM events WHERE id=?", (eid,))
         db.x("DELETE FROM sessions WHERE server_id=? AND player='Tally_Kid'", (sid,))
+
+
+def test_a_server_that_never_answers_doesnt_stop_the_measurements(client, sid, monkeypatch):
+    """One server stuck (hung while starting, say): it's skipped with a note after the limit, and the round finishes."""
+    import asyncio
+
+    from app import recorder as R
+    monkeypatch.setattr(R, "POLL_LIMIT", 0.2)
+
+    async def stuck(srv):
+        await asyncio.sleep(30)
+    monkeypatch.setattr(recorder, "poll_server", stuck)
+    before = recorder.last_poll
+    asyncio.run(recorder.poll_all())
+    assert recorder.last_poll and recorder.last_poll != before
+    assert "took over" in recorder.status(sid)["error"]
+    recorder.errors.pop(sid, None)

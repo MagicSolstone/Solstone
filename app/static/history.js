@@ -449,9 +449,11 @@ async function viewPerformance(sid) {
     ];
     $("#perf-tiles").innerHTML = `<div class="stat-strip">${tiles.map(([v, k, status]) => `<div><div class="v">${esc(v)}</div><div class="k">${esc(k)}</div>${status ? `<div class="status ${status.cls}"><span aria-hidden="true">${status.icon}</span> ${esc(status.label)}</div>` : ""}</div>`).join("")}</div>`;
     const notes = [];
-    if (rec.error) notes.push(`<div class="notice">Recording this server is failing: <code>${esc(rec.error)}</code></div>`);
+    // (what to do about it is for admins; everyone else just sees that the numbers are behind)
+    if (!isAdmin()) { if ((rec.error || !rec.running || (rec.last_poll && until - rec.last_poll > rec.interval * 4))) notes.push(`<div class="notice">These numbers are a little behind right now${rec.last_poll ? ` (last measured ${esc(fmtAgo(rec.last_poll))})` : ""}.</div>`); }
+    else if (rec.error) notes.push(`<div class="notice">Recording this server is failing: <code>${esc(rec.error)}</code></div>`);
     else if (!rec.running) notes.push(`<div class="notice">The background recorder isn't running, so no new measurements are being saved.</div>`);
-    else if (rec.last_poll && until - rec.last_poll > rec.interval * 4) notes.push(`<div class="notice">The last measurement was ${esc(fmtAgo(rec.last_poll))}. The recorder may be stuck; check the container logs.</div>`);
+    else if (rec.last_poll && until - rec.last_poll > rec.interval * 4) notes.push(`<div class="notice">The last measurement was ${esc(fmtAgo(rec.last_poll))}. The recorder may be stuck: restarting Solstone gets it going, and its log says what it was waiting for.</div>`);
     if (!pts.length) {
       $("#perf-body").innerHTML = notes.join("") + `<div class="empty"><h3>No measurements yet</h3><p>Solstone records performance every ${Math.round(rec.interval || 30)} seconds while it's running. Check back in a few minutes.</p></div>`;
       return;
