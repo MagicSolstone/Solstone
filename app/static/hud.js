@@ -108,6 +108,15 @@ function faceHtml(p, size, cls = "") {
   return `<span class="face ${cls}" style="--s:${size}px;--skin:${main ? `url('${main}')` : `url('${backupSkin(p)}')`};--skin2:none" aria-hidden="true"><span class="face-init">${initial}</span></span>`;
 }
 
+// An address on a home network (192.168.x.x, 10.x, localhost, *.local...): fine from the same Wi-Fi, but a public page
+// that loads one makes the browser ask for access to the visitor's local network, and it can't reach it anyway.
+function isHomeNetwork(url) {
+  let h = "";
+  try { h = new URL(url, location.href).hostname.toLowerCase(); } catch { return false; }
+  return h === "localhost" || h.endsWith(".local") || h.endsWith(".lan") || h.endsWith(".home.arpa") || /^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(h)
+    || h === "[::1]" || /^\[f[cd]/.test(h);
+}
+
 // ================================================================ the top bar
 // The same bar on every page: Home, News, Help, then (signed in) Events and Servers, and Manage for admins.
 // Servers drops down a list of the servers you can see; with only one, it goes straight there.

@@ -1251,7 +1251,7 @@ async function manageServers() {
           ${x.java ? chip(x.rcon && !x.rcon_error ? "on" : "warn", x.rcon ? (x.rcon_error ? "RCON not answering" : "RCON ✓") : "RCON off", x.rcon_error || "") : chip("", esc(x.game || "Bedrock"))}
           ${x.remote ? chip(x.files?.ok === false ? "warn" : x.files?.ok ? "on" : "", x.files?.ok === false ? "Files: not updating" : `🌐 ${esc(x.where)}`, x.files?.error || (x.files?.synced ? `Files updated ${fmtAgo(x.files.synced)}` : "Somewhere else, over SFTP"))
             + (x.panel ? chip(x.panel_error ? "warn" : "on", x.panel_error ? "Panel: not answering" : "Panel ✓", x.panel_error || "Start, stop, CPU and memory through the host's panel") : "")
-            : chip("", x.crafty ? "Crafty" : "Folder", x.crafty ? "Started and stopped through Crafty" : `The ${x.folder} folder`)}${x.version ? chip("", esc(x.version)) : ""}${x.remote && x.map ? chip("", "🗺 Map", "Copies the parts of the world players go to, for the map") : ""}${backupChip(x.backup, chip)}</div></div>
+            : chip("", x.crafty ? "Crafty" : "Folder", x.crafty ? "Started and stopped through Crafty" : `The ${x.folder} folder`)}${x.version ? chip("", esc(x.version)) : ""}${x.remote && x.map ? chip("", "🗺 Map", "Copies the parts of the world players go to, for the map") : ""}${x.webmap ? chip("", "🧊 Web map", "BlueMap (or another web map) on the World tab") : ""}${backupChip(x.backup, chip)}</div></div>
       <div class="btn-row">${x.hidden ? `<button class="btn sm primary" type="button" data-show>Show it</button>` : `<a class="btn sm" href="#/s/${encodeURIComponent(x.id)}">Open</a>`}
         <button class="btn sm" type="button" data-check-row title="Everything this server needs, tried now">🩺 Check</button><button class="btn sm" type="button" data-edit>⚙ Settings</button>
         <button class="btn sm" type="button" data-rm-row title="Remove it from Solstone (an old server you don't play on any more)">🗑</button></div></div>`).join("")
@@ -1414,7 +1414,9 @@ async function openServerSetup(sid, then, tab = "") {
       <h3 class="set-h">General</h3>
       <div class="remote-grid">
         <label class="wide">Name${remote && !sid ? "" : ` <small class="muted">blank: ${esc(row.found_as)}</small>`}<input class="input" name="display_name" maxlength="60" ${remote && !sid ? "required" : ""} value="${esc(remote && !sid ? "" : cur.display_name || "")}" placeholder="${esc(row?.found_as || "Family Survival")}"></label>
+        <label class="wide">Web map address <small class="muted">BlueMap (or squaremap, Dynmap) on this server, shown on the World tab beside the top-down map. Blank: none</small><input class="input" name="map_url" value="${esc(cur.map_url || "")}" placeholder="http://192.168.1.10:8100"></label>
       </div>
+      <label class="check"><input type="checkbox" name="map_proxy" ${cur.map_proxy ? "checked" : ""}> <span><b>Show the web map through Solstone</b><br><small class="muted">then it opens from anywhere, only for people signed in who may see the map, and the map itself stays off the internet. Off: it's shown from its own address (fine on the home Wi-Fi)</small></span></label>
       <label class="check"><input type="checkbox" name="private" ${cur.private ? "checked" : ""}> <span><b>Private</b><br><small class="muted">only admins see it: never on the public pages, and signed-in players don't see it</small></span></label>
       ${sid ? `<label class="check"><input type="checkbox" name="hidden" ${cur.hidden ? "checked" : ""}> <span><b>Hidden</b><br><small class="muted">Solstone leaves it alone: not on the website or any page, no history kept</small></span></label>` : ""}
       <p class="muted small">How to join it (addresses, a note, the mods) is in Manage → Website → Site details.</p>
@@ -1579,8 +1581,8 @@ async function openServerSetup(sid, then, tab = "") {
           const r = await post(sid ? `/api/manage/remote/${encodeURIComponent(sid)}` : "/api/manage/remote", remoteBody(form), "PUT");
           id = r.id;
         }
-        const body = { display_name: remote && !sid ? "" : f.get("display_name"), rcon_host: f.get("rcon_host"),
-          rcon_port: f.get("rcon_port") ? Number(f.get("rcon_port")) : "", private: f.get("private") ? true : "" };
+        const body = { display_name: remote && !sid ? "" : f.get("display_name"), map_url: f.get("map_url"), rcon_host: f.get("rcon_host"),
+          rcon_port: f.get("rcon_port") ? Number(f.get("rcon_port")) : "", private: f.get("private") ? true : "", map_proxy: f.get("map_proxy") ? true : "" };
         if (sid) body.hidden = f.get("hidden") ? true : "";
         if (f.get("rcon_password")) body.rcon_password = f.get("rcon_password");
         await post(`/api/servers/${encodeURIComponent(id)}/settings`, body, "PUT");

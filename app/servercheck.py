@@ -112,6 +112,18 @@ async def check(srv: S.Server) -> list[dict]:
             out.append(_line("Map", "ok" if n else "warn", f"{n} areas here to draw" + (f"; {mp.get('queued', 0)} waiting" if mp else "")))
     else:
         out.append(_line("Map", "ok" if n else "warn", f"{n} areas to draw" if n else "No region files found for the Overworld yet"))
+    # the web map (BlueMap...), if one is set: does it answer where Solstone looks for it
+    url = srv.settings.get("map_url")
+    if url:
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=8, verify=False, follow_redirects=True) as c:
+                r = await c.get(url)
+            ok = r.status_code < 400
+            out.append(_line("Web map", "ok" if ok else "bad", f"{url} answered" + ("" if ok else f" HTTP {r.status_code}")
+                             + (" (shown through Solstone)" if srv.settings.get("map_proxy") else "")))
+        except Exception as e:
+            out.append(_line("Web map", "bad", f"Nothing answered at {url} ({type(e).__name__}): is BlueMap running, and its web server on that port?"))
     # the full copy, and room for it
     free = shutil.disk_usage(config.data_dir).free
     if srv.remote:

@@ -1292,11 +1292,25 @@ async function viewWorld(sid) {
   const MAP_DAYS = 7;
   const onMap = (list) => list.filter((p) => p.position && (p.online || (p.last_seen && Date.now() / 1000 - p.last_seen < MAP_DAYS * 86400)));
   let located = onMap(pl.players);
+  // Two maps: Solstone's own (drawn from the world files, with everyone's last spot) and a web map (BlueMap...) if set
+  // The web map's frame goes in only when it's picked (a hidden frame still loads, and one at a home-network
+  // address makes the browser ask for local network access); from outside the home, a home address can't load at all.
+  // Through Solstone (map_proxy): a sandboxed frame with a pass in its address (webmap.py), from anywhere.
+  const hasWeb = !!(s.map_url || s.map_proxy);
+  const webMap = () => s.map_proxy ? '<div id="wm-proxy"><p class="muted">Opening the map…</p></div>'
+    : s.map_url
+    ? isHomeNetwork(s.map_url) && !isHomeNetwork(location.href)
+      ? `<div class="empty"><p>This map is at a home-network address (<code>${esc(s.map_url)}</code>), so it only opens on the same Wi-Fi as the server. <a href="${esc(s.map_url)}" target="_blank" rel="noopener">Open it</a></p>${isAdmin() ? `<p class="muted small">To show it to everyone, give it a public address (a Cloudflare tunnel to it, for example) in this server's ⚙ settings.</p>` : ""}</div>`
+      : `<iframe class="map-frame" src="${esc(s.map_url)}" title="World map" loading="lazy"></iframe><p class="muted" style="margin-top:8px;font-size:.9rem"><a href="${esc(s.map_url)}" target="_blank" rel="noopener">Open the map full screen</a></p>`
+    : isPlayer() ? "" : `<div class="empty"><h3>Add a 3D web map too</h3><p>Install the <b>BlueMap</b> or <b>squaremap</b> Fabric mod on this server, then paste its web address (for example <code>http://your-server:8100</code>) in server settings. It shows here beside the top-down map.</p><p style="margin-top:12px"><button class="btn primary" id="btn-map">Add map address</button></p></div>`;
   const DIM_ORDER = ["minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"];
   const mapDims = w.dimensions.filter((d) => d.chunks > 0).map((d) => d.id)
     .sort((a, b) => ((DIM_ORDER.indexOf(a) + 1 || 9) - (DIM_ORDER.indexOf(b) + 1 || 9)));
-  const map = `${mapDims.length > 1 ? `<div class="world-map-pick"><select class="input sm" id="wm-dim" aria-label="Dimension">${mapDims.map((d) => `<option value="${esc(d)}">${esc(dimName(d))}</option>`).join("")}</select></div>` : ""}
-    <div id="wm-own" class="world-own-map"></div>`;
+  let pick = "own";
+  try { if (localStorage.getItem("solstone-world-map") === "web" && hasWeb) pick = "web"; } catch { /* private window */ }
+  const map = `<div class="world-map-pick">${isPlayer() && !hasWeb ? "" : `<span class="seg" role="group" aria-label="Which map"><button type="button" data-wm="own" aria-pressed="${pick === "own"}">🗺️ Top-down map</button><button type="button" data-wm="web" aria-pressed="${pick === "web"}">${hasWeb ? "🧊 Web map" : "＋ Web map"}</button></span>`}
+      ${mapDims.length > 1 ? `<select class="input sm" id="wm-dim" aria-label="Dimension">${mapDims.map((d) => `<option value="${esc(d)}">${esc(dimName(d))}</option>`).join("")}</select>` : ""}</div>
+    <div id="wm-own" class="world-own-map" ${pick === "own" ? "" : "hidden"}></div><div id="wm-web" ${pick === "web" ? "" : "hidden"}>${pick === "web" ? webMap() : ""}</div>`;
   setView(serverHeader(s, "world") + `
     <div class="world-top"><div id="world-sky" class="world-sky">${skyHtml(w)}</div>
       <div class="panel"><dl class="kv">
@@ -1362,8 +1376,26 @@ async function viewWorld(sid) {
       } });
     if (here.length > 1) ownMap.fit(here.map((p) => ({ x: p.position.x, z: p.position.z })));
   };
-  mountOwn(mapDims[0] || "minecraft:overworld");
+  if (pick === "own") mountOwn(mapDims[0] || "minecraft:overworld");
+  const openProxied = async () => {
+    const box = $("#wm-proxy");
+    if (!box) return;
+    try {
+      const { url } = await api(`/api/servers/${encodeURIComponent(sid)}/webmap`);
+      box.innerHTML = `<iframe class="map-frame" src="${esc(url)}" title="World map" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads" referrerpolicy="no-referrer"></iframe>
+        <p class="muted" style="margin-top:8px;font-size:.9rem"><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open the map full screen</a></p>`;
+    } catch (err) { box.innerHTML = `<div class="empty"><p>The web map couldn't be opened: ${esc(err.message)}</p></div>`; }
+  };
+  if (pick === "web") openProxied();
   $("#wm-dim")?.addEventListener("change", (e) => mountOwn(e.target.value));
+  document.querySelectorAll("[data-wm]").forEach((b) => b.addEventListener("click", () => {
+    const which = b.dataset.wm;
+    try { localStorage.setItem("solstone-world-map", which); } catch { /* private window */ }
+    document.querySelectorAll("[data-wm]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    $("#wm-own").hidden = which !== "own"; $("#wm-web").hidden = which !== "web";
+    if (which === "web" && !$("#wm-web").innerHTML) { $("#wm-web").innerHTML = webMap(); $("#btn-map")?.addEventListener("click", () => openSettings(s)); openProxied(); }
+    if (which === "own" && !ownMap) mountOwn($("#wm-dim")?.value || mapDims[0] || "minecraft:overworld");
+  }));
   // The clock moves on its own (20 ticks a second while people play) and checks back with
   // the server every 20 seconds, so the time, sun and weather stay current.
   let wd = w, readAt = Date.now() - (w.age || 0) * 1000;
