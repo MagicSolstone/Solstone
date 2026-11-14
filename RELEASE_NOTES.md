@@ -1,3 +1,8 @@
+# Solstone 1.23.1
+
+- **Measurements can't get stuck behind one server.** Each server's measurement (players, TPS, CPU, memory) is given up on after a minute: one that never answers (a server hung while starting, say) is skipped and noted on its Performance tab, instead of stopping every measurement after it until Solstone or the server was restarted.
+- Players see "these numbers are a little behind" there; the advice about restarting and the log is for admins.
+
 # Solstone 1.23.0
 
 - **BlueMap is back.** Each server's settings (Manage → Solstone → Server setup → ⚙ Settings) have a **Web map address** (BlueMap, squaremap or Dynmap) and **Show the web map through Solstone**: then it opens from anywhere, walled off from Solstone, only for people signed in who may see the map, and the map itself stays off the internet. The World tab has **🗺️ Top-down map / 🧊 Web map**. Server setup shows a 🧊 Web map chip, and 🩺 Check says whether the map answers.
