@@ -1,4 +1,4 @@
-pytest==9.1.1
-ruff==0.17.1
-playwright==1.64.0  # (and the browser job's image in .github/workflows/docker-publish.yml: the same version)
+pytest==9.2.0
+ruff==0.17.5
+playwright==1.65.1  # (and the browser job's image in .github/workflows/docker-publish.yml: the same version)
 pyyaml==6.0.3                 # (tests: the Home Assistant settings Solstone writes are read back as YAML)
