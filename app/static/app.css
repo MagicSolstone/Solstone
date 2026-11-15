@@ -2853,3 +2853,17 @@ nav.tabs[aria-label="Player sections"] a[aria-current="page"], .subtabs a[aria-c
 .plink a { color: #9fb6f0; }
 
 .rm-list { margin: 8px 0 14px; padding-left: 20px; color: var(--muted); font-size: .9rem; display: grid; gap: 4px; }
+
+/* Manage → Solstone → Home Assistant */
+.ha-steps ol { padding-left: 20px; display: grid; gap: 6px; margin: 8px 0; }
+.ha-new { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; margin-top: 12px; }
+.ha-new label:not(.check) { display: grid; gap: 4px; font-weight: 700; font-size: .9rem; }
+.ha-keylist { display: grid; gap: 6px; }
+.ha-key { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; background: var(--tuff); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 8px 12px; }
+.ha-copy { position: relative; margin: 8px 0; }
+.ha-copy pre { background: #0e1013; border: 1px solid var(--line); border-radius: var(--radius-m); padding: 12px; overflow: auto; max-height: 420px; font-size: .8rem; color: #c8ccd3; white-space: pre; }
+.ha-copy .btn { position: absolute; top: 8px; right: 8px; }
+.ha-once { margin-top: 12px; }
+#ha-base { margin-bottom: 8px; }
+.ha-field { display: grid; gap: 4px; font-weight: 700; font-size: .92rem; margin-bottom: 8px; }
+.ha-field small { font-weight: 400; }

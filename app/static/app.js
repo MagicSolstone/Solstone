@@ -307,7 +307,7 @@ const MANAGE_GROUPS = [
   ["announce", "📣 Announcements", [["announcements", "Banners"], ["events", "Events"]]],
   ["community", "💬 Community", [["messages", "Messages"], ["votes", "Votes"]]],
   ["playtime", "⏰ Play time", [["playtime", "Play time"]]],
-  ["solstone", "⚙️ Solstone", [["setup", "Server setup"], ["servers", "History & data"], ["notifications", "Notifications"], ["activity", "Activity log"]]],
+  ["solstone", "⚙️ Solstone", [["setup", "Server setup"], ["servers", "History & data"], ["notifications", "Notifications"], ["homeassistant", "Home Assistant"], ["activity", "Activity log"]]],
 ];
 function setManageNav(tab) {
   const nav = $("#manage-nav"), sub = $("#manage-sub");
@@ -1615,6 +1615,7 @@ async function route() {
       else if (tab === "notifications") await viewNotifications();
       else if (tab === "events") await viewHolidays();
       else if (tab === "playtime") await viewPlaytime();
+      else if (tab === "homeassistant") await viewHomeAssistant();
       else if (tab === "votes") await viewManageVotes();
       else if (tab === "messages") await viewManageMessages(parts[2]);
       else await viewAdmin(tab);

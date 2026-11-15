@@ -54,7 +54,8 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Solstone", version=VERSION, lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
-PUBLIC_API = {"/api/health", "/api/auth/login", "/api/auth/login/code"}
+PUBLIC_API = {"/api/health", "/api/auth/login", "/api/auth/login/code",
+              "/api/ha/status"}        # Home Assistant: its own key, checked by the route (homeassistant.py)
 
 # Scripts only from Solstone itself (no inline script, so injected HTML can't run code).
 # Inline style attributes are used throughout, so styles allow them. Skins come from
@@ -2781,6 +2782,10 @@ async def get_players(sid: str, removed: bool = False):
 from . import player_api  # noqa: E402
 
 app.include_router(player_api.router)
+# Home Assistant: a key, and everything about the servers at one address (homeassistant.py)
+from . import homeassistant  # noqa: E402
+
+app.include_router(homeassistant.router)
 
 
 
@@ -4328,7 +4333,7 @@ async def not_found_page(full_path: str):
     return HTMLResponse(_page("home.html"), status_code=404, headers={"Cache-Control": "no-cache"})
 
 
-ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "player.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "home.js", "postfmt.js", "guides.js", "website.js", "adventures.js", "playtime.js", "community.js", "stats.js")
+ASSET_NAMES = ("app.css", "sky.js", "showbar.js", "hud.js", "board.js", "recap.js", "login.js", "app.js", "player.js", "homeassistant.js", "history.js", "control.js", "play.js", "editor.js", "fwsettings.js", "announce.js", "home.js", "postfmt.js", "guides.js", "website.js", "adventures.js", "playtime.js", "community.js", "stats.js")
 
 
 @functools.cache

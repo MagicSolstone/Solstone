@@ -699,6 +699,16 @@ def main() -> int:
             pg.goto(f"{base}/app#/manage/notifications"); pg.wait_for_timeout(1200)
             if not pg.locator("#notify-form").count() or pg.locator("#modal-root .modal").count():
                 problems.append("manage: Notifications isn't shown as a page")
+            # Manage → Solstone → Home Assistant: a key (shown once), and the settings to paste
+            pg.goto(f"{base}/app#/manage/homeassistant"); pg.wait_for_timeout(1200)
+            pg.click("#ha-new button[type=submit]"); pg.wait_for_timeout(800)
+            if "sol_ha_" not in (pg.locator("#ha-secret").text_content() if pg.locator("#ha-secret").count() else ""):
+                problems.append("home assistant: making a key doesn't show it")
+            pg.fill("#ha-base", "http://192.168.1.20:8085"); pg.click("#ha-write"); pg.wait_for_timeout(1000)
+            conf = pg.locator("#ha-conf").text_content() if pg.locator("#ha-conf").count() else ""
+            if "http://192.168.1.20:8085/api/ha/status" not in conf or "!secret solstone_auth" not in conf:
+                problems.append("home assistant: the settings to paste aren't written")
+            check(pg, "manage-homeassistant")
             pg.goto(f"{base}/app#/manage/events"); pg.wait_for_timeout(1200)
             if pg.locator(".fws-cal-row").count() < 5:
                 problems.append("manage: Holidays doesn't list the holidays")
