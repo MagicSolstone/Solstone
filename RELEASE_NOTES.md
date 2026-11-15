@@ -1,3 +1,7 @@
+# Solstone 1.24.0
+
+- **Home Assistant.** Manage → Solstone → Home Assistant: make a read-only key (shown once; player names on or off; removed any time) and **Write the settings** to paste into Home Assistant's `configuration.yaml`. Every server becomes sensors there: online, players online (who, and today's minutes, as attributes), TPS, tick time, CPU, memory, uptime over 7 days, up since, players today, version, last backup and backup overdue, the Xbox friend, the last full copy; plus everyone online across servers and anyone asking to join. The key can't sign in or read anything else.
+
 # Solstone 1.23.1
 
 - **Measurements can't get stuck behind one server.** Each server's measurement (players, TPS, CPU, memory) is given up on after a minute: one that never answers (a server hung while starting, say) is skipped and noted on its Performance tab, instead of stopping every measurement after it until Solstone or the server was restarted.
