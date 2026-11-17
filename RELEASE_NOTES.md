@@ -1,3 +1,9 @@
+# Solstone 1.25.0
+
+- **📊 My stats.** In the top bar and first in the account menu, for anyone with a Minecraft account linked: straight to your own player page (your main account, on the server you played on last). Nothing linked yet? It says how.
+- **The home page says hi.** Signed in, it opens with "Hi, <name>!", how many are playing, and big buttons to My stats and each server, so nobody has to spot "Servers" in the bar.
+- **Your own card stands out** on a server's overview (gold, "See your stats, trophies and travels →"), and the players list marks your own row **You**.
+
 # Solstone 1.24.0
 
 - **Home Assistant.** Manage → Solstone → Home Assistant: make a read-only key (shown once; player names on or off; removed any time) and **Write the settings** to paste into Home Assistant's `configuration.yaml`. Every server becomes sensors there: online, players online (who, and today's minutes, as attributes), TPS, tick time, CPU, memory, uptime over 7 days, up since, players today, version, last backup and backup overdue, the Xbox friend, the last full copy; plus everyone online across servers and anyone asking to join. The key can't sign in or read anything else.
