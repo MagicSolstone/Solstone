@@ -2867,3 +2867,24 @@ nav.tabs[aria-label="Player sections"] a[aria-current="page"], .subtabs a[aria-c
 #ha-base { margin-bottom: 8px; }
 .ha-field { display: grid; gap: 4px; font-weight: 700; font-size: .92rem; margin-bottom: 8px; }
 .ha-field small { font-weight: 400; }
+
+/* Signed in: the home page's hello, with the way to your stats and each server */
+.hp-welcome { padding: 18px 20px; margin-bottom: 18px; display: grid; gap: 14px; border: 1px solid rgba(242, 193, 78, .35); }
+.hp-welcome-hi { display: flex; gap: 12px; align-items: center; }
+.hp-welcome-hi h2 { margin: 0; font-size: 1.3rem; }
+.hp-welcome-hi p { margin: 2px 0 0; }
+.hp-go-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.hp-go { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-radius: var(--radius-m); text-decoration: none; color: var(--bone);
+  background: var(--tuff); border: 1px solid rgba(255, 255, 255, .12); transition: transform .12s, border-color .12s; }
+.hp-go:hover { transform: translateY(-2px); border-color: var(--gold); }
+.hp-go b { display: block; }
+.hp-go small { color: var(--muted); }
+.hp-go-icon { font-size: 1.6rem; width: 40px; height: 40px; display: grid; place-items: center; flex: none; }
+.hp-go-icon img { width: 40px; height: 40px; border-radius: 8px; image-rendering: pixelated; }
+.hp-go-me { background: linear-gradient(135deg, rgba(242, 193, 78, .22), var(--tuff) 70%); border-color: rgba(242, 193, 78, .55); }
+/* the top bar's My stats */
+.nav-me[aria-current] { color: var(--gold); }
+/* a server's overview: your own card stands out */
+a.glance-me { border: 1px solid rgba(242, 193, 78, .5); background: linear-gradient(135deg, rgba(242, 193, 78, .14), var(--tuff) 70%); }
+.glance-go { color: var(--gold); font-weight: 700; }
+.you-badge { margin-left: 6px; font-size: .68rem; font-weight: 800; padding: 1px 7px; border-radius: 99px; background: rgba(242, 193, 78, .22); color: var(--gold); border: 1px solid rgba(242, 193, 78, .5); vertical-align: middle; }

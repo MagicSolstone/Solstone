@@ -1478,6 +1478,18 @@ def main() -> int:
             if not pl.locator("#hp-account-menu a[href='/app#/fireworks']").is_visible():
                 problems.append("home: no Fireworks in the account menu")
             check(pl, "site-home-signed-in")
+            pl.keyboard.press("Escape")
+            # the way in, for a player: a hello with My stats and each server, My stats in the bar, straight to their page
+            if not pl.locator(".hp-welcome a.hp-go-me").count() or not pl.locator(".hp-welcome a.hp-go[href^='/app#/s/']").count():
+                problems.append("home: no hello with My stats and the servers when signed in")
+            if not pl.locator(".hp-nav a.nav-me").is_visible():
+                problems.append("home: no My stats in the bar for a player with a Minecraft account")
+            pl.locator(".hp-welcome").scroll_into_view_if_needed(); check(pl, "site-home-welcome")
+            pl.click(".hp-welcome a.hp-go-me"); pl.wait_for_timeout(2000)
+            if "/p/" not in pl.url or not pl.locator("#trophies, #strip").count():
+                problems.append(f"my stats: didn't go to the player's own page ({pl.url})")
+            elif pl.locator(".app-nav a.nav-me[aria-current]").count() != 1:
+                problems.append("my stats: My stats isn't lit in the bar on their own page")
             pg.goto(f"{base}/"); pg.wait_for_timeout(1200)
             if not pg.locator(".hp-nav [data-admin]").is_visible():
                 problems.append("home: an admin doesn't see Manage")

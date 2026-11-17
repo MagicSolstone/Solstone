@@ -75,6 +75,32 @@ async def get_player_link(sid: str, uuid: str):
     return {"bedrock": False, "linked_bedrock": [here(u) for u in found]}
 
 
+@router.get("/api/me/player")
+async def my_player(request: Request):
+    """The signed-in person's own player page: their main Minecraft account on the server they played on last (one
+    they may see), or, if their main one hasn't played anywhere here, whichever of their accounts has. None: not yet."""
+    import asyncio
+    from . import main as M
+    user = auth.require_user(request)
+    mine = [p for p in user.players] or ([{"uuid": user.player_uuid, "name": user.player_name, "main": True}] if user.player_uuid else [])
+    if not mine:
+        return {"linked": False}
+    await S.registry.refresh()
+    best = None
+    for srv in [s for s in S.registry.servers.values() if M._visible(s)]:
+        known = await asyncio.to_thread(S.known_players, srv)
+        online = {n.lower() for n in (M.recorder._online.get(srv.id) or [])}
+        for p in mine:
+            k = known.get(S.norm_uuid(p["uuid"]))
+            if not k:
+                continue
+            seen = 9e12 if k["name"].lower() in online else (await asyncio.to_thread(S.last_seen, srv, k["uuid"]) or 0)
+            rank = (bool(p.get("main")), seen)                       # (their main account first, then the latest)
+            if best is None or rank > best[0]:
+                best = (rank, {"sid": srv.id, "server": srv.display_name, "uuid": k["uuid"], "name": k["name"]})
+    return {"linked": True, **(best[1] if best else {"played": False})} | ({"played": True} if best else {})
+
+
 @router.get("/api/servers/{sid}/leaderboard")
 async def get_leaderboard(sid: str):
     from . import main as M

@@ -392,13 +392,31 @@ async function home() {
     nGuides ? getJSON(`/api/public/posts?category=guide&limit=${nGuides + 1}`) : []]);
   const help = [...builtinCards(), ...guides];
   const more = (list, n, href, label) => (list.length > n ? `<div class="hp-more"><a class="btn" href="${href}">${label} →</a></div>` : "");
-  return `${s.home_title ? `<section class="hp-hero"><h1>${esc(s.name)}</h1>${s.tagline ? `<p class="hp-tagline">${esc(s.tagline)}</p>` : ""}</section>` : ""}
+  const welcome = hp.me ? await welcomeStrip(hp.me) : "";
+  return `${welcome}${s.home_title ? `<section class="hp-hero"><h1>${esc(s.name)}</h1>${s.tagline ? `<p class="hp-tagline">${esc(s.tagline)}</p>` : ""}</section>` : ""}
     <p class="hp-ask-status" id="ask-status" hidden></p>
     ${statusPanel(s)}
     ${joinCard(s)}
     ${nNews ? `<section><div class="hp-head"><h2>News</h2><a href="/help#news">All news →</a></div>${postCards(news.slice(0, nNews), "No news yet.")}${more(news, nNews, "/help#news", "More news")}</section>` : ""}
     ${nGuides ? `<section><div class="hp-head"><h2>Help</h2><a href="/help">All guides and questions →</a></div>${postCards(help.slice(0, nGuides), "")}${more(help, nGuides, "/help", "More guides and questions")}</section>` : ""}
     ${s.about ? `<section class="hp-about glass"><h2>About</h2><div class="hp-body">${markdown(s.about)}</div></section>` : ""}`;
+}
+
+// Signed in: a hello, and the way in (your own stats, each server you can see), so nobody has to find "Servers" up top.
+async function welcomeStrip(me) {
+  const servers = await getJSON("/api/servers").catch(() => []);
+  const main = (me.players || []).find((p) => p.main) || (me.players || [])[0] || me.player;
+  const who = main?.name || me.shown || me.username;
+  const btn = (href, icon, label, sub = "", cls = "") => `<a class="hp-go ${cls}" href="${href}"><span class="hp-go-icon">${icon}</span><span><b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ""}</span></a>`;
+  const serverIcon = (x) => x.has_icon ? `<img src="/api/servers/${encodeURIComponent(x.id)}/icon.png" alt="">` : "🌍";
+  return `<section class="hp-welcome glass">
+    <div class="hp-welcome-hi">${main ? faceHtml({ name: main.name, uuid: main.uuid }, 40) : ""}<div><h2>Hi, ${esc(who)}! 👋</h2>
+      <p class="muted small">${servers.some((x) => x.online?.length) ? `${servers.reduce((n, x) => n + (x.online?.length || 0), 0)} playing right now` : "Nobody's playing right now"}</p></div></div>
+    <div class="hp-go-row">
+      ${main ? btn("/app#/me", "📊", "My stats", "Trophies, favourites, travels", "hp-go-me") : ""}
+      ${servers.map((x) => btn(`/app#/s/${encodeURIComponent(x.id)}`, serverIcon(x), x.name,
+        x.running === false ? "Offline" : `${x.online?.length || 0} playing · map, stats, events`)).join("")}
+    </div></section>`;
 }
 
 // What's planned, for everyone (no names: nobody's sign-up). Signed in, the app's Events page has more.

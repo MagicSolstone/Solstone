@@ -206,6 +206,8 @@ function showNavFor(user) {
   document.querySelectorAll("[data-signed-in]").forEach((el) => { el.hidden = !user; });
   document.querySelectorAll("[data-signed-out]").forEach((el) => { el.hidden = !!user; });
   document.querySelectorAll("[data-admin]").forEach((el) => { el.hidden = user?.role !== "admin"; });
+  const hasPlayer = !!(user && ((user.players || []).length || user.player));          // a Minecraft account linked: My stats
+  document.querySelectorAll("[data-has-player]").forEach((el) => { el.hidden = !hasPlayer; });
   wireServersMenu();
 }
 
@@ -226,6 +228,7 @@ function showSignedIn() {
     wrap.innerHTML = `<button class="btn sm" id="hp-account" type="button" aria-haspopup="menu" aria-expanded="false">👤 ${esc(u.shown || u.username)}</button>
       <div class="account-menu" id="hp-account-menu" role="menu" hidden>
         <div class="account-role">${esc(role)} · signed in as ${esc(u.username)}</div>
+        ${(u.players || []).length || u.player ? `<a role="menuitem" href="/app#/me">📊 My stats</a>` : ""}
         <a role="menuitem" href="/app#/messages">✉️ Messages <span class="cm-badge" id="hp-menu-unread" hidden></span></a>
         <a role="menuitem" href="/app#/votes">🗳️ Votes <span class="cm-badge" id="hp-menu-votes" hidden></span></a>
         <a role="menuitem" href="/app#/fireworks">🎆 Fireworks</a>

@@ -120,6 +120,7 @@ PLAYER_ROUTES: dict[str, set[str]] = {
     "/api/servers/{sid}/players/{uuid}/history": {"GET"},
     "/api/servers/{sid}/players/{uuid}/travels": {"GET"},   # their own only (see _own)
     "/api/servers/{sid}/players/{uuid}/link": {"GET"},      # their own only: a Bedrock account linked to a Java one
+    "/api/me/player": {"GET"},                               # where their own player page is (My stats)
     "/api/servers/{sid}/leaderboard": {"GET"},
     "/api/servers/{sid}/stats/history": {"GET"},        # the whole server's totals over time (no names)
     "/api/servers/{sid}/webmap": {"GET"},               # the web map through Solstone, if players may see the map

@@ -338,7 +338,9 @@ function setManageNav(tab) {
 }
 function markNav() {
   const h = location.hash || "#/";
-  const on = h === "#/" || h.startsWith("#/s/") ? "servers" : h.startsWith("#/events") ? "events" : h.startsWith("#/manage") ? "manage" : "";
+  const own = h.match(/^#\/s\/[^/]+\/p\/([^/]+)/);
+  const on = h.startsWith("#/me") || (own && isMine(decodeURIComponent(own[1]))) ? "me"
+    : h === "#/" || h.startsWith("#/s/") ? "servers" : h.startsWith("#/events") ? "events" : h.startsWith("#/manage") ? "manage" : "";
   document.querySelectorAll(".app-nav [data-nav]").forEach((el) => el.toggleAttribute("aria-current", el.dataset.nav === on));
 }
 
@@ -1056,7 +1058,7 @@ function playerRow(p, sub = false) {
     ? `<span title="Health">❤ ${p.health}</span>${p.food != null ? `<span title="Hunger">🍗 ${p.food}</span>` : ""}`
     : "";
   const inner = `${headHtml(p, 40)}
-    <div class="pr-main"><div class="pr-name">${esc(p.name)}${edBadge(isBedrockPlayer(p))}${stackMark(p)}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}${p.op ? '<span class="op-badge">OP</span>' : ""}</div>
+    <div class="pr-main"><div class="pr-name">${esc(p.name)}${edBadge(isBedrockPlayer(p))}${stackMark(p)}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}${p.op ? '<span class="op-badge">OP</span>' : ""}${isMine(p.uuid) ? '<span class="you-badge" title="Your Minecraft account: tap for your stats">You</span>' : ""}</div>
       <div class="pr-sub">${sub ? `<span class="pl-also" title="Linked to ${esc(p.under)}'s account">↳ ${esc(p.under)}'s other account</span>` : ""}${line}${vitals}</div></div>`;
   const cls = `pl-row ${p.online ? "is-online" : ""} ${sub ? "pl-sub" : ""}`;
   return href ? `<a class="${cls}" href="${href}">${inner}</a>` : `<div class="${cls}">${inner}</div>`;
@@ -1101,6 +1103,16 @@ async function viewOverview(sid) {
   every(120000, refreshRecap);
 }
 
+// 📊 My stats: straight to your own player page (your main Minecraft account, on the server you played on last).
+async function viewMyStats() {
+  const r = await api("/api/me/player").catch(() => null);
+  if (r?.uuid) { location.replace(`#/s/${encodeURIComponent(r.sid)}/p/${encodeURIComponent(r.uuid)}`); return; }
+  setView(`<div class="empty"><h3>📊 My stats</h3>${r?.linked === false
+    ? `<p>Link your Minecraft account to see your stats, trophies and travels here.</p><p style="margin-top:12px"><button class="btn primary" type="button" id="me-link">🎮 My Minecraft accounts</button></p>`
+    : "<p>Your stats show up here once you've played on one of the servers. See you in the game!</p>"}</div>`);
+  $("#me-link")?.addEventListener("click", () => openMyPlayers());
+}
+
 // The overview for a Player account: a few cards about the server right now, then who played which days.
 function mountPlayerGlance(el, daysEl, s, data) {
   const sid = s.id;
@@ -1119,9 +1131,10 @@ function mountPlayerGlance(el, daysEl, s, data) {
         <span>${esc([s.version && `Minecraft ${s.version}`, s.loader].filter(Boolean).join(" · "))}</span>
         ${tps != null && s.running ? `<span>${tps >= 19 ? "🟢 Running smoothly" : tps >= 15 ? "🟡 A little slow" : "🔴 Lagging"} (${esc(tps.toFixed(1))} TPS)</span>` : ""}</div>
       <div class="glance-card"><small>In the world</small>${world}</div>
-      ${mine ? `<a class="glance-card glance-me" href="#/s/${encodeURIComponent(sid)}/p/${mine.uuid}"><small>You</small>
+      ${mine ? `<a class="glance-card glance-me" href="#/s/${encodeURIComponent(sid)}/p/${mine.uuid}"><small>📊 You</small>
         <b>${headHtml(mine, 28)} ${esc(mine.name)}${mine.xp_level != null ? ` <span class="lvl">${mine.xp_level}</span>` : ""}</b>
-        <span>${mine.online ? "Playing now" : `Last seen ${esc(fmtAgo(mine.last_seen))}`} · your inventory${s.fishing_journal ? ", stats and fishing" : " and stats"} →</span></a>` : ""}
+        <span>${mine.online ? "Playing now" : `Last seen ${esc(fmtAgo(mine.last_seen))}`}</span>
+        <span class="glance-go">See your stats, trophies and travels →</span></a>` : ""}
       <div class="glance-card"><small>Events</small>${next.length ? next.map((x) => `<span>${esc(x.emoji || "")} <b>${esc(x.title)}</b> ${x.live ? "· on now" : `· ${esc(new Date(x.at * 1000).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" }))}${x.time ? ` ${esc(x.time)}` : ""}`}</span>`).join("")
         : "<span>Nothing planned yet</span>"}<a class="glance-more" href="#/events">All of it →</a></div>
     </div>`;
@@ -1629,6 +1642,7 @@ async function route() {
       return;
     }
     if (parts[0] === "events") { await viewUpcoming(); return; }
+    if (parts[0] === "me") { await viewMyStats(); return; }
     if (parts[0] === "votes") { await viewVotes(); return; }
     if (parts[0] === "messages") { await viewMessages(parts[1]); return; }
     if (parts[0] === "fireworks" && parts[1] === "show") { await viewFireworkSettings(); return; }

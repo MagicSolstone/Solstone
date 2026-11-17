@@ -375,3 +375,10 @@ def test_farthest_is_from_the_world_spawn():
     far = t["dims"]["minecraft:overworld"]["farthest"]
     assert (far["x"], far["dist"], far["from"]) == (-40, 240, "spawn")          # not the one at x 168, farthest from 0, 0
     assert t["dims"]["minecraft:the_nether"]["farthest"]["from"] == "0, 0"
+
+
+def test_my_stats_goes_to_your_own_player_page(player, client, viewer, sid, tyler):
+    """📊 My stats: your main Minecraft account, on a server you've played on. Nothing linked: it says how."""
+    r = player.get("/api/me/player").json()
+    assert r["linked"] and r["played"] and r["sid"] == sid and r["uuid"].replace("-", "") == tyler.replace("-", "") and r["name"] == "Tyler"
+    assert viewer.get("/api/me/player").json() == {"linked": False}
