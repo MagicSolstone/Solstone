@@ -417,6 +417,10 @@ def main() -> int:
             if pg.locator(".tl-did > .did-row").count() != 3 or pg.locator(".timeline .ev-progress").count():
                 problems.append("overview: activity lines aren't added up into one row per player")
             pg.locator(".tl-did").first.scroll_into_view_if_needed(); check(pg, "overview-activity")
+            # "You" is only on the admin's own Minecraft accounts, not on everyone they may look at
+            own = len(pg.request.get(f"{base}/api/auth/me", headers=H).json()["user"].get("players") or [])
+            if pg.locator(".you-badge").count() > own:
+                problems.append(f"overview: an admin sees You on {pg.locator('.you-badge').count()} players (their own: {own})")
             pg.click(".did-more summary"); pg.wait_for_timeout(300)
             check(pg, "overview-activity-10min")
             pg.unroute(f"**/api/servers/{sid}/timeline*")

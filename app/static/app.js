@@ -34,7 +34,10 @@ const SITE_LOGO = document.querySelector('link[rel="icon"]')?.getAttribute("href
 const isAdmin = () => me.user?.role === "admin";
 // Players (often signed up from the game) see the servers, who's on, leaderboards and their own page.
 const isPlayer = () => me.user?.role === "player";
-const isMine = (uuid) => !isPlayer() || (!!uuid && (me.user?.players || []).some((p) => String(uuid).replace(/-/g, "") === p.uuid.replace(/-/g, "")));
+// isOwn: one of the signed-in person's own Minecraft accounts (linked to their login), whatever their role.
+// isMine: may they open this player's page (a Player account: only their own; everyone else: anyone's).
+const isOwn = (uuid) => !!uuid && (me.user?.players || []).some((p) => String(uuid).replace(/-/g, "") === p.uuid.replace(/-/g, ""));
+const isMine = (uuid) => !isPlayer() || isOwn(uuid);
 const ROLE_NAMES = [["player", "Player"], ["trusted", "Trusted"], ["admin", "Admin"]];
 const PLAYER_HIDDEN = new Set(["world", "chat", "control", "check", "challenges"]);
 
@@ -339,7 +342,7 @@ function setManageNav(tab) {
 function markNav() {
   const h = location.hash || "#/";
   const own = h.match(/^#\/s\/[^/]+\/p\/([^/]+)/);
-  const on = h.startsWith("#/me") || (own && isMine(decodeURIComponent(own[1]))) ? "me"
+  const on = h.startsWith("#/me") || (own && isOwn(decodeURIComponent(own[1]))) ? "me"
     : h === "#/" || h.startsWith("#/s/") ? "servers" : h.startsWith("#/events") ? "events" : h.startsWith("#/manage") ? "manage" : "";
   document.querySelectorAll(".app-nav [data-nav]").forEach((el) => el.toggleAttribute("aria-current", el.dataset.nav === on));
 }
@@ -1058,7 +1061,7 @@ function playerRow(p, sub = false) {
     ? `<span title="Health">❤ ${p.health}</span>${p.food != null ? `<span title="Hunger">🍗 ${p.food}</span>` : ""}`
     : "";
   const inner = `${headHtml(p, 40)}
-    <div class="pr-main"><div class="pr-name">${esc(p.name)}${edBadge(isBedrockPlayer(p))}${stackMark(p)}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}${p.op ? '<span class="op-badge">OP</span>' : ""}${isMine(p.uuid) ? '<span class="you-badge" title="Your Minecraft account: tap for your stats">You</span>' : ""}</div>
+    <div class="pr-main"><div class="pr-name">${esc(p.name)}${edBadge(isBedrockPlayer(p))}${stackMark(p)}${p.xp_level != null ? `<span class="lvl" title="Level">${p.xp_level}</span>` : ""}${p.op ? '<span class="op-badge">OP</span>' : ""}${isOwn(p.uuid) ? '<span class="you-badge" title="Your Minecraft account: tap for your stats">You</span>' : ""}</div>
       <div class="pr-sub">${sub ? `<span class="pl-also" title="Linked to ${esc(p.under)}'s account">↳ ${esc(p.under)}'s other account</span>` : ""}${line}${vitals}</div></div>`;
   const cls = `pl-row ${p.online ? "is-online" : ""} ${sub ? "pl-sub" : ""}`;
   return href ? `<a class="${cls}" href="${href}">${inner}</a>` : `<div class="${cls}">${inner}</div>`;
