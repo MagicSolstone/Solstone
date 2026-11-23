@@ -1,3 +1,7 @@
+# Solstone 1.25.1
+
+- **"You" is only on your own accounts.** On an admin or trusted login, every player showed **You** (they can all be opened). Now it's only on the Minecraft accounts linked to your login, and 📊 My stats lights up only on your own page.
+
 # Solstone 1.25.0
 
 - **📊 My stats.** In the top bar and first in the account menu, for anyone with a Minecraft account linked: straight to your own player page (your main account, on the server you played on last). Nothing linked yet? It says how.
