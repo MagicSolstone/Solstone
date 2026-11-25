@@ -2888,3 +2888,5 @@ nav.tabs[aria-label="Player sections"] a[aria-current="page"], .subtabs a[aria-c
 a.glance-me { border: 1px solid rgba(242, 193, 78, .5); background: linear-gradient(135deg, rgba(242, 193, 78, .14), var(--tuff) 70%); }
 .glance-go { color: var(--gold); font-weight: 700; }
 .you-badge { margin-left: 6px; font-size: .68rem; font-weight: 800; padding: 1px 7px; border-radius: 99px; background: rgba(242, 193, 78, .22); color: var(--gold); border: 1px solid rgba(242, 193, 78, .5); vertical-align: middle; }
+.webmap-acts { margin-top: 8px; font-size: .9rem; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.map-frame:fullscreen { width: 100vw; height: 100vh; border-radius: 0; }

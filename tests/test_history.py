@@ -334,3 +334,18 @@ def test_a_server_that_never_answers_doesnt_stop_the_measurements(client, sid, m
     assert recorder.last_poll and recorder.last_poll != before
     assert "took over" in recorder.status(sid)["error"]
     recorder.errors.pop(sid, None)
+
+
+def test_each_login_s_days_on_the_website(client, viewer):
+    """They stay signed in for weeks, so their sign-in time says little: each day they use the website is noted."""
+    import time as T
+
+    from app import traffic
+    viewer.get("/api/servers")
+    me = viewer.get("/api/auth/me").json()["user"]
+    rows = {u["id"]: u for u in client.get("/api/users").json()}
+    assert rows[me["id"]]["web"]["last"] > T.time() - 60 and rows[me["id"]]["web"]["days_7"] == 1     # (before it's written)
+    traffic.flush()
+    rows = {u["id"]: u for u in client.get("/api/users").json()}
+    assert rows[me["id"]]["web"]["days_7"] == 1 and rows[me["id"]]["web"]["days_30"] == 1                 # (once written)
+    assert viewer.get("/api/users").status_code == 403

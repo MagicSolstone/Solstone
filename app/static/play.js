@@ -547,6 +547,9 @@ function worldMapCanvas(el, sid, o) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "#101826"; ctx.fillRect(0, 0, w, h);
     let waiting = 0;
+    // o.shade(): "colour", "dim" or "grey": the map underneath toned down, so what's drawn on it (a heatmap) stands out
+    const shade = o.shade?.() || "colour";
+    if (shade === "grey") ctx.filter = "grayscale(1)";
     if (regions) {
       const [x0, z0] = toWorld(0, 0), [x1, z1] = toWorld(w, h);
       ctx.imageSmoothingEnabled = view.scale < 1;
@@ -567,6 +570,8 @@ function worldMapCanvas(el, sid, o) {
         }
       }
     }
+    ctx.filter = "none";
+    if (shade !== "colour") { ctx.fillStyle = shade === "grey" ? "rgba(8, 10, 16, .5)" : "rgba(8, 10, 16, .6)"; ctx.fillRect(0, 0, w, h); }
     if (waiting && progress && progress.drawn < progress.total && Date.now() - (progress.at || 0) > 15000) {   // how far along, now and then
       progress.at = Date.now();
       fetch(`/api/public/map/${encodeURIComponent(sid)}/regions?dim=${encodeURIComponent(dim)}`, { credentials: "same-origin" })

@@ -2032,7 +2032,8 @@ async def change_password(request: Request):
 @app.get("/api/users")
 async def users(request: Request):
     auth.require_admin(request)
-    return auth.list_users()
+    seen = await asyncio.to_thread(traffic.user_activity)        # when each login was last on the website, how often
+    return [{**u, "web": seen.get(u["id"])} for u in auth.list_users()]
 
 
 @app.post("/api/users")

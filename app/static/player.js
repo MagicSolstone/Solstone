@@ -426,7 +426,10 @@ async function renderPlayerTravels(el, sid, p, span = "all") {
       ${d.farthest ? `<button type="button" class="tv-rec" data-go="${d.farthest.x},${d.farthest.z}"><span>🧭</span><b>Farthest out</b><span>${esc(fmtStat("cm", d.farthest.dist * 100))}</span><small class="muted">from ${d.farthest.from === "spawn" ? "the world spawn" : "0, 0"} · around ${fmtNum(d.farthest.x)}, ${fmtNum(d.farthest.z)}</small></button>` : ""}
       ${pins(dim).map((x) => `<button type="button" class="tv-rec" data-go="${x.x},${x.z}"><span>${x.emo}</span><b>${esc(x.label)}</b><span></span><small class="muted">${fmtNum(x.x)}, ${fmtNum(x.z)}</small></button>`).join("")}`;
   };
-  el.innerHTML = `<div class="tv-head">${spanSeg}
+  let shade = "dim";
+  try { shade = localStorage.getItem("solstone-tv-shade") || "dim"; } catch { /* fine */ }
+  const shadeSeg = `<div class="seg" role="group" aria-label="The map underneath">${[["colour", "🎨 Colour"], ["dim", "🌑 Dimmed"], ["grey", "⚪ Black & white"]].map(([k, l]) => `<button type="button" data-shade="${k}" aria-pressed="${k === shade}">${l}</button>`).join("")}</div>`;
+  el.innerHTML = `<div class="tv-head">${spanSeg}${shadeSeg}
       ${dims.length > 1 ? `<div class="seg" role="group" aria-label="Dimension">${dims.map((x) => `<button type="button" data-dim="${esc(x)}" aria-pressed="${x === dim}">${esc(dimName(x))}</button>`).join("")}</div>` : ""}
       <span class="muted small" id="tv-sum"></span></div>
     <div class="tv-wrap"><div id="tv-map" class="world-own-map"></div><div class="tv-recs" id="tv-recs"></div></div>
@@ -439,8 +442,8 @@ async function renderPlayerTravels(el, sid, p, span = "all") {
     $("#tv-recs", el).innerHTML = recordsHtml();
   };
   pick();
-  const heat = (n) => { const f = Math.log1p(n) / Math.log1p(max); return `hsla(${Math.round(200 - 170 * f)}, 90%, ${55 + f * 5}%, ${0.35 + 0.45 * f})`; };
-  const map = worldMapCanvas($("#tv-map", el), sid, { dim, center: { x: cells[0][0] * t.cell, z: cells[0][1] * t.cell }, scale: 0.5,
+  const heat = (n) => { const f = Math.log1p(n) / Math.log1p(max); return `hsla(${Math.round(200 - 170 * f)}, 95%, ${55 + f * 5}%, ${0.5 + 0.4 * f})`; };
+  const map = worldMapCanvas($("#tv-map", el), sid, { dim, center: { x: cells[0][0] * t.cell, z: cells[0][1] * t.cell }, scale: 0.5, shade: () => shade,
     overlay: (ctx, toScreen, view) => {
       const sz = Math.max(1.5, t.cell * view.scale);
       for (const [cx, cz, n] of cells) {
@@ -460,6 +463,14 @@ async function renderPlayerTravels(el, sid, p, span = "all") {
   const fit = () => map.fit(cells.slice(0, 400).map(([cx, cz]) => ({ x: cx * t.cell, z: cz * t.cell })));
   fit();
   el.onclick = (e) => {
+    const sh = e.target.closest("[data-shade]");
+    if (sh) {
+      shade = sh.dataset.shade;
+      try { localStorage.setItem("solstone-tv-shade", shade); } catch { /* fine */ }
+      $$("[data-shade]", el).forEach((x) => x.setAttribute("aria-pressed", String(x === sh)));
+      map.draw();
+      return;
+    }
     const s0 = e.target.closest("[data-span]");
     if (s0) { if (s0.dataset.span !== span) renderPlayerTravels(el, sid, p, s0.dataset.span); return; }
     const b = e.target.closest("[data-dim]");

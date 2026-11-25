@@ -28,6 +28,10 @@ _visitors: dict[str, set] = {}         # day -> scrambled visitor ids (not store
 _salt = {"day": "", "salt": b""}
 _net_last: dict = {}
 _slow: list[dict] = []                 # the latest answers that took over a second (kept in memory only)
+# Each login's days on the website (signed in, a login stays so for weeks: its sign-in time alone says little):
+# (user id, day) -> [first seen, last seen, requests], into user_visits each minute (Manage → Players → Accounts)
+_users: dict[tuple, list] = {}
+VISITS_KEEP_DAYS = 90
 SLOW_KEEP = 25
 
 
@@ -37,6 +41,8 @@ def _ensure() -> None:
          "b2 INTEGER NOT NULL, b3 INTEGER NOT NULL, PRIMARY KEY (hour, who, kind))")
     db.x("CREATE TABLE IF NOT EXISTS traffic_daily (day TEXT PRIMARY KEY, visitors INTEGER NOT NULL)")
     db.x("CREATE TABLE IF NOT EXISTS traffic_net (hour REAL PRIMARY KEY, rx INTEGER NOT NULL, tx INTEGER NOT NULL)")
+    db.x("CREATE TABLE IF NOT EXISTS user_visits (user_id INTEGER NOT NULL, day TEXT NOT NULL, first_ts REAL NOT NULL, "
+         "last_ts REAL NOT NULL, requests INTEGER NOT NULL, PRIMARY KEY (user_id, day))")
 
 
 def kind_of(path: str) -> str:
@@ -80,6 +86,11 @@ def record(path: str, user, ip: str, out_bytes: int, in_bytes: int, secs: float,
         row[2] += max(0, in_bytes)
         row[3] += secs
         row[4 + b] += 1
+        uid = getattr(user, "id", None)
+        if uid is not None:
+            u = _users.setdefault((uid, day), [now, now, 0])
+            u[1] = now
+            u[2] += 1
         if user is None:
             if _salt["day"] != day:                     # a new scramble each day: yesterday's can't be matched up
                 _salt.update(day=day, salt=secrets.token_bytes(16))
@@ -107,6 +118,8 @@ def flush(now: float | None = None) -> None:
     with _lock:
         rows, _pending_copy = list(_pending.items()), None
         _pending.clear()
+        visits = list(_users.items())
+        _users.clear()
         seen = {d: len(v) for d, v in _visitors.items()}
         for d in [d for d in _visitors if d != time.strftime("%Y-%m-%d", time.localtime(now))]:
             _visitors.pop(d, None)                       # a finished day: only its count is kept
@@ -116,6 +129,12 @@ def flush(now: float | None = None) -> None:
              "requests=requests+excluded.requests, bytes_out=bytes_out+excluded.bytes_out, bytes_in=bytes_in+excluded.bytes_in, "
              "secs=secs+excluded.secs, b0=b0+excluded.b0, b1=b1+excluded.b1, b2=b2+excluded.b2, b3=b3+excluded.b3",
              (hour, who, kind, *r))
+    for (uid, day), (first, last, n) in visits:
+        db.x("INSERT INTO user_visits VALUES (?,?,?,?,?) ON CONFLICT(user_id, day) DO UPDATE SET "
+             "first_ts=MIN(first_ts, excluded.first_ts), last_ts=MAX(last_ts, excluded.last_ts), requests=requests+excluded.requests",
+             (uid, day, first, last, n))
+    if visits:
+        db.x("DELETE FROM user_visits WHERE day < ?", (time.strftime("%Y-%m-%d", time.localtime(now - VISITS_KEEP_DAYS * 86400)),))
     for d, n in seen.items():
         db.x("INSERT INTO traffic_daily VALUES (?,?) ON CONFLICT(day) DO UPDATE SET visitors=MAX(visitors, excluded.visitors)", (d, n))
     got = _net()
@@ -164,3 +183,27 @@ def report(viewer: str, days: int = 1, now: float | None = None) -> dict:
             "speed": {"requests": total, "avg_ms": round(secs / total * 1000) if total else None, "buckets": speed},
             "net": {"rx": net["rx"], "tx": net["tx"], "available": _net() is not None},
             "slow": sorted((x for x in _slow if x["at"] >= since), key=lambda x: -x["at"])}
+
+
+def user_activity(now: float | None = None) -> dict[int, dict]:
+    """Each login's time on the website: when it was last on, and on how many of the last 7 and 30 days."""
+    now = now or time.time()
+    _ensure()
+    d7 = time.strftime("%Y-%m-%d", time.localtime(now - 6 * 86400))
+    d30 = time.strftime("%Y-%m-%d", time.localtime(now - 29 * 86400))
+    out: dict[int, dict] = {}
+    for r in db.q("SELECT user_id, MAX(last_ts) AS last, SUM(day >= ?) AS d7, SUM(day >= ?) AS d30 FROM user_visits GROUP BY user_id", (d7, d30)):
+        out[r["user_id"]] = {"last": r["last"], "days_7": r["d7"] or 0, "days_30": r["d30"] or 0, "_days": set()}
+    with _lock:
+        pending = list(_users.items())
+    for (uid, day), (_first, last, _n) in pending:              # (not written yet: this minute's)
+        a = out.setdefault(uid, {"last": 0, "days_7": 0, "days_30": 0, "_days": set()})
+        a["last"] = max(a["last"] or 0, last)
+        if not db.q("SELECT 1 FROM user_visits WHERE user_id=? AND day=?", (uid, day)) and day not in a["_days"]:
+            a["_days"].add(day)
+            a["days_7"] += day >= d7
+            a["days_30"] += day >= d30
+    for a in out.values():
+        a.pop("_days", None)
+    return out
+

@@ -1299,6 +1299,20 @@ function skyHtml(w) {
   // (no "Day 57": the game's day count resets whenever the time is set, so it isn't worth much)
   return `<div class="sky" style="background:${bg}">${orb}<h2>${esc(clock)}</h2><div class="sub">${esc([phase, weather].filter(Boolean).join(" · "))}</div><div class="sub" style="font-size:.8rem;opacity:.8">${src}</div></div>`;
 }
+// Under the web map: full screen (the map's frame itself, so its own full-screen button works too) and a tab of its own.
+function webMapActions(url, rel) {
+  return `<p class="muted webmap-acts"><button type="button" class="btn sm" data-wm-full>⛶ Full screen</button>
+    <a href="${esc(url)}" target="_blank" rel="${rel}">Open it in a new tab ↗</a></p>`;
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-wm-full]");
+  if (!b) return;
+  const frame = b.closest("#wm-web, #wm-proxy, .section")?.querySelector("iframe.map-frame");
+  const go = frame?.requestFullscreen || frame?.webkitRequestFullscreen;
+  if (!frame || !go) { showToast("This browser can't show it full screen: open it in a new tab instead", 4000); return; }
+  Promise.resolve(go.call(frame)).catch(() => showToast("This browser can't show it full screen: open it in a new tab instead", 4000));
+});
+
 async function viewWorld(sid) {
   const s = await serverFrame(sid, "world");
   const [w, pl] = await Promise.all([api(`/api/servers/${sid}/world`), api(`/api/servers/${sid}/players`)]);
@@ -1317,7 +1331,7 @@ async function viewWorld(sid) {
     : s.map_url
     ? isHomeNetwork(s.map_url) && !isHomeNetwork(location.href)
       ? `<div class="empty"><p>This map is at a home-network address (<code>${esc(s.map_url)}</code>), so it only opens on the same Wi-Fi as the server. <a href="${esc(s.map_url)}" target="_blank" rel="noopener">Open it</a></p>${isAdmin() ? `<p class="muted small">To show it to everyone, give it a public address (a Cloudflare tunnel to it, for example) in this server's ⚙ settings.</p>` : ""}</div>`
-      : `<iframe class="map-frame" src="${esc(s.map_url)}" title="World map" loading="lazy"></iframe><p class="muted" style="margin-top:8px;font-size:.9rem"><a href="${esc(s.map_url)}" target="_blank" rel="noopener">Open the map full screen</a></p>`
+      : `<iframe class="map-frame" src="${esc(s.map_url)}" title="World map" loading="lazy" allow="fullscreen" allowfullscreen></iframe>${webMapActions(s.map_url, "noopener")}`
     : isPlayer() ? "" : `<div class="empty"><h3>Add a 3D web map too</h3><p>Install the <b>BlueMap</b> or <b>squaremap</b> Fabric mod on this server, then paste its web address (for example <code>http://your-server:8100</code>) in server settings. It shows here beside the top-down map.</p><p style="margin-top:12px"><button class="btn primary" id="btn-map">Add map address</button></p></div>`;
   const DIM_ORDER = ["minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"];
   const mapDims = w.dimensions.filter((d) => d.chunks > 0).map((d) => d.id)
@@ -1398,8 +1412,8 @@ async function viewWorld(sid) {
     if (!box) return;
     try {
       const { url } = await api(`/api/servers/${encodeURIComponent(sid)}/webmap`);
-      box.innerHTML = `<iframe class="map-frame" src="${esc(url)}" title="World map" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads" referrerpolicy="no-referrer"></iframe>
-        <p class="muted" style="margin-top:8px;font-size:.9rem"><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open the map full screen</a></p>`;
+      box.innerHTML = `<iframe class="map-frame" src="${esc(url)}" title="World map" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-downloads" referrerpolicy="no-referrer" allow="fullscreen" allowfullscreen></iframe>
+        ${webMapActions(url, "noopener noreferrer")}`;
     } catch (err) { box.innerHTML = `<div class="empty"><p>The web map couldn't be opened: ${esc(err.message)}</p></div>`; }
   };
   if (pick === "web") openProxied();

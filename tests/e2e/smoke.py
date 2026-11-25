@@ -258,6 +258,11 @@ def main() -> int:
                 problems.append("player page: the Travels tab shows neither a map nor 'no travels yet'")
             pg.locator("#player-tab").scroll_into_view_if_needed()
             check(pg, "player-travels")
+            if pg.locator('#player-tab [data-shade="grey"]').count():
+                pg.click('#player-tab [data-shade="grey"]'); pg.wait_for_timeout(400)
+                check(pg, "player-travels-grey")
+            else:
+                problems.append("travels: no choice of how the map underneath looks")
             pg.goto(f"{base}/app#/s/{sid}/challenges/events"); pg.wait_for_timeout(1300)
             if pg.locator(".eg-card .eg-part").count() != 3:
                 problems.append("events tab: the event's three challenges aren't listed")
@@ -674,6 +679,8 @@ def main() -> int:
             got = (frame.locator("#out").text_content() or "") if frame else ""
             if got != "storage:1 files:world solstone:blocked":
                 problems.append(f"web map: the map through Solstone isn't walled off and working ({got or 'no frame'})")
+            if not pg.locator("#wm-web [data-wm-full]").count() or pg.locator("#wm-web iframe.map-frame[allowfullscreen]").count() != 1:
+                problems.append("web map: no Full screen button, or its frame may not go full screen")
             check(pg, "world-web-map")
             pg.click('[data-wm="own"]')
             pg.request.put(f"{base}/api/servers/{sid}/settings", data={"map_url": "", "map_proxy": ""}, headers=H)
