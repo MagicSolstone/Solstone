@@ -1,3 +1,9 @@
+# Solstone 1.26.0
+
+- **The web map goes full screen.** BlueMap's own full-screen button works now (its frame may go full screen), and under the map there's a **⛶ Full screen** button and **Open it in a new tab**.
+- **When each login uses the website.** Players stay signed in for weeks, so "last signed in" said little. Manage → Players → Accounts now shows **On the website**: when each login last used it, and on how many of the last 7 days (30 when you point at it). It starts counting from this update.
+- **Travels: the map underneath toned down.** Colour, **Dimmed** (the default) or Black & white, remembered; the heat colours are a little stronger, so they stand out.
+
 # Solstone 1.25.1
 
 - **"You" is only on your own accounts.** On an admin or trusted login, every player showed **You** (they can all be opened). Now it's only on the Minecraft accounts linked to your login, and 📊 My stats lights up only on your own page.
